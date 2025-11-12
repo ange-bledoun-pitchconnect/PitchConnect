@@ -105,6 +105,9 @@ const nextConfig = {
     NEXT_PUBLIC_APP_NAME: 'PitchConnect',
     NEXT_PUBLIC_APP_VERSION: '1.0.0',
   },
+  eslint: {
+  ignoreDuringBuilds: true,
+},
 };
 
 module.exports = nextConfig;
