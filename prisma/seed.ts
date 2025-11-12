@@ -336,7 +336,7 @@ async function main() {
   });
 
   // Create matches
-  const upcomingMatch = await prisma.match.create({
+  await prisma.match.create({
     data: {
       fixtureId: fixture.id,
       homeTeamId: team.id,
