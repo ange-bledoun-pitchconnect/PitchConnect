@@ -1,143 +1,175 @@
-/**
- * Smart Navbar Component
- * Shows different navigation based on authentication status
- * - Public: Features, Pricing, Docs, Sign In/Up
- * - Authenticated: Dashboard, Profile dropdown with settings, logout
- */
-
 'use client';
 
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { 
-  Settings, 
-  LogOut, 
-  User, 
-  LayoutDashboard, 
+import { Badge } from '@/components/ui/badge';
+import {
   Menu,
-  X 
+  X,
+  Home,
+  LayoutDashboard,
+  Settings,
+  LogOut,
+  ChevronDown,
+  Trophy,
+  Users,
 } from 'lucide-react';
-import { useState } from 'react';
-import { getInitials } from '@/lib/utils';
 
 export function Navbar() {
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
+  const router = useRouter();
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  const isAuthenticated = status === 'authenticated';
-  const isDashboard = pathname.startsWith('/dashboard');
-  const isAuthPage = pathname.startsWith('/auth');
+  useEffect(() => {
+    setIsOpen(false);
+    setIsProfileOpen(false);
+  }, [pathname]);
 
-  // Don't show navbar on auth pages
-  if (isAuthPage) {
-    return null;
-  }
+  // Get user type from session - stored in NextAuth user object
+  const userType = (session?.user as any)?.userType || 'PLAYER';
+  const isCoach = userType === 'COACH';
+  const userName = session?.user?.name || 'User';
+  const userEmail = session?.user?.email || '';
+
+  const handleSignOut = async () => {
+    await signOut({ redirect: true, callbackUrl: '/' });
+  };
+
+  // Navigation links based on user type
+  const dashboardLink = isCoach ? '/dashboard/coach' : '/dashboard/player';
 
   return (
-    <nav className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <nav className="sticky top-0 z-40 bg-gradient-to-r from-brand-black via-brand-black to-brand-purple border-b border-brand-gold/20 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href="/" className="text-2xl font-bold text-hero hover:opacity-80 transition-opacity">
-            ⚽ PitchConnect
+          <Link href="/" className="flex items-center gap-2 group">
+            <span className="text-2xl font-bold text-brand-gold group-hover:text-brand-gold/80 transition">
+              ⚽
+            </span>
+            <span className="text-xl font-bold bg-gradient-to-r from-brand-gold to-brand-purple bg-clip-text text-transparent hidden sm:inline">
+              PitchConnect
+            </span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex gap-8 items-center">
-            {!isAuthenticated ? (
+          <div className="hidden md:flex items-center gap-6">
+            {session ? (
               <>
-                {/* Public Navigation */}
-                <a
-                  href="/#features"
-                  className="text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  Features
-                </a>
-                <a
-                  href="/#pricing"
-                  className="text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  Pricing
-                </a>
-                <a
-                  href="/docs"
-                  className="text-foreground/70 hover:text-foreground transition-colors"
-                >
-                  Docs
-                </a>
-
-                {/* Auth Buttons */}
-                <div className="flex gap-4 ml-8 border-l border-border pl-8">
-                  <Link href="/auth/login">
-                    <Button variant="outline">Sign In</Button>
-                  </Link>
-                  <Link href="/auth/signup">
-                    <Button className="btn-primary">Get Started</Button>
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Authenticated Navigation */}
-                <Link
-                  href="/dashboard"
-                  className="text-foreground/70 hover:text-foreground transition-colors flex items-center gap-2"
-                >
-                  <LayoutDashboard className="w-4 h-4" />
-                  Dashboard
+                {/* Dashboard Link */}
+                <Link href={dashboardLink}>
+                  <Button
+                    variant="ghost"
+                    className="flex items-center gap-2 hover:bg-brand-gold/10"
+                  >
+                    <LayoutDashboard className="w-4 h-4" />
+                    Dashboard
+                  </Button>
                 </Link>
+
+                {/* Coach-specific links */}
+                {isCoach && (
+                  <>
+                    <Link href="/dashboard/coach/team">
+                      <Button variant="ghost" className="flex items-center gap-2 hover:bg-brand-gold/10">
+                        <Users className="w-4 h-4" />
+                        Teams
+                      </Button>
+                    </Link>
+                  </>
+                )}
+
+                {/* Player-specific links */}
+                {!isCoach && (
+                  <>
+                    <Link href="/dashboard/player/stats">
+                      <Button variant="ghost" className="flex items-center gap-2 hover:bg-brand-gold/10">
+                        <Trophy className="w-4 h-4" />
+                        Stats
+                      </Button>
+                    </Link>
+                  </>
+                )}
 
                 {/* Profile Dropdown */}
                 <div className="relative">
                   <button
-                    onClick={() => setDropdownOpen(!dropdownOpen)}
-                    className="flex items-center gap-3 px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 transition-colors"
+                    onClick={() => setIsProfileOpen(!isProfileOpen)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition duration-200 group"
                   >
-                    {/* Avatar */}
-                    <div className="w-8 h-8 rounded-full bg-brand-gold/20 flex items-center justify-center text-sm font-bold text-brand-gold">
-                      {getInitials(session?.user?.name || 'U')}
+                    <img
+                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userEmail}`}
+                      alt="Profile"
+                      className="w-8 h-8 rounded-full border border-brand-gold/50"
+                    />
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-brand-gold group-hover:text-brand-gold/80">
+                        {userName.split(' ')[0]}
+                      </p>
+                      {/* User Type Badge */}
+                      <Badge
+                        className={`text-xs h-4 ${
+                          isCoach
+                            ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50'
+                            : 'bg-blue-500/30 text-blue-300 border border-blue-500/50'
+                        }`}
+                      >
+                        {isCoach ? '🏅 Coach' : '⚽ Player'}
+                      </Badge>
                     </div>
-                    {/* Name */}
-                    <span className="text-sm font-medium">{session?.user?.name}</span>
+                    <ChevronDown className="w-4 h-4 text-foreground/60 group-hover:text-foreground transition" />
                   </button>
 
                   {/* Dropdown Menu */}
-                  {dropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-lg shadow-lg py-2 glass">
-                      {/* Profile */}
-                      <Link
-                        href="/dashboard/settings/profile"
-                        className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-muted transition-colors"
-                        onClick={() => setDropdownOpen(false)}
-                      >
-                        <User className="w-4 h-4" />
-                        Edit Profile
+                  {isProfileOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-xl space-y-1 py-2">
+                      {/* User Info */}
+                      <div className="px-4 py-3 border-b border-border">
+                        <p className="text-sm font-semibold text-brand-gold">{userName}</p>
+                        <p className="text-xs text-foreground/60 truncate">{userEmail}</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          {isCoach ? (
+                            <>
+                              <Trophy className="w-4 h-4 text-purple-600" />
+                              <span className="text-xs font-semibold text-purple-600">Coach Account</span>
+                            </>
+                          ) : (
+                            <>
+                              <Users className="w-4 h-4 text-blue-600" />
+                              <span className="text-xs font-semibold text-blue-600">Player Account</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Dashboard */}
+                      <Link href={dashboardLink}>
+                        <button className="w-full text-left px-4 py-2 hover:bg-muted transition text-sm text-foreground flex items-center gap-2">
+                          <LayoutDashboard className="w-4 h-4" />
+                          Dashboard
+                        </button>
                       </Link>
 
                       {/* Settings */}
-                      <Link
-                        href="/dashboard/settings"
-                        className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-muted transition-colors"
-                        onClick={() => setDropdownOpen(false)}
-                      >
-                        <Settings className="w-4 h-4" />
-                        Settings
+                      <Link href="/dashboard/settings/profile">
+                        <button className="w-full text-left px-4 py-2 hover:bg-muted transition text-sm text-foreground flex items-center gap-2">
+                          <Settings className="w-4 h-4" />
+                          Settings
+                        </button>
                       </Link>
 
                       {/* Divider */}
-                      <div className="border-t border-border my-2" />
+                      <div className="border-t border-border my-1" />
 
-                      {/* Logout */}
+                      {/* Sign Out */}
                       <button
-                        onClick={() => {
-                          setDropdownOpen(false);
-                          signOut({ callbackUrl: '/' });
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-500/10 transition-colors"
+                        onClick={handleSignOut}
+                        className="w-full text-left px-4 py-2 hover:bg-red-500/10 transition text-sm text-red-600 flex items-center gap-2"
                       >
                         <LogOut className="w-4 h-4" />
                         Sign Out
@@ -146,96 +178,122 @@ export function Navbar() {
                   )}
                 </div>
               </>
+            ) : (
+              <>
+                <Link href="/auth/login">
+                  <Button variant="outline">Sign In</Button>
+                </Link>
+                <Link href="/auth/signup">
+                  <Button className="btn-primary">Sign Up</Button>
+                </Link>
+              </>
             )}
           </div>
 
           {/* Mobile Menu Button */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 hover:bg-muted rounded-lg transition-colors"
-          >
-            {mobileMenuOpen ? (
-              <X className="w-6 h-6" />
-            ) : (
-              <Menu className="w-6 h-6" />
-            )}
-          </button>
+          <div className="md:hidden">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="p-2 rounded-lg hover:bg-muted transition"
+            >
+              {isOpen ? (
+                <X className="w-6 h-6" />
+              ) : (
+                <Menu className="w-6 h-6" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Navigation */}
-        {mobileMenuOpen && (
-          <div className="md:hidden pb-4 space-y-2 border-t border-border pt-4">
-            {!isAuthenticated ? (
+        {isOpen && (
+          <div className="md:hidden pb-4 space-y-2">
+            {session ? (
               <>
-                <a
-                  href="/#features"
-                  className="block px-4 py-2 text-foreground/70 hover:text-foreground transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Features
-                </a>
-                <a
-                  href="/#pricing"
-                  className="block px-4 py-2 text-foreground/70 hover:text-foreground transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Pricing
-                </a>
-                <a
-                  href="/docs"
-                  className="block px-4 py-2 text-foreground/70 hover:text-foreground transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Docs
-                </a>
-                <div className="flex gap-2 pt-4 border-t border-border">
-                  <Link href="/auth/login" className="flex-1">
-                    <Button variant="outline" className="w-full">
-                      Sign In
+                {/* Mobile User Info */}
+                <div className="px-4 py-3 bg-muted/50 rounded-lg mb-4">
+                  <p className="text-sm font-semibold text-brand-gold">{userName}</p>
+                  <p className="text-xs text-foreground/60 truncate mb-2">{userEmail}</p>
+                  <Badge
+                    className={
+                      isCoach
+                        ? 'bg-purple-500/30 text-purple-300 border border-purple-500/50'
+                        : 'bg-blue-500/30 text-blue-300 border border-blue-500/50'
+                    }
+                  >
+                    {isCoach ? '🏅 Coach' : '⚽ Player'}
+                  </Badge>
+                </div>
+
+                {/* Mobile Links */}
+                <Link href={dashboardLink}>
+                  <Button variant="ghost" className="w-full justify-start">
+                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                    Dashboard
+                  </Button>
+                </Link>
+
+                {isCoach && (
+                  <Link href="/dashboard/coach/team">
+                    <Button variant="ghost" className="w-full justify-start">
+                      <Users className="w-4 h-4 mr-2" />
+                      Teams
                     </Button>
                   </Link>
-                  <Link href="/auth/signup" className="flex-1">
-                    <Button className="btn-primary w-full">Get Started</Button>
+                )}
+
+                {!isCoach && (
+                  <Link href="/dashboard/player/stats">
+                    <Button variant="ghost" className="w-full justify-start">
+                      <Trophy className="w-4 h-4 mr-2" />
+                      Stats
+                    </Button>
                   </Link>
-                </div>
+                )}
+
+                <Link href="/dashboard/settings/profile">
+                  <Button variant="ghost" className="w-full justify-start">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Settings
+                  </Button>
+                </Link>
+
+                <Button
+                  onClick={handleSignOut}
+                  variant="destructive"
+                  className="w-full justify-start"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
               </>
             ) : (
               <>
-                <Link
-                  href="/dashboard"
-                  className="block px-4 py-2 text-foreground/70 hover:text-foreground transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Dashboard
+                <Link href="/auth/login" className="w-full">
+                  <Button variant="outline" className="w-full">
+                    Sign In
+                  </Button>
                 </Link>
-                <Link
-                  href="/dashboard/settings/profile"
-                  className="block px-4 py-2 text-foreground/70 hover:text-foreground transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Edit Profile
+                <Link href="/auth/signup" className="w-full">
+                  <Button className="btn-primary w-full">
+                    Sign Up
+                  </Button>
                 </Link>
-                <Link
-                  href="/dashboard/settings"
-                  className="block px-4 py-2 text-foreground/70 hover:text-foreground transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Settings
-                </Link>
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    signOut({ callbackUrl: '/' });
-                  }}
-                  className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-500/10 transition-colors"
-                >
-                  Sign Out
-                </button>
               </>
             )}
           </div>
         )}
       </div>
+
+      {/* Close dropdown when clicking outside */}
+      {isProfileOpen && (
+        <div
+          className="fixed inset-0 z-30"
+          onClick={() => setIsProfileOpen(false)}
+        />
+      )}
     </nav>
   );
 }
+
+export default Navbar;

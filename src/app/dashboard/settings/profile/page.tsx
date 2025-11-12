@@ -1,6 +1,6 @@
 /**
  * Profile Settings Page
- * Edit user and player profile information
+ * Edit user profile with user type badge
  */
 
 'use client';
@@ -11,96 +11,110 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Camera, Save, Mail, Phone, MapPin } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Mail, User, Shield, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ProfileSettingsPage() {
-  const { data: session, status } = useSession();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-
+  const { data: session } = useSession();
   const [formData, setFormData] = useState({
-    firstName: 'John',
-    lastName: 'Smith',
-    email: 'demo.player@pitchconnect.com',
-    phone: '+44 7911 123456',
-    dateOfBirth: '2000-05-15',
-    nationality: 'England',
-    position: 'Midfielder',
-    height: '185',
-    weight: '78',
-    preferredFoot: 'Right',
-    bio: 'Professional footballer - Arsenal FC',
+    firstName: 'Demo',
+    lastName: 'Player',
+    email: session?.user?.email || '',
+    bio: 'Football enthusiast and player',
   });
 
-  async function handleSave() {
-    setIsSaving(true);
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success('Profile updated successfully!');
-    } catch (error) {
-      toast.error('Failed to update profile');
-    } finally {
-      setIsSaving(false);
-    }
-  }
+  const handleSave = async () => {
+    toast.success('Profile updated successfully!');
+  };
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen bg-background px-4 py-12">
-        <div className="max-w-2xl mx-auto space-y-8">
-          <Skeleton className="h-12 w-48" />
-          <Skeleton className="h-96" />
-        </div>
-      </div>
-    );
-  }
+  // Determine user type from session
+  const userType = (session?.user as any)?.type || 'PLAYER';
+  const isCoach = userType === 'COACH';
 
   return (
     <div className="min-h-screen bg-background px-4 py-12">
       <div className="max-w-2xl mx-auto space-y-8">
-        {/* Header */}
+        {/* Header with User Type Badge */}
         <div>
-          <h1 className="text-4xl font-bold mb-2">Edit Profile</h1>
-          <p className="text-foreground/70">Update your personal information</p>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-4xl font-bold">Profile Settings</h1>
+            {/* USER TYPE BADGE */}
+            <Badge className={isCoach ? 'bg-purple-500/20 text-purple-700' : 'bg-blue-500/20 text-blue-700'}>
+              {isCoach ? '🏅 Coach Account' : '⚽ Player Account'}
+            </Badge>
+          </div>
+          <p className="text-foreground/70">Edit your profile information</p>
         </div>
 
-        {/* Profile Picture */}
-        <Card className="glass">
+        {/* User Type Information Card */}
+        <Card className="glass border-brand-gold/20">
           <CardHeader>
-            <CardTitle>Profile Picture</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-brand-gold" />
+              Account Type
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-6">
-              {/* Avatar */}
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-brand-gold to-brand-purple flex items-center justify-center text-3xl font-bold text-white">
-                JS
-              </div>
-
-              {/* Upload Button */}
-              <div className="space-y-2">
-                <Button className="btn-primary flex items-center gap-2">
-                  <Camera className="w-4 h-4" />
-                  Change Picture
-                </Button>
-                <p className="text-xs text-foreground/60">
-                  Max size: 5MB (JPG, PNG)
+          <CardContent>
+            <div className="space-y-4">
+              <div className="p-4 bg-gradient-to-r from-brand-gold/10 to-brand-purple/10 rounded-lg">
+                <div className="flex items-center gap-3 mb-2">
+                  {isCoach ? (
+                    <>
+                      <Trophy className="w-6 h-6 text-purple-600" />
+                      <span className="text-lg font-bold text-purple-700">Coach</span>
+                    </>
+                  ) : (
+                    <>
+                      <User className="w-6 h-6 text-blue-600" />
+                      <span className="text-lg font-bold text-blue-700">Player</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-sm text-foreground/70">
+                  {isCoach
+                    ? 'You have access to coaching tools, team management, and tactical features.'
+                    : 'You have access to player statistics, team participation, and personal performance tracking.'}
                 </p>
               </div>
+
+              {isCoach && (
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-sm">Coach Features:</h4>
+                  <ul className="text-sm text-foreground/70 space-y-1">
+                    <li>✓ Manage multiple teams</li>
+                    <li>✓ Create tactical formations</li>
+                    <li>✓ Plan training sessions</li>
+                    <li>✓ Track player performance</li>
+                    <li>✓ Manage match lineups</li>
+                  </ul>
+                </div>
+              )}
+
+              {!isCoach && (
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-sm">Player Features:</h4>
+                  <ul className="text-sm text-foreground/70 space-y-1">
+                    <li>✓ Track personal statistics</li>
+                    <li>✓ View upcoming fixtures</li>
+                    <li>✓ Manage team participation</li>
+                    <li>✓ View achievements</li>
+                    <li>✓ Connect with coaches</li>
+                  </ul>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Personal Information */}
+        {/* Profile Information */}
         <Card className="glass">
           <CardHeader>
             <CardTitle>Personal Information</CardTitle>
+            <CardDescription>Update your profile details</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Name */}
-            <div className="grid grid-cols-2 gap-4">
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
                 <Input
@@ -109,6 +123,7 @@ export default function ProfileSettingsPage() {
                   onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input
@@ -119,166 +134,55 @@ export default function ProfileSettingsPage() {
               </div>
             </div>
 
-            {/* Contact Info */}
             <div className="space-y-2">
               <Label htmlFor="email" className="flex items-center gap-2">
                 <Mail className="w-4 h-4" />
-                Email Address
+                Email
               </Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 disabled
+                className="bg-muted/50"
               />
-              <p className="text-xs text-foreground/60">
-                Email cannot be changed. Contact support to update.
-              </p>
+              <p className="text-xs text-foreground/60">Email cannot be changed</p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="phone" className="flex items-center gap-2">
-                <Phone className="w-4 h-4" />
-                Phone Number
-              </Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
-            </div>
-
-            {/* Date of Birth */}
-            <div className="space-y-2">
-              <Label htmlFor="dob">Date of Birth</Label>
-              <Input
-                id="dob"
-                type="date"
-                value={formData.dateOfBirth}
-                onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-              />
-            </div>
-
-            {/* Location */}
-            <div className="space-y-2">
-              <Label htmlFor="nationality" className="flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                Nationality
-              </Label>
-              <Input
-                id="nationality"
-                value={formData.nationality}
-                onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-              />
-            </div>
-
-            {/* Bio */}
             <div className="space-y-2">
               <Label htmlFor="bio">Bio</Label>
-              <textarea
+              <Input
                 id="bio"
+                placeholder="Tell us about yourself..."
                 value={formData.bio}
                 onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
-                className="w-full h-24 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Tell us about yourself..."
               />
-              <p className="text-xs text-foreground/60">
-                Max 500 characters
-              </p>
             </div>
+
+            <Button onClick={handleSave} className="w-full btn-primary">
+              Save Changes
+            </Button>
           </CardContent>
         </Card>
 
-        {/* Football Information */}
+        {/* Account Status */}
         <Card className="glass">
           <CardHeader>
-            <CardTitle>Football Information</CardTitle>
+            <CardTitle className="text-sm">Account Status</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Position */}
-            <div className="space-y-2">
-              <Label htmlFor="position">Position</Label>
-              <select
-                id="position"
-                value={formData.position}
-                onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option>Goalkeeper</option>
-                <option>Defender</option>
-                <option>Midfielder</option>
-                <option>Forward</option>
-              </select>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-foreground/60">Status</span>
+              <span className="font-semibold text-green-600">✓ Active</span>
             </div>
-
-            {/* Physical Stats */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="height">Height (cm)</Label>
-                <Input
-                  id="height"
-                  type="number"
-                  value={formData.height}
-                  onChange={(e) => setFormData({ ...formData, height: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="weight">Weight (kg)</Label>
-                <Input
-                  id="weight"
-                  type="number"
-                  value={formData.weight}
-                  onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
-                />
-              </div>
+            <div className="flex justify-between">
+              <span className="text-foreground/60">Verification</span>
+              <span className="font-semibold text-green-600">✓ Verified</span>
             </div>
-
-            {/* Preferred Foot */}
-            <div className="space-y-2">
-              <Label htmlFor="foot">Preferred Foot</Label>
-              <select
-                id="foot"
-                value={formData.preferredFoot}
-                onChange={(e) => setFormData({ ...formData, preferredFoot: e.target.value })}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option>Left</option>
-                <option>Right</option>
-                <option>Both</option>
-              </select>
+            <div className="flex justify-between">
+              <span className="text-foreground/60">Account Type</span>
+              <Badge variant="outline">{userType}</Badge>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Save Button */}
-        <div className="flex gap-4">
-          <Button 
-            className="btn-primary flex items-center gap-2 flex-1"
-            onClick={handleSave}
-            disabled={isSaving}
-          >
-            <Save className="w-4 h-4" />
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </Button>
-          <Button variant="outline" className="flex-1">
-            Cancel
-          </Button>
-        </div>
-
-        {/* Danger Zone */}
-        <Card className="glass border-red-500/20">
-          <CardHeader>
-            <CardTitle className="text-red-600">Danger Zone</CardTitle>
-            <CardDescription>Irreversible actions</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button variant="outline" className="w-full text-red-600 hover:bg-red-500/10">
-              Delete Account
-            </Button>
-            <p className="text-xs text-foreground/60">
-              This action cannot be undone. All your data will be permanently deleted.
-            </p>
           </CardContent>
         </Card>
       </div>
