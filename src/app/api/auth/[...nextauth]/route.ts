@@ -1,5 +1,5 @@
 /**
- * NextAuth Configuration
+ * NextAuth Configuration & Route Handler
  * Authentication with credentials and OAuth providers
  */
 
@@ -8,6 +8,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import GithubProvider from 'next-auth/providers/github';
 import { getServerSession } from 'next-auth/next';
+import NextAuth from 'next-auth';
 import bcrypt from 'bcrypt';
 import { db } from '@/lib/db';
 
@@ -171,5 +172,10 @@ export const authOptions: NextAuthOptions = {
 
   secret: process.env.NEXTAUTH_SECRET,
 };
+
+// Export NextAuth handler
+const handler = NextAuth(authOptions);
+
+export { handler as GET, handler as POST };
 
 export const getServerSessionWithAuth = () => getServerSession(authOptions);
