@@ -1,0 +1,973 @@
+// ============================================================================
+// PITCHCONNECT DATABASE SCHEMA (Prisma ORM)
+// PostgreSQL via Supabase
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  SUPERADMIN
+  PLAYER
+  COACH
+  CLUB_MANAGER
+  LEAGUE_ADMIN
+  PARENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  BANNED
+  PENDING_VERIFICATION
+}
+
+enum TeamType {
+  PROFESSIONAL
+  SEMI_PROFESSIONAL
+  AMATEUR
+  YOUTH
+  POWERLEAGUE
+}
+
+enum Position {
+  GOALKEEPER
+  DEFENDER
+  MIDFIELDER
+  FORWARD
+}
+
+enum PreferredFoot {
+  LEFT
+  RIGHT
+  BOTH
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  CANCELLED
+  POSTPONED
+}
+
+enum MatchEventType {
+  GOAL
+  ASSIST
+  YELLOW_CARD
+  RED_CARD
+  SUBSTITUTION
+  INJURY_TIME
+  FULLTIME
+  HALFTIME
+  KICKOFF
+}
+
+enum Formation {
+  FOUR_FOUR_TWO
+  FOUR_THREE_THREE
+  THREE_FIVE_TWO
+  FIVE_THREE_TWO
+  FIVE_FOUR_ONE
+  THREE_FOUR_THREE
+  FOUR_TWO_THREE_ONE
+  FOUR_ONE_FOUR_ONE
+}
+
+enum SubscriptionTier {
+  FREE
+  STANDARD
+  PROFESSIONAL
+  ELITE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PAUSED
+  PAST_DUE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  MATCH_SCHEDULED
+  MATCH_REMINDER
+  TRAINING_SESSION
+  TEAM_MESSAGE
+  ACHIEVEMENT_UNLOCKED
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  PLAYER_STATS_UPDATE
+  SYSTEM_ALERT
+}
+
+enum TrainingIntensity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TrainingCategory {
+  PASSING
+  SHOOTING
+  DEFENDING
+  POSSESSION
+  SET_PIECES
+  CONDITIONING
+  TACTICAL
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  EXCUSED
+  LATE
+}
+
+// ============================================================================
+// USER & AUTHENTICATION MODELS
+// ============================================================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  firstName     String
+  lastName      String
+  phoneNumber   String?
+  avatar        String?
+  dateOfBirth   DateTime?
+  
+  roles         UserRole[]
+  status        UserStatus @default(PENDING_VERIFICATION)
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  lastLogin     DateTime?
+  
+  accounts          Account[]
+  sessions          Session[]
+  preferences       UserPreferences?
+  playerProfile     Player?
+  coachProfile      Coach?
+  clubManager       ClubManager?
+  leagueAdmin       LeagueAdmin?
+  parentProfile     Parent?
+  subscription      Subscription?
+  payments          Payment[]
+  notifications     Notification[]
+  scoutingReports   ScoutingProfile[]
+  sentMessages      Message[] @relation("MessageSender")
+  
+  @@index([email])
+  @@index([status])
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model UserPreferences {
+  id                   String  @id @default(cuid())
+  userId               String  @unique
+  
+  theme                String  @default("auto")
+  language             String  @default("en-GB")
+  timezone             String  @default("Europe/London")
+  currency             String  @default("GBP")
+  
+  notificationsEmail   Boolean @default(true)
+  notificationsSMS     Boolean @default(false)
+  notificationsPush    Boolean @default(true)
+  
+  privateProfile       Boolean @default(false)
+  analyticsLevel       String  @default("BASIC")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_preferences")
+}
+
+// ============================================================================
+// PLAYER MODELS
+// ============================================================================
+
+model Player {
+  id               String        @id @default(cuid())
+  userId           String        @unique
+  
+  firstName        String
+  lastName         String
+  dateOfBirth      DateTime
+  nationality      String
+  height           Float?
+  weight           Float?
+  
+  position         Position
+  preferredFoot    PreferredFoot
+  shirtNumber      Int?
+  photo            String?
+  
+  status           String        @default("ACTIVE")
+  developmentNotes String?       @db.Text
+  
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stats            PlayerStats[]
+  teams            TeamPlayer[]
+  achievements     PlayerAchievement[]
+  scoutingProfiles ScoutingProfile[]
+  matchEvents      MatchEvent[]
+  trainingAttendance TrainingAttendance[]
+  tacticPositions  TacticPlayer[]
+  
+  @@index([userId])
+  @@index([position])
+  @@map("players")
+}
+
+model PlayerStats {
+  id              String   @id @default(cuid())
+  playerId        String
+  season          Int
+  
+  appearances     Int      @default(0)
+  goals           Int      @default(0)
+  assists         Int      @default(0)
+  minutesPlayed   Int      @default(0)
+  
+  passingAccuracy Float?
+  tackles         Int?
+  interceptions   Int?
+  shotsOnTarget   Int?
+  
+  sprintDistance  Float?
+  topSpeed        Float?
+  acceleration    Float?
+  
+  expectedGoals   Float?
+  expectedAssists Float?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  @@unique([playerId, season])
+  @@index([playerId])
+  @@index([season])
+  @@map("player_stats")
+}
+
+// ============================================================================
+// COACH & CLUB MODELS
+// ============================================================================
+
+model Coach {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  
+  bio              String?  @db.Text
+  yearsExperience  Int?
+  qualifications   String[]
+  specializations  String[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teams            Team[]
+  trainingSessions TrainingSession[]
+  tactics          Tactic[]
+  
+  @@index([userId])
+  @@map("coaches")
+}
+
+model ClubManager {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clubs       Club[]
+  
+  @@index([userId])
+  @@map("club_managers")
+}
+
+model Club {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  logo        String?
+  founded     DateTime?
+  city        String
+  country     String
+  teamType    TeamType
+  status      String   @default("ACTIVE")
+  
+  email       String?
+  phone       String?
+  website     String?
+  
+  managerId   String
+  manager     ClubManager @relation(fields: [managerId], references: [id])
+  teams       Team[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([code])
+  @@index([managerId])
+  @@map("clubs")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  clubId      String
+  name        String
+  category    String
+  season      Int
+  status      String   @default("ACTIVE")
+  
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  coachId     String
+  coach       Coach    @relation(fields: [coachId], references: [id])
+  players     TeamPlayer[]
+  homeMatches Match[]  @relation("HomeTeam")
+  awayMatches Match[]  @relation("AwayTeam")
+  trainingSessions TrainingSession[]
+  tactics     Tactic[]
+  leagueMemberships LeagueTeam[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([clubId])
+  @@index([coachId])
+  @@index([season])
+  @@map("teams")
+}
+
+model TeamPlayer {
+  id         String   @id @default(cuid())
+  teamId     String
+  playerId   String
+  joinedAt   DateTime @default(now())
+  leftAt     DateTime?
+  isCaptain  Boolean  @default(false)
+  
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  @@unique([teamId, playerId])
+  @@index([teamId])
+  @@index([playerId])
+  @@map("team_players")
+}
+
+// ============================================================================
+// LEAGUE & FIXTURES MODELS
+// ============================================================================
+
+model League {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  logo        String?
+  country     String
+  season      Int
+  status      String   @default("ACTIVE")
+  
+  pointsWin   Int      @default(3)
+  pointsDraw  Int      @default(1)
+  pointsLoss  Int      @default(0)
+  
+  adminId     String
+  admin       LeagueAdmin @relation(fields: [adminId], references: [id])
+  teams       LeagueTeam[]
+  fixtures    Fixture[]
+  standings   Standings[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([code])
+  @@index([adminId])
+  @@index([season])
+  @@map("leagues")
+}
+
+model LeagueAdmin {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leagues     League[]
+  
+  @@index([userId])
+  @@map("league_admins")
+}
+
+model LeagueTeam {
+  id          String   @id @default(cuid())
+  leagueId    String
+  teamId      String
+  joinedAt    DateTime @default(now())
+  leftAt      DateTime?
+  
+  league      League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, teamId])
+  @@index([leagueId])
+  @@index([teamId])
+  @@map("league_teams")
+}
+
+model Fixture {
+  id          String   @id @default(cuid())
+  leagueId    String
+  matchweek   Int
+  season      Int
+  status      String   @default("UPCOMING")
+  
+  league      League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  matches     Match[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([leagueId])
+  @@index([matchweek])
+  @@index([season])
+  @@map("fixtures")
+}
+
+model Standings {
+  id          String   @id @default(cuid())
+  leagueId    String
+  teamId      String
+  position    Int
+  
+  played      Int      @default(0)
+  won         Int      @default(0)
+  drawn       Int      @default(0)
+  lost        Int      @default(0)
+  
+  goalsFor    Int      @default(0)
+  goalsAgainst Int     @default(0)
+  goalDifference Int   @default(0)
+  
+  points      Int      @default(0)
+  
+  league      League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, teamId])
+  @@index([leagueId])
+  @@index([position])
+  @@map("standings")
+}
+
+// ============================================================================
+// MATCH & EVENT MODELS
+// ============================================================================
+
+model Match {
+  id              String   @id @default(cuid())
+  fixtureId       String?
+  homeTeamId      String
+  awayTeamId      String
+  date            DateTime
+  venue           String?
+  status          MatchStatus @default(SCHEDULED)
+  
+  homeGoals       Int?
+  awayGoals       Int?
+  attendance      Int?
+  
+  fixture         Fixture? @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
+  homeTeam        Team     @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam        Team     @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  events          MatchEvent[]
+  stats           MatchStats?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([fixtureId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([date])
+  @@index([status])
+  @@map("matches")
+}
+
+model MatchEvent {
+  id              String   @id @default(cuid())
+  matchId         String
+  playerId        String?
+  type            MatchEventType
+  minute          Int
+  additionalInfo  String?
+  
+  match           Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player          Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([matchId])
+  @@index([playerId])
+  @@index([minute])
+  @@map("match_events")
+}
+
+model MatchStats {
+  id              String   @id @default(cuid())
+  matchId         String   @unique
+  
+  homeTeamId      String
+  homePossession  Int?
+  homeShots       Int?
+  homeShotsOnTarget Int?
+  homePasses      Int?
+  homePassAccuracy Float?
+  homeTackles     Int?
+  homeFouls       Int?
+  homeCorners     Int?
+  
+  awayTeamId      String
+  awayPossession  Int?
+  awayShots       Int?
+  awayShotsOnTarget Int?
+  awayPasses      Int?
+  awayPassAccuracy Float?
+  awayTackles     Int?
+  awayFouls       Int?
+  awayCorners     Int?
+  
+  match           Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  
+  @@index([matchId])
+  @@map("match_stats")
+}
+
+// ============================================================================
+// TRAINING MODELS
+// ============================================================================
+
+model TrainingSession {
+  id              String   @id @default(cuid())
+  teamId          String
+  coachId         String
+  date            DateTime
+  duration        Int
+  location        String?
+  focus           String
+  notes           String?  @db.Text
+  
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  coach           Coach    @relation(fields: [coachId], references: [id])
+  drills          SessionDrill[]
+  attendance      TrainingAttendance[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([teamId])
+  @@index([coachId])
+  @@index([date])
+  @@map("training_sessions")
+}
+
+model Drill {
+  id              String   @id @default(cuid())
+  name            String
+  description     String   @db.Text
+  duration        Int
+  intensity       TrainingIntensity
+  playerCount     Int
+  difficulty      String
+  category        TrainingCategory
+  
+  sessions        SessionDrill[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([category])
+  @@map("drills")
+}
+
+model SessionDrill {
+  id              String   @id @default(cuid())
+  trainingSessionId String
+  drillId         String
+  order           Int
+  
+  trainingSession TrainingSession @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+  drill           Drill    @relation(fields: [drillId], references: [id])
+  
+  @@unique([trainingSessionId, drillId])
+  @@index([trainingSessionId])
+  @@index([drillId])
+  @@map("session_drills")
+}
+
+model TrainingAttendance {
+  id              String   @id @default(cuid())
+  trainingSessionId String
+  playerId        String
+  status          AttendanceStatus
+  performanceRating Int?
+  notes           String?
+  
+  trainingSession TrainingSession @relation(fields: [trainingSessionId], references: [id], onDelete: Cascade)
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  @@unique([trainingSessionId, playerId])
+  @@index([trainingSessionId])
+  @@index([playerId])
+  @@map("training_attendance")
+}
+
+// ============================================================================
+// TACTICAL MODELS
+// ============================================================================
+
+model Tactic {
+  id              String   @id @default(cuid())
+  coachId         String
+  teamId          String
+  name            String
+  formation       Formation
+  description     String?  @db.Text
+  playStyle       String   @default("BALANCED")
+  defensiveShape  String   @default("COMPACT")
+  pressType       String   @default("MID_BLOCK")
+  
+  coach           Coach    @relation(fields: [coachId], references: [id])
+  team            Team     @relation(fields: [teamId], references: [id])
+  playerPositions TacticPlayer[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([coachId])
+  @@index([teamId])
+  @@map("tactics")
+}
+
+model TacticPlayer {
+  id              String   @id @default(cuid())
+  tacticId        String
+  playerId        String
+  position        Position
+  role            String?
+  
+  tactic          Tactic   @relation(fields: [tacticId], references: [id], onDelete: Cascade)
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  @@unique([tacticId, playerId])
+  @@index([tacticId])
+  @@index([playerId])
+  @@map("tactic_players")
+}
+
+// ============================================================================
+// PAYMENT & SUBSCRIPTION MODELS
+// ============================================================================
+
+model Subscription {
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  tier                    SubscriptionTier @default(FREE)
+  status                  SubscriptionStatus @default(ACTIVE)
+  
+  stripeCustomerId        String?  @unique
+  stripeSubscriptionId    String?  @unique
+  
+  currentPeriodStart      DateTime?
+  currentPeriodEnd        DateTime?
+  cancelledAt             DateTime?
+  
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments                Payment[]
+  
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+  @@index([tier])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id                      String   @id @default(cuid())
+  subscriptionId          String?
+  userId                  String
+  amount                  Float
+  currency                String   @default("GBP")
+  status                  PaymentStatus @default(PENDING)
+  
+  stripePaymentIntentId   String?  @unique
+  stripeInvoiceId         String?
+  invoiceUrl              String?
+  
+  subscription            Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  
+  @@index([subscriptionId])
+  @@index([userId])
+  @@index([stripePaymentIntentId])
+  @@map("payments")
+}
+
+// ============================================================================
+// GAMIFICATION MODELS
+// ============================================================================
+
+model Achievement {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String   @db.Text
+  icon            String?
+  criterion       String
+  threshold       Int
+  points          Int      @default(10)
+  
+  playerAchievements PlayerAchievement[]
+  
+  @@index([criterion])
+  @@map("achievements")
+}
+
+model PlayerAchievement {
+  id              String   @id @default(cuid())
+  playerId        String
+  achievementId   String
+  unlockedAt      DateTime @default(now())
+  
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  achievement     Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  @@unique([playerId, achievementId])
+  @@index([playerId])
+  @@index([achievementId])
+  @@map("player_achievements")
+}
+
+model Leaderboard {
+  id              String   @id @default(cuid())
+  leagueId        String?
+  teamId          String?
+  type            String
+  season          Int
+  
+  @@index([leagueId])
+  @@index([teamId])
+  @@index([type])
+  @@index([season])
+  @@map("leaderboards")
+}
+
+// ============================================================================
+// SCOUTING MODELS
+// ============================================================================
+
+model ScoutingProfile {
+  id              String   @id @default(cuid())
+  playerId        String
+  createdBy       String
+  rating          Int
+  strengths       String[]
+  weaknesses      String[]
+  potential       Int
+  notes           String?  @db.Text
+  videoLinks      String[]
+  comparablePlayer String?
+  
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  scout           User     @relation(fields: [createdBy], references: [id])
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([playerId])
+  @@index([createdBy])
+  @@index([rating])
+  @@map("scouting_profiles")
+}
+
+// ============================================================================
+// COMMUNICATION MODELS
+// ============================================================================
+
+model Message {
+  id              String   @id @default(cuid())
+  teamId          String?
+  senderId        String
+  content         String   @db.Text
+  attachmentUrl   String?
+  
+  sender          User     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipients      MessageRecipient[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([teamId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model MessageRecipient {
+  id              String   @id @default(cuid())
+  messageId       String
+  recipientId     String
+  readAt          DateTime?
+  
+  message         Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, recipientId])
+  @@index([messageId])
+  @@index([recipientId])
+  @@map("message_recipients")
+}
+
+// ============================================================================
+// NOTIFICATION MODELS
+// ============================================================================
+
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String
+  type            NotificationType
+  title           String
+  message         String
+  link            String?
+  read            Boolean  @default(false)
+  metadata        Json?
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================================================
+// PARENT/GUARDIAN MODELS
+// ============================================================================
+
+model Parent {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@map("parents")
+}
+
+// ============================================================================
+// AUDIT LOG MODELS
+// ============================================================================
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  action          String
+  entityType      String
+  entityId        String
+  changes         Json?
+  ipAddress       String?
+  userAgent       String?
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
