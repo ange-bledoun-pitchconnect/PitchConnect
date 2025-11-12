@@ -7,18 +7,11 @@ const nextConfig = {
 
   // Enable TypeScript type checking but don't fail on errors
   typescript: {
-    // Set to true to ignore TypeScript errors during build
     ignoreBuildErrors: true,
   },
 
-  // Enable SWC minification (faster than Terser)
-  swcMinify: true,
-
   // Enable HTTP compression
   compress: true,
-
-  // Optimize font loading
-  optimizeFonts: true,
 
   // Image optimization
   images: {
@@ -32,16 +25,15 @@ const nextConfig = {
     ],
   },
 
-  // Experimental features
+  // Experimental features (correct format for Next.js 15)
   experimental: {
-    serverActions: true,
     optimizePackageImports: ['lucide-react', 'react-hot-toast'],
   },
 
-  // Disable source maps in production (for better performance)
+  // Disable source maps in production
   productionBrowserSourceMaps: false,
 
-  // Headers for security and performance
+  // Headers for security
   async headers() {
     return [
       {
@@ -74,16 +66,6 @@ const nextConfig = {
         ],
       },
     ];
-  },
-
-  // Redirects (optional - add any you need)
-  async redirects() {
-    return [];
-  },
-
-  // Rewrites (optional - add any you need)
-  async rewrites() {
-    return [];
   },
 };
 
