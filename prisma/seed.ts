@@ -336,16 +336,27 @@ async function main() {
   });
 
   // Create matches
-  await prisma.match.create({
-    data: {
-      fixtureId: fixture.id,
-      homeTeamId: team.id,
-      awayTeamId: opposingTeam.id,
-      date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-      venue: 'Demo Stadium',
-      status: MatchStatus.SCHEDULED,
-    },
-  });
+await prisma.match.create({
+  data: {
+    fixtureId: fixture.id,
+    homeTeamId: team.id,
+    awayTeamId: secondTeam.id,
+    date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 1 week from now
+    venue: 'Emirates Stadium',
+    status: 'SCHEDULED',
+  },
+});
+
+await prisma.match.create({
+  data: {
+    fixtureId: fixture.id,
+    homeTeamId: secondTeam.id,
+    awayTeamId: team.id,
+    date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 2 weeks from now
+    venue: 'Stamford Bridge',
+    status: 'SCHEDULED',
+  },
+});
 
   console.log('✅ Created upcoming match');
 
