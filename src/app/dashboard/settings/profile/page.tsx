@@ -11,7 +11,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Mail, User, Shield, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -29,7 +28,7 @@ export default function ProfileSettingsPage() {
   };
 
   // Determine user type from session
-  const userType = (session?.user as any)?.type || 'PLAYER';
+  const userType = (session?.user as any)?.userType || 'PLAYER';
   const isCoach = userType === 'COACH';
 
   return (
@@ -40,9 +39,23 @@ export default function ProfileSettingsPage() {
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-4xl font-bold">Profile Settings</h1>
             {/* USER TYPE BADGE */}
-            <Badge className={isCoach ? 'bg-purple-500/20 text-purple-700' : 'bg-blue-500/20 text-blue-700'}>
-              {isCoach ? '🏅 Coach Account' : '⚽ Player Account'}
-            </Badge>
+            <div className={`px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2 ${
+              isCoach 
+                ? 'bg-purple-500/20 text-purple-700 border border-purple-500/50' 
+                : 'bg-blue-500/20 text-blue-700 border border-blue-500/50'
+            }`}>
+              {isCoach ? (
+                <>
+                  <Trophy className="w-4 h-4" />
+                  Coach Account
+                </>
+              ) : (
+                <>
+                  <User className="w-4 h-4" />
+                  Player Account
+                </>
+              )}
+            </div>
           </div>
           <p className="text-foreground/70">Edit your profile information</p>
         </div>
@@ -181,7 +194,7 @@ export default function ProfileSettingsPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-foreground/60">Account Type</span>
-              <Badge variant="outline">{userType}</Badge>
+              <span className="font-semibold text-brand-gold">{userType}</span>
             </div>
           </CardContent>
         </Card>
