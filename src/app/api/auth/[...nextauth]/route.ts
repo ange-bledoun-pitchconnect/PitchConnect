@@ -79,7 +79,7 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user, account }) {
       if (user) {
-        // On first login, get full user data including userType
+        // On first login, get full user data including roles
         const dbUser = await db.user.findUnique({
           where: { id: user.id },
           select: {
@@ -87,7 +87,8 @@ export const authOptions: NextAuthOptions = {
             email: true,
             firstName: true,
             lastName: true,
-            userType: true,
+            roles: true,
+            status: true,
           },
         });
 
@@ -95,23 +96,25 @@ export const authOptions: NextAuthOptions = {
           token.id = dbUser.id;
           token.email = dbUser.email;
           token.name = `${dbUser.firstName} ${dbUser.lastName}`;
-          token.userType = dbUser.userType; // Store userType in JWT
+          token.roles = dbUser.roles; // Store roles array in JWT
+          token.userType = dbUser.roles?.[0] || 'PLAYER'; // Get first role as userType
         }
       }
 
-      // For OAuth providers, ensure userType is set
+      // For OAuth providers, ensure roles are set
       if (account?.provider && !user) {
         const dbUser = await db.user.findUnique({
           where: { email: token.email as string },
           select: {
             id: true,
-            userType: true,
+            roles: true,
           },
         });
 
         if (dbUser) {
           token.id = dbUser.id;
-          token.userType = dbUser.userType;
+          token.roles = dbUser.roles;
+          token.userType = dbUser.roles?.[0] || 'PLAYER';
         }
       }
 
@@ -121,7 +124,8 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).id = token.id;
-        (session.user as any).userType = token.userType; // Pass userType to session
+        (session.user as any).roles = token.roles; // Pass roles array
+        (session.user as any).userType = token.userType; // Pass primary role as userType
       }
       return session;
     },
@@ -141,7 +145,7 @@ export const authOptions: NextAuthOptions = {
               firstName: profile.given_name || user.name?.split(' ')[0] || 'User',
               lastName: profile.family_name || user.name?.split(' ')[1] || '',
               password: '', // OAuth users don't have passwords
-              userType: 'PLAYER', // Default to PLAYER for OAuth users
+              roles: ['PLAYER'], // Default to PLAYER role
               status: 'ACTIVE',
               emailVerified: new Date(),
             },
