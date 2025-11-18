@@ -19,3 +19,4 @@ Build the most engaging, data-rich, and user-centric football management platfor
 
 ### Installation (Windows Command Prompt)
 
+"# Updated $(date)" 
