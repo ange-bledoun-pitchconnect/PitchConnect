@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   Menu,
   X,
-  Home,
   LayoutDashboard,
   Settings,
   LogOut,
@@ -20,7 +20,6 @@ import {
 
 export function Navbar() {
   const { data: session } = useSession();
-  const router = useRouter();
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -31,6 +30,7 @@ export function Navbar() {
   }, [pathname]);
 
   // Get user type from session - stored in NextAuth user object
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const userType = (session?.user as any)?.userType || 'PLAYER';
   const isCoach = userType === 'COACH';
   const userName = session?.user?.name || 'User';
@@ -42,6 +42,7 @@ export function Navbar() {
 
   // Navigation links based on user type
   const dashboardLink = isCoach ? '/dashboard/coach' : '/dashboard/player';
+  const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userEmail}`;
 
   return (
     <nav className="sticky top-0 z-40 bg-gradient-to-r from-brand-black via-brand-black to-brand-purple border-b border-brand-gold/20 backdrop-blur-md">
@@ -76,7 +77,10 @@ export function Navbar() {
                 {isCoach && (
                   <>
                     <Link href="/dashboard/coach/team">
-                      <Button variant="ghost" className="flex items-center gap-2 hover:bg-brand-gold/10">
+                      <Button
+                        variant="ghost"
+                        className="flex items-center gap-2 hover:bg-brand-gold/10"
+                      >
                         <Users className="w-4 h-4" />
                         Teams
                       </Button>
@@ -88,7 +92,10 @@ export function Navbar() {
                 {!isCoach && (
                   <>
                     <Link href="/dashboard/player/stats">
-                      <Button variant="ghost" className="flex items-center gap-2 hover:bg-brand-gold/10">
+                      <Button
+                        variant="ghost"
+                        className="flex items-center gap-2 hover:bg-brand-gold/10"
+                      >
                         <Trophy className="w-4 h-4" />
                         Stats
                       </Button>
@@ -102,11 +109,15 @@ export function Navbar() {
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition duration-200 group"
                   >
-                    <img
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userEmail}`}
-                      alt="Profile"
-                      className="w-8 h-8 rounded-full border border-brand-gold/50"
-                    />
+                    <div className="w-8 h-8 rounded-full border border-brand-gold/50 overflow-hidden flex-shrink-0">
+                      <Image
+                        src={avatarUrl}
+                        alt="Profile"
+                        width={32}
+                        height={32}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                     <div className="text-left">
                       <p className="text-sm font-semibold text-brand-gold group-hover:text-brand-gold/80">
                         {userName.split(' ')[0]}
@@ -136,12 +147,16 @@ export function Navbar() {
                           {isCoach ? (
                             <>
                               <Trophy className="w-4 h-4 text-purple-600" />
-                              <span className="text-xs font-semibold text-purple-600">Coach Account</span>
+                              <span className="text-xs font-semibold text-purple-600">
+                                Coach Account
+                              </span>
                             </>
                           ) : (
                             <>
                               <Users className="w-4 h-4 text-blue-600" />
-                              <span className="text-xs font-semibold text-blue-600">Player Account</span>
+                              <span className="text-xs font-semibold text-blue-600">
+                                Player Account
+                              </span>
                             </>
                           )}
                         </div>
@@ -196,11 +211,7 @@ export function Navbar() {
               onClick={() => setIsOpen(!isOpen)}
               className="p-2 rounded-lg hover:bg-muted transition"
             >
-              {isOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
+              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
@@ -275,9 +286,7 @@ export function Navbar() {
                   </Button>
                 </Link>
                 <Link href="/auth/signup" className="w-full">
-                  <Button className="btn-primary w-full">
-                    Sign Up
-                  </Button>
+                  <Button className="btn-primary w-full">Sign Up</Button>
                 </Link>
               </>
             )}

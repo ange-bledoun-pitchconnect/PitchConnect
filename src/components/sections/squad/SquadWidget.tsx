@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from 'react';
 import { useTeamFilter } from '@/lib/dashboard/team-context';
-import { SquadTeamTab } from './SquadTeamTab';
 import { PlayerCard } from './PlayerCard';
 import { cn } from '@/lib/utils';
 import styles from './SquadWidget.module.css';
@@ -98,10 +97,7 @@ export function SquadWidget({ teamsData, className }: SquadWidgetProps) {
       {visibleTeams.length > 1 && (
         <div className={styles.tabsContainer}>
           <button
-            className={cn(
-              styles.tab,
-              activeTeamTab === 'all' && styles.tabActive
-            )}
+            className={cn(styles.tab, activeTeamTab === 'all' && styles.tabActive)}
             onClick={() => setActiveTeamTab('all')}
           >
             All Teams
@@ -162,10 +158,7 @@ export function SquadWidget({ teamsData, className }: SquadWidgetProps) {
             )}
             <div className={styles.playersList}>
               {team.players.map(player => (
-                <PlayerCard
-                  key={player.id}
-                  player={player}
-                />
+                <PlayerCard key={player.id} player={player} />
               ))}
             </div>
             {team.players.length === 0 && (

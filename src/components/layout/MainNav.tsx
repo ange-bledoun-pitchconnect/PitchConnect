@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { cn } from '@/lib/utils';
-import styles from './MainNav.module.css';
+import { Menu, X } from 'lucide-react';
 
 interface NavItem {
   label: string;
@@ -20,13 +20,20 @@ interface NavProps {
   className?: string;
 }
 
+interface SessionUser {
+  email?: string;
+  userType?: string;
+  name?: string;
+}
+
 export function MainNav({ items, className }: NavProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const userType = (session?.user as any)?.userType || 'PLAYER';
   const [isOpen, setIsOpen] = useState(false);
 
-  // Filter items based on user role
+  const sessionUser = session?.user as SessionUser | undefined;
+  const userType = sessionUser?.userType || 'PLAYER';
+
   const visibleItems = items.filter(item => {
     if (!item.requiresAuth) return true;
     if (!session) return false;
@@ -41,60 +48,84 @@ export function MainNav({ items, className }: NavProps) {
     return pathname.startsWith(href);
   };
 
+  const toggleMenu = (): void => {
+    setIsOpen(prev => !prev);
+  };
+
+  const closeMenu = (): void => {
+    setIsOpen(false);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>): void => {
+    if (event.key === 'Escape') {
+      setIsOpen(false);
+    }
+  };
+
   return (
-    <nav className={cn(styles.mainNav, className)}>
-      {/* Desktop Navigation */}
-      <div className={styles.navDesktop}>
-        <ul className={styles.navList}>
-          {visibleItems.map(item => (
-            <li key={item.href} className={styles.navItem}>
-              <Link
-                href={item.href}
-                className={cn(
-                  styles.navLink,
-                  isActive(item.href) && styles.navLinkActive
-                )}
-              >
-                {item.icon && <span className={styles.navIcon}>{item.icon}</span>}
-                <span className={styles.navLabel}>{item.label}</span>
-              </Link>
-            </li>
+    <nav className={cn('relative', className)}>
+      {/* DESKTOP NAVIGATION */}
+      <div className="hidden md:flex items-center gap-1">
+        {visibleItems.map(item => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              'px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2',
+              isActive(item.href)
+                ? 'bg-gold-100 text-gold-700 border-b-2 border-gold-500'
+                : 'text-charcoal-600 hover:text-gold-500 hover:bg-gold-50'
+            )}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+            >
+              {item.icon && <span aria-hidden="true">{item.icon}</span>}
+              <span>{item.label}</span>
+            </Link>
           ))}
-        </ul>
       </div>
 
-      {/* Mobile Navigation Toggle */}
+      {/* MOBILE MENU BUTTON */}
       <button
-        className={styles.mobileToggle}
-        onClick={() => setIsOpen(!isOpen)}
+        className="md:hidden p-2 text-charcoal-600 hover:bg-gold-50 rounded-lg transition-all"
+        onClick={toggleMenu}
+        onKeyDown={handleKeyDown}
         aria-label="Toggle navigation menu"
         aria-expanded={isOpen}
+        aria-controls="mobile-nav"
+        type="button"
       >
-        <span className={styles.hamburger} />
+        {isOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
 
-      {/* Mobile Navigation */}
+      {/* MOBILE NAVIGATION */}
       {isOpen && (
-        <div className={styles.navMobile}>
-          <ul className={styles.navList}>
+        <div
+          id="mobile-nav"
+          className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-neutral-200 overflow-hidden md:hidden z-50"
+        >
+          <div className="flex flex-col">
             {visibleItems.map(item => (
-              <li key={item.href} className={styles.navItem}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    styles.navLink,
-                    isActive(item.href) && styles.navLinkActive
-                  )}
-                  onClick={() => setIsOpen(false)}
-                >
-                  {item.icon && <span className={styles.navIcon}>{item.icon}</span>}
-                  <span className={styles.navLabel}>{item.label}</span>
-                </Link>
-              </li>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'px-4 py-3 font-medium text-sm transition-all flex items-center gap-2 border-b border-neutral-100 last:border-b-0',
+                  isActive(item.href)
+                    ? 'bg-gold-100 text-gold-700'
+                    : 'text-charcoal-600 hover:bg-gold-50 hover:text-gold-500'
+                )}
+                onClick={closeMenu}
+                aria-current={isActive(item.href) ? 'page' : undefined}
+              >
+                {item.icon && <span aria-hidden="true">{item.icon}</span>}
+                <span>{item.label}</span>
+              </Link>
             ))}
-          </ul>
+          </div>
         </div>
       )}
     </nav>
   );
 }
+
+MainNav.displayName = 'MainNav';

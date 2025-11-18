@@ -2,18 +2,52 @@
  * Players API Endpoints
  * GET    /api/players       - Get all players (with filters)
  * POST   /api/players       - Create new player
- * GET    /api/players/:id   - Get single player
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { db } from '@/lib/db';
+import { Prisma, Position, PreferredFoot } from '@prisma/client';
 
-/**
- * GET /api/players
- * Get all players with optional filtering
- */
+// ========================================
+// TYPES & INTERFACES
+// ========================================
+
+interface SessionUser {
+  id: string;
+  email?: string;
+  name?: string;
+}
+
+interface CreatePlayerBody {
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string;
+  nationality?: string;
+  position: string;
+  preferredFoot?: string;
+  height?: number | string;
+  weight?: number | string;
+}
+
+// ========================================
+// VALIDATION HELPERS
+// ========================================
+
+function isValidPosition(value: string): value is Position {
+  return ['GOALKEEPER', 'DEFENDER', 'MIDFIELDER', 'FORWARD'].includes(value);
+}
+
+function isValidPreferredFoot(value: string): value is PreferredFoot {
+  return ['LEFT', 'RIGHT', 'BOTH'].includes(value);
+}
+
+// ========================================
+// GET /api/players
+// Get all players with optional filtering
+// ========================================
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -23,17 +57,30 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const teamId = searchParams.get('teamId');
-    const leagueId = searchParams.get('leagueId');
     const position = searchParams.get('position');
 
-    const where: any = {};
+    // Build Prisma where clause with proper typing
+    const where: Prisma.PlayerWhereInput = {};
+
     if (teamId) {
       where.teams = {
         some: { teamId },
       };
     }
+
     if (position) {
-      where.position = position;
+      // Validate and cast position to enum
+      if (isValidPosition(position)) {
+        where.position = position;
+      } else {
+        return NextResponse.json(
+          {
+            error:
+              'Invalid position. Must be one of: GOALKEEPER, DEFENDER, MIDFIELDER, FORWARD',
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const players = await db.player.findMany({
@@ -64,10 +111,11 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/**
- * POST /api/players
- * Create new player
- */
+// ========================================
+// POST /api/players
+// Create new player
+// ========================================
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -75,7 +123,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body: CreatePlayerBody = await req.json();
     const {
       firstName,
       lastName,
@@ -90,24 +138,60 @@ export async function POST(req: NextRequest) {
     // Validation
     if (!firstName || !lastName || !position) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        {
+          error: 'Missing required fields: firstName, lastName, position',
+        },
         { status: 400 }
       );
     }
 
+    // Validate position enum
+    if (!isValidPosition(position)) {
+      return NextResponse.json(
+        {
+          error:
+            'Invalid position. Must be one of: GOALKEEPER, DEFENDER, MIDFIELDER, FORWARD',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate preferredFoot if provided
+    let validatedPreferredFoot: PreferredFoot | undefined;
+    if (preferredFoot) {
+      if (isValidPreferredFoot(preferredFoot)) {
+        validatedPreferredFoot = preferredFoot;
+      } else {
+        return NextResponse.json(
+          {
+            error:
+              'Invalid preferredFoot. Must be one of: LEFT, RIGHT, BOTH',
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const sessionUser = session.user as SessionUser;
+
+    // Build player data object with proper null handling for optional fields
+    const playerData: Prisma.PlayerUncheckedCreateInput = {
+      userId: sessionUser.id,
+      firstName,
+      lastName,
+      dateOfBirth: dateOfBirth
+        ? new Date(dateOfBirth)
+        : new Date('2000-01-01'),
+      nationality: nationality || 'Not Specified',
+      position,
+      preferredFoot: validatedPreferredFoot || 'RIGHT',
+      height: height ? parseFloat(String(height)) : null, // ✅ Use null, not undefined
+      weight: weight ? parseFloat(String(weight)) : null, // ✅ Use null, not undefined
+    };
+
     // Create player
     const player = await db.player.create({
-      data: {
-        userId: (session.user as any).id,
-        firstName,
-        lastName,
-        dateOfBirth: new Date(dateOfBirth),
-        nationality,
-        position,
-        preferredFoot,
-        height: height ? parseFloat(height) : undefined,
-        weight: weight ? parseFloat(weight) : undefined,
-      },
+      data: playerData,
     });
 
     return NextResponse.json(player, { status: 201 });

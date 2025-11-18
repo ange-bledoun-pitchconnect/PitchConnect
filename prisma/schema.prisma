@@ -1,6 +1,7 @@
 // ============================================================================
 // PITCHCONNECT DATABASE SCHEMA (Prisma ORM)
 // PostgreSQL via Supabase
+// Production-ready with TypeScript strict mode support
 // ============================================================================
 
 generator client {

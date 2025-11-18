@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { db } from '@/lib/db';
-import { MatchStatus } from '@prisma/client';
+import { MatchStatus, Prisma } from '@prisma/client';
 
 /**
  * GET /api/matches
@@ -26,15 +26,16 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const limit = parseInt(searchParams.get('limit') || '20');
 
-    const where: any = {};
+    // Use Prisma types for proper type safety
+    const where: Prisma.MatchWhereInput = {};
     if (teamId) {
       where.OR = [
         { homeTeamId: teamId },
         { awayTeamId: teamId },
       ];
     }
-    if (status) {
-      where.status = status;
+    if (status && Object.values(MatchStatus).includes(status as MatchStatus)) {
+      where.status = status as MatchStatus;
     }
 
     const matches = await db.match.findMany({

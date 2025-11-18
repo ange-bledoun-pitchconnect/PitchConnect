@@ -11,16 +11,58 @@ import {
 } from '@/lib/avatars/football-avatars';
 import styles from './UserAvatar.module.css';
 
+// ========================================
+// TYPES
+// ========================================
+
+type AvatarSize = 'sm' | 'md' | 'lg' | 'xl';
+
+interface SizeConfig {
+  container: number;
+  fontSize: string;
+}
+
 interface UserAvatarProps {
   firstName: string;
   lastName: string;
   position?: PlayerPosition;
   email: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: AvatarSize;
   className?: string;
   showLabel?: boolean;
   onClick?: () => void;
 }
+
+// ========================================
+// CONSTANTS
+// ========================================
+
+const SIZE_MAP: Record<AvatarSize, SizeConfig> = {
+  sm: { container: 32, fontSize: '0.75rem' },
+  md: { container: 40, fontSize: '0.875rem' },
+  lg: { container: 56, fontSize: '1rem' },
+  xl: { container: 80, fontSize: '1.25rem' },
+};
+
+const POSITION_ICONS: Record<PlayerPosition, string> = {
+  FORWARD: '⚡',
+  MIDFIELDER: '🔄',
+  DEFENDER: '🛡️',
+  GOALKEEPER: '🧤',
+  UNKNOWN: '⚽',
+};
+
+// ========================================
+// HELPER FUNCTIONS
+// ========================================
+
+function getPositionIcon(position: PlayerPosition): string {
+  return POSITION_ICONS[position] || '⚽';
+}
+
+// ========================================
+// MAIN COMPONENT
+// ========================================
 
 export function UserAvatar({
   firstName,
@@ -32,50 +74,78 @@ export function UserAvatar({
   showLabel = false,
   onClick,
 }: UserAvatarProps) {
+  // ========================================
+  // STATE
+  // ========================================
+
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+
+  // ========================================
+  // COMPUTED VALUES
+  // ========================================
 
   const avatarUrl = generateFootballAvatar(email, position);
   const initials = getAvatarInitials(firstName, lastName);
   const positionColor = getPositionColor(position);
+  const dimensions = SIZE_MAP[size];
 
-  const sizeMap = {
-    sm: { container: 32, fontSize: '0.75rem' },
-    md: { container: 40, fontSize: '0.875rem' },
-    lg: { container: 56, fontSize: '1rem' },
-    xl: { container: 80, fontSize: '1.25rem' },
+  // ========================================
+  // EVENT HANDLERS
+  // ========================================
+
+  const handleLoadingComplete = (): void => {
+    setIsLoading(false);
   };
 
-  const dimensions = sizeMap[size];
+  const handleError = (): void => {
+    setIsLoading(false);
+    setHasError(true);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (onClick && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      onClick();
+    }
+  };
+
+  // ========================================
+  // RENDER
+  // ========================================
 
   return (
     <div
       className={cn(
-        styles.avatarContainer,
+        styles['avatarContainer'],
         styles[`size-${size}`],
+        onClick && styles['clickable'],
         className
       )}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       role={onClick ? 'button' : 'img'}
       tabIndex={onClick ? 0 : -1}
       aria-label={`${firstName} ${lastName}${position ? ` - ${position}` : ''}`}
     >
-      {/* Football Avatar Image */}
+      {/* ====== AVATAR IMAGE ====== */}
       <div
         className={cn(
-          styles.avatarImage,
-          hasError && styles.avatarError
+          styles['avatarImage'],
+          hasError && styles['avatarError']
         )}
         style={{
           backgroundColor: hasError ? positionColor.bg : 'transparent',
         }}
       >
+        {/* Image Loading State */}
         {!hasError && (
           <>
             {isLoading && (
               <div
-                className={styles.skeleton}
+                className={styles['skeleton']}
                 style={{ backgroundColor: positionColor.bg }}
+                aria-hidden="true"
               />
             )}
             <Image
@@ -84,50 +154,55 @@ export function UserAvatar({
               width={dimensions.container}
               height={dimensions.container}
               className={cn(
-                styles.avatarImg,
-                !isLoading && styles.avatarImgLoaded
+                styles['avatarImg'],
+                !isLoading && styles['avatarImgLoaded']
               )}
-              onLoadingComplete={() => setIsLoading(false)}
-              onError={() => setHasError(true)}
+              onLoad={handleLoadingComplete}
+              onError={handleError}
               priority={size === 'xl'}
+              unoptimized={avatarUrl.includes('dicebear.com')}
             />
           </>
         )}
 
-        {/* Fallback Initials */}
+        {/* ====== FALLBACK INITIALS ====== */}
         {hasError && (
           <span
-            className={styles.initials}
+            className={styles['initials']}
             style={{
               color: positionColor.text,
               fontSize: dimensions.fontSize,
             }}
+            aria-label={`${firstName} ${lastName} initials`}
           >
             {initials}
           </span>
         )}
       </div>
 
-      {/* Position Badge */}
+      {/* ====== POSITION BADGE ====== */}
       {position && position !== 'UNKNOWN' && (
         <div
-          className={styles.positionBadge}
+          className={styles['positionBadge']}
           style={{
             backgroundColor: positionColor.bg,
             color: positionColor.text,
           }}
           title={position}
+          aria-label={`Position: ${position}`}
         >
           {getPositionIcon(position)}
         </div>
       )}
 
-      {/* Label */}
+      {/* ====== LABEL ====== */}
       {showLabel && (
-        <div className={styles.label}>
-          <p className={styles.name}>{firstName}</p>
-          {position && (
-            <p className={styles.position}>{position}</p>
+        <div className={styles['label']}>
+          <p className={styles['name']}>
+            {firstName} {lastName}
+          </p>
+          {position && position !== 'UNKNOWN' && (
+            <p className={styles['position']}>{position}</p>
           )}
         </div>
       )}
@@ -135,13 +210,8 @@ export function UserAvatar({
   );
 }
 
-function getPositionIcon(position: PlayerPosition): string {
-  const icons = {
-    FORWARD: '⚡',
-    MIDFIELDER: '🔄',
-    DEFENDER: '🛡️',
-    GOALKEEPER: '🧤',
-    UNKNOWN: '⚽',
-  };
-  return icons[position] || '⚽';
-}
+// ========================================
+// DISPLAY NAME (for React DevTools)
+// ========================================
+
+UserAvatar.displayName = 'UserAvatar';

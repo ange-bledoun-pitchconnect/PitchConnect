@@ -1,7 +1,6 @@
 /**
  * Player Teams Page
  * View all teams player is part of
- * Manage team membership and roles
  */
 
 'use client';
@@ -11,11 +10,36 @@ import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, MapPin, Calendar, Trophy, Plus, Settings } from 'lucide-react';
+import {
+  MapPin,
+  Calendar,
+  Trophy,
+  Plus,
+  Settings,
+  Users,
+  Target,
+  Award,
+  CheckCircle,
+  XCircle,
+  Shield,
+} from 'lucide-react';
+
+interface Team {
+  id: string;
+  name: string;
+  club: string;
+  position: string;
+  shirtNumber: number;
+  isCaptain: boolean;
+  joinedDate: string;
+  matches: number;
+  goals: number;
+  assists: number;
+}
 
 export default function PlayerTeamsPage() {
-  const { user, isLoading } = useAuth();
-  const [teams] = useState([
+  const { isLoading } = useAuth();
+  const [teams] = useState<Team[]>([
     {
       id: '1',
       name: 'Arsenal FC',
@@ -44,136 +68,156 @@ export default function PlayerTeamsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background px-4 py-12">
-        <div className="max-w-6xl mx-auto space-y-8">
-          <Skeleton className="h-12 w-48" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[1, 2].map((i) => (
-              <Skeleton key={i} className="h-64" />
-            ))}
-          </div>
+      <div className="space-y-8">
+        <Skeleton className="h-12 w-48" />
+        <div className="grid md:grid-cols-2 gap-6">
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-80" />
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-12">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">My Teams</h1>
-            <p className="text-foreground/70">
-              Manage your teams and memberships
-            </p>
-          </div>
-          <Button className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            Join Team
-          </Button>
+    <div className="space-y-8">
+      {/* HEADER */}
+      <div className="flex items-start justify-between gap-6">
+        <div>
+          <h1 className="text-4xl font-bold text-charcoal-900 mb-2">My Teams</h1>
+          <p className="text-charcoal-600">Manage your teams and memberships</p>
         </div>
+        <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-bold shadow-lg hover:shadow-xl transition-all">
+          <Plus className="w-5 h-5 mr-2" />
+          Join Team
+        </Button>
+      </div>
 
-        {/* Teams Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {teams.map((team) => (
-            <Card key={team.id} className="glass overflow-hidden">
-              <div className="bg-gradient-to-r from-brand-gold/20 to-brand-purple/20 p-4 border-b border-border">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-xl font-bold">{team.name}</h3>
-                    <p className="text-sm text-foreground/60 flex items-center gap-1 mt-1">
-                      <MapPin className="w-3 h-3" />
-                      {team.club}
-                    </p>
-                  </div>
-                  {team.isCaptain && (
-                    <div className="bg-brand-gold text-brand-black px-3 py-1 rounded-full text-xs font-semibold">
-                      🎖️ Captain
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <CardContent className="pt-6 space-y-4">
-                {/* Position & Number */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-foreground/60 mb-1">Position</p>
-                    <p className="font-semibold">{team.position}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-foreground/60 mb-1">Shirt Number</p>
-                    <p className="font-semibold">#{team.shirtNumber}</p>
-                  </div>
-                </div>
-
-                {/* Joined Date */}
-                <div className="border-t border-border/50 pt-4">
-                  <p className="text-xs text-foreground/60 mb-1 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    Joined
-                  </p>
-                  <p className="font-semibold">
-                    {new Date(team.joinedDate).toLocaleDateString()}
-                  </p>
-                </div>
-
-                {/* Stats */}
-                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-foreground/60">Matches</span>
-                    <span className="font-semibold">{team.matches}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-foreground/60">Goals</span>
-                    <span className="font-semibold text-brand-gold">{team.goals}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-foreground/60">Assists</span>
-                    <span className="font-semibold text-brand-purple">{team.assists}</span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="grid grid-cols-2 gap-2 pt-4">
-                  <Button variant="outline" className="text-xs">
-                    View Squad
-                  </Button>
-                  <Button variant="outline" className="text-xs">
-                    <Settings className="w-3 h-3" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Team Requests */}
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-brand-gold" />
-              Team Invitations
-            </CardTitle>
-            <CardDescription>Pending team join requests</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+      {/* TEAMS GRID */}
+      <div className="grid md:grid-cols-2 gap-6">
+        {teams.map((team) => (
+          <Card key={team.id} className="bg-white border border-neutral-200 shadow-sm overflow-hidden hover:shadow-lg transition-all">
+            {/* Team Header */}
+            <div className="bg-gradient-to-r from-gold-50 via-orange-50 to-purple-50 p-6 border-b border-neutral-200">
+              <div className="flex items-start justify-between mb-3">
                 <div>
-                  <p className="font-semibold">Manchester United Academy</p>
-                  <p className="text-sm text-foreground/60">Youth Development Squad</p>
+                  <h3 className="text-2xl font-bold text-charcoal-900 mb-1">{team.name}</h3>
+                  <p className="text-sm text-charcoal-600 flex items-center gap-1">
+                    <MapPin className="w-4 h-4 text-gold-500" />
+                    {team.club}
+                  </p>
                 </div>
-                <div className="flex gap-2">
-                  <Button size="sm" className="btn-primary">Accept</Button>
-                  <Button size="sm" variant="outline">Decline</Button>
-                </div>
+                {team.isCaptain && (
+                  <div className="px-3 py-1 bg-gradient-to-r from-gold-500 to-orange-400 text-white rounded-full text-xs font-bold shadow-md flex items-center gap-1">
+                    <Shield className="w-3 h-3" />
+                    Captain
+                  </div>
+                )}
               </div>
             </div>
-          </CardContent>
-        </Card>
+
+            <CardContent className="pt-6 space-y-5">
+              {/* Position & Number */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-xs text-charcoal-600 font-semibold mb-2">POSITION</p>
+                  <p className="font-bold text-blue-700 text-lg">{team.position}</p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <p className="text-xs text-charcoal-600 font-semibold mb-2">SHIRT NUMBER</p>
+                  <p className="font-bold text-purple-700 text-2xl">#{team.shirtNumber}</p>
+                </div>
+              </div>
+
+              {/* Joined Date */}
+              <div className="p-4 bg-neutral-50 rounded-lg border border-neutral-200">
+                <p className="text-xs text-charcoal-600 font-semibold mb-2 flex items-center gap-1">
+                  <Calendar className="w-4 h-4 text-gold-500" />
+                  MEMBER SINCE
+                </p>
+                <p className="font-bold text-charcoal-900">
+                  {new Date(team.joinedDate).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </p>
+              </div>
+
+              {/* Stats */}
+              <div className="p-4 bg-gradient-to-br from-gold-50 to-orange-50 rounded-lg border border-gold-200">
+                <p className="text-xs text-charcoal-700 font-bold mb-3 uppercase tracking-wider">Season Stats</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center mx-auto mb-2 border border-gold-200">
+                      <Users className="w-5 h-5 text-gold-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-charcoal-900">{team.matches}</p>
+                    <p className="text-xs text-charcoal-600 font-semibold">Matches</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center mx-auto mb-2 border border-gold-200">
+                      <Target className="w-5 h-5 text-gold-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-gold-600">{team.goals}</p>
+                    <p className="text-xs text-charcoal-600 font-semibold">Goals</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center mx-auto mb-2 border border-gold-200">
+                      <Award className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <p className="text-2xl font-bold text-purple-600">{team.assists}</p>
+                    <p className="text-xs text-charcoal-600 font-semibold">Assists</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <Button variant="outline" className="border-charcoal-300 text-charcoal-700 hover:bg-charcoal-50 font-semibold">
+                  <Users className="w-4 h-4 mr-2" />
+                  View Squad
+                </Button>
+                <Button variant="outline" className="border-charcoal-300 text-charcoal-700 hover:bg-charcoal-50 font-semibold">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Settings
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
+
+      {/* TEAM INVITATIONS */}
+      <Card className="bg-white border border-neutral-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-purple-50 to-transparent pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <Trophy className="w-6 h-6 text-purple-600" />
+            Team Invitations
+          </CardTitle>
+          <CardDescription>Pending join requests waiting for your response</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="p-5 bg-gradient-to-r from-purple-50 to-transparent rounded-xl border border-purple-200 flex items-center justify-between">
+              <div>
+                <p className="font-bold text-charcoal-900 mb-1">Manchester United Academy</p>
+                <p className="text-sm text-charcoal-600">Youth Development Squad • Position: Forward</p>
+              </div>
+              <div className="flex gap-2">
+                <Button className="bg-green-500 hover:bg-green-600 text-white font-semibold shadow-md">
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Accept
+                </Button>
+                <Button variant="outline" className="border-red-300 text-red-600 hover:bg-red-50 font-semibold">
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Decline
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

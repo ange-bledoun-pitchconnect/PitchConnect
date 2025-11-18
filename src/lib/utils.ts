@@ -103,7 +103,7 @@ export function slugify(str: string): string {
 /**
  * Debounce function
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -123,7 +123,7 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Throttle function
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -183,7 +183,9 @@ export function isValidPassword(password: string): boolean {
 /**
  * Get password strength
  */
-export function getPasswordStrength(password: string): 'weak' | 'medium' | 'strong' {
+export function getPasswordStrength(
+  password: string
+): 'weak' | 'medium' | 'strong' {
   let strength = 0;
 
   if (password.length >= 8) strength++;

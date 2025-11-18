@@ -8,10 +8,10 @@
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trophy, Star, Zap, Target, Users, TrendingUp } from 'lucide-react';
+import { Trophy, Star, Zap, TrendingUp } from 'lucide-react';
 
 export default function PlayerAchievementsPage() {
-  const { user, isLoading } = useAuth();
+  const { isLoading } = useAuth();
 
   const achievements = [
     {
@@ -98,9 +98,7 @@ export default function PlayerAchievementsPage() {
         {/* Header */}
         <div>
           <h1 className="text-4xl font-bold mb-2">Achievements</h1>
-          <p className="text-foreground/70">
-            Unlock badges and climb the ranks
-          </p>
+          <p className="text-foreground/70">Unlock badges and climb the ranks</p>
         </div>
 
         {/* Stats Overview */}
@@ -145,7 +143,10 @@ export default function PlayerAchievementsPage() {
             <CardContent>
               <div className="text-3xl font-bold text-hero">12</div>
               <div className="w-full bg-muted rounded-full h-2 mt-3">
-                <div className="bg-gradient-to-r from-brand-gold to-brand-purple h-2 rounded-full" style={{ width: '65%' }} />
+                <div
+                  className="bg-gradient-to-r from-brand-gold to-brand-purple h-2 rounded-full"
+                  style={{ width: '65%' }}
+                />
               </div>
               <p className="text-xs text-foreground/60 mt-2">Next level in 35 XP</p>
             </CardContent>
@@ -157,9 +158,11 @@ export default function PlayerAchievementsPage() {
           <h2 className="text-2xl font-bold mb-4">All Achievements</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {achievements.map((achievement) => (
-              <Card 
-                key={achievement.id} 
-                className={`glass transition-all ${achievement.unlocked ? 'border-brand-gold/50' : 'opacity-60'}`}
+              <Card
+                key={achievement.id}
+                className={`glass transition-all ${
+                  achievement.unlocked ? 'border-brand-gold/50' : 'opacity-60'
+                }`}
               >
                 <CardContent className="p-6">
                   <div className="text-center space-y-3">
@@ -169,24 +172,34 @@ export default function PlayerAchievementsPage() {
                     {/* Badge */}
                     <div>
                       <h3 className="font-bold text-lg">{achievement.name}</h3>
-                      <p className="text-xs text-foreground/60">{achievement.description}</p>
+                      <p className="text-xs text-foreground/60">
+                        {achievement.description}
+                      </p>
                     </div>
 
                     {/* Rarity */}
-                    <div className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
-                      achievement.rarity === 'common' ? 'bg-gray-500/10 text-gray-600' :
-                      achievement.rarity === 'uncommon' ? 'bg-green-500/10 text-green-600' :
-                      achievement.rarity === 'rare' ? 'bg-blue-500/10 text-blue-600' :
-                      achievement.rarity === 'epic' ? 'bg-purple-500/10 text-purple-600' :
-                      'bg-yellow-500/10 text-yellow-600'
-                    }`}>
+                    <div
+                      className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
+                        achievement.rarity === 'common'
+                          ? 'bg-gray-500/10 text-gray-600'
+                          : achievement.rarity === 'uncommon'
+                          ? 'bg-green-500/10 text-green-600'
+                          : achievement.rarity === 'rare'
+                          ? 'bg-blue-500/10 text-blue-600'
+                          : achievement.rarity === 'epic'
+                          ? 'bg-purple-500/10 text-purple-600'
+                          : 'bg-yellow-500/10 text-yellow-600'
+                      }`}
+                    >
                       {achievement.rarity.toUpperCase()}
                     </div>
 
                     {/* Status */}
                     {achievement.unlocked ? (
                       <div className="space-y-1">
-                        <p className="text-sm text-brand-gold font-semibold">✓ Unlocked</p>
+                        <p className="text-sm text-brand-gold font-semibold">
+                          ✓ Unlocked
+                        </p>
                         <p className="text-xs text-foreground/60">
                           {new Date(achievement.unlockedDate!).toLocaleDateString()}
                         </p>
@@ -229,13 +242,20 @@ export default function PlayerAchievementsPage() {
                 { rank: 2, name: 'You', points: 185, achievements: 6 },
                 { rank: 3, name: 'Alex Williams', points: 156, achievements: 5 },
               ].map((player) => (
-                <div key={player.rank} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <div
+                  key={player.rank}
+                  className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                >
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                      player.rank === 1 ? 'bg-yellow-500/20 text-yellow-600' :
-                      player.rank === 2 ? 'bg-gray-400/20 text-gray-600' :
-                      'bg-orange-500/20 text-orange-600'
-                    }`}>
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
+                        player.rank === 1
+                          ? 'bg-yellow-500/20 text-yellow-600'
+                          : player.rank === 2
+                          ? 'bg-gray-400/20 text-gray-600'
+                          : 'bg-orange-500/20 text-orange-600'
+                      }`}
+                    >
                       {player.rank === 1 ? '🥇' : player.rank === 2 ? '🥈' : '🥉'}
                     </div>
                     <div>

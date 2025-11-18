@@ -5,24 +5,46 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import Stripe from 'stripe';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { db } from '@/lib/db';
 
-// Only import Stripe if API key exists
-let stripe: any = null;
-if (process.env.STRIPE_SECRET_KEY) {
-  const Stripe = require('stripe');
-  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2023-10-16',
+// ========================================
+// TYPES & INTERFACES
+// ========================================
+
+interface PaymentRequestBody {
+  planId: string;
+  amount: number;
+  currency?: string;
+}
+
+interface SessionUser {
+  id: string;
+  email?: string;
+  name?: string;
+}
+
+// ========================================
+// STRIPE INITIALIZATION
+// ========================================
+
+let stripe: Stripe | null = null;
+
+if (process.env['STRIPE_SECRET_KEY']) {
+  stripe = new Stripe(process.env['STRIPE_SECRET_KEY'], {
+    apiVersion: '2025-02-24.acacia',
   });
 }
 
-/**
- * POST /api/payments
- * Create payment intent for subscription
- */
+// ========================================
+// POST /api/payments
+// Create payment intent for subscription
+// ========================================
+
 export async function POST(req: NextRequest) {
   try {
+    // Verify user is authenticated
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -36,22 +58,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    // Parse request body
+    const body: PaymentRequestBody = await req.json();
     const { planId, amount, currency = 'GBP' } = body;
 
+    // Validate required fields
     if (!planId || !amount) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: planId, amount' },
         { status: 400 }
       );
     }
+
+    const sessionUser = session.user as SessionUser;
 
     // Create payment intent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100), // Convert to cents
       currency,
       metadata: {
-        userId: (session.user as any).id,
+        userId: sessionUser.id,
         planId,
       },
     });
@@ -72,19 +98,24 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * GET /api/payments
- * Get user subscription status
- */
-export async function GET(_req: NextRequest) {
+// ========================================
+// GET /api/payments
+// Get user subscription status
+// ========================================
+
+export async function GET() {
   try {
+    // Verify user is authenticated
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const sessionUser = session.user as SessionUser;
+
+    // Fetch user subscription
     const user = await db.user.findUnique({
-      where: { id: (session.user as any).id },
+      where: { id: sessionUser.id },
       select: {
         subscription: true,
       },

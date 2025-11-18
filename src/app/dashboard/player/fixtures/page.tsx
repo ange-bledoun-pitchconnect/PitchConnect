@@ -7,12 +7,12 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Calendar, MapPin, Trophy, Clock } from 'lucide-react';
+import { Calendar, MapPin, Clock } from 'lucide-react';
 
 export default function PlayerFixturesPage() {
-  const { user, isLoading } = useAuth();
+  const { isLoading } = useAuth();
   const [matches] = useState([
     {
       id: '1',
@@ -69,24 +69,27 @@ export default function PlayerFixturesPage() {
         {/* Header */}
         <div>
           <h1 className="text-4xl font-bold mb-2">Fixtures & Matches</h1>
-          <p className="text-foreground/70">
-            Your upcoming and past fixtures
-          </p>
+          <p className="text-foreground/70">Your upcoming and past fixtures</p>
         </div>
 
         {/* Matches List */}
         <div className="space-y-4">
           {matches.map((match) => (
-            <Card key={match.id} className="glass overflow-hidden hover:shadow-lg transition-shadow cursor-pointer">
+            <Card
+              key={match.id}
+              className="glass overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+            >
               <CardContent className="p-0">
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center p-6">
                   {/* Status Badge */}
                   <div className="md:col-span-1">
-                    <div className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
-                      match.status === 'UPCOMING' 
-                        ? 'bg-blue-500/10 text-blue-600' 
-                        : 'bg-green-500/10 text-green-600'
-                    }`}>
+                    <div
+                      className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                        match.status === 'UPCOMING'
+                          ? 'bg-blue-500/10 text-blue-600'
+                          : 'bg-green-500/10 text-green-600'
+                      }`}
+                    >
                       {match.status === 'UPCOMING' ? '⏰ Upcoming' : '✅ Finished'}
                     </div>
                   </div>
@@ -94,7 +97,9 @@ export default function PlayerFixturesPage() {
                   {/* Home Team */}
                   <div className="md:col-span-1">
                     <p className="font-semibold">{match.homeTeam}</p>
-                    <p className="text-xs text-foreground/60">{match.status === 'FINISHED' && 'Home'}</p>
+                    <p className="text-xs text-foreground/60">
+                      {match.status === 'FINISHED' && 'Home'}
+                    </p>
                   </div>
 
                   {/* Score/VS */}
@@ -109,7 +114,9 @@ export default function PlayerFixturesPage() {
                   {/* Away Team */}
                   <div className="md:col-span-1">
                     <p className="font-semibold">{match.awayTeam}</p>
-                    <p className="text-xs text-foreground/60">{match.status === 'FINISHED' && 'Away'}</p>
+                    <p className="text-xs text-foreground/60">
+                      {match.status === 'FINISHED' && 'Away'}
+                    </p>
                   </div>
 
                   {/* Details */}
@@ -130,11 +137,15 @@ export default function PlayerFixturesPage() {
                   <div className="border-t border-border/50 bg-muted/30 p-4 grid grid-cols-4 gap-4 text-sm">
                     <div>
                       <p className="text-foreground/60">Goals</p>
-                      <p className="font-semibold text-lg text-brand-gold">{match.playerStats.goals}</p>
+                      <p className="font-semibold text-lg text-brand-gold">
+                        {match.playerStats.goals}
+                      </p>
                     </div>
                     <div>
                       <p className="text-foreground/60">Assists</p>
-                      <p className="font-semibold text-lg text-brand-purple">{match.playerStats.assists}</p>
+                      <p className="font-semibold text-lg text-brand-purple">
+                        {match.playerStats.assists}
+                      </p>
                     </div>
                     <div>
                       <p className="text-foreground/60">Minutes</p>
@@ -142,7 +153,9 @@ export default function PlayerFixturesPage() {
                     </div>
                     <div>
                       <p className="text-foreground/60">Rating</p>
-                      <p className="font-semibold text-lg text-brand-gold">{match.playerStats.rating}/10</p>
+                      <p className="font-semibold text-lg text-brand-gold">
+                        {match.playerStats.rating}/10
+                      </p>
                     </div>
                   </div>
                 )}

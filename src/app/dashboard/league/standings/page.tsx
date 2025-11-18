@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Trophy, TrendingUp, Target } from 'lucide-react';
 
 export default function LeagueStandingsPage() {
-  const { user, isLoading } = useAuth();
+  const { isLoading } = useAuth();
 
   const standings = [
     { pos: 1, team: 'Arsenal FC', played: 12, won: 8, drew: 2, lost: 2, gf: 28, ga: 12, gd: 16, pts: 26, form: 'WWDWW' },
@@ -70,21 +70,32 @@ export default function LeagueStandingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {standings.map((row, index) => (
-                    <tr 
-                      key={row.pos} 
+                  {standings.map((row) => (
+                    <tr
+                      key={row.pos}
                       className={`border-b border-border/50 hover:bg-muted/30 transition ${
                         row.team === 'Arsenal FC' ? 'bg-brand-gold/10' : ''
                       }`}
                     >
                       <td className="py-3 px-4">
-                        <div className={`w-8 h-8 flex items-center justify-center font-bold rounded ${
-                          row.pos === 1 ? 'bg-yellow-500/20 text-yellow-600' :
-                          row.pos === 2 ? 'bg-gray-400/20 text-gray-600' :
-                          row.pos === 3 ? 'bg-orange-500/20 text-orange-600' :
-                          'bg-muted text-foreground/60'
-                        }`}>
-                          {row.pos === 1 ? '🥇' : row.pos === 2 ? '🥈' : row.pos === 3 ? '🥉' : row.pos}
+                        <div
+                          className={`w-8 h-8 flex items-center justify-center font-bold rounded ${
+                            row.pos === 1
+                              ? 'bg-yellow-500/20 text-yellow-600'
+                              : row.pos === 2
+                              ? 'bg-gray-400/20 text-gray-600'
+                              : row.pos === 3
+                              ? 'bg-orange-500/20 text-orange-600'
+                              : 'bg-muted text-foreground/60'
+                          }`}
+                        >
+                          {row.pos === 1
+                            ? '🥇'
+                            : row.pos === 2
+                            ? '🥈'
+                            : row.pos === 3
+                            ? '🥉'
+                            : row.pos}
                         </div>
                       </td>
                       <td className="py-3 px-4 font-semibold">{row.team}</td>
@@ -94,17 +105,24 @@ export default function LeagueStandingsPage() {
                       <td className="py-3 px-4 text-center text-sm font-semibold text-red-600">{row.lost}</td>
                       <td className="py-3 px-4 text-center text-sm">{row.gf}</td>
                       <td className="py-3 px-4 text-center text-sm">{row.ga}</td>
-                      <td className="py-3 px-4 text-center text-sm font-semibold">{row.gd > 0 ? '+' : ''}{row.gd}</td>
-                      <td className="py-3 px-4 text-center text-sm font-bold text-brand-gold text-lg">{row.pts}</td>
+                      <td className="py-3 px-4 text-center text-sm font-semibold">
+                        {row.gd > 0 ? '+' : ''}
+                        {row.gd}
+                      </td>
+                      <td className="py-3 px-4 text-center text-sm font-bold text-brand-gold text-lg">
+                        {row.pts}
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex gap-1">
                           {row.form.split('').map((result, i) => (
-                            <div 
+                            <div
                               key={i}
                               className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${
-                                result === 'W' ? 'bg-green-500/20 text-green-600' :
-                                result === 'D' ? 'bg-yellow-500/20 text-yellow-600' :
-                                'bg-red-500/20 text-red-600'
+                                result === 'W'
+                                  ? 'bg-green-500/20 text-green-600'
+                                  : result === 'D'
+                                  ? 'bg-yellow-500/20 text-yellow-600'
+                                  : 'bg-red-500/20 text-red-600'
                               }`}
                             >
                               {result}
@@ -120,8 +138,14 @@ export default function LeagueStandingsPage() {
 
             {/* Legend */}
             <div className="mt-6 p-4 bg-muted/50 rounded-lg space-y-2 text-sm text-foreground/60">
-              <p><strong>P</strong> = Played | <strong>W</strong> = Won | <strong>D</strong> = Drew | <strong>L</strong> = Lost</p>
-              <p><strong>GF</strong> = Goals For | <strong>GA</strong> = Goals Against | <strong>GD</strong> = Goal Difference | <strong>Pts</strong> = Points</p>
+              <p>
+                <strong>P</strong> = Played | <strong>W</strong> = Won | <strong>D</strong> = Drew |{' '}
+                <strong>L</strong> = Lost
+              </p>
+              <p>
+                <strong>GF</strong> = Goals For | <strong>GA</strong> = Goals Against |{' '}
+                <strong>GD</strong> = Goal Difference | <strong>Pts</strong> = Points
+              </p>
             </div>
           </CardContent>
         </Card>

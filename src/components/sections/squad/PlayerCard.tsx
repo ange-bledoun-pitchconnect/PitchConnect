@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { UserAvatar } from '@/components/common/UserAvatar';
-import { cn } from '@/lib/utils';
 import styles from './PlayerCard.module.css';
 
 interface PlayerCardProps {

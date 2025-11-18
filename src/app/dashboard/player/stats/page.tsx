@@ -1,7 +1,6 @@
 /**
  * Player Stats Page
  * Comprehensive performance tracking and analytics
- * Shows all player statistics with charts and trends
  */
 
 'use client';
@@ -9,259 +8,296 @@
 import { useAuth } from '@/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  BarChart, 
-  Goal,
+import {
+  BarChart3,
+  Target,
   TrendingUp,
   Zap,
   Users,
-  Target
+  Activity,
+  Award,
+  ArrowUp,
+  ArrowDown,
+  Minus,
+  Trophy,
 } from 'lucide-react';
 
 export default function PlayerStatsPage() {
-  const { user, isLoading } = useAuth();
+  const { isLoading } = useAuth();
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background px-4 py-12">
-        <div className="max-w-6xl mx-auto space-y-8">
-          <Skeleton className="h-12 w-48" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <Skeleton key={i} className="h-32" />
-            ))}
-          </div>
+      <div className="space-y-8">
+        <Skeleton className="h-12 w-48" />
+        <div className="grid grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
         </div>
       </div>
     );
   }
 
+  const getTrendIcon = (trend: 'up' | 'down' | 'stable') => {
+    if (trend === 'up') return <ArrowUp className="w-4 h-4 text-green-500" />;
+    if (trend === 'down') return <ArrowDown className="w-4 h-4 text-red-500" />;
+    return <Minus className="w-4 h-4 text-gray-500" />;
+  };
+
   return (
-    <div className="min-h-screen bg-background px-4 py-12">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header */}
-        <div>
-          <h1 className="text-4xl font-bold mb-2">
-            Statistics & Performance
-          </h1>
-          <p className="text-foreground/70">
-            2024/25 Season Statistics
-          </p>
+    <div className="space-y-8">
+      {/* HEADER */}
+      <div>
+        <h1 className="text-4xl font-bold text-charcoal-900 mb-2">Statistics & Performance</h1>
+        <p className="text-charcoal-600">2024/25 Season • Arsenal FC</p>
+      </div>
+
+      {/* KEY STATS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Appearances */}
+        <div className="bg-white border border-neutral-200 rounded-xl p-6 hover:shadow-lg hover:border-blue-300 transition-all group">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Users className="w-6 h-6 text-blue-600" />
+            </div>
+            {getTrendIcon('up')}
+          </div>
+          <h3 className="text-charcoal-600 text-sm font-medium mb-1">Appearances</h3>
+          <p className="text-4xl font-bold text-blue-600">12</p>
+          <p className="text-xs text-green-600 font-semibold mt-2">+2 this month</p>
         </div>
 
-        {/* Key Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Appearances */}
-          <Card className="glass">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Users className="w-4 h-4 text-brand-gold" />
-                Appearances
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-hero">12</div>
-              <p className="text-xs text-foreground/60 mt-2">+2 this month</p>
-            </CardContent>
-          </Card>
-
-          {/* Goals */}
-          <Card className="glass">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Goal className="w-4 h-4 text-brand-gold" />
-                Goals
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-hero">5</div>
-              <p className="text-xs text-foreground/60 mt-2">0.42 per game</p>
-            </CardContent>
-          </Card>
-
-          {/* Assists */}
-          <Card className="glass">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-brand-gold" />
-                Assists
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-hero">3</div>
-              <p className="text-xs text-foreground/60 mt-2">0.25 per game</p>
-            </CardContent>
-          </Card>
+        {/* Goals */}
+        <div className="bg-white border border-neutral-200 rounded-xl p-6 hover:shadow-lg hover:border-gold-300 transition-all group">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-gold-100 to-orange-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Target className="w-6 h-6 text-gold-600" />
+            </div>
+            {getTrendIcon('up')}
+          </div>
+          <h3 className="text-charcoal-600 text-sm font-medium mb-1">Goals</h3>
+          <p className="text-4xl font-bold text-gold-600">5</p>
+          <p className="text-xs text-charcoal-500 mt-2">0.42 per game</p>
         </div>
 
-        {/* Detailed Stats */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Attacking Stats */}
-          <Card className="glass">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-brand-gold" />
-                Attacking
-              </CardTitle>
-              <CardDescription>Goal-scoring metrics</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Shots</span>
-                  <span className="font-semibold">24</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-brand-gold h-2 rounded-full" style={{ width: '65%' }} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Shots on Target</span>
-                  <span className="font-semibold">8</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-brand-purple h-2 rounded-full" style={{ width: '33%' }} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Expected Goals (xG)</span>
-                  <span className="font-semibold">4.2</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-brand-gold h-2 rounded-full" style={{ width: '84%' }} />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-border">
-                <p className="text-sm text-foreground/60">
-                  ✅ Performing above expectations (xG: 4.2 vs Goals: 5)
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Defensive Stats */}
-          <Card className="glass">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="w-5 h-5 text-brand-gold" />
-                Defensive
-              </CardTitle>
-              <CardDescription>Defensive contributions</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Tackles</span>
-                  <span className="font-semibold">45</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-brand-gold h-2 rounded-full" style={{ width: '75%' }} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Interceptions</span>
-                  <span className="font-semibold">12</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-brand-purple h-2 rounded-full" style={{ width: '40%' }} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Passing Accuracy</span>
-                  <span className="font-semibold">87.5%</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div className="bg-brand-gold h-2 rounded-full" style={{ width: '87.5%' }} />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-border">
-                <p className="text-sm text-foreground/60">
-                  ✅ Strong defensive presence with high passing accuracy
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Assists */}
+        <div className="bg-white border border-neutral-200 rounded-xl p-6 hover:shadow-lg hover:border-purple-300 transition-all group">
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+              <TrendingUp className="w-6 h-6 text-purple-600" />
+            </div>
+            {getTrendIcon('up')}
+          </div>
+          <h3 className="text-charcoal-600 text-sm font-medium mb-1">Assists</h3>
+          <p className="text-4xl font-bold text-purple-600">3</p>
+          <p className="text-xs text-charcoal-500 mt-2">0.25 per game</p>
         </div>
+      </div>
 
-        {/* Physical Stats */}
-        <Card className="glass">
-          <CardHeader>
+      {/* DETAILED STATS */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* ATTACKING STATS */}
+        <Card className="bg-white border border-neutral-200 shadow-sm">
+          <CardHeader className="bg-gradient-to-r from-gold-50 to-transparent pb-4">
             <CardTitle className="flex items-center gap-2">
-              <BarChart className="w-5 h-5 text-brand-gold" />
-              Physical Performance
+              <Target className="w-6 h-6 text-gold-600" />
+              Attacking
             </CardTitle>
-            <CardDescription>Distance & speed metrics</CardDescription>
+            <CardDescription>Goal-scoring metrics</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <p className="text-sm text-foreground/60 mb-2">Distance Covered (Per Match)</p>
-              <p className="text-2xl font-bold text-hero">10.2 km</p>
-              <p className="text-xs text-foreground/60 mt-1">Above average</p>
+          <CardContent className="space-y-5">
+            {/* Shots */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-charcoal-700 font-semibold">Total Shots</span>
+                <span className="font-bold text-charcoal-900">24</span>
+              </div>
+              <div className="w-full bg-neutral-200 rounded-full h-3">
+                <div className="bg-gradient-to-r from-gold-500 to-orange-400 h-3 rounded-full" style={{ width: '65%' }} />
+              </div>
             </div>
 
-            <div>
-              <p className="text-sm text-foreground/60 mb-2">Top Speed</p>
-              <p className="text-2xl font-bold text-hero">32.4 km/h</p>
-              <p className="text-xs text-foreground/60 mt-1">Excellent fitness</p>
+            {/* Shots on Target */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-charcoal-700 font-semibold">Shots on Target</span>
+                <span className="font-bold text-charcoal-900">8</span>
+              </div>
+              <div className="w-full bg-neutral-200 rounded-full h-3">
+                <div className="bg-gradient-to-r from-purple-500 to-purple-600 h-3 rounded-full" style={{ width: '33%' }} />
+              </div>
             </div>
 
-            <div>
-              <p className="text-sm text-foreground/60 mb-2">Sprints (Per Match)</p>
-              <p className="text-2xl font-bold text-hero">18</p>
-              <p className="text-xs text-foreground/60 mt-1">High intensity play</p>
+            {/* xG */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-charcoal-700 font-semibold">Expected Goals (xG)</span>
+                <span className="font-bold text-charcoal-900">4.2</span>
+              </div>
+              <div className="w-full bg-neutral-200 rounded-full h-3">
+                <div className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full" style={{ width: '84%' }} />
+              </div>
+            </div>
+
+            {/* Insight */}
+            <div className="pt-4 border-t border-neutral-200">
+              <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                <Trophy className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-green-700 font-medium">
+                  Excellent conversion! Outperforming xG (4.2 vs 5 goals)
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Season Comparison */}
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle>Season Comparison</CardTitle>
-            <CardDescription>2023/24 vs 2024/25</CardDescription>
+        {/* DEFENSIVE STATS */}
+        <Card className="bg-white border border-neutral-200 shadow-sm">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-transparent pb-4">
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="w-6 h-6 text-blue-600" />
+              Defensive
+            </CardTitle>
+            <CardDescription>Defensive contributions</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div className="text-center">
-                  <p className="text-foreground/60 mb-2">Metric</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-foreground/60 mb-2">2023/24</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-foreground/60 mb-2">2024/25</p>
-                </div>
+          <CardContent className="space-y-5">
+            {/* Tackles */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-charcoal-700 font-semibold">Tackles Won</span>
+                <span className="font-bold text-charcoal-900">45</span>
               </div>
+              <div className="w-full bg-neutral-200 rounded-full h-3">
+                <div className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full" style={{ width: '75%' }} />
+              </div>
+            </div>
 
-              {[
-                { metric: 'Appearances', prev: 10, curr: 12, trend: 'up' },
-                { metric: 'Goals', prev: 3, curr: 5, trend: 'up' },
-                { metric: 'Assists', prev: 1, curr: 3, trend: 'up' },
-                { metric: 'Avg. Rating', prev: 6.8, curr: 7.2, trend: 'up' },
-              ].map((stat) => (
-                <div key={stat.metric} className="grid grid-cols-3 gap-4 items-center text-sm py-2 border-b border-border/50">
-                  <div className="font-medium">{stat.metric}</div>
-                  <div className="text-center text-foreground/60">{stat.prev}</div>
-                  <div className="text-center font-semibold text-brand-gold flex items-center justify-center gap-1">
-                    {stat.curr}
-                    <span>↑</span>
-                  </div>
-                </div>
-              ))}
+            {/* Interceptions */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-charcoal-700 font-semibold">Interceptions</span>
+                <span className="font-bold text-charcoal-900">12</span>
+              </div>
+              <div className="w-full bg-neutral-200 rounded-full h-3">
+                <div className="bg-gradient-to-r from-purple-500 to-purple-600 h-3 rounded-full" style={{ width: '40%' }} />
+              </div>
+            </div>
+
+            {/* Passing */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-charcoal-700 font-semibold">Passing Accuracy</span>
+                <span className="font-bold text-charcoal-900">87.5%</span>
+              </div>
+              <div className="w-full bg-neutral-200 rounded-full h-3">
+                <div className="bg-gradient-to-r from-green-500 to-green-600 h-3 rounded-full" style={{ width: '87.5%' }} />
+              </div>
+            </div>
+
+            {/* Insight */}
+            <div className="pt-4 border-t border-neutral-200">
+              <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <Award className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-blue-700 font-medium">
+                  Strong defensive presence with excellent passing
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* PHYSICAL PERFORMANCE */}
+      <Card className="bg-white border border-neutral-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-orange-50 to-transparent pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="w-6 h-6 text-orange-500" />
+            Physical Performance
+          </CardTitle>
+          <CardDescription>Distance & speed metrics</CardDescription>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-3 gap-8">
+          <div className="p-4 bg-gradient-to-br from-orange-50 to-transparent rounded-xl border border-orange-200">
+            <p className="text-sm text-charcoal-600 font-semibold mb-3">Distance Per Match</p>
+            <p className="text-4xl font-bold text-orange-500 mb-2">10.2 km</p>
+            <div className="flex items-center gap-2 text-xs text-green-600 font-semibold">
+              <ArrowUp className="w-3 h-3" />
+              Above team average
+            </div>
+          </div>
+
+          <div className="p-4 bg-gradient-to-br from-purple-50 to-transparent rounded-xl border border-purple-200">
+            <p className="text-sm text-charcoal-600 font-semibold mb-3">Top Speed</p>
+            <p className="text-4xl font-bold text-purple-600 mb-2">32.4 km/h</p>
+            <div className="flex items-center gap-2 text-xs text-green-600 font-semibold">
+              <ArrowUp className="w-3 h-3" />
+              Excellent fitness
+            </div>
+          </div>
+
+          <div className="p-4 bg-gradient-to-br from-gold-50 to-transparent rounded-xl border border-gold-200">
+            <p className="text-sm text-charcoal-600 font-semibold mb-3">Sprints Per Match</p>
+            <p className="text-4xl font-bold text-gold-600 mb-2">18</p>
+            <div className="flex items-center gap-2 text-xs text-green-600 font-semibold">
+              <ArrowUp className="w-3 h-3" />
+              High intensity
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* SEASON COMPARISON */}
+      <Card className="bg-white border border-neutral-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-purple-50 to-transparent pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-purple-600" />
+            Season Comparison
+          </CardTitle>
+          <CardDescription>Year-over-year performance</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-neutral-200">
+                  <th className="px-4 py-3 text-left text-xs font-bold text-charcoal-700 uppercase tracking-wider">
+                    Metric
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 uppercase tracking-wider">
+                    2023/24
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 uppercase tracking-wider">
+                    2024/25
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 uppercase tracking-wider">
+                    Change
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200">
+                {[
+                  { metric: 'Appearances', prev: 10, curr: 12, change: '+20%' },
+                  { metric: 'Goals', prev: 3, curr: 5, change: '+67%' },
+                  { metric: 'Assists', prev: 1, curr: 3, change: '+200%' },
+                  { metric: 'Avg Rating', prev: 6.8, curr: 7.2, change: '+5.9%' },
+                ].map((stat) => (
+                  <tr key={stat.metric} className="hover:bg-purple-50 transition-colors">
+                    <td className="px-4 py-4 font-bold text-charcoal-900">{stat.metric}</td>
+                    <td className="px-4 py-4 text-center text-charcoal-600">{stat.prev}</td>
+                    <td className="px-4 py-4 text-center font-bold text-purple-600">{stat.curr}</td>
+                    <td className="px-4 py-4 text-center">
+                      <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center justify-center gap-1 inline-flex">
+                        <ArrowUp className="w-3 h-3" />
+                        {stat.change}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

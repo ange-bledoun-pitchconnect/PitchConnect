@@ -1,142 +1,69 @@
-'use client';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Filter } from 'lucide-react';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { useTeamFilter } from '@/lib/dashboard/team-context';
-import { cn } from '@/lib/utils';
-import { ChevronDown, Check } from 'lucide-react';
-import styles from './TeamFilterDropdown.module.css';
+interface Team {
+  id: string;
+  name: string;
+}
 
 interface TeamFilterDropdownProps {
-  className?: string;
-  onTeamChange?: (teamIds: string[]) => void;
+  teams: Team[];
+  selectedTeams: string[];
+  onChange: (selected: string[]) => void;
 }
 
 export function TeamFilterDropdown({
-  className,
-  onTeamChange,
+  teams,
+  selectedTeams,
+  onChange
 }: TeamFilterDropdownProps) {
-  const {
-    selectedTeams,
-    allTeams,
-    setSelectedTeams,
-    addTeam,
-    removeTeam,
-    resetToAll,
-  } = useTeamFilter();
+  const [open, setOpen] = useState(false);
 
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    }
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () =>
-        document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isOpen]);
-
-  const handleTeamToggle = (teamId: string) => {
-    if (selectedTeams.includes(teamId)) {
-      removeTeam(teamId);
+  const toggle = () => setOpen((v) => !v);
+  const isSelected = (id: string) => selectedTeams.includes(id);
+  
+  const handleCheckbox = (id: string) => {
+    if (isSelected(id)) {
+      onChange(selectedTeams.filter((tid) => tid !== id));
     } else {
-      addTeam(teamId);
+      onChange([...selectedTeams, id]);
     }
-    onTeamChange?.(selectedTeams);
   };
-
-  const handleResetToAll = () => {
-    resetToAll();
-    onTeamChange?.(allTeams.map(t => t.id));
-  };
-
-  const displayText =
-    selectedTeams.length === allTeams.length
-      ? 'All Teams'
-      : selectedTeams.length === 1
-        ? allTeams.find(t => t.id === selectedTeams)?.name || 'Select Teams'
-        : `${selectedTeams.length} Teams Selected`;
+  const selectAll = () => onChange(teams.map((t) => t.id));
+  const clear = () => onChange([]);
 
   return (
-    <div className={cn(styles.dropdown, className)} ref={dropdownRef}>
-      {/* Dropdown Button */}
-      <button
-        className={styles.dropdownButton}
-        onClick={() => setIsOpen(!isOpen)}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        aria-label="Filter teams"
+    <div className="relative">
+      <Button
+        type="button"
+        className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-slate-900 font-semibold rounded flex items-center gap-2"
+        onClick={toggle}
       >
-        <span className={styles.buttonText}>{displayText}</span>
-        <ChevronDown
-          className={cn(
-            styles.chevron,
-            isOpen && styles.chevronOpen
-          )}
-          size={18}
-        />
-      </button>
-
-      {/* Dropdown Menu */}
-      {isOpen && (
-        <div className={styles.dropdownMenu} role="listbox">
-          {/* Header */}
-          <div className={styles.menuHeader}>
-            <h3 className={styles.menuTitle}>Filter by Team</h3>
-            <button
-              className={styles.resetButton}
-              onClick={handleResetToAll}
-              type="button"
-            >
-              Reset
-            </button>
+        <Filter className="w-4 h-4" />
+        Teams ({selectedTeams.length})
+      </Button>
+      {open && (
+        <div className="absolute z-10 top-full left-0 w-72 mt-2 p-4 bg-white border border-slate-200 rounded-lg shadow-lg">
+          <div className="mb-2 flex gap-2">
+            <Button size="sm" variant="outline" className="text-xs" onClick={selectAll}>All</Button>
+            <Button size="sm" variant="outline" className="text-xs" onClick={clear}>Clear</Button>
           </div>
-
-          {/* Divider */}
-          <div className={styles.divider} />
-
-          {/* Team Options */}
-          <ul className={styles.teamList}>
-            {allTeams.map(team => (
-              <li key={team.id} className={styles.teamItem}>
-                <label className={styles.teamLabel}>
-                  <input
-                    type="checkbox"
-                    className={styles.teamCheckbox}
-                    checked={selectedTeams.includes(team.id)}
-                    onChange={() => handleTeamToggle(team.id)}
-                    aria-label={`Select ${team.name}`}
-                  />
-                  <span className={styles.checkmark}>
-                    {selectedTeams.includes(team.id) && (
-                      <Check size={16} />
-                    )}
-                  </span>
-                  <span className={styles.teamName}>{team.name}</span>
-                  <span className={styles.teamIndicator}>
-                    {selectedTeams.includes(team.id) && (
-                      <span className={styles.indicator} />
-                    )}
-                  </span>
-                </label>
-              </li>
+          <div className="max-h-56 overflow-y-auto flex flex-col gap-2">
+            {teams.map((team) => (
+              <label key={team.id} className="flex gap-2 items-center text-slate-700 cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  checked={isSelected(team.id)}
+                  onChange={() => handleCheckbox(team.id)}
+                  className="w-4 h-4 text-[#D4AF37] border-slate-300 rounded"
+                />
+                {team.name}
+              </label>
             ))}
-          </ul>
-
-          {/* Footer */}
-          <div className={styles.menuFooter}>
-            <p className={styles.footerText}>
-              {selectedTeams.length} of {allTeams.length} teams selected
-            </p>
+            {teams.length === 0 && (
+              <div className="text-xs text-slate-500 pt-6 text-center">No teams available</div>
+            )}
           </div>
         </div>
       )}
