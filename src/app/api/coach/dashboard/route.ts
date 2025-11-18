@@ -8,7 +8,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -43,60 +43,87 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get teams
+    // Get teams with correct relations
     const teams = await prisma.team.findMany({
       where: { coachId: coach.id },
       include: {
         players: true,
-        matches: true,
+        homeMatches: true,
+        awayMatches: true,
       },
     });
 
-    // Get recent matches
-    const recentMatches = await prisma.match.findMany({
+    // Calculate total matches (home + away)
+    const teamsWithMatchCount = teams.map((team) => ({
+      id: team.id,
+      name: team.name,
+      playerCount: team.players.length,
+      matchCount: (team.homeMatches?.length || 0) + (team.awayMatches?.length || 0),
+    }));
+
+    // Get recent matches for all teams
+    const homeMatches = await prisma.match.findMany({
       where: {
-        teams: {
-          some: {
-            coachId: coach.id,
-          },
+        homeTeamId: {
+          in: teams.map((t) => t.id),
         },
       },
       take: 5,
       orderBy: { date: 'desc' },
       include: {
-        teams: true,
+        homeTeam: true,
+        awayTeam: true,
       },
     });
 
+    const awayMatches = await prisma.match.findMany({
+      where: {
+        awayTeamId: {
+          in: teams.map((t) => t.id),
+        },
+      },
+      take: 5,
+      orderBy: { date: 'desc' },
+      include: {
+        homeTeam: true,
+        awayTeam: true,
+      },
+    });
+
+    const allMatches = [...homeMatches, ...awayMatches]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5);
+
     // Calculate stats
     const totalPlayers = teams.reduce((sum, team) => sum + team.players.length, 0);
-    const totalMatches = teams.reduce((sum, team) => sum + team.matches.length, 0);
+    const totalMatches = teams.reduce(
+      (sum, team) => sum + (team.homeMatches?.length || 0) + (team.awayMatches?.length || 0),
+      0
+    );
 
     return NextResponse.json({
       coach: {
         id: coach.id,
-        name: user.firstName + ' ' + user.lastName,
+        name: `${user.firstName} ${user.lastName}`,
         email: user.email,
         bio: coach.bio,
         yearsExperience: coach.yearsExperience,
         qualifications: coach.qualifications,
       },
-      teams: teams.map((team) => ({
-        id: team.id,
-        name: team.name,
-        playerCount: team.players.length,
-        matchCount: team.matches.length,
-      })),
+      teams: teamsWithMatchCount,
       stats: {
         totalTeams: teams.length,
         totalPlayers,
         totalMatches,
       },
-      recentMatches: recentMatches.map((match) => ({
+      recentMatches: allMatches.map((match) => ({
         id: match.id,
         date: match.date,
-        homeTeam: match.teams[0]?.name || 'N/A',
-        awayTeam: match.teams[1]?.name || 'N/A',
+        homeTeam: match.homeTeam?.name || 'N/A',
+        awayTeam: match.awayTeam?.name || 'N/A',
+        homeScore: match.homeScore,
+        awayScore: match.awayScore,
+        status: match.status,
       })),
     });
   } catch (error) {

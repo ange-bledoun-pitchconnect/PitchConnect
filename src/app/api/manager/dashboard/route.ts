@@ -8,7 +8,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       manager: {
         id: manager.id,
-        name: user.firstName + ' ' + user.lastName,
+        name: `${user.firstName} ${user.lastName}`,
         email: user.email,
       },
       clubs: clubs.map((club) => ({

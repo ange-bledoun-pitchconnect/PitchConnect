@@ -8,7 +8,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -31,10 +31,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get competitions
+    // Get competitions with correct relations
     const competitions = await prisma.competition.findMany({
       include: {
-        teams: true,
+        leagueMemberships: {
+          include: {
+            team: true,
+          },
+        },
         matches: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -54,14 +58,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       leagueAdmin: {
         id: user.id,
-        name: user.firstName + ' ' + user.lastName,
+        name: `${user.firstName} ${user.lastName}`,
         email: user.email,
       },
       competitions: competitions.map((comp) => ({
         id: comp.id,
         name: comp.name,
-        teamCount: comp.teams.length,
-        matchCount: comp.matches.length,
+        teamCount: comp.leagueMemberships?.length || 0,
+        matchCount: comp.matches?.length || 0,
       })),
       standings: standings.map((standing) => ({
         id: standing.id,
@@ -74,7 +78,7 @@ export async function GET(request: NextRequest) {
       })),
       stats: {
         totalCompetitions: competitions.length,
-        totalMatches: competitions.reduce((sum, comp) => sum + comp.matches.length, 0),
+        totalMatches: competitions.reduce((sum, comp) => sum + (comp.matches?.length || 0), 0),
       },
     });
   } catch (error) {

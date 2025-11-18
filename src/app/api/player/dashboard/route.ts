@@ -8,7 +8,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
@@ -59,27 +59,28 @@ export async function GET(request: NextRequest) {
       where: { playerId: player.id },
     });
 
-    // Get recent matches
+    // Get recent matches (home and away)
+    const teamIds = teams.map((t) => t.id);
+
     const recentMatches = await prisma.match.findMany({
       where: {
-        teams: {
-          some: {
-            players: {
-              some: {
-                id: player.id,
-              },
-            },
-          },
-        },
+        OR: [
+          { homeTeamId: { in: teamIds } },
+          { awayTeamId: { in: teamIds } },
+        ],
       },
       take: 5,
       orderBy: { date: 'desc' },
+      include: {
+        homeTeam: true,
+        awayTeam: true,
+      },
     });
 
     return NextResponse.json({
       player: {
         id: player.id,
-        name: user.firstName + ' ' + user.lastName,
+        name: `${user.firstName} ${user.lastName}`,
         email: user.email,
         position: player.position,
         shirtNumber: player.shirtNumber,
@@ -97,6 +98,10 @@ export async function GET(request: NextRequest) {
       recentMatches: recentMatches.map((match) => ({
         id: match.id,
         date: match.date,
+        homeTeam: match.homeTeam?.name || 'N/A',
+        awayTeam: match.awayTeam?.name || 'N/A',
+        homeScore: match.homeScore,
+        awayScore: match.awayScore,
         status: match.status,
       })),
     });
