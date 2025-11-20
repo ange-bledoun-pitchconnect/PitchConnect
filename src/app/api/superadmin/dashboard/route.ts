@@ -1,25 +1,19 @@
 /**
  * SuperAdmin Dashboard API
- * Returns platform-wide metrics, user stats, upgrade requests, and recent activity
+ * Provides overview statistics and data for the SuperAdmin panel
  * @route GET /api/superadmin/dashboard
  * @access SuperAdmin only
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
 import { isSuperAdmin } from '@/lib/auth';
 
-// ============================================================================
-// GET - Fetch SuperAdmin Dashboard Data
-// ============================================================================
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // ========================================
-    // 1. AUTHENTICATION CHECK
-    // ========================================
+    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
@@ -29,7 +23,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check SuperAdmin status
+    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
 
     if (!isAdmin) {
@@ -39,9 +33,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // ========================================
-    // 2. FETCH ADMIN USER DATA
-    // ========================================
+    // Get admin user details
     const adminUser = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: {
@@ -54,27 +46,24 @@ export async function GET(request: NextRequest) {
     });
 
     if (!adminUser) {
-      return NextResponse.json(
-        { error: 'Admin user not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Admin user not found' }, { status: 404 });
     }
 
     // ========================================
-    // 3. FETCH PLATFORM STATISTICS
+    // 1. PLATFORM STATISTICS
     // ========================================
 
-    // Total users count
+    // Total users
     const totalUsers = await prisma.user.count();
 
-    // Active users (logged in within last 7 days)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    // Active users (logged in within last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const activeUsers = await prisma.user.count({
       where: {
         lastLogin: {
-          gte: sevenDaysAgo,
+          gte: thirtyDaysAgo,
         },
         status: 'ACTIVE',
       },
@@ -86,7 +75,7 @@ export async function GET(request: NextRequest) {
     // Total leagues
     const totalLeagues = await prisma.league.count();
 
-    // Total revenue (sum of all completed payments)
+    // Calculate revenue (from payments table)
     const revenueData = await prisma.payment.aggregate({
       where: {
         status: 'COMPLETED',
@@ -95,118 +84,105 @@ export async function GET(request: NextRequest) {
         amount: true,
       },
     });
+
     const totalRevenue = revenueData._sum.amount || 0;
 
     // Monthly revenue (current month)
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
+    const firstDayOfMonth = new Date();
+    firstDayOfMonth.setDate(1);
+    firstDayOfMonth.setHours(0, 0, 0, 0);
 
     const monthlyRevenueData = await prisma.payment.aggregate({
       where: {
         status: 'COMPLETED',
         createdAt: {
-          gte: startOfMonth,
+          gte: firstDayOfMonth,
         },
       },
       _sum: {
         amount: true,
       },
     });
+
     const monthlyRevenue = monthlyRevenueData._sum.amount || 0;
-
-    // User growth (this month vs last month)
-    const lastMonthStart = new Date(startOfMonth);
-    lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
-
-    const usersThisMonth = await prisma.user.count({
-      where: {
-        createdAt: {
-          gte: startOfMonth,
-        },
-      },
-    });
-
-    const usersLastMonth = await prisma.user.count({
-      where: {
-        createdAt: {
-          gte: lastMonthStart,
-          lt: startOfMonth,
-        },
-      },
-    });
-
-    const userGrowth =
-      usersLastMonth > 0
-        ? Math.round(((usersThisMonth - usersLastMonth) / usersLastMonth) * 100)
-        : 100;
-
-    // Revenue growth (this month vs last month)
-    const revenueLastMonthData = await prisma.payment.aggregate({
-      where: {
-        status: 'COMPLETED',
-        createdAt: {
-          gte: lastMonthStart,
-          lt: startOfMonth,
-        },
-      },
-      _sum: {
-        amount: true,
-      },
-    });
-    const revenueLastMonth = revenueLastMonthData._sum.amount || 0;
-
-    const revenueGrowth =
-      revenueLastMonth > 0
-        ? Math.round(((monthlyRevenue - revenueLastMonth) / revenueLastMonth) * 100)
-        : 100;
 
     // Subscription rate (percentage of users with active subscriptions)
     const subscribedUsers = await prisma.subscription.count({
       where: {
         status: 'ACTIVE',
-        tier: {
-          not: 'FREE',
+      },
+    });
+
+    const subscriptionRate = totalUsers > 0 ? (subscribedUsers / totalUsers) * 100 : 0;
+
+    // User growth (new users this month vs last month)
+    const lastMonthStart = new Date();
+    lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
+    lastMonthStart.setDate(1);
+    lastMonthStart.setHours(0, 0, 0, 0);
+
+    const thisMonthUsers = await prisma.user.count({
+      where: {
+        createdAt: {
+          gte: firstDayOfMonth,
         },
       },
     });
 
-    const subscriptionRate =
-      totalUsers > 0 ? Math.round((subscribedUsers / totalUsers) * 100) : 0;
-
-    // ========================================
-    // 4. USERS BY ROLE
-    // ========================================
-    const usersByRole = await prisma.user.groupBy({
-      by: ['roles'],
-      _count: true,
+    const lastMonthUsers = await prisma.user.count({
+      where: {
+        createdAt: {
+          gte: lastMonthStart,
+          lt: firstDayOfMonth,
+        },
+      },
     });
 
-    // Transform into object with role counts
-    const roleCount = {
-      PLAYER: 0,
-      PLAYER_PRO: 0,
-      COACH: 0,
-      CLUB_MANAGER: 0,
-      LEAGUE_ADMIN: 0,
+    const userGrowth = lastMonthUsers > 0 
+      ? ((thisMonthUsers - lastMonthUsers) / lastMonthUsers) * 100 
+      : 0;
+
+    // Revenue growth (similar calculation)
+    const lastMonthEnd = firstDayOfMonth;
+    const lastMonthRevenueData = await prisma.payment.aggregate({
+      where: {
+        status: 'COMPLETED',
+        createdAt: {
+          gte: lastMonthStart,
+          lt: lastMonthEnd,
+        },
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+
+    const lastMonthRevenue = lastMonthRevenueData._sum.amount || 0;
+    const revenueGrowth = lastMonthRevenue > 0
+      ? ((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+      : 0;
+
+    // ========================================
+    // 2. USERS BY ROLE
+    // ========================================
+
+    const usersByRole = {
+      PLAYER: await prisma.user.count({ where: { roles: { has: 'PLAYER' } } }),
+      PLAYER_PRO: await prisma.user.count({ where: { roles: { has: 'PLAYER_PRO' } } }),
+      COACH: await prisma.user.count({ where: { roles: { has: 'COACH' } } }),
+      CLUB_MANAGER: await prisma.user.count({ where: { roles: { has: 'CLUB_MANAGER' } } }),
+      LEAGUE_ADMIN: await prisma.user.count({ where: { roles: { has: 'LEAGUE_ADMIN' } } }),
     };
 
-    usersByRole.forEach((group) => {
-      group.roles.forEach((role) => {
-        if (role in roleCount) {
-          roleCount[role as keyof typeof roleCount] += group._count;
-        }
-      });
-    });
+    // ========================================
+    // 3. UPGRADE REQUESTS
+    // ========================================
 
-    // ========================================
-    // 5. UPGRADE REQUESTS
-    // ========================================
     const upgradeRequests = await prisma.upgradeRequest.findMany({
       orderBy: {
-        createdAt: 'desc',
+        requestedAt: 'desc',
       },
-      take: 50, // Limit to recent 50
+      take: 50, // Limit to 50 most recent
       include: {
         user: {
           select: {
@@ -215,43 +191,49 @@ export async function GET(request: NextRequest) {
             lastName: true,
             email: true,
             avatar: true,
+            roles: true,
+          },
+        },
+        reviewedByUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
           },
         },
       },
     });
 
-    // Format upgrade requests for frontend
     const formattedRequests = upgradeRequests.map((request) => ({
       id: request.id,
       user: {
         id: request.user.id,
         name: `${request.user.firstName} ${request.user.lastName}`,
         email: request.user.email,
-        userType: request.currentRole,
+        userType: request.user.roles[0] || 'PLAYER',
         avatar: request.user.avatar,
       },
       currentRole: request.currentRole,
       requestedRole: request.requestedRole,
       reason: request.reason,
       status: request.status,
-      requestedAt: request.createdAt.toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }),
-      reviewedBy: request.reviewedBy,
-      reviewedAt: request.reviewedAt?.toLocaleDateString('en-GB'),
+      requestedAt: request.requestedAt.toISOString().split('T')[0], // Format as YYYY-MM-DD
+      reviewedBy: request.reviewedByUser
+        ? `${request.reviewedByUser.firstName} ${request.reviewedByUser.lastName}`
+        : undefined,
+      reviewedAt: request.reviewedAt?.toISOString().split('T')[0],
       reviewNotes: request.reviewNotes,
     }));
 
     // ========================================
-    // 6. RECENT ACTIVITY (Last 20 audit logs)
+    // 4. RECENT ACTIVITY (from audit logs)
     // ========================================
-    const recentActivity = await prisma.auditLog.findMany({
+
+    const recentLogs = await prisma.auditLog.findMany({
       orderBy: {
         createdAt: 'desc',
       },
-      take: 20,
+      take: 10,
       include: {
         performer: {
           select: {
@@ -260,67 +242,32 @@ export async function GET(request: NextRequest) {
             email: true,
           },
         },
-        affected: {
-          select: {
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
       },
     });
 
-    // Format activity for frontend
-    const formattedActivity = recentActivity.map((log) => {
-      let description = '';
-      
-      switch (log.action) {
-        case 'USER_CREATED':
-          description = `New user registered: ${log.affected?.firstName} ${log.affected?.lastName}`;
-          break;
-        case 'ROLE_UPGRADED':
-          description = `User role upgraded by ${log.performer?.firstName || 'System'}`;
-          break;
-        case 'SUBSCRIPTION_GRANTED':
-          description = `Premium access granted to ${log.affected?.firstName} ${log.affected?.lastName}`;
-          break;
-        case 'USER_SUSPENDED':
-          description = `User suspended: ${log.affected?.firstName} ${log.affected?.lastName}`;
-          break;
-        case 'UPGRADE_REQUEST_APPROVED':
-          description = `Upgrade request approved by ${log.performer?.firstName}`;
-          break;
-        default:
-          description = `${log.action} performed`;
-      }
-
-      return {
-        id: log.id,
-        type: log.action,
-        description,
-        timestamp: log.createdAt.toLocaleTimeString('en-GB', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }) + ' • ' + log.createdAt.toLocaleDateString('en-GB', {
-          day: 'numeric',
-          month: 'short',
-        }),
-        user: log.affected ? {
-          name: `${log.affected.firstName} ${log.affected.lastName}`,
-          email: log.affected.email,
-        } : undefined,
-      };
-    });
+    const recentActivity = recentLogs.map((log) => ({
+      id: log.id,
+      type: log.action,
+      description: log.reason || `${log.action} performed`,
+      timestamp: log.createdAt.toISOString().split('T')[0], // Format as YYYY-MM-DD
+      user: log.performer
+        ? {
+            name: `${log.performer.firstName} ${log.performer.lastName}`,
+            email: log.performer.email,
+          }
+        : undefined,
+    }));
 
     // ========================================
-    // 7. BUILD RESPONSE
+    // 5. BUILD RESPONSE
     // ========================================
-    const response = {
+
+    const dashboardData = {
       admin: {
         id: adminUser.id,
         name: `${adminUser.firstName} ${adminUser.lastName}`,
         email: adminUser.email,
-        avatarUrl: adminUser.avatar || undefined,
+        avatarUrl: adminUser.avatar,
       },
       stats: {
         totalUsers,
@@ -329,32 +276,29 @@ export async function GET(request: NextRequest) {
         totalLeagues,
         totalRevenue: Math.round(totalRevenue),
         monthlyRevenue: Math.round(monthlyRevenue),
-        subscriptionRate,
-        userGrowth,
-        revenueGrowth,
+        subscriptionRate: Math.round(subscriptionRate),
+        userGrowth: Math.round(userGrowth),
+        revenueGrowth: Math.round(revenueGrowth),
       },
-      usersByRole: roleCount,
+      usersByRole,
       upgradeRequests: formattedRequests,
-      recentActivity: formattedActivity,
+      recentActivity,
     };
 
-    return NextResponse.json(response, { status: 200 });
-
+    return NextResponse.json(dashboardData, { status: 200 });
   } catch (error) {
     console.error('SuperAdmin Dashboard API Error:', error);
-    
     return NextResponse.json(
       {
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
+        details: process.env.NODE_ENV === 'development' ? error : undefined,
       },
       { status: 500 }
     );
   }
 }
 
-// ============================================================================
 // Export route segment config
-// ============================================================================
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
