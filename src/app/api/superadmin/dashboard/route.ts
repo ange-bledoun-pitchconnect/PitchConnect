@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { isSuperAdmin } from '@/lib/auth';
 
 export async function GET() {
@@ -188,9 +188,8 @@ export async function GET() {
         },
       });
 
-      userGrowth = lastMonthUsers > 0 
-        ? ((thisMonthUsers - lastMonthUsers) / lastMonthUsers) * 100 
-        : 0;
+      userGrowth =
+        lastMonthUsers > 0 ? ((thisMonthUsers - lastMonthUsers) / lastMonthUsers) * 100 : 0;
 
       console.log('✅ User growth:', userGrowth);
     } catch (error) {
@@ -198,7 +197,7 @@ export async function GET() {
     }
 
     // ========================================
-    // 2. USERS BY ROLE
+    // 2. USERS BY ROLE (FIXED)
     // ========================================
 
     const usersByRole = {
@@ -210,19 +209,18 @@ export async function GET() {
     };
 
     try {
-      // Count users by checking if role is in their roles array
-      const allUsers = await prisma.user.findMany({
-        select: {
-          roles: true,
+      // 🔧 FIXED: Count users by role using userRoles junction table
+      const roleCounts = await prisma.userRole_User.groupBy({
+        by: ['roleName'],
+        _count: {
+          userId: true,
         },
       });
 
-      allUsers.forEach(user => {
-        if (user.roles.includes('PLAYER')) usersByRole.PLAYER++;
-        if (user.roles.includes('PLAYER_PRO')) usersByRole.PLAYER_PRO++;
-        if (user.roles.includes('COACH')) usersByRole.COACH++;
-        if (user.roles.includes('CLUB_MANAGER')) usersByRole.CLUB_MANAGER++;
-        if (user.roles.includes('LEAGUE_ADMIN')) usersByRole.LEAGUE_ADMIN++;
+      roleCounts.forEach((roleCount) => {
+        if (roleCount.roleName in usersByRole) {
+          usersByRole[roleCount.roleName as keyof typeof usersByRole] = roleCount._count.userId;
+        }
       });
 
       console.log('✅ Users by role:', usersByRole);
@@ -231,7 +229,7 @@ export async function GET() {
     }
 
     // ========================================
-    // 3. UPGRADE REQUESTS
+    // 3. UPGRADE REQUESTS (FIXED)
     // ========================================
 
     let upgradeRequests: any[] = [];
@@ -250,7 +248,12 @@ export async function GET() {
               lastName: true,
               email: true,
               avatar: true,
-              roles: true,
+              // 🔧 FIXED: Include userRoles
+              userRoles: {
+                select: {
+                  roleName: true,
+                },
+              },
             },
           },
         },
@@ -262,7 +265,8 @@ export async function GET() {
           id: request.user.id,
           name: `${request.user.firstName} ${request.user.lastName}`,
           email: request.user.email,
-          userType: request.user.roles[0] || 'PLAYER',
+          // 🔧 FIXED: Get first role from userRoles
+          userType: request.user.userRoles[0]?.roleName || 'PLAYER',
           avatar: request.user.avatar,
         },
         currentRole: request.currentRole,
@@ -271,8 +275,8 @@ export async function GET() {
         status: request.status,
         requestedAt: new Date(request.createdAt).toISOString().split('T')[0],
         reviewedBy: request.reviewedBy || undefined,
-        reviewedAt: request.reviewedAt 
-          ? new Date(request.reviewedAt).toISOString().split('T')[0] 
+        reviewedAt: request.reviewedAt
+          ? new Date(request.reviewedAt).toISOString().split('T')[0]
           : undefined,
         reviewNotes: request.reviewNotes || undefined,
       }));

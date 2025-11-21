@@ -37,7 +37,10 @@ export default function LoginPage() {
       }
 
       if (result?.ok) {
+        // Small delay to ensure session is established
+        await new Promise((resolve) => setTimeout(resolve, 500));
         router.push('/dashboard');
+        router.refresh();
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -47,8 +50,8 @@ export default function LoginPage() {
   }
 
   const fillDemoCredentials = () => {
-    setEmail('mikel.arteta@arsenal.com');
-    setPassword('Coach123456!');
+    setEmail('ange@getpitchconnect.com');
+    setPassword('your-actual-password'); // Update this
   };
 
   const togglePasswordVisibility = () => {
@@ -57,9 +60,13 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-charcoal-900 via-charcoal-800 to-charcoal-900 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-gold-500/20 to-orange-400/10 rounded-full blur-3xl animate-blob" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-gradient-to-tr from-purple-500/20 to-transparent rounded-full blur-3xl animate-blob" style={{ animationDelay: '2s' }} />
+        <div
+          className="absolute -bottom-40 -left-40 w-96 h-96 bg-gradient-to-tr from-purple-500/20 to-transparent rounded-full blur-3xl animate-blob"
+          style={{ animationDelay: '2s' }}
+        />
       </div>
 
       <Card className="w-full max-w-md relative z-10 bg-white border-0 shadow-2xl rounded-2xl overflow-hidden backdrop-blur-md">
@@ -72,9 +79,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <CardTitle className="text-4xl font-bold text-charcoal-900 mb-3">
-            Welcome Back
-          </CardTitle>
+          <CardTitle className="text-4xl font-bold text-charcoal-900 mb-3">Welcome Back</CardTitle>
           <CardDescription className="text-base text-charcoal-600 leading-relaxed">
             Sign in to your PitchConnect account to continue
           </CardDescription>
@@ -90,9 +95,13 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" suppressHydrationWarning>
+            {/* Email Field */}
             <div className="space-y-2.5" suppressHydrationWarning>
-              <Label htmlFor="email" className="flex items-center gap-2 text-charcoal-900 font-semibold text-sm">
+              <Label
+                htmlFor="email"
+                className="flex items-center gap-2 text-charcoal-900 font-semibold text-sm"
+              >
                 <Mail className="w-4 h-4 text-gold-500" />
                 Email Address
               </Label>
@@ -106,21 +115,36 @@ export default function LoginPage() {
                 required
                 autoComplete="email"
                 className="bg-neutral-50 border border-neutral-200 text-charcoal-900 placeholder:text-charcoal-400 focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 transition-all h-11 rounded-lg"
+                suppressHydrationWarning
               />
             </div>
 
+            {/* Password Field */}
             <div className="space-y-2.5" suppressHydrationWarning>
               <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="flex items-center gap-2 text-charcoal-900 font-semibold text-sm">
+                <Label
+                  htmlFor="password"
+                  className="flex items-center gap-2 text-charcoal-900 font-semibold text-sm"
+                >
                   <Lock className="w-4 h-4 text-gold-500" />
                   Password
                 </Label>
                 <button
                   type="button"
                   onClick={togglePasswordVisibility}
-                  className="text-xs font-medium text-gold-500 hover:text-orange-400 transition-colors"
+                  className="text-xs font-medium text-gold-500 hover:text-orange-400 transition-colors flex items-center gap-1"
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  {showPassword ? (
+                    <>
+                      <EyeOff className="w-3 h-3" />
+                      Hide
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3 h-3" />
+                      Show
+                    </>
+                  )}
                 </button>
               </div>
               <Input
@@ -133,13 +157,17 @@ export default function LoginPage() {
                 required
                 autoComplete="current-password"
                 className="bg-neutral-50 border border-neutral-200 text-charcoal-900 placeholder:text-charcoal-400 focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 transition-all h-11 rounded-lg"
+                suppressHydrationWarning
               />
             </div>
 
             <div className="text-right">
-              <a href="#" className="text-xs font-medium text-charcoal-600 hover:text-gold-500 transition-colors">
+              <Link
+                href="/auth/forgot-password"
+                className="text-xs font-medium text-charcoal-600 hover:text-gold-500 transition-colors"
+              >
                 Forgot password?
-              </a>
+              </Link>
             </div>
 
             <Button
@@ -166,7 +194,7 @@ export default function LoginPage() {
                 onClick={fillDemoCredentials}
                 className="w-full text-center text-xs font-medium text-charcoal-600 hover:text-purple-500 transition-colors py-2 hover:bg-purple-50 rounded-lg"
               >
-                Try demo credentials (Coach)
+                Fill demo credentials (SuperAdmin)
               </button>
             </div>
 
@@ -175,7 +203,9 @@ export default function LoginPage() {
                 <div className="w-full border-t border-neutral-200" />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="px-2 bg-white text-charcoal-600">Don&apos;t have an account?</span>
+                <span className="px-2 bg-white text-charcoal-600">
+                  Don&apos;t have an account?
+                </span>
               </div>
             </div>
 

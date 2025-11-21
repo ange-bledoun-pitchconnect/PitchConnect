@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { isSuperAdmin } from '@/lib/auth';
 
 // ============================================================================
@@ -59,9 +59,13 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Role filter
+    // Role filter using userRoles junction table
     if (role) {
-      where.roles = { has: role };
+      where.userRoles = {
+        some: {
+          roleName: role,
+        },
+      };
     }
 
     // Status filter
@@ -83,11 +87,16 @@ export async function GET(request: NextRequest) {
         firstName: true,
         lastName: true,
         avatar: true,
-        roles: true,
         status: true,
         isSuperAdmin: true,
         createdAt: true,
         lastLogin: true,
+        phoneNumber: true,
+        userRoles: {
+          select: {
+            roleName: true,
+          },
+        },
         subscription: {
           select: {
             tier: true,
@@ -106,7 +115,7 @@ export async function GET(request: NextRequest) {
       name: `${user.firstName} ${user.lastName}`,
       email: user.email,
       avatar: user.avatar,
-      roles: user.roles,
+      roles: user.userRoles.map((ur) => ur.roleName),
       status: user.status,
       isSuperAdmin: user.isSuperAdmin,
       subscription: user.subscription
@@ -117,6 +126,7 @@ export async function GET(request: NextRequest) {
         : null,
       createdAt: user.createdAt.toISOString(),
       lastLogin: user.lastLogin?.toISOString() || null,
+      phoneNumber: user.phoneNumber,
     }));
 
     return NextResponse.json(
@@ -199,9 +209,13 @@ export async function PATCH(request: NextRequest) {
         email: true,
         firstName: true,
         lastName: true,
-        roles: true,
         status: true,
         isSuperAdmin: true,
+        userRoles: {
+          select: {
+            roleName: true,
+          },
+        },
       },
     });
 
@@ -227,6 +241,11 @@ export async function PATCH(request: NextRequest) {
         updatedUser = await prisma.user.update({
           where: { id: userId },
           data: { status: 'SUSPENDED' },
+          include: {
+            userRoles: {
+              select: { roleName: true },
+            },
+          },
         });
         auditAction = 'USER_SUSPENDED';
         auditReason = data?.reason || 'User suspended by SuperAdmin';
@@ -236,6 +255,11 @@ export async function PATCH(request: NextRequest) {
         updatedUser = await prisma.user.update({
           where: { id: userId },
           data: { status: 'ACTIVE' },
+          include: {
+            userRoles: {
+              select: { roleName: true },
+            },
+          },
         });
         auditAction = 'USER_UPDATED';
         auditReason = 'User activated by SuperAdmin';
@@ -245,6 +269,11 @@ export async function PATCH(request: NextRequest) {
         updatedUser = await prisma.user.update({
           where: { id: userId },
           data: { status: 'BANNED' },
+          include: {
+            userRoles: {
+              select: { roleName: true },
+            },
+          },
         });
         auditAction = 'USER_BANNED';
         auditReason = data?.reason || 'User banned by SuperAdmin';
@@ -252,16 +281,35 @@ export async function PATCH(request: NextRequest) {
 
       case 'UPDATE_ROLES':
         if (!data?.roles || !Array.isArray(data.roles)) {
-          return NextResponse.json(
-            { error: 'Invalid roles data' },
-            { status: 400 }
-          );
+          return NextResponse.json({ error: 'Invalid roles data' }, { status: 400 });
         }
 
-        updatedUser = await prisma.user.update({
-          where: { id: userId },
-          data: { roles: data.roles },
+        // Update roles using transaction
+        updatedUser = await prisma.$transaction(async (tx) => {
+          // Delete existing roles
+          await tx.userRole_User.deleteMany({
+            where: { userId },
+          });
+
+          // Create new roles
+          await tx.userRole_User.createMany({
+            data: data.roles.map((role: string) => ({
+              userId,
+              roleName: role,
+            })),
+          });
+
+          // Return updated user with roles
+          return tx.user.findUnique({
+            where: { id: userId },
+            include: {
+              userRoles: {
+                select: { roleName: true },
+              },
+            },
+          });
         });
+
         auditAction = 'ROLE_UPGRADED';
         auditReason = `Roles updated to: ${data.roles.join(', ')}`;
         break;
@@ -274,16 +322,22 @@ export async function PATCH(request: NextRequest) {
             lastName: data?.lastName || targetUser.lastName,
             phoneNumber: data?.phoneNumber,
           },
+          include: {
+            userRoles: {
+              select: { roleName: true },
+            },
+          },
         });
         auditAction = 'USER_UPDATED';
         auditReason = 'User profile updated by SuperAdmin';
         break;
 
       default:
-        return NextResponse.json(
-          { error: 'Invalid action' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+    if (!updatedUser) {
+      return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
     }
 
     // Create audit log
@@ -296,11 +350,11 @@ export async function PATCH(request: NextRequest) {
         entityId: userId,
         previousValue: {
           status: targetUser.status,
-          roles: targetUser.roles,
+          roles: targetUser.userRoles.map((ur) => ur.roleName),
         },
         newValue: {
           status: updatedUser.status,
-          roles: updatedUser.roles,
+          roles: updatedUser.userRoles.map((ur) => ur.roleName),
         },
         reason: auditReason,
       },
@@ -323,7 +377,7 @@ export async function PATCH(request: NextRequest) {
         user: {
           id: updatedUser.id,
           status: updatedUser.status,
-          roles: updatedUser.roles,
+          roles: updatedUser.userRoles.map((ur) => ur.roleName),
         },
       },
       { status: 200 }
@@ -405,7 +459,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Delete user (CASCADE will handle related records)
+    // Delete user (CASCADE will handle related records including userRoles)
     await prisma.user.delete({
       where: { id: userId },
     });
@@ -422,10 +476,7 @@ export async function DELETE(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(
-      { message: 'User deleted successfully' },
-      { status: 200 }
-    );
+    return NextResponse.json({ message: 'User deleted successfully' }, { status: 200 });
   } catch (error) {
     console.error('Users DELETE Error:', error);
     return NextResponse.json(

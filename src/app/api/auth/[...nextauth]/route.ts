@@ -10,7 +10,7 @@ import GithubProvider from 'next-auth/providers/github';
 import { getServerSession } from 'next-auth/next';
 import NextAuth from 'next-auth';
 import bcrypt from 'bcryptjs';
-import { db } from '@/lib/db';
+import prisma from '@/lib/prisma';
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -27,32 +27,42 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          const user = await db.user.findUnique({
+          const user = await prisma.user.findUnique({
             where: { email: credentials.email },
+            include: {
+              userRoles: {
+                select: { roleName: true },
+              },
+            },
           });
 
           if (!user) {
             throw new Error('Invalid email or password');
           }
 
-          // FIX: Check if password exists before comparing
+          // Check if password exists before comparing
           if (!user.password) {
             throw new Error('Invalid email or password');
           }
 
-          const passwordMatch = await bcrypt.compare(
-            credentials.password,
-            user.password
-          );
+          const passwordMatch = await bcrypt.compare(credentials.password, user.password);
 
           if (!passwordMatch) {
             throw new Error('Invalid email or password');
           }
 
+          // Update last login
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLogin: new Date() },
+          });
+
           return {
             id: user.id,
             email: user.email,
             name: `${user.firstName} ${user.lastName}`,
+            isSuperAdmin: user.isSuperAdmin,
+            roles: user.userRoles.map((ur) => ur.roleName),
           };
         } catch (error) {
           console.error('[NextAuth] Credentials error:', error);
@@ -82,45 +92,58 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger, session }) {
+      // 🔧 FIXED: On first login, get full user data including userRoles
       if (user) {
-        // On first login, get full user data including roles
-        const dbUser = await db.user.findUnique({
+        const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
           select: {
             id: true,
             email: true,
             firstName: true,
             lastName: true,
-            roles: true,
-            status: true,
+            isSuperAdmin: true,
+            userRoles: {
+              select: { roleName: true },
+            },
           },
         });
 
         if (dbUser) {
-          token['id'] = dbUser.id;
-          token['email'] = dbUser.email;
-          token['name'] = `${dbUser.firstName} ${dbUser.lastName}`;
-          token['roles'] = dbUser.roles;
-          token['userType'] = dbUser.roles?.[0] || 'PLAYER';
+          token.id = dbUser.id;
+          token.email = dbUser.email;
+          token.name = `${dbUser.firstName} ${dbUser.lastName}`;
+          token.isSuperAdmin = dbUser.isSuperAdmin;
+          token.roles = dbUser.userRoles.map((ur) => ur.roleName);
+          // Set userType to first role or PLAYER as default
+          token.userType = dbUser.userRoles[0]?.roleName || 'PLAYER';
         }
       }
 
-      // For OAuth providers, ensure roles are set
+      // 🔧 FIXED: For OAuth providers, ensure roles are fetched
       if (account?.provider && !user) {
-        const dbUser = await db.user.findUnique({
+        const dbUser = await prisma.user.findUnique({
           where: { email: token.email as string },
           select: {
             id: true,
-            roles: true,
+            isSuperAdmin: true,
+            userRoles: {
+              select: { roleName: true },
+            },
           },
         });
 
         if (dbUser) {
-          token['id'] = dbUser.id;
-          token['roles'] = dbUser.roles;
-          token['userType'] = dbUser.roles?.[0] || 'PLAYER';
+          token.id = dbUser.id;
+          token.isSuperAdmin = dbUser.isSuperAdmin;
+          token.roles = dbUser.userRoles.map((ur) => ur.roleName);
+          token.userType = dbUser.userRoles[0]?.roleName || 'PLAYER';
         }
+      }
+
+      // Handle session updates
+      if (trigger === 'update' && session) {
+        token = { ...token, ...session };
       }
 
       return token;
@@ -128,12 +151,13 @@ export const authOptions: NextAuthOptions = {
 
     async session({ session, token }) {
       if (session.user) {
+        session.user.id = token.id as string;
+        session.user.email = token.email as string;
+        session.user.name = token.name as string;
+        session.user.isSuperAdmin = token.isSuperAdmin as boolean;
+        session.user.roles = (token.roles as string[]) || [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (session.user as any).id = token['id'];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (session.user as any).roles = token['roles'];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (session.user as any).userType = token['userType'];
+        (session.user as any).userType = token.userType;
       }
       return session;
     },
@@ -141,43 +165,49 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account, profile }) {
       // Handle OAuth provider first logins
       if (account && profile) {
-        let existingUser = await db.user.findUnique({
+        let existingUser = await prisma.user.findUnique({
           where: { email: user.email! },
         });
 
         if (!existingUser) {
-          // Safe profile access with type assertion
           const profileData = profile as Record<string, unknown>;
-          
+
           // Create new user from OAuth
-          existingUser = await db.user.create({
+          existingUser = await prisma.user.create({
             data: {
               email: user.email!,
               firstName:
-                (profileData['given_name'] as string) || 
-                user.name?.split(' ')[0] || 
+                (profileData['given_name'] as string) ||
+                user.name?.split(' ')[0] ||
                 'User',
-              lastName: 
-                (profileData['family_name'] as string) || 
-                user.name?.split(' ')[1] || 
+              lastName:
+                (profileData['family_name'] as string) ||
+                user.name?.split(' ')[1] ||
                 '',
               password: '', // OAuth users don't have passwords
-              roles: ['PLAYER'], // Default to PLAYER role
               status: 'ACTIVE',
               emailVerified: new Date(),
             },
           });
 
-          // Create player profile automatically with ALL required fields
-          await db.player.create({
+          // 🔧 FIXED: Add default PLAYER role using UserRole_User table
+          await prisma.userRole_User.create({
+            data: {
+              userId: existingUser.id,
+              roleName: 'PLAYER',
+            },
+          });
+
+          // Create player profile with ALL required fields
+          await prisma.player.create({
             data: {
               userId: existingUser.id,
               firstName: existingUser.firstName,
               lastName: existingUser.lastName,
-              dateOfBirth: new Date('2000-01-01'), // Default - user can update
-              nationality: 'Not Specified', // Default - user can update
-              position: 'MIDFIELDER', // Default position
-              preferredFoot: 'RIGHT', // Default preferred foot
+              dateOfBirth: new Date('2000-01-01'),
+              nationality: 'Not Specified',
+              position: 'MIDFIELDER',
+              preferredFoot: 'RIGHT',
               status: 'ACTIVE',
             },
           });
@@ -193,7 +223,6 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
-  // FIX: Provide fallback for secret to satisfy TypeScript strict mode
   secret: process.env['NEXTAUTH_SECRET'] || 'fallback-secret-change-in-production',
 };
 
