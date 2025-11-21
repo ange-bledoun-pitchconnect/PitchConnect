@@ -2,17 +2,18 @@
 // PITCHCONNECT DATABASE SCHEMA (Prisma ORM)
 // PostgreSQL via Supabase
 // Production-ready with TypeScript strict mode support
-// UPDATED: Added PLAYER_PRO role + SuperAdmin features
+// ENHANCED: Table mappings, Match Attendance, Treasurer, Coach Timesheets
 // ============================================================================
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+  previewFeatures = ["fullTextSearch", "fullTextIndex", "driverAdapters"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================================
@@ -22,11 +23,12 @@ datasource db {
 enum UserRole {
   SUPERADMIN
   PLAYER
-  PLAYER_PRO // 🆕 NEW: £4.99/month tier
+  PLAYER_PRO
   COACH
   CLUB_MANAGER
   LEAGUE_ADMIN
   PARENT
+  TREASURER // 🆕 NEW: Financial management role
 }
 
 enum UserStatus {
@@ -66,6 +68,24 @@ enum MatchStatus {
   POSTPONED
 }
 
+// 🆕 NEW: Match Attendance Status
+enum MatchAttendanceStatus {
+  AVAILABLE           // Player confirms availability
+  UNAVAILABLE         // Player cannot attend
+  CONFIRMED           // Coach/Manager confirmed attendance
+  MAYBE               // Uncertain availability
+  LATE                // Player arrived late
+  NO_SHOW             // Player didn't show up
+  EXCUSED_ABSENCE     // Approved absence (injury, personal, etc.)
+  INJURED             // Injured and cannot play
+  ILL                 // Sick/unwell
+  SUSPENDED           // Serving suspension
+  NOT_SELECTED        // Not selected for squad
+  SUBSTITUTE          // Selected as substitute
+  STARTING_LINEUP     // Selected in starting XI
+  ATTENDED            // Attended the match
+}
+
 enum MatchEventType {
   GOAL
   ASSIST
@@ -90,11 +110,11 @@ enum Formation {
 }
 
 enum SubscriptionTier {
-  FREE // Player (Free)
-  PLAYER_PRO // 🆕 £4.99/month
-  COACH // £12.99/month
-  MANAGER // £24.99/month
-  LEAGUE_ADMIN // £49.99/month
+  FREE
+  PLAYER_PRO
+  COACH
+  MANAGER
+  LEAGUE_ADMIN
 }
 
 enum SubscriptionStatus {
@@ -103,7 +123,7 @@ enum SubscriptionStatus {
   EXPIRED
   PAUSED
   PAST_DUE
-  TRIAL // 🆕 NEW: Free trial period
+  TRIAL
 }
 
 enum PaymentStatus {
@@ -123,10 +143,14 @@ enum NotificationType {
   PAYMENT_FAILED
   PLAYER_STATS_UPDATE
   SYSTEM_ALERT
-  UPGRADE_REQUEST_APPROVED // 🆕 NEW
-  UPGRADE_REQUEST_REJECTED // 🆕 NEW
-  ROLE_CHANGED // 🆕 NEW
-  ACCOUNT_SUSPENDED // 🆕 NEW
+  UPGRADE_REQUEST_APPROVED
+  UPGRADE_REQUEST_REJECTED
+  ROLE_CHANGED
+  ACCOUNT_SUSPENDED
+  MATCH_ATTENDANCE_REQUEST // 🆕 NEW
+  TIMESHEET_APPROVED       // 🆕 NEW
+  TIMESHEET_REJECTED       // 🆕 NEW
+  PAYMENT_PROCESSED        // 🆕 NEW
 }
 
 enum TrainingIntensity {
@@ -152,7 +176,6 @@ enum AttendanceStatus {
   LATE
 }
 
-// 🆕 NEW: Upgrade Request Status
 enum UpgradeRequestStatus {
   PENDING
   APPROVED
@@ -160,7 +183,6 @@ enum UpgradeRequestStatus {
   CANCELLED
 }
 
-// 🆕 NEW: Audit Action Types
 enum AuditAction {
   USER_CREATED
   USER_UPDATED
@@ -177,6 +199,29 @@ enum AuditAction {
   BULK_OPERATION
   UPGRADE_REQUEST_APPROVED
   UPGRADE_REQUEST_REJECTED
+  TIMESHEET_SUBMITTED     // 🆕 NEW
+  TIMESHEET_APPROVED      // 🆕 NEW
+  PAYMENT_PROCESSED       // 🆕 NEW
+}
+
+// 🆕 NEW: Timesheet Status
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  PAID
+}
+
+// 🆕 NEW: Payment Type
+enum PaymentType {
+  SUBSCRIPTION
+  COACHING_FEE
+  MATCH_FEE
+  TOURNAMENT_FEE
+  REFUND
+  OTHER
 }
 
 // ============================================================================
@@ -197,7 +242,6 @@ model User {
   roles  UserRole[]
   status UserStatus @default(PENDING_VERIFICATION)
 
-  // 🆕 NEW: SuperAdmin tracking fields
   isSuperAdmin  Boolean   @default(false)
   lastLoginIp   String?
   loginAttempts Int       @default(0)
@@ -207,26 +251,29 @@ model User {
   updatedAt DateTime  @updatedAt
   lastLogin DateTime?
 
-  accounts        Account[]
-  sessions        Session[]
-  preferences     UserPreferences?
-  playerProfile   Player?
-  coachProfile    Coach?
-  clubManager     ClubManager?
-  leagueAdmin     LeagueAdmin?
-  parentProfile   Parent?
-  subscription    Subscription?
-  payments        Payment[]
-  notifications   Notification[]
-  scoutingReports ScoutingProfile[]
-  sentMessages    Message[]         @relation("MessageSender")
-  upgradeRequests UpgradeRequest[] // 🆕 NEW
-  auditLogs       AuditLog[]        @relation("AuditUser") // 🆕 NEW
-  performedAudits AuditLog[]        @relation("AuditPerformer") // 🆕 NEW
+  accounts            Account[]
+  sessions            Session[]
+  preferences         UserPreferences?
+  playerProfile       Player?
+  coachProfile        Coach?
+  clubManager         ClubManager?
+  leagueAdmin         LeagueAdmin?
+  parentProfile       Parent?
+  treasurerProfile    Treasurer? // 🆕 NEW
+  subscription        Subscription?
+  payments            Payment[]
+  notifications       Notification[]
+  scoutingReports     ScoutingProfile[]
+  sentMessages        Message[]            @relation("MessageSender")
+  upgradeRequests     UpgradeRequest[]
+  auditLogs           AuditLog[]           @relation("AuditUser")
+  performedAudits     AuditLog[]           @relation("AuditPerformer")
+  approvedTimesheets  CoachTimesheet[]     @relation("TimesheetApprover") // 🆕 NEW
+  processedPayments   CoachPayment[]       @relation("PaymentProcessor") // 🆕 NEW
 
   @@index([email])
   @@index([status])
-  @@index([isSuperAdmin]) // 🆕 NEW
+  @@index([isSuperAdmin])
   @@map("users")
 }
 
@@ -294,7 +341,7 @@ model UserPreferences {
 }
 
 // ============================================================================
-// 🆕 NEW: UPGRADE REQUEST SYSTEM
+// UPGRADE REQUEST SYSTEM
 // ============================================================================
 
 model UpgradeRequest {
@@ -354,6 +401,7 @@ model Player {
   matchEvents        MatchEvent[]
   trainingAttendance TrainingAttendance[]
   tacticPositions    TacticPlayer[]
+  matchAttendance    MatchAttendance[] // 🆕 NEW
 
   @@index([userId])
   @@index([position])
@@ -406,6 +454,12 @@ model Coach {
   qualifications  String[]
   specializations String[]
 
+  // 🆕 NEW: Payment details
+  hourlyRate   Float?
+  bankDetails  Json? // Encrypted bank account info
+  taxId        String?
+  contractType String? // PERMANENT, FREELANCE, PART_TIME
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -413,6 +467,8 @@ model Coach {
   teams            Team[]
   trainingSessions TrainingSession[]
   tactics          Tactic[]
+  timesheets       CoachTimesheet[] // 🆕 NEW
+  payments         CoachPayment[]   // 🆕 NEW
 
   @@index([userId])
   @@map("coaches")
@@ -430,6 +486,24 @@ model ClubManager {
 
   @@index([userId])
   @@map("club_managers")
+}
+
+// 🆕 NEW: Treasurer Model
+model Treasurer {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  clubId String?
+  permissions Json? // What they can approve/reject
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clubId])
+  @@map("treasurers")
 }
 
 model Club {
@@ -626,11 +700,15 @@ model Match {
   awayGoals  Int?
   attendance Int?
 
-  fixture  Fixture?     @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
-  homeTeam Team         @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeam Team         @relation("AwayTeam", fields: [awayTeamId], references: [id])
-  events   MatchEvent[]
-  stats    MatchStats?
+  // 🆕 NEW: Attendance deadline
+  attendanceDeadline DateTime?
+
+  fixture           Fixture?           @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
+  homeTeam          Team               @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam          Team               @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  events            MatchEvent[]
+  stats             MatchStats?
+  playerAttendances MatchAttendance[] // 🆕 NEW
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -641,6 +719,35 @@ model Match {
   @@index([date])
   @@index([status])
   @@map("matches")
+}
+
+// 🆕 NEW: Match Attendance Model
+model MatchAttendance {
+  id       String                 @id @default(cuid())
+  matchId  String
+  playerId String
+  status   MatchAttendanceStatus  @default(AVAILABLE)
+  
+  // Response tracking
+  respondedAt    DateTime?
+  confirmedBy    String? // Coach/Manager who confirmed
+  notes          String?  @db.Text
+  
+  // Performance tracking (filled post-match)
+  minutesPlayed  Int?
+  performanceRating Float?
+  
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([matchId, playerId])
+  @@index([matchId])
+  @@index([playerId])
+  @@index([status])
+  @@map("match_attendance")
 }
 
 model MatchEvent {
@@ -774,6 +881,87 @@ model TrainingAttendance {
 }
 
 // ============================================================================
+// 🆕 NEW: COACH TIMESHEET & PAYMENT MODELS
+// ============================================================================
+
+model CoachTimesheet {
+  id      String          @id @default(cuid())
+  coachId String
+  period  String // "WEEKLY", "MONTHLY"
+  
+  // Time period
+  startDate DateTime
+  endDate   DateTime
+  
+  // Hours breakdown
+  trainingHours     Float  @default(0)
+  matchHours        Float  @default(0)
+  adminHours        Float  @default(0)
+  otherHours        Float  @default(0)
+  totalHours        Float  @default(0)
+  
+  // Financial
+  hourlyRate        Float
+  totalAmount       Float
+  
+  // Status tracking
+  status            TimesheetStatus  @default(DRAFT)
+  submittedAt       DateTime?
+  reviewedBy        String? // Treasurer/Manager
+  reviewedAt        DateTime?
+  reviewNotes       String?  @db.Text
+  approvedBy        String? // SuperAdmin/Treasurer
+  approvedAt        DateTime?
+  
+  // Attachments
+  attachments       String[] // URLs to supporting documents
+  
+  coach     Coach  @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  approver  User?  @relation("TimesheetApprover", fields: [approvedBy], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([coachId])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("coach_timesheets")
+}
+
+model CoachPayment {
+  id           String        @id @default(cuid())
+  coachId      String
+  timesheetId  String?
+  amount       Float
+  currency     String        @default("GBP")
+  paymentType  PaymentType   @default(COACHING_FEE)
+  status       PaymentStatus @default(PENDING)
+  
+  // Payment details
+  paymentMethod    String? // BANK_TRANSFER, PAYPAL, etc.
+  transactionId    String?
+  invoiceNumber    String?
+  invoiceUrl       String?
+  
+  // Tracking
+  processedBy      String? // Treasurer who processed
+  processedAt      DateTime?
+  paidAt           DateTime?
+  notes            String?  @db.Text
+  
+  coach     Coach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  processor User? @relation("PaymentProcessor", fields: [processedBy], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([coachId])
+  @@index([status])
+  @@index([paymentType])
+  @@map("coach_payments")
+}
+
+// ============================================================================
 // TACTICAL MODELS
 // ============================================================================
 
@@ -826,12 +1014,11 @@ model Subscription {
   tier   SubscriptionTier   @default(FREE)
   status SubscriptionStatus @default(ACTIVE)
 
-  // 🆕 NEW: Enhanced tracking
-  monthlyPrice   Float? // Store actual price paid
+  monthlyPrice   Float?
   annualDiscount Boolean @default(false)
-  customPrice    Float? // SuperAdmin can set custom pricing
+  customPrice    Float?
   grantedByAdmin Boolean @default(false)
-  grantedBy      String? // SuperAdmin who granted access
+  grantedBy      String?
   grantReason    String?
 
   stripeCustomerId     String? @unique
@@ -840,7 +1027,7 @@ model Subscription {
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
   cancelledAt        DateTime?
-  trialEndsAt        DateTime? // 🆕 NEW
+  trialEndsAt        DateTime?
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   payments Payment[]
@@ -851,7 +1038,7 @@ model Subscription {
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
   @@index([tier])
-  @@index([status]) // 🆕 NEW
+  @@index([status])
   @@map("subscriptions")
 }
 
@@ -862,13 +1049,13 @@ model Payment {
   amount         Float
   currency       String        @default("GBP")
   status         PaymentStatus @default(PENDING)
+  paymentType    PaymentType   @default(SUBSCRIPTION)
 
   stripePaymentIntentId String? @unique
   stripeInvoiceId       String?
   invoiceUrl            String?
 
-  // 🆕 NEW: Enhanced tracking
-  refundedBy   String? // SuperAdmin who processed refund
+  refundedBy   String?
   refundReason String?
 
   subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
@@ -880,7 +1067,8 @@ model Payment {
   @@index([subscriptionId])
   @@index([userId])
   @@index([stripePaymentIntentId])
-  @@index([status]) // 🆕 NEW
+  @@index([status])
+  @@index([paymentType])
   @@map("payments")
 }
 
@@ -1039,20 +1227,20 @@ model Parent {
 }
 
 // ============================================================================
-// 🆕 ENHANCED: AUDIT LOG MODELS
+// AUDIT LOG MODELS
 // ============================================================================
 
 model AuditLog {
   id            String      @id @default(cuid())
-  performedBy   String? // SuperAdmin who performed action
-  affectedUser  String? // User who was affected
+  performedBy   String?
+  affectedUser  String?
   action        AuditAction
   entityType    String
   entityId      String
   changes       Json?
-  previousValue Json? // 🆕 NEW: Store state before change
-  newValue      Json? // 🆕 NEW: Store state after change
-  reason        String? // 🆕 NEW: Why action was taken
+  previousValue Json?
+  newValue      Json?
+  reason        String?
   ipAddress     String?
   userAgent     String?
 
