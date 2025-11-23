@@ -1,298 +1,342 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import Image from 'next/image';
-import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
-  Trophy,
+  User,
   Users,
-  Target,
-  TrendingUp,
-  User as UserIcon,
-  Bell,
-  Plus,
+  Trophy,
+  Activity,
+  Shield,
+  MapPin,
+  Loader2,
+  Search,
+  Clock,
+  Edit,
 } from 'lucide-react';
+import Link from 'next/link';
+import toast from 'react-hot-toast';
 
-interface Team {
-  id: string;
-  name: string;
-  position: string;
-  isActive: boolean;
-}
-
-interface Player {
+interface PlayerData {
   id: string;
   firstName: string;
   lastName: string;
-  email: string;
-  teams: Team[];
-  appearances: number;
-  goals: number;
-  assists: number;
-  achievements: number;
-  avatarUrl?: string;
+  position: string;
+  jerseyNumber: number | null;
+  preferredFoot: string;
+  nationality: string;
+  teams: any[];
+  pendingRequests: any[];
+  stats: {
+    totalTeams: number;
+    totalMatches: number;
+    totalGoals: number;
+    pendingRequests: number;
+  };
 }
 
 export default function PlayerDashboard() {
-  const { data: session, status } = useSession();
   const router = useRouter();
-
-  const [playerData, setPlayerData] = useState<Player | null>(null);
+  const [playerData, setPlayerData] = useState<PlayerData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Memoize fetchPlayerData
   const fetchPlayerData = useCallback(async () => {
     try {
-      setIsLoading(true);
       setError(null);
       const response = await fetch('/api/player/dashboard');
       if (!response.ok) throw new Error('Failed to fetch player data');
       const data = await response.json();
       setPlayerData(data.player);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
       console.error('Error fetching player data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load player data');
+      toast.error('Failed to load player data');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/login');
-      return;
-    }
-    if (status === 'authenticated' && session?.user?.email) {
-      fetchPlayerData();
-    }
-  }, [status, session, router, fetchPlayerData]);
+    fetchPlayerData();
+  }, [fetchPlayerData]);
 
-  if (status === 'loading' || isLoading) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-600">Loading dashboard...</p>
+          <Loader2 className="w-12 h-12 animate-spin text-gold-500 mx-auto mb-4" />
+          <p className="text-charcoal-600">Loading your dashboard...</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error || !playerData) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10">
         <div className="text-center">
-          <Trophy className="w-12 h-12 text-[#D4AF37] mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Error</h1>
-          <p className="text-slate-600 mb-6">{error}</p>
-          <Button
-            onClick={() => router.push('/auth/login')}
-            className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-slate-900 font-bold"
-          >
-            Go to Login
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!playerData) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <Trophy className="w-12 h-12 text-[#D4AF37] mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Welcome!</h1>
-          <p className="text-slate-600 mb-6">Setting up your dashboard...</p>
+          <User className="w-16 h-16 text-charcoal-300 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-charcoal-900 mb-2">
+            Unable to load dashboard
+          </h3>
+          <p className="text-charcoal-600 mb-6">{error || 'Player profile not found'}</p>
+          <Button onClick={() => router.push('/dashboard')}>Go to Dashboard</Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* NAVBAR */}
-      <nav className="border-b border-slate-200 bg-white sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#D4AF37] to-[#B8860B] rounded-lg flex items-center justify-center">
-              <span className="text-slate-900 font-bold">⚽</span>
-            </div>
-            <span className="text-xl font-bold text-[#D4AF37]">PitchConnect</span>
-          </div>
-
-          {/* Navigation */}
-          <div className="hidden md:flex items-center gap-8">
-            <a href="/dashboard/player" className="text-slate-900 hover:text-[#D4AF37] transition font-medium">
-              Dashboard
-            </a>
-            <a href="#" className="text-slate-700 hover:text-[#D4AF37] transition">
-              Teams
-            </a>
-            <a href="#" className="text-slate-700 hover:text-[#D4AF37] transition">
-              Matches
-            </a>
-            <a href="#" className="text-slate-700 hover:text-[#D4AF37] transition">
-              Achievements
-            </a>
-          </div>
-
-          {/* Right */}
-          <div className="flex items-center gap-4">
-            <button className="relative p-2 text-slate-700 hover:text-[#D4AF37] transition">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
-            <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900">{playerData.firstName}</p>
-                <p className="text-xs text-slate-500">Player</p>
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 bg-gradient-to-br from-gold-500 to-orange-400 rounded-2xl flex items-center justify-center shadow-lg">
+                <User className="w-10 h-10 text-white" />
               </div>
-              <div className="w-8 h-8 bg-gradient-to-br from-[#D4AF37] to-[#B8860B] rounded-full flex items-center justify-center overflow-hidden">
-                {playerData.avatarUrl ? (
-                  <Image
-                    src={playerData.avatarUrl}
-                    alt="Avatar"
-                    width={32}
-                    height={32}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <UserIcon className="w-4 h-4 text-slate-900" />
-                )}
+              <div>
+                <h1 className="text-4xl font-bold text-charcoal-900 mb-2">
+                  {playerData.firstName} {playerData.lastName}
+                </h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className="bg-green-100 text-green-700 border-green-300">
+                    {playerData.position.replace('_', ' ')}
+                  </Badge>
+                  <Badge variant="outline">{playerData.preferredFoot} FOOTED</Badge>
+                  {playerData.jerseyNumber && <Badge>#{playerData.jerseyNumber}</Badge>}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </nav>
 
-      {/* MAIN CONTENT */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* HEADER */}
-        <div className="mb-12 flex items-center gap-6">
-          <div className="w-16 h-16 bg-gradient-to-br from-[#D4AF37] to-[#B8860B] rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
-            {playerData.avatarUrl ? (
-              <Image
-                src={playerData.avatarUrl}
-                alt="Avatar"
-                width={64}
-                height={64}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <UserIcon className="w-8 h-8 text-slate-900" />
-            )}
-          </div>
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-1">
-              Welcome back, {playerData.firstName}!
-            </h1>
-            <span className="text-[#D4AF37] font-bold text-xs bg-[#D4AF37]/10 px-2 py-1 rounded uppercase tracking-widest">
-              PLAYER
-            </span>
+            <Link href="/dashboard/player/profile">
+              <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
+                <Edit className="w-4 h-4 mr-2" />
+                Edit Profile
+              </Button>
+            </Link>
           </div>
         </div>
 
-        {/* STATS CARDS */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
-          <div className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-lg transition">
-            <div className="flex items-center justify-between mb-3">
-              <TrendingUp className="w-5 h-5 text-[#D4AF37]" />
-              <span className="text-xs text-slate-400">Season</span>
-            </div>
-            <h3 className="text-slate-600 text-sm font-medium mb-1">Appearances</h3>
-            <p className="text-3xl font-bold text-[#D4AF37]">{playerData.appearances}</p>
-          </div>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-charcoal-600 mb-1">Teams</p>
+                  <p className="text-3xl font-bold text-charcoal-900">
+                    {playerData.stats.totalTeams}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-gold-100 rounded-xl flex items-center justify-center">
+                  <Shield className="w-6 h-6 text-gold-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-lg transition">
-            <div className="flex items-center justify-between mb-3">
-              <Target className="w-5 h-5 text-[#D4AF37]" />
-            </div>
-            <h3 className="text-slate-600 text-sm font-medium mb-1">Goals</h3>
-            <p className="text-3xl font-bold text-[#D4AF37]">{playerData.goals}</p>
-            <p className="text-xs text-slate-500 mt-2">{playerData.assists} assists</p>
-          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-charcoal-600 mb-1">Matches</p>
+                  <p className="text-3xl font-bold text-charcoal-900">
+                    {playerData.stats.totalMatches}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <Activity className="w-6 h-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-lg transition">
-            <div className="flex items-center justify-between mb-3">
-              <Trophy className="w-5 h-5 text-[#D4AF37]" />
-            </div>
-            <h3 className="text-slate-600 text-sm font-medium mb-1">Achievements</h3>
-            <p className="text-3xl font-bold text-[#D4AF37]">{playerData.achievements}</p>
-            <p className="text-xs text-slate-500 mt-2">Badges unlocked</p>
-          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-charcoal-600 mb-1">Goals</p>
+                  <p className="text-3xl font-bold text-charcoal-900">
+                    {playerData.stats.totalGoals}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                  <Trophy className="w-6 h-6 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-lg transition">
-            <div className="flex items-center justify-between mb-3">
-              <Users className="w-5 h-5 text-[#D4AF37]" />
-            </div>
-            <h3 className="text-slate-600 text-sm font-medium mb-1">Teams</h3>
-            <p className="text-3xl font-bold text-[#D4AF37]">{playerData.teams.length}</p>
-            <p className="text-xs text-slate-500 mt-2">Active</p>
-          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-charcoal-600 mb-1">Pending</p>
+                  <p className="text-3xl font-bold text-charcoal-900">
+                    {playerData.stats.pendingRequests}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <Clock className="w-6 h-6 text-orange-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* TWO COLUMN LAYOUT */}
-        <div className="grid md:grid-cols-3 gap-8">
-          {/* Teams List */}
-          <div>
-            <div className="bg-white border border-slate-200 rounded-lg p-6 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-slate-900">My Teams</h2>
-                <Button className="p-2 bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-slate-900 rounded-lg font-bold">
-                  <Plus className="w-4 h-4" /> <span className="ml-2 text-sm hidden sm:inline">Join Team</span>
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <Link href="/dashboard/player/browse-teams">
+            <Card className="hover:shadow-lg transition-all cursor-pointer border-2 hover:border-gold-500">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-gold-100 to-orange-100 rounded-xl flex items-center justify-center">
+                    <Search className="w-7 h-7 text-gold-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-charcoal-900 mb-1">Browse Teams</h3>
+                    <p className="text-sm text-charcoal-600">Find and join teams in your area</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard/player/profile">
+            <Card className="hover:shadow-lg transition-all cursor-pointer border-2 hover:border-gold-500">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl flex items-center justify-center">
+                    <User className="w-7 h-7 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-charcoal-900 mb-1">My Profile</h3>
+                    <p className="text-sm text-charcoal-600">Update your player information</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+
+        {/* My Teams */}
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-gold-500" />
+                  My Teams
+                </CardTitle>
+                <CardDescription>Teams you're currently playing for</CardDescription>
+              </div>
+              <Link href="/dashboard/player/browse-teams">
+                <Button variant="outline">
+                  <Search className="w-4 h-4 mr-2" />
+                  Find More Teams
                 </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {playerData.teams.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="w-16 h-16 text-charcoal-300 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-charcoal-900 mb-2">No teams yet</h3>
+                <p className="text-charcoal-600 mb-6">
+                  Browse and join teams to start playing
+                </p>
+                <Link href="/dashboard/player/browse-teams">
+                  <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
+                    <Search className="w-4 h-4 mr-2" />
+                    Browse Teams
+                  </Button>
+                </Link>
               </div>
-              <div className="space-y-2">
-                {playerData.teams.length === 0 && (
-                  <div className="text-center text-slate-500 text-sm py-8">No teams joined yet</div>
-                )}
-                {playerData.teams.map(team => (
-                  <div key={team.id} className={`p-3 rounded-lg border-l-4 ${team.isActive ? 'border-l-[#D4AF37] bg-[#D4AF37]/5' : 'border-l-slate-200 bg-slate-50'}`}>
-                    <div className="font-semibold text-slate-900 text-sm">{team.name}</div>
-                    <div className="text-xs text-slate-500">Position: {team.position}</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {playerData.teams.map((tm) => (
+                  <Link
+                    key={tm.id}
+                    href={`/dashboard/clubs/${tm.team.club.id}/teams/${tm.team.id}`}
+                  >
+                    <Card className="hover:shadow-lg transition-all cursor-pointer border-2 hover:border-gold-300">
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h3 className="font-bold text-charcoal-900 text-lg mb-1">
+                              {tm.team.name}
+                            </h3>
+                            <div className="flex items-center gap-2 text-sm text-charcoal-600 mb-2">
+                              <Shield className="w-4 h-4" />
+                              <span className="font-semibold">{tm.team.club.name}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-charcoal-600">
+                              <MapPin className="w-4 h-4" />
+                              <span>
+                                {tm.team.club.city}, {tm.team.club.country}
+                              </span>
+                            </div>
+                          </div>
+                          <Badge className="bg-purple-100 text-purple-700 border-purple-300">
+                            {tm.role}
+                          </Badge>
+                        </div>
+
+                        <div className="flex items-center justify-between text-sm pt-3 border-t">
+                          <span className="text-charcoal-600">
+                            {tm.team._count.members} members
+                          </span>
+                          <Badge variant="outline">{tm.team.ageGroup}</Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pending Join Requests */}
+        {playerData.pendingRequests.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-orange-500" />
+                Pending Join Requests
+              </CardTitle>
+              <CardDescription>Teams you've requested to join</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {playerData.pendingRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="flex items-center justify-between p-4 border border-neutral-200 rounded-xl"
+                  >
+                    <div>
+                      <p className="font-semibold text-charcoal-900">{req.team.name}</p>
+                      <p className="text-sm text-charcoal-600">
+                        {req.team.club.name} - {req.team.club.city}
+                      </p>
+                    </div>
+                    <Badge className="bg-orange-100 text-orange-700 border-orange-300">
+                      PENDING
+                    </Badge>
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-
-          {/* Upcoming matches & recent performance */}
-          <div className="md:col-span-2 grid grid-cols-1 gap-6">
-            <div className="bg-white border border-slate-200 rounded-lg p-6 mb-6">
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Upcoming Matches</h2>
-              <div className="space-y-3">
-                <div className="p-4 border border-slate-200 rounded-lg hover:shadow-md transition">
-                  <p className="text-sm text-slate-900 font-semibold">Team vs Arsenal</p>
-                  <p className="text-xs text-slate-500">Saturday, Nov 16 &bull; 3:00 PM</p>
-                </div>
-                <div className="p-4 border border-slate-200 rounded-lg hover:shadow-md transition">
-                  <p className="text-sm text-slate-900 font-semibold">Power League Match</p>
-                  <p className="text-xs text-slate-500">Wednesday, Nov 19 &bull; 7:30 PM</p>
-                </div>
-              </div>
-              <Button variant="outline" className="w-full mt-4 border-[#D4AF37] text-[#D4AF37]">
-                View All Fixtures
-              </Button>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-lg p-6">
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Recent Achievements</h2>
-              <div className="flex gap-4">
-                <span className="w-10 h-10 bg-[#D4AF37]/10 flex items-center justify-center rounded-full text-[#D4AF37] text-2xl">🏅</span>
-                <span className="w-10 h-10 bg-[#D4AF37]/10 flex items-center justify-center rounded-full text-[#D4AF37] text-2xl">⚽</span>
-                <span className="w-10 h-10 bg-[#D4AF37]/10 flex items-center justify-center rounded-full text-[#D4AF37] text-2xl">🎯</span>
-              </div>
-              <Button variant="outline" className="w-full mt-6 border-[#D4AF37] text-[#D4AF37]">
-                View All Achievements
-              </Button>
-            </div>
-          </div>
-        </div>
-      </main>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

@@ -5,40 +5,53 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
-type UserRole = 'PLAYER' | 'COACH' | 'MANAGER' | 'LEAGUE_ADMIN' | 'SUPERADMIN';
+type UserRole = 'PLAYER' | 'PLAYER_PRO' | 'COACH' | 'CLUB_MANAGER' | 'LEAGUE_ADMIN' | 'TREASURER' | 'PARENT';
 
-interface ExtendedSession {
-  user?: {
-    id?: string;
-    name?: string | null;
-    email?: string | null;
-    image?: string | null;
-    userType?: UserRole | null;
-  };
+interface ExtendedUser {
+  id?: string;
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  isSuperAdmin?: boolean;
+  roles?: UserRole[];
 }
 
-const DEFAULT_ROLE: UserRole = 'PLAYER';
+interface ExtendedSession {
+  user?: ExtendedUser;
+}
 
-const DASHBOARD_ROUTES: Record<UserRole, string> = {
-  PLAYER: '/dashboard/player',
+const DASHBOARD_ROUTES: Record<string, string> = {
+  SUPERADMIN: '/dashboard/admin',
+  LEAGUE_ADMIN: '/dashboard/leagues',
+  CLUB_MANAGER: '/dashboard/clubs',
   COACH: '/dashboard/coach',
-  MANAGER: '/dashboard/manager',
-  LEAGUE_ADMIN: '/dashboard/league-admin',
-  SUPERADMIN: '/dashboard/superadmin',
+  TREASURER: '/dashboard/treasurer',
+  PLAYER_PRO: '/dashboard/player',
+  PLAYER: '/dashboard/player',
+  PARENT: '/dashboard/parent',
 };
 
-const getDashboardRoute = (userType: UserRole | string | null | undefined): string => {
-  if (!userType || typeof userType !== 'string') {
-    return DASHBOARD_ROUTES[DEFAULT_ROLE];
+const getDashboardRoute = (user: ExtendedUser | undefined): string => {
+  if (!user) return '/dashboard/player';
+
+  // SuperAdmin takes highest priority
+  if (user.isSuperAdmin) {
+    return DASHBOARD_ROUTES.SUPERADMIN;
   }
 
-  const normalizedRole = userType.toUpperCase() as UserRole;
+  const roles = user.roles || [];
 
-  if (normalizedRole in DASHBOARD_ROUTES) {
-    return DASHBOARD_ROUTES[normalizedRole];
-  }
+  // Priority order: LEAGUE_ADMIN > CLUB_MANAGER > COACH > TREASURER > PLAYER_PRO > PLAYER > PARENT
+  if (roles.includes('LEAGUE_ADMIN')) return DASHBOARD_ROUTES.LEAGUE_ADMIN;
+  if (roles.includes('CLUB_MANAGER')) return DASHBOARD_ROUTES.CLUB_MANAGER;
+  if (roles.includes('COACH')) return DASHBOARD_ROUTES.COACH;
+  if (roles.includes('TREASURER')) return DASHBOARD_ROUTES.TREASURER;
+  if (roles.includes('PLAYER_PRO')) return DASHBOARD_ROUTES.PLAYER_PRO;
+  if (roles.includes('PLAYER')) return DASHBOARD_ROUTES.PLAYER;
+  if (roles.includes('PARENT')) return DASHBOARD_ROUTES.PARENT;
 
-  return DASHBOARD_ROUTES[DEFAULT_ROLE];
+  // Default fallback
+  return '/dashboard/player';
 };
 
 export default function DashboardRouter() {
@@ -49,9 +62,7 @@ export default function DashboardRouter() {
   const router = useRouter();
 
   useEffect(() => {
-    if (status === 'loading') {
-      return;
-    }
+    if (status === 'loading') return;
 
     if (status === 'unauthenticated') {
       router.replace('/auth/login');
@@ -59,8 +70,8 @@ export default function DashboardRouter() {
     }
 
     if (status === 'authenticated' && session?.user) {
-      const userType = session.user.userType ?? DEFAULT_ROLE;
-      const route = getDashboardRoute(userType);
+      const route = getDashboardRoute(session.user);
+      console.log('🔄 Routing to:', route, 'User:', session.user);
       router.replace(route);
     }
   }, [status, session, router]);

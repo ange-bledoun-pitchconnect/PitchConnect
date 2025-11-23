@@ -1,114 +1,192 @@
-/**
- * Player Dashboard API
- * Get player dashboard data
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
+import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get user
-    const user = await prisma.user.findFirst({
+    const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Get player record
-    const player = await prisma.player.findFirst({
+    // Get or create player profile
+    let player = await prisma.player.findUnique({
       where: { userId: user.id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        position: true,
+        shirtNumber: true,
+        preferredFoot: true,
+        nationality: true,
+        dateOfBirth: true,
+        height: true,
+        weight: true,
+        developmentNotes: true, // 🔧 FIXED: Using developmentNotes instead of bio
+        status: true,
+      },
     });
 
+    // 🔧 AUTO-CREATE PLAYER PROFILE IF NOT EXISTS
     if (!player) {
-      return NextResponse.json(
-        { error: 'Player not found' },
-        { status: 404 }
-      );
+      console.log('🆕 Creating player profile for user:', user.email);
+      
+      player = await prisma.player.create({
+        data: {
+          userId: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          dateOfBirth: user.dateOfBirth || new Date('2000-01-01'),
+          nationality: user.nationality || 'Not Specified',
+          position: 'MIDFIELDER',
+          preferredFoot: 'RIGHT',
+          status: 'ACTIVE',
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          position: true,
+          shirtNumber: true,
+          preferredFoot: true,
+          nationality: true,
+          dateOfBirth: true,
+          height: true,
+          weight: true,
+          developmentNotes: true,
+          status: true,
+        },
+      });
+
+      console.log('✅ Player profile created:', player.id);
     }
 
-    // Get teams
-    const teams = await prisma.team.findMany({
+    // Get player's teams
+    const teams = await prisma.teamMember.findMany({
       where: {
-        players: {
-          some: {
-            id: player.id,
+        userId: user.id,
+        status: 'ACTIVE',
+      },
+      include: {
+        team: {
+          include: {
+            club: {
+              select: {
+                id: true,
+                name: true,
+                city: true,
+                country: true,
+                logoUrl: true,
+              },
+            },
+            _count: {
+              select: {
+                members: true,
+              },
+            },
           },
         },
       },
+      orderBy: {
+        joinedAt: 'desc',
+      },
     });
 
-    // Get player stats
-    const stats = await prisma.playerStats.findFirst({
-      where: { playerId: player.id },
-    });
-
-    // Get recent matches (home and away)
-    const teamIds = teams.map((t) => t.id);
-
-    const recentMatches = await prisma.match.findMany({
+    // Get pending join requests
+    const pendingRequests = await prisma.joinRequest.findMany({
       where: {
-        OR: [
-          { homeTeamId: { in: teamIds } },
-          { awayTeamId: { in: teamIds } },
-        ],
+        userId: user.id,
+        status: 'PENDING',
       },
-      take: 5,
-      orderBy: { date: 'desc' },
       include: {
-        homeTeam: true,
-        awayTeam: true,
+        team: {
+          include: {
+            club: {
+              select: {
+                id: true,
+                name: true,
+                city: true,
+                country: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
+
+    // Calculate stats
+    const stats = {
+      totalTeams: teams.length,
+      totalMatches: 0,
+      totalGoals: 0,
+      pendingRequests: pendingRequests.length,
+    };
 
     return NextResponse.json({
       player: {
         id: player.id,
-        name: `${user.firstName} ${user.lastName}`,
-        email: user.email,
+        firstName: player.firstName,
+        lastName: player.lastName,
         position: player.position,
-        shirtNumber: player.shirtNumber,
+        jerseyNumber: player.shirtNumber, // 🔧 Map shirtNumber to jerseyNumber
+        preferredFoot: player.preferredFoot,
+        nationality: player.nationality,
+        dateOfBirth: player.dateOfBirth.toISOString(),
+        height: player.height,
+        weight: player.weight,
+        bio: player.developmentNotes, // 🔧 Map developmentNotes to bio
+        status: player.status,
+        teams: teams.map((tm) => ({
+          id: tm.id,
+          role: tm.role,
+          joinedAt: tm.joinedAt.toISOString(),
+          team: {
+            id: tm.team.id,
+            name: tm.team.name,
+            ageGroup: tm.team.ageGroup,
+            category: tm.team.category,
+            club: tm.team.club,
+            _count: tm.team._count,
+          },
+        })),
+        pendingRequests: pendingRequests.map((req) => ({
+          id: req.id,
+          status: req.status,
+          createdAt: req.createdAt.toISOString(),
+          team: {
+            id: req.team.id,
+            name: req.team.name,
+            ageGroup: req.team.ageGroup,
+            category: req.team.category,
+            club: req.team.club,
+          },
+        })),
+        stats,
       },
-      teams: teams.map((team) => ({
-        id: team.id,
-        name: team.name,
-      })),
-      stats: {
-        appearances: stats?.appearances || 0,
-        goals: stats?.goals || 0,
-        assists: stats?.assists || 0,
-        rating: stats?.rating || 0,
-      },
-      recentMatches: recentMatches.map((match) => ({
-        id: match.id,
-        date: match.date,
-        homeTeam: match.homeTeam?.name || 'N/A',
-        awayTeam: match.awayTeam?.name || 'N/A',
-        homeScore: match.homeScore,
-        awayScore: match.awayScore,
-        status: match.status,
-      })),
     });
   } catch (error) {
-    console.error('Player dashboard error:', error);
+    console.error('❌ Player dashboard error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Failed to fetch player dashboard',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: process.env.NODE_ENV === 'development' ? (error as Error).stack : undefined,
+      },
       { status: 500 }
     );
   }

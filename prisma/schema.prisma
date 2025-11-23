@@ -2,7 +2,7 @@
 // PITCHCONNECT DATABASE SCHEMA (Prisma ORM)
 // PostgreSQL via Supabase
 // Production-ready with TypeScript strict mode support
-// ENHANCED: Clubs, Teams, Match Attendance, Treasurer, Coach Timesheets
+// ENHANCED: Clubs, Teams, Match Attendance, Treasurer, Coach Timesheets, Join Requests
 // ============================================================================
 
 generator client {
@@ -150,6 +150,7 @@ enum NotificationType {
   TIMESHEET_APPROVED
   TIMESHEET_REJECTED
   PAYMENT_PROCESSED
+  JOIN_REQUEST
 }
 
 enum TrainingIntensity {
@@ -235,6 +236,7 @@ model User {
   phoneNumber   String?
   avatar        String?
   dateOfBirth   DateTime?
+  nationality   String?
 
   roles  UserRole[]
   status UserStatus @default(PENDING_VERIFICATION)
@@ -268,11 +270,12 @@ model User {
   approvedTimesheets  CoachTimesheet[]     @relation("TimesheetApprover")
   processedPayments   CoachPayment[]       @relation("PaymentProcessor")
   
-  // 🆕 NEW: Club & Team Relations
+  // Club & Team Relations
   ownedClubs          Club[]               @relation("ClubOwner")
   clubMemberships     ClubMember[]         @relation("ClubMemberships")
   teamMemberships     TeamMember[]         @relation("TeamMemberships")
   userRoles           UserRole_User[]      @relation("UserRoles")
+  joinRequests        JoinRequest[]        @relation("UserJoinRequests")
 
   @@index([email])
   @@index([status])
@@ -280,7 +283,7 @@ model User {
   @@map("users")
 }
 
-// 🆕 NEW: UserRole Junction Table
+// UserRole Junction Table
 model UserRole_User {
   id       String   @id @default(cuid())
   userId   String
@@ -360,7 +363,7 @@ model UserPreferences {
 }
 
 // ============================================================================
-// 🆕 NEW: CLUB & TEAM MODELS
+// CLUB & TEAM MODELS
 // ============================================================================
 
 model Club {
@@ -420,8 +423,9 @@ model Team {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club    Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  members TeamMember[]
+  club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  members      TeamMember[]
+  joinRequests JoinRequest[]
 
   @@index([clubId])
   @@index([status])
@@ -446,6 +450,24 @@ model TeamMember {
   @@index([teamId])
   @@index([userId])
   @@map("team_members")
+}
+
+model JoinRequest {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation("UserJoinRequests", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@index([teamId])
+  @@index([status])
+  @@map("join_requests")
 }
 
 // ============================================================================
@@ -915,7 +937,7 @@ model TrainingSession {
   focus    String
   notes    String?  @db.Text
 
-  team       OldTeam            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team       OldTeam              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   coach      Coach                @relation(fields: [coachId], references: [id])
   drills     SessionDrill[]
   attendance TrainingAttendance[]
