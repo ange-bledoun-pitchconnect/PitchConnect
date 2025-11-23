@@ -7,11 +7,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { db } from '@/lib/db';
+import prisma from '@/lib/prisma';
 
 /**
  * GET /api/teams
- * Get all teams with pagination
+ * Get all teams with pagination and filtering
  */
 export async function GET(req: NextRequest) {
   try {
@@ -23,20 +23,48 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const clubId = searchParams.get('clubId');
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '50'); // Increased for match creation
+    const status = searchParams.get('status') || 'ACTIVE';
+    const includeOldTeams = searchParams.get('includeOldTeams') === 'true';
 
     const skip = (page - 1) * limit;
 
-    const teams = await db.team.findMany({
-      where: clubId ? { clubId } : {},
+    // Build where clause for new Team model
+    const whereClause: any = {
+      status: status || undefined,
+    };
+
+    if (clubId) {
+      whereClause.clubId = clubId;
+    }
+
+    // Get new Team model teams
+    const newTeams = await prisma.team.findMany({
+      where: whereClause,
       include: {
-        club: true,
-        coach: { include: { user: true } },
-        players: {
+        club: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+            country: true,
+          },
+        },
+        members: {
           include: {
-            player: {
-              include: { user: true },
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
             },
+          },
+        },
+        _count: {
+          select: {
+            members: true,
           },
         },
       },
@@ -45,13 +73,96 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    const total = await db.team.count({
-      where: clubId ? { clubId } : {},
-    });
+    // If includeOldTeams is true, also fetch from OldTeam model
+    let oldTeams: any[] = [];
+    if (includeOldTeams) {
+      const oldTeamWhere: any = {
+        status: status || undefined,
+      };
+
+      if (clubId) {
+        oldTeamWhere.clubId = clubId;
+      }
+
+      oldTeams = await prisma.oldTeam.findMany({
+        where: oldTeamWhere,
+        include: {
+          club: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              country: true,
+            },
+          },
+          coach: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              players: true,
+            },
+          },
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    // Transform new teams
+    const transformedNewTeams = newTeams.map((team) => ({
+      id: team.id,
+      name: team.name,
+      ageGroup: team.ageGroup,
+      category: team.category,
+      status: team.status,
+      club: team.club,
+      memberCount: team._count.members,
+      type: 'NEW_TEAM',
+      createdAt: team.createdAt,
+    }));
+
+    // Transform old teams
+    const transformedOldTeams = oldTeams.map((team) => ({
+      id: team.id,
+      name: team.name,
+      category: team.category,
+      season: team.season,
+      status: team.status,
+      club: team.club,
+      coach: team.coach
+        ? {
+            id: team.coach.id,
+            name: `${team.coach.user.firstName} ${team.coach.user.lastName}`,
+            email: team.coach.user.email,
+          }
+        : null,
+      playerCount: team._count.players,
+      type: 'OLD_TEAM',
+      createdAt: team.createdAt,
+    }));
+
+    // Combine and sort by createdAt
+    const allTeams = [...transformedNewTeams, ...transformedOldTeams].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    const total = newTeams.length + oldTeams.length;
 
     return NextResponse.json(
       {
-        data: teams,
+        teams: allTeams, // Changed from 'data' to 'teams' for consistency
+        data: allTeams, // Keep for backward compatibility
         pagination: {
           page,
           limit,
@@ -64,7 +175,10 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('[API] Teams GET error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Failed to fetch teams',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
@@ -82,35 +196,60 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { clubId, name, category, season, coachId } = body;
+    const { clubId, name, ageGroup, category } = body;
 
-    if (!clubId || !name || !category || !coachId) {
+    if (!clubId || !name) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Club ID and team name are required' },
         { status: 400 }
       );
     }
 
-    const team = await db.team.create({
+    // Verify club exists
+    const club = await prisma.club.findUnique({
+      where: { id: clubId },
+    });
+
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    // Create team
+    const team = await prisma.team.create({
       data: {
         clubId,
         name,
-        category,
-        season: season || new Date().getFullYear(),
-        coachId,
+        ageGroup: ageGroup || 'SENIOR',
+        category: category || 'FIRST_TEAM',
         status: 'ACTIVE',
       },
       include: {
-        club: true,
-        coach: true,
+        club: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+            country: true,
+          },
+        },
       },
     });
 
-    return NextResponse.json(team, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        team,
+        message: 'Team created successfully',
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('[API] Teams POST error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Failed to create team',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 }
     );
   }
