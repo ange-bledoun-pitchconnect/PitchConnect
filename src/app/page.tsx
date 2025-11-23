@@ -331,7 +331,7 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link href="/auth/signin">
+            <Link href="/auth/login">
               <Button variant="ghost" className="text-charcoal-700 hover:text-gold-600 font-semibold">
                 Sign In
               </Button>
