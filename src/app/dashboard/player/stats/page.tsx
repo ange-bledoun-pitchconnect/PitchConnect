@@ -308,7 +308,7 @@ export default function PlayerStatsPage() {
                 <div
                   className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all"
                   style={{
-                    width: `${Math.min((stats.currentSeason.expectedGoals / stats.currentSeason.goals) * 100, 100)}%`,
+                    width: `${Math.min((stats.currentSeason.expectedGoals / (stats.currentSeason.goals || 1)) * 100, 100)}%`,
                   }}
                 />
               </div>
@@ -419,7 +419,7 @@ export default function PlayerStatsPage() {
               </div>
             </div>
 
-            {/* Insight */}
+            {/* Insight - THIS WAS THE BROKEN SECTION */}
             <div className="pt-4 border-t border-neutral-200">
               {stats.currentSeason.passingAccuracy >= 85 ? (
                 <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
@@ -431,4 +431,203 @@ export default function PlayerStatsPage() {
               ) : (
                 <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <Award className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm
+                  <p className="text-sm text-blue-700 font-medium">
+                    Solid defensive contribution with good passing
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* PHYSICAL PERFORMANCE */}
+      <Card className="bg-white border border-neutral-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-orange-50 to-transparent pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="w-6 h-6 text-orange-500" />
+            Physical Performance
+          </CardTitle>
+          <CardDescription>Distance & speed metrics</CardDescription>
+        </CardHeader>
+        <CardContent className="grid md:grid-cols-3 gap-8">
+          <div className="p-4 bg-gradient-to-br from-orange-50 to-transparent rounded-xl border border-orange-200">
+            <p className="text-sm text-charcoal-600 font-semibold mb-3">Distance Per Match</p>
+            <p className="text-4xl font-bold text-orange-500 mb-2">{stats.physical.distancePerMatch} km</p>
+            <div className="flex items-center gap-2 text-xs text-green-600 font-semibold">
+              <ArrowUp className="w-3 h-3" />
+              Above team average
+            </div>
+          </div>
+
+          <div className="p-4 bg-gradient-to-br from-purple-50 to-transparent rounded-xl border border-purple-200">
+            <p className="text-sm text-charcoal-600 font-semibold mb-3">Top Speed</p>
+            <p className="text-4xl font-bold text-purple-600 mb-2">{stats.physical.topSpeed} km/h</p>
+            <div className="flex items-center gap-2 text-xs text-green-600 font-semibold">
+              <ArrowUp className="w-3 h-3" />
+              Excellent fitness
+            </div>
+          </div>
+
+          <div className="p-4 bg-gradient-to-br from-gold-50 to-transparent rounded-xl border border-gold-200">
+            <p className="text-sm text-charcoal-600 font-semibold mb-3">Sprints Per Match</p>
+            <p className="text-4xl font-bold text-gold-600 mb-2">{stats.physical.sprintsPerMatch}</p>
+            <div className="flex items-center gap-2 text-xs text-green-600 font-semibold">
+              <ArrowUp className="w-3 h-3" />
+              High intensity
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* RECENT FORM */}
+      <Card className="bg-white border border-neutral-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-blue-50 to-transparent pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="w-6 h-6 text-blue-600" />
+            Recent Form
+          </CardTitle>
+          <CardDescription>Last 5 matches</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {stats.recentForm.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-charcoal-600">No recent matches</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {stats.recentForm.map((match) => (
+                <div
+                  key={match.matchId}
+                  className="flex items-center justify-between p-4 bg-neutral-50 rounded-lg border border-neutral-200 hover:shadow-md transition-all"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <p className="font-semibold text-charcoal-900">{match.opponent}</p>
+                      <Badge
+                        className={
+                          match.result === 'WIN'
+                            ? 'bg-green-100 text-green-700 border-green-300'
+                            : match.result === 'DRAW'
+                            ? 'bg-orange-100 text-orange-700 border-orange-300'
+                            : 'bg-red-100 text-red-700 border-red-300'
+                        }
+                      >
+                        {match.result}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-charcoal-600">
+                      {new Date(match.date).toLocaleDateString('en-GB', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-8">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-green-600">{match.goals}</p>
+                      <p className="text-xs text-charcoal-600">Goals</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-purple-600">{match.assists}</p>
+                      <p className="text-xs text-charcoal-600">Assists</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-orange-600">{match.rating.toFixed(1)}</p>
+                      <p className="text-xs text-charcoal-600">Rating</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* SEASON COMPARISON */}
+      <Card className="bg-white border border-neutral-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-purple-50 to-transparent pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-purple-600" />
+            Season Comparison
+          </CardTitle>
+          <CardDescription>Year-over-year performance</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-neutral-200">
+                  <th className="px-4 py-3 text-left text-xs font-bold text-charcoal-700 uppercase tracking-wider">
+                    Metric
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 uppercase tracking-wider">
+                    2023/24
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 uppercase tracking-wider">
+                    2024/25
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 uppercase tracking-wider">
+                    Change
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200">
+                {[
+                  {
+                    metric: 'Appearances',
+                    prev: stats.previousSeason.matches,
+                    curr: stats.currentSeason.matches,
+                  },
+                  {
+                    metric: 'Goals',
+                    prev: stats.previousSeason.goals,
+                    curr: stats.currentSeason.goals,
+                  },
+                  {
+                    metric: 'Assists',
+                    prev: stats.previousSeason.assists,
+                    curr: stats.currentSeason.assists,
+                  },
+                  {
+                    metric: 'Avg Rating',
+                    prev: stats.previousSeason.averageRating,
+                    curr: stats.overview.averageRating,
+                  },
+                ].map((stat) => {
+                  const change = calculateChange(stat.curr, stat.prev);
+                  const isPositive = stat.curr >= stat.prev;
+
+                  return (
+                    <tr key={stat.metric} className="hover:bg-purple-50 transition-colors">
+                      <td className="px-4 py-4 font-bold text-charcoal-900">{stat.metric}</td>
+                      <td className="px-4 py-4 text-center text-charcoal-600">{stat.prev}</td>
+                      <td className="px-4 py-4 text-center font-bold text-purple-600">{stat.curr}</td>
+                      <td className="px-4 py-4 text-center">
+                        <span
+                          className={`px-3 py-1 ${
+                            isPositive
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700'
+                          } rounded-full text-xs font-semibold flex items-center justify-center gap-1 inline-flex`}
+                        >
+                          {isPositive ? (
+                            <ArrowUp className="w-3 h-3" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3" />
+                          )}
+                          {change}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

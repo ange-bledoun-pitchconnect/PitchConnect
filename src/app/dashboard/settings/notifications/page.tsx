@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,6 +21,7 @@ import {
   Save,
   RotateCcw,
   Zap,
+  Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -43,9 +44,29 @@ interface NotificationCategory {
   sms: boolean;
 }
 
+interface QuietHours {
+  enabled: boolean;
+  startTime: string;
+  endTime: string;
+}
+
+interface NotificationSettings {
+  channels: NotificationChannel[];
+  categories: NotificationCategory[];
+  quietHours: QuietHours;
+  frequency: string;
+}
+
 export default function NotificationsPage() {
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [frequency, setFrequency] = useState('instant');
+  const [quietHours, setQuietHours] = useState<QuietHours>({
+    enabled: true,
+    startTime: '22:00',
+    endTime: '08:00',
+  });
 
   const [channels, setChannels] = useState<NotificationChannel[]>([
     {
@@ -76,7 +97,7 @@ export default function NotificationsPage() {
       id: 'sms',
       name: 'SMS',
       icon: <MessageSquare className="w-6 h-6" />,
-      description: 'Receive text messages',
+      description: 'Receive text messages (Premium)',
       enabled: false,
       color: 'from-green-500 to-green-600',
     },
@@ -102,11 +123,29 @@ export default function NotificationsPage() {
       sms: false,
     },
     {
+      id: 'training',
+      name: 'Training Sessions',
+      description: 'Training reminders and session updates',
+      email: true,
+      push: true,
+      inApp: true,
+      sms: false,
+    },
+    {
       id: 'performance',
       name: 'Performance Updates',
       description: 'Stats, achievements, and progress',
       email: true,
       push: false,
+      inApp: true,
+      sms: false,
+    },
+    {
+      id: 'payments',
+      name: 'Payment Alerts',
+      description: 'Timesheet approvals and payment notifications',
+      email: true,
+      push: true,
       inApp: true,
       sms: false,
     },
@@ -139,6 +178,32 @@ export default function NotificationsPage() {
     },
   ]);
 
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const response = await fetch('/api/settings/notifications');
+      if (!response.ok) throw new Error('Failed to fetch settings');
+
+      const data = await response.json();
+      
+      // Update state with fetched settings
+      if (data.settings) {
+        if (data.settings.channels) setChannels(data.settings.channels);
+        if (data.settings.categories) setCategories(data.settings.categories);
+        if (data.settings.quietHours) setQuietHours(data.settings.quietHours);
+        if (data.settings.frequency) setFrequency(data.settings.frequency);
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+      toast.error('Failed to load notification settings');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleChannelToggle = (channelId: string) => {
     setChannels((prev) =>
       prev.map((ch) =>
@@ -160,18 +225,67 @@ export default function NotificationsPage() {
     setHasChanges(true);
   };
 
+  const handleQuietHoursToggle = () => {
+    setQuietHours((prev) => ({ ...prev, enabled: !prev.enabled }));
+    setHasChanges(true);
+  };
+
+  const handleQuietHoursChange = (field: 'startTime' | 'endTime', value: string) => {
+    setQuietHours((prev) => ({ ...prev, [field]: value }));
+    setHasChanges(true);
+  };
+
+  const handleFrequencyChange = (value: string) => {
+    setFrequency(value);
+    setHasChanges(true);
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    toast.success('Notification settings saved!');
-    setIsSaving(false);
+
+    try {
+      const response = await fetch('/api/settings/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channels,
+          categories,
+          quietHours,
+          frequency,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to save settings');
+
+      toast.success('✅ Notification settings saved successfully!');
+      setHasChanges(false);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Failed to save notification settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    if (!confirm('Are you sure you want to reset to default settings?')) return;
+
+    setIsLoading(true);
+    await fetchSettings();
+    toast.success('🔄 Settings reset to defaults');
     setHasChanges(false);
   };
 
-  const handleReset = () => {
-    toast.success('Settings reset to defaults');
-    setHasChanges(false);
-  };
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" />
+          <p className="text-charcoal-600">Loading notification settings...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -196,8 +310,17 @@ export default function NotificationsPage() {
               disabled={isSaving}
               className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-bold shadow-md disabled:opacity-50"
             >
-              <Save className="w-4 h-4 mr-2" />
-              {isSaving ? 'Saving...' : 'Save Changes'}
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Changes
+                </>
+              )}
             </Button>
           </div>
         )}
@@ -220,7 +343,7 @@ export default function NotificationsPage() {
                 onClick={() => handleChannelToggle(channel.id)}
                 className={`p-6 rounded-xl border-2 transition-all transform hover:scale-102 text-left ${
                   channel.enabled
-                    ? `border-${channel.color.split('-')[1]}-500 bg-${channel.color.split('-')[1]}-50 shadow-md`
+                    ? 'border-blue-500 bg-blue-50 shadow-md'
                     : 'border-neutral-200 bg-neutral-50 hover:border-neutral-300'
                 }`}
               >
@@ -296,10 +419,8 @@ export default function NotificationsPage() {
                         <input
                           type="checkbox"
                           checked={category.email}
-                          onChange={() =>
-                            handleCategoryChange(category.id, 'email')
-                          }
-                          className="w-5 h-5 rounded border-neutral-300 text-blue-600 cursor-pointer"
+                          onChange={() => handleCategoryChange(category.id, 'email')}
+                          className="w-5 h-5 rounded border-neutral-300 text-blue-600 cursor-pointer focus:ring-2 focus:ring-blue-500"
                         />
                       </label>
                     </td>
@@ -309,7 +430,7 @@ export default function NotificationsPage() {
                           type="checkbox"
                           checked={category.push}
                           onChange={() => handleCategoryChange(category.id, 'push')}
-                          className="w-5 h-5 rounded border-neutral-300 text-purple-600 cursor-pointer"
+                          className="w-5 h-5 rounded border-neutral-300 text-purple-600 cursor-pointer focus:ring-2 focus:ring-purple-500"
                         />
                       </label>
                     </td>
@@ -318,10 +439,8 @@ export default function NotificationsPage() {
                         <input
                           type="checkbox"
                           checked={category.inApp}
-                          onChange={() =>
-                            handleCategoryChange(category.id, 'inApp')
-                          }
-                          className="w-5 h-5 rounded border-neutral-300 text-gold-600 cursor-pointer"
+                          onChange={() => handleCategoryChange(category.id, 'inApp')}
+                          className="w-5 h-5 rounded border-neutral-300 text-gold-600 cursor-pointer focus:ring-2 focus:ring-gold-500"
                         />
                       </label>
                     </td>
@@ -331,7 +450,8 @@ export default function NotificationsPage() {
                           type="checkbox"
                           checked={category.sms}
                           onChange={() => handleCategoryChange(category.id, 'sms')}
-                          className="w-5 h-5 rounded border-neutral-300 text-green-600 cursor-pointer"
+                          disabled={!channels.find((c) => c.id === 'sms')?.enabled}
+                          className="w-5 h-5 rounded border-neutral-300 text-green-600 cursor-pointer focus:ring-2 focus:ring-green-500 disabled:opacity-30 disabled:cursor-not-allowed"
                         />
                       </label>
                     </td>
@@ -356,33 +476,38 @@ export default function NotificationsPage() {
           <label className="flex items-center gap-3 p-4 bg-orange-50 rounded-lg border border-orange-200 cursor-pointer hover:border-orange-300 transition-all">
             <input
               type="checkbox"
-              defaultChecked
-              className="w-5 h-5 rounded border-neutral-300 text-orange-600 cursor-pointer"
+              checked={quietHours.enabled}
+              onChange={handleQuietHoursToggle}
+              className="w-5 h-5 rounded border-neutral-300 text-orange-600 cursor-pointer focus:ring-2 focus:ring-orange-500"
             />
             <div className="flex-1">
               <p className="font-semibold text-charcoal-900">Enable Quiet Hours</p>
-              <p className="text-xs text-charcoal-600">Mute notifications during set times</p>
+              <p className="text-xs text-charcoal-600">Mute non-urgent notifications during set times</p>
             </div>
           </label>
 
-          <div className="grid md:grid-cols-2 gap-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-charcoal-700">Start Time</label>
-              <input
-                type="time"
-                defaultValue="22:00"
-                className="w-full p-3 rounded-lg border-2 border-neutral-200 hover:border-orange-300 focus:border-orange-500"
-              />
+          {quietHours.enabled && (
+            <div className="grid md:grid-cols-2 gap-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-charcoal-700">Start Time</label>
+                <input
+                  type="time"
+                  value={quietHours.startTime}
+                  onChange={(e) => handleQuietHoursChange('startTime', e.target.value)}
+                  className="w-full p-3 rounded-lg border-2 border-neutral-200 hover:border-orange-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-charcoal-700">End Time</label>
+                <input
+                  type="time"
+                  value={quietHours.endTime}
+                  onChange={(e) => handleQuietHoursChange('endTime', e.target.value)}
+                  className="w-full p-3 rounded-lg border-2 border-neutral-200 hover:border-orange-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-charcoal-700">End Time</label>
-              <input
-                type="time"
-                defaultValue="08:00"
-                className="w-full p-3 rounded-lg border-2 border-neutral-200 hover:border-orange-300 focus:border-orange-500"
-              />
-            </div>
-          </div>
+          )}
 
           <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -393,31 +518,33 @@ export default function NotificationsPage() {
         </CardContent>
       </Card>
 
-      {/* NOTIFICATION SCHEDULE */}
+      {/* NOTIFICATION FREQUENCY */}
       <Card className="bg-white border border-neutral-200 shadow-sm">
         <CardHeader className="bg-gradient-to-r from-green-50 to-transparent pb-4">
           <CardTitle className="flex items-center gap-2">
             <Clock className="w-6 h-6 text-green-600" />
-            Frequency
+            Notification Frequency
           </CardTitle>
           <CardDescription>How often you receive notification digests</CardDescription>
         </CardHeader>
         <CardContent className="pt-6 space-y-3">
           {[
-            { label: 'Instant', desc: 'Get notified immediately' },
-            { label: 'Hourly Digest', desc: 'Consolidated notifications every hour' },
-            { label: 'Daily Digest', desc: 'Summary at the end of the day' },
-            { label: 'Weekly Digest', desc: 'Weekly summary on Sundays' },
-          ].map((option, idx) => (
+            { value: 'instant', label: 'Instant', desc: 'Get notified immediately' },
+            { value: 'hourly', label: 'Hourly Digest', desc: 'Consolidated notifications every hour' },
+            { value: 'daily', label: 'Daily Digest', desc: 'Summary at the end of the day' },
+            { value: 'weekly', label: 'Weekly Digest', desc: 'Weekly summary on Sundays' },
+          ].map((option) => (
             <label
-              key={idx}
+              key={option.value}
               className="flex items-center gap-3 p-4 bg-neutral-50 rounded-lg border border-neutral-200 cursor-pointer hover:border-green-300 transition-all"
             >
               <input
                 type="radio"
                 name="frequency"
-                defaultChecked={idx === 0}
-                className="w-5 h-5 cursor-pointer"
+                value={option.value}
+                checked={frequency === option.value}
+                onChange={(e) => handleFrequencyChange(e.target.value)}
+                className="w-5 h-5 cursor-pointer text-green-600 focus:ring-2 focus:ring-green-500"
               />
               <div className="flex-1">
                 <p className="font-semibold text-charcoal-900">{option.label}</p>
@@ -428,80 +555,33 @@ export default function NotificationsPage() {
         </CardContent>
       </Card>
 
-      {/* NOTIFICATION HISTORY */}
-      <Card className="bg-white border border-neutral-200 shadow-sm">
-        <CardHeader className="bg-gradient-to-r from-purple-50 to-transparent pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <Eye className="w-6 h-6 text-purple-600" />
-            Notification History
-          </CardTitle>
-          <CardDescription>Your recent notifications</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <div className="space-y-3">
-            {[
-              {
-                title: 'Match Starting Soon',
-                message: 'Arsenal vs Manchester City starts in 1 hour',
-                time: '2 hours ago',
-                channel: 'push',
-              },
-              {
-                title: 'Team Invite',
-                message: 'You were invited to join Power League',
-                time: '1 day ago',
-                channel: 'email',
-              },
-              {
-                title: 'New Achievement',
-                message: 'You earned the "Top Scorer" achievement',
-                time: '2 days ago',
-                channel: 'inApp',
-              },
-            ].map((notif, idx) => (
-              <div
-                key={idx}
-                className="p-4 bg-neutral-50 rounded-lg border border-neutral-200 hover:border-gold-300 transition-all"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="font-bold text-charcoal-900">{notif.title}</p>
-                    <p className="text-sm text-charcoal-600 mt-1">{notif.message}</p>
-                  </div>
-                  <span className="text-xs text-charcoal-500 whitespace-nowrap ml-2">
-                    {notif.time}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="px-2 py-1 bg-neutral-200 text-neutral-700 rounded-full capitalize font-semibold">
-                    {notif.channel === 'push'
-                      ? '📱 Push'
-                      : notif.channel === 'email'
-                      ? '📧 Email'
-                      : '🔔 In-App'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <Button
-            variant="outline"
-            className="w-full mt-4 border-charcoal-300 text-charcoal-700 hover:bg-charcoal-50 font-semibold"
-          >
-            View Full History
-          </Button>
-        </CardContent>
-      </Card>
-
       {/* SAVE REMINDER */}
       {hasChanges && (
-        <div className="p-4 bg-gold-50 border-l-4 border-gold-500 rounded-lg flex items-start gap-3">
+        <div className="p-4 bg-gold-50 border-l-4 border-gold-500 rounded-lg flex items-start gap-3 sticky bottom-4 shadow-lg">
           <AlertCircle className="w-5 h-5 text-gold-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-semibold text-charcoal-900">You have unsaved changes</p>
-            <p className="text-sm text-charcoal-700 mt-1">Click the "Save Changes" button to apply your notification preferences.</p>
+            <p className="text-sm text-charcoal-700 mt-1">
+              Click the "Save Changes" button at the top to apply your notification preferences.
+            </p>
           </div>
+          <Button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-bold"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Now
+              </>
+            )}
+          </Button>
         </div>
       )}
     </div>
