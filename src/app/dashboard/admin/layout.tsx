@@ -4,33 +4,34 @@
 'use client';
 
 import { useSession, signOut } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import {
   LayoutDashboard,
   Users,
   CreditCard,
   BarChart3,
   Settings,
-  LogOut,
+  Activity,
+  Eye,
+  Rss,
   Menu,
   X,
   Shield,
-  Activity,
-  Eye,
   ChevronRight,
-  AlertCircle
 } from 'lucide-react';
+import { AdminHeader } from '@/components/admin/AdminHeader';
 
+// UPDATED: Reordered with Feed as #2
 const NAV_ITEMS = [
-  { href: '/dashboard/admin', label: 'Overview', icon: LayoutDashboard },
+  { href: '/dashboard/admin', label: 'System Overview', icon: LayoutDashboard },
+  { href: '/dashboard/admin/feed', label: 'Feed', icon: Rss }, // NEW - #2 position
   { href: '/dashboard/admin/users', label: 'User Management', icon: Users },
+  { href: '/dashboard/admin/impersonate', label: 'View as User', icon: Eye },
   { href: '/dashboard/admin/subscriptions', label: 'Subscriptions & Billing', icon: CreditCard },
   { href: '/dashboard/admin/financial', label: 'Financial Reports', icon: BarChart3 },
   { href: '/dashboard/admin/system', label: 'System & Logs', icon: Activity },
-  { href: '/dashboard/admin/impersonate', label: 'View as User', icon: Eye },
   { href: '/dashboard/admin/settings', label: 'Admin Settings', icon: Settings },
 ];
 
@@ -41,6 +42,7 @@ export default function AdminLayout({
 }) {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -58,7 +60,11 @@ export default function AdminLayout({
 
   // Handle mobile view
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+    };
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -66,12 +72,12 @@ export default function AdminLayout({
 
   if (status === 'loading') {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-charcoal-900">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-charcoal-900 to-black">
         <div className="text-center">
           <div className="w-16 h-16 bg-gradient-to-br from-gold-500 to-orange-400 rounded-2xl mx-auto mb-4 flex items-center justify-center">
             <Shield className="w-8 h-8 text-white animate-spin" />
           </div>
-          <p className="text-white text-lg">Loading Admin Dashboard...</p>
+          <p className="text-white text-lg font-semibold">Loading Admin Dashboard...</p>
         </div>
       </div>
     );
@@ -82,15 +88,17 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="flex h-screen bg-charcoal-900">
+    <div className="flex h-screen bg-gradient-to-br from-charcoal-900 to-black overflow-hidden">
       {/* Sidebar */}
       <aside
         className={`${
-          sidebarOpen ? 'w-64' : 'w-20'
+          sidebarOpen ? (isMobile ? 'translate-x-0' : 'w-64') : isMobile ? '-translate-x-full' : 'w-20'
+        } ${
+          isMobile ? 'fixed inset-y-0 left-0 z-50 w-64' : ''
         } bg-charcoal-800 border-r border-charcoal-700 transition-all duration-300 flex flex-col overflow-hidden`}
       >
         {/* Logo */}
-        <div className="p-4 border-b border-charcoal-700">
+        <div className="p-4 border-b border-charcoal-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-gold-500 to-orange-400 rounded-xl flex items-center justify-center flex-shrink-0">
               <Shield className="w-6 h-6 text-white" />
@@ -102,20 +110,38 @@ export default function AdminLayout({
               </div>
             )}
           </div>
+          {isMobile && (
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="text-charcoal-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4 space-y-2">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
+            const isActive = pathname === item.href;
             return (
               <Link key={item.href} href={item.href}>
-                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-charcoal-300 hover:bg-charcoal-700 hover:text-gold-400 transition-colors group">
-                  <Icon className="w-5 h-5 flex-shrink-0" />
+                <button
+                  onClick={() => isMobile && setSidebarOpen(false)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all group ${
+                    isActive
+                      ? 'bg-gold-500 text-charcoal-900'
+                      : 'text-charcoal-300 hover:bg-charcoal-700 hover:text-white'
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-charcoal-900' : ''}`} />
                   {sidebarOpen && (
                     <>
-                      <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
-                      <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <span className="text-sm font-medium flex-1 text-left">
+                        {item.label}
+                      </span>
+                      {isActive && <ChevronRight className="w-4 h-4" />}
                     </>
                   )}
                 </button>
@@ -124,83 +150,68 @@ export default function AdminLayout({
           })}
         </nav>
 
-        {/* User Info & Logout */}
-        <div className="border-t border-charcoal-700 p-4 space-y-3">
-          {sidebarOpen && (
-            <div className="text-xs">
-              <p className="text-charcoal-400">Logged in as</p>
-              <p className="text-white font-semibold truncate">{session?.user?.name}</p>
-              <p className="text-charcoal-500 text-xs truncate">{session?.user?.email}</p>
-            </div>
-          )}
-          <Button
-            onClick={() => signOut({ redirect: true, callbackUrl: '/' })}
-            variant="outline"
-            className="w-full border-red-900 text-red-400 hover:bg-red-950"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            {sidebarOpen && 'Exit Admin'}
-          </Button>
-        </div>
-
-        {/* Collapse Button */}
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="hidden md:flex items-center justify-center w-full h-12 border-t border-charcoal-700 text-charcoal-400 hover:text-gold-400 transition-colors"
-        >
-          {sidebarOpen ? (
-            <X className="w-5 h-5" />
-          ) : (
-            <Menu className="w-5 h-5" />
-          )}
-        </button>
-      </aside>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Bar */}
-        <div className="bg-charcoal-800 border-b border-charcoal-700 px-6 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-white font-bold text-lg">Admin Dashboard</p>
-            <p className="text-charcoal-400 text-sm">
-              Welcome back, {session?.user?.name?.split(' ')[0]}
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-2 bg-green-950 border border-green-800 rounded-lg">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-sm text-green-400">System Online</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        <main className="flex-1 overflow-auto">
-          <div className="p-6 max-w-7xl mx-auto">
-            {/* Admin Warning Banner */}
-            <div className="mb-6 p-4 bg-yellow-950 border border-yellow-800 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-yellow-200">
-                  You are in SuperAdmin mode
+        {/* User Info */}
+        {sidebarOpen && (
+          <div className="border-t border-charcoal-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-gold-500 to-orange-400 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
+                {session?.user?.name?.charAt(0).toUpperCase() || 'A'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-semibold truncate">
+                  {session?.user?.name}
                 </p>
-                <p className="text-xs text-yellow-300 mt-1">
-                  All actions are logged and monitored. Exercise caution when modifying user data or system settings.
+                <p className="text-charcoal-400 text-xs truncate">
+                  {session?.user?.email}
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Collapse Button (Desktop only) */}
+        {!isMobile && (
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="flex items-center justify-center w-full h-12 border-t border-charcoal-700 text-charcoal-400 hover:text-gold-400 transition-colors"
+          >
+            {sidebarOpen ? (
+              <X className="w-5 h-5" />
+            ) : (
+              <Menu className="w-5 h-5" />
+            )}
+          </button>
+        )}
+      </aside>
+
+      {/* Overlay for mobile */}
+      {isMobile && sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* AdminHeader with Notifications */}
+        <AdminHeader />
+
+        {/* Content */}
+        <main className="flex-1 overflow-auto">
+          <div className="p-6">
             {children}
           </div>
         </main>
       </div>
 
       {/* Mobile Menu Button */}
-      {isMobile && (
+      {isMobile && !sidebarOpen && (
         <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="fixed bottom-4 right-4 z-50 w-12 h-12 bg-gold-500 rounded-full flex items-center justify-center text-white shadow-lg hover:bg-gold-600"
+          onClick={() => setSidebarOpen(true)}
+          className="fixed bottom-6 right-6 z-30 w-14 h-14 bg-gradient-to-br from-gold-500 to-orange-400 rounded-full flex items-center justify-center text-white shadow-xl hover:shadow-2xl transition-all"
         >
-          {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          <Menu className="w-6 h-6" />
         </button>
       )}
     </div>

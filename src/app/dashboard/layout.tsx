@@ -1,11 +1,17 @@
+// ============================================================================
+// FILE 1: src/app/dashboard/layout.tsx 
+// ============================================================================
+
 'use client';
 
 import { ReactNode } from 'react';
 import { useSession } from 'next-auth/react';
-import { redirect } from 'next/navigation';
+import { redirect, usePathname } from 'next/navigation';
 import { DashboardSidebar } from '@/components/layout/Sidebar';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { TeamFilterProvider } from '@/lib/dashboard/team-context';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -13,6 +19,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { data: session, status } = useSession();
+  const pathname = usePathname(); // ADDED: Track current path
 
   // Redirect to login if not authenticated
   if (status === 'unauthenticated') {
@@ -30,11 +37,31 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     );
   }
 
+  // FIXED: Check if user is SuperAdmin
+  // If SuperAdmin, don't render the main dashboard sidebar
+  // Admin layout will handle its own sidebar
+  const isSuperAdmin = session?.user?.isSuperAdmin === true;
+
+  // If SuperAdmin, use minimal layout (admin layout will take over)
+  if (isSuperAdmin) {
+    return (
+      <TeamFilterProvider>
+        <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100">
+          {children}
+        </div>
+      </TeamFilterProvider>
+    );
+  }
+
+  // ADDED: Check if on settings page
+  const isSettingsPage = pathname?.startsWith('/dashboard/settings');
+
+  // Regular users get the full dashboard layout with sidebar
   return (
     <TeamFilterProvider>
       <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100">
         <div className="flex h-screen">
-          {/* SIDEBAR */}
+          {/* SIDEBAR - Only for non-SuperAdmin users */}
           <DashboardSidebar userType={session?.user?.userType as string} />
 
           {/* MAIN CONTENT */}
@@ -42,16 +69,28 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* HEADER */}
             <div className="bg-white border-b border-neutral-200 shadow-sm sticky top-0 z-40">
               <div className="px-6 py-4 flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-charcoal-900">Dashboard</h1>
+                {/* ADDED: Back button for settings pages */}
+                <div className="flex items-center gap-4">
+                  {isSettingsPage && (
+                    <Link
+                      href="/dashboard"
+                      className="flex items-center gap-2 px-3 py-2 bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-700 rounded-lg transition-colors"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      <span className="text-sm font-medium">Back to Dashboard</span>
+                    </Link>
+                  )}
+                  <h1 className="text-2xl font-bold text-charcoal-900">
+                    {isSettingsPage ? 'Settings' : 'Dashboard'}
+                  </h1>
+                </div>
                 <DashboardHeader />
               </div>
             </div>
 
             {/* PAGE CONTENT */}
             <div className="flex-1 overflow-auto">
-              <div className="p-6">
-                {children}
-              </div>
+              <div className="p-6">{children}</div>
             </div>
           </div>
         </div>

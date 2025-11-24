@@ -4,105 +4,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { isSuperAdmin } from '@/lib/auth';
-
-// ============================================================================
-// GET - Fetch System Health & Audit Logs
-// ============================================================================
 
 export async function GET(request: NextRequest) {
   try {
-    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized: No active session' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
-
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get query parameters
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'all';
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build filters for audit logs
-    const where: any = {};
-
-    switch (type) {
-      case 'user_actions':
-        where.action = {
-          in: ['USER_SUSPENDED', 'USER_UPDATED', 'USER_BANNED', 'USER_DELETED', 'ROLE_UPGRADED'],
-        };
-        break;
-      case 'subscription_actions':
-        where.action = {
-          in: [
-            'SUBSCRIPTION_GRANTED',
-            'SUBSCRIPTION_EXTENDED',
-            'SUBSCRIPTION_CHANGED',
-            'SUBSCRIPTION_REVOKED',
-          ],
-        };
-        break;
-      case 'security':
-        where.action = {
-          in: ['LOGIN_FAILED', 'UNAUTHORIZED_ACCESS', 'PASSWORD_CHANGED', 'SESSION_EXPIRED'],
-        };
-        break;
-      case 'errors':
-        where.action = { contains: 'ERROR' };
-        break;
-      // 'all' fetches everything
-    }
-
-    // Fetch audit logs
-    const logs = await prisma.auditLog.findMany({
-      where,
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: limit,
-      skip: offset,
-      include: {
-        performer: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        affected: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-    });
-
-    // Get total count
-    const total = await prisma.auditLog.count({ where });
-
-    // System health metrics (mock for now - would integrate with monitoring service)
+    // System Health Mock Data (you can enhance with real metrics)
     const health = {
-      status: 'healthy' as const,
+      status: 'healthy',
       uptime: 99.98,
       apiResponseTime: 245,
       databaseConnections: 15,
@@ -110,41 +33,88 @@ export async function GET(request: NextRequest) {
       requestsPerMinute: 1250,
     };
 
-    // Format logs
+    // Fetch audit logs from database
+    let logs = await prisma.auditLog.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 50,
+      include: {
+        performedBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        affectedUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+      },
+    }).catch(() => []);
+
+    // Filter by type
+    if (type !== 'all') {
+      switch (type) {
+        case 'useractions':
+          logs = logs.filter((log) =>
+            ['USER_SUSPENDED', 'USER_UPDATED', 'USER_BANNED', 'ROLE_UPGRADED'].includes(
+              log.action
+            )
+          );
+          break;
+        case 'subscriptionactions':
+          logs = logs.filter((log) =>
+            ['SUBSCRIPTION_GRANTED', 'SUBSCRIPTION_EXTENDED', 'SUBSCRIPTION_CHANGED'].includes(
+              log.action
+            )
+          );
+          break;
+        case 'security':
+          logs = logs.filter((log) =>
+            ['LOGIN_FAILED', 'UNAUTHORIZED_ACCESS', 'PASSWORD_CHANGED'].includes(log.action)
+          );
+          break;
+        case 'errors':
+          logs = logs.filter((log) => log.action.includes('ERROR'));
+          break;
+      }
+    }
+
+    // Format logs for response
     const formattedLogs = logs.map((log) => ({
       id: log.id,
-      performedBy: log.performedBy,
-      performedByName: log.performer
-        ? `${log.performer.firstName} ${log.performer.lastName}`
+      performedBy: log.performedById,
+      performedByName: log.performedBy
+        ? `${log.performedBy.firstName} ${log.performedBy.lastName}`
         : 'System',
-      affectedUser: log.affectedUser || undefined,
-      affectedUserName: log.affected
-        ? `${log.affected.firstName} ${log.affected.lastName}`
-        : undefined,
+      affectedUser: log.affectedUserId,
+      affectedUserName: log.affectedUser
+        ? `${log.affectedUser.firstName} ${log.affectedUser.lastName}`
+        : null,
       action: log.action,
       entityType: log.entityType,
       entityId: log.entityId,
-      reason: log.reason || 'No reason provided',
+      reason: log.reason || '',
       timestamp: log.createdAt.toISOString(),
-      ipAddress: log.metadata?.ipAddress || undefined,
+      ipAddress: log.ipAddress || null,
     }));
 
     return NextResponse.json(
       {
-        success: true,
         health,
         logs: formattedLogs,
-        pagination: {
-          total,
-          limit,
-          offset,
-          hasMore: offset + limit < total,
-        },
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error('System GET Error:', error);
+    console.error('System API Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -155,8 +125,5 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ============================================================================
-// Export route segment config
-// ============================================================================
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;

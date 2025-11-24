@@ -17,6 +17,7 @@ import {
   Activity,
   ArrowUpRight,
   ArrowDownRight,
+  RefreshCw,
 } from 'lucide-react';
 
 interface DashboardStats {
@@ -25,139 +26,201 @@ interface DashboardStats {
   monthlyRevenue: number;
   pendingUpgrades: number;
   systemHealth: number;
+  recentSignups: number;
+  userGrowth: number;
+}
+
+interface RecentActivity {
+  id: string;
+  action: string;
+  performerName: string;
+  affectedUserName: string | null;
+  timestamp: string;
 }
 
 export default function AdminOverview() {
   const { data: session } = useSession();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [activities, setActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Fetch dashboard stats
+  const fetchStats = async () => {
+    try {
+      setRefreshing(true);
+      const response = await fetch('/api/superadmin/stats');
+      const data = await response.json();
+      
+      if (response.ok) {
+        setStats(data.stats);
+        setActivities(data.recentActivities || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch stats:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    // Fetch dashboard stats
-    const fetchStats = async () => {
-      try {
-        // TODO: Replace with actual API call
-        setStats({
-          totalUsers: 1234,
-          activeSubscriptions: 456,
-          monthlyRevenue: 15680.50,
-          pendingUpgrades: 23,
-          systemHealth: 98,
-        });
-      } catch (error) {
-        console.error('Failed to fetch stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchStats();
   }, []);
 
-  const StatCard = ({
-    title,
-    value,
-    change,
-    icon: Icon,
-    color,
-  }: {
-    title: string;
-    value: string | number;
-    change?: { value: number; positive: boolean };
-    icon: any;
-    color: string;
-  }) => (
-    <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6 hover:border-gold-500 transition-colors">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-charcoal-400 text-sm font-medium">{title}</p>
-          <p className="text-3xl font-bold text-white mt-2">{value}</p>
-          {change && (
-            <div className="flex items-center gap-1 mt-2">
-              {change.positive ? (
-                <ArrowUpRight className="w-4 h-4 text-green-500" />
-              ) : (
-                <ArrowDownRight className="w-4 h-4 text-red-500" />
-              )}
-              <span
-                className={`text-sm font-semibold ${
-                  change.positive ? 'text-green-500' : 'text-red-500'
-                }`}
-              >
-                {Math.abs(change.value)}% from last month
-              </span>
-            </div>
-          )}
-        </div>
-        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${color}`}>
-          <Icon className="w-6 h-6 text-white" />
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP',
+    }).format(amount);
+  };
+
+  // Format timestamp
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+    if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+    return `${days} day${days !== 1 ? 's' : ''} ago`;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-gold-200 border-t-gold-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-charcoal-600 font-semibold">Loading dashboard...</p>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">System Overview</h1>
-        <p className="text-charcoal-400">
-          Real-time insights into PitchConnect platform performance
-        </p>
+    <div className="space-y-6">
+      {/* Header with Refresh Button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">System Overview</h1>
+          <p className="text-charcoal-400">
+            Real-time insights into PitchConnect platform performance
+          </p>
+        </div>
+        <Button
+          onClick={fetchStats}
+          disabled={refreshing}
+          className="bg-gold-600 hover:bg-gold-700 text-charcoal-900"
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </Button>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard
-          title="Total Users"
-          value={stats?.totalUsers || 0}
-          change={{ value: 12, positive: true }}
-          icon={Users}
-          color="bg-blue-900"
-        />
-        <StatCard
-          title="Active Subscriptions"
-          value={stats?.activeSubscriptions || 0}
-          change={{ value: 8, positive: true }}
-          icon={CreditCard}
-          color="bg-green-900"
-        />
-        <StatCard
-          title="Monthly Revenue"
-          value={`£${(stats?.monthlyRevenue || 0).toLocaleString('en-GB', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`}
-          change={{ value: 15, positive: true }}
-          icon={TrendingUp}
-          color="bg-gold-900"
-        />
-        <StatCard
-          title="Pending Upgrades"
-          value={stats?.pendingUpgrades || 0}
-          icon={Clock}
-          color="bg-orange-900"
-        />
-        <StatCard
-          title="System Health"
-          value={`${stats?.systemHealth || 0}%`}
-          icon={Activity}
-          color="bg-purple-900"
-        />
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        {/* Total Users */}
+        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <Users className="w-8 h-8 text-blue-500" />
+            <div className="flex items-center gap-1 text-sm">
+              {stats && stats.userGrowth >= 0 ? (
+                <>
+                  <ArrowUpRight className="w-4 h-4 text-green-500" />
+                  <span className="text-green-500 font-semibold">
+                    {stats.userGrowth}%
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ArrowDownRight className="w-4 h-4 text-red-500" />
+                  <span className="text-red-500 font-semibold">
+                    {stats?.userGrowth}%
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <h3 className="text-2xl font-bold text-white mb-1">
+            {stats?.totalUsers || 0}
+          </h3>
+          <p className="text-charcoal-400 text-sm">Total Users</p>
+          <p className="text-charcoal-500 text-xs mt-2">
+            {stats?.recentSignups || 0} from last month
+          </p>
+        </div>
+
+        {/* Active Subscriptions */}
+        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <CreditCard className="w-8 h-8 text-green-500" />
+            <div className="flex items-center gap-1 text-sm">
+              <ArrowUpRight className="w-4 h-4 text-green-500" />
+              <span className="text-green-500 font-semibold">8%</span>
+            </div>
+          </div>
+          <h3 className="text-2xl font-bold text-white mb-1">
+            {stats?.activeSubscriptions || 0}
+          </h3>
+          <p className="text-charcoal-400 text-sm">Active Subscriptions</p>
+          <p className="text-charcoal-500 text-xs mt-2">from last month</p>
+        </div>
+
+        {/* Monthly Revenue */}
+        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <TrendingUp className="w-8 h-8 text-gold-500" />
+            <div className="flex items-center gap-1 text-sm">
+              <ArrowUpRight className="w-4 h-4 text-green-500" />
+              <span className="text-green-500 font-semibold">15%</span>
+            </div>
+          </div>
+          <h3 className="text-2xl font-bold text-white mb-1">
+            {formatCurrency(stats?.monthlyRevenue || 0)}
+          </h3>
+          <p className="text-charcoal-400 text-sm">Monthly Revenue</p>
+          <p className="text-charcoal-500 text-xs mt-2">from last month</p>
+        </div>
+
+        {/* Pending Upgrades */}
+        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <Clock className="w-8 h-8 text-orange-500" />
+          </div>
+          <h3 className="text-2xl font-bold text-white mb-1">
+            {stats?.pendingUpgrades || 0}
+          </h3>
+          <p className="text-charcoal-400 text-sm">Pending Upgrades</p>
+          <p className="text-charcoal-500 text-xs mt-2">requires attention</p>
+        </div>
+
+        {/* System Health */}
+        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <Activity className="w-8 h-8 text-purple-500" />
+            <CheckCircle2 className="w-5 h-5 text-green-500" />
+          </div>
+          <h3 className="text-2xl font-bold text-white mb-1">
+            {stats?.systemHealth || 0}%
+          </h3>
+          <p className="text-charcoal-400 text-sm">System Health</p>
+          <p className="text-green-500 text-xs mt-2 font-semibold">All systems operational</p>
+        </div>
       </div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* User Management */}
         <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-bold text-white">User Management</h3>
-              <p className="text-charcoal-400 text-sm mt-1">
-                Manage users, roles, and permissions
-              </p>
-            </div>
-            <Users className="w-8 h-8 text-blue-500" />
-          </div>
+          <Users className="w-8 h-8 text-blue-500 mb-4" />
+          <h3 className="text-xl font-bold text-white mb-2">User Management</h3>
+          <p className="text-charcoal-400 text-sm mb-4">
+            Manage users, roles, and permissions
+          </p>
           <Link href="/dashboard/admin/users">
             <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
               Go to Users
@@ -165,18 +228,13 @@ export default function AdminOverview() {
           </Link>
         </div>
 
+        {/* Subscriptions */}
         <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-bold text-white">
-                Subscriptions & Billing
-              </h3>
-              <p className="text-charcoal-400 text-sm mt-1">
-                View subscriptions and process payments
-              </p>
-            </div>
-            <CreditCard className="w-8 h-8 text-green-500" />
-          </div>
+          <CreditCard className="w-8 h-8 text-green-500 mb-4" />
+          <h3 className="text-xl font-bold text-white mb-2">Subscriptions & Billing</h3>
+          <p className="text-charcoal-400 text-sm mb-4">
+            View subscriptions and process payments
+          </p>
           <Link href="/dashboard/admin/subscriptions">
             <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
               Go to Subscriptions
@@ -184,16 +242,13 @@ export default function AdminOverview() {
           </Link>
         </div>
 
+        {/* View as User */}
         <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-bold text-white">View as User</h3>
-              <p className="text-charcoal-400 text-sm mt-1">
-                Impersonate users and debug issues
-              </p>
-            </div>
-            <Activity className="w-8 h-8 text-purple-500" />
-          </div>
+          <Activity className="w-8 h-8 text-purple-500 mb-4" />
+          <h3 className="text-xl font-bold text-white mb-2">View as User</h3>
+          <p className="text-charcoal-400 text-sm mb-4">
+            Impersonate users and debug issues
+          </p>
           <Link href="/dashboard/admin/impersonate">
             <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white">
               Go to Impersonation
@@ -203,54 +258,40 @@ export default function AdminOverview() {
       </div>
 
       {/* Recent Activities */}
-      <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
-        <h3 className="text-lg font-bold text-white mb-4">Recent Activities</h3>
-        <div className="space-y-3">
-          {[
-            {
-              action: 'New user registration',
-              user: 'John Smith',
-              time: '5 minutes ago',
-              icon: CheckCircle2,
-              color: 'text-green-500',
-            },
-            {
-              action: 'Subscription upgraded',
-              user: 'Sarah Johnson',
-              time: '12 minutes ago',
-              icon: TrendingUp,
-              color: 'text-blue-500',
-            },
-            {
-              action: 'Payment failed',
-              user: 'Mike Brown',
-              time: '1 hour ago',
-              icon: AlertCircle,
-              color: 'text-red-500',
-            },
-            {
-              action: 'User suspended',
-              user: 'Alex Davis',
-              time: '2 hours ago',
-              icon: AlertCircle,
-              color: 'text-orange-500',
-            },
-          ].map((activity, idx) => {
-            const Icon = activity.icon;
-            return (
-              <div
-                key={idx}
-                className="flex items-center gap-3 p-3 rounded-lg hover:bg-charcoal-700 transition-colors"
-              >
-                <Icon className={`w-5 h-5 ${activity.color}`} />
-                <div className="flex-1">
-                  <p className="text-white font-medium">{activity.action}</p>
-                  <p className="text-charcoal-400 text-sm">{activity.user}</p>
+      <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-charcoal-700">
+          <h2 className="text-xl font-bold text-white">Recent Activities</h2>
+        </div>
+        <div className="divide-y divide-charcoal-700">
+          {activities.length > 0 ? (
+            activities.map((activity) => (
+              <div key={activity.id} className="px-6 py-4 flex items-center justify-between hover:bg-charcoal-700 transition-colors">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                  <div>
+                    <p className="text-white font-medium">
+                      {activity.action.replace('_', ' ')}
+                    </p>
+                    <p className="text-charcoal-400 text-sm">
+                      {activity.performerName}
+                      {activity.affectedUserName && ` → ${activity.affectedUserName}`}
+                    </p>
+                  </div>
                 </div>
-                <span className="text-charcoal-500 text-sm">{activity.time}</span>
+                <span className="text-charcoal-500 text-sm">
+                  {formatTimestamp(activity.timestamp)}
+                </span>
               </div>
-            );
-          })}
+            ))
+          ) : (
+            <div className="px-6 py-12 text-center">
+              <AlertCircle className="w-12 h-12 text-charcoal-600 mx-auto mb-3" />
+              <p className="text-charcoal-400 font-medium">No recent activities</p>
+              <p className="text-charcoal-500 text-sm mt-1">
+                Activities will appear here as actions are performed
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

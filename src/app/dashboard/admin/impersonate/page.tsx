@@ -1,321 +1,401 @@
 // src/app/dashboard/admin/impersonate/page.tsx
-// View as User / Impersonation Tool
+// SuperAdmin View as User (FIXED redirect)
 
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
-import { AlertCircle, Eye, LogIn, Search, User, Mail, Clock } from 'lucide-react';
+import { Search, Eye, AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
 
-interface UserForImpersonation {
+interface User {
   id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
-  role: string;
+  userType: string;
   status: string;
-  createdAt: string;
-  lastLogin?: string;
+  avatar?: string;
 }
 
 export default function ImpersonatePage() {
-  const { data: session } = useSession();
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState('ALL');
-  const [users, setUsers] = useState<UserForImpersonation[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserForImpersonation | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [impersonating, setImpersonating] = useState(false);
 
-  // Fetch users
+  // Debounced search
   useEffect(() => {
-    const fetchUsers = async () => {
-      setLoading(true);
-      try {
-        // TODO: Replace with actual API call
-        // const response = await fetch('/api/superadmin/users');
-        // const data = await response.json();
-        
-        // Mock data for now
-        setUsers([
-          {
-            id: '1',
-            name: 'John Smith',
-            email: 'john@example.com',
-            role: 'PLAYER',
-            status: 'ACTIVE',
-            createdAt: '2024-01-15T10:00:00Z',
-            lastLogin: '2025-11-23T14:30:00Z',
-          },
-          {
-            id: '2',
-            name: 'Sarah Johnson',
-            email: 'sarah@example.com',
-            role: 'COACH',
-            status: 'ACTIVE',
-            createdAt: '2024-02-20T10:00:00Z',
-            lastLogin: '2025-11-23T12:15:00Z',
-          },
-          {
-            id: '3',
-            name: 'Mike Brown',
-            email: 'mike@example.com',
-            role: 'CLUB_MANAGER',
-            status: 'ACTIVE',
-            createdAt: '2024-03-10T10:00:00Z',
-            lastLogin: '2025-11-22T09:00:00Z',
-          },
-          {
-            id: '4',
-            name: 'Emma Wilson',
-            email: 'emma@example.com',
-            role: 'LEAGUE_ADMIN',
-            status: 'ACTIVE',
-            createdAt: '2024-01-05T10:00:00Z',
-            lastLogin: '2025-11-21T16:45:00Z',
-          },
-        ]);
-      } catch (error) {
-        console.error('Failed to fetch users:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (!searchTerm.trim()) {
+      setUsers([]);
+      return;
+    }
 
-    fetchUsers();
-  }, []);
+    const timer = setTimeout(() => {
+      handleSearch();
+    }, 500);
 
-  // Filter users
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'ALL' || user.role === roleFilter;
-    return matchesSearch && matchesRole;
-  });
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const handleImpersonate = async (user: UserForImpersonation) => {
-    setImpersonating(true);
+  // Search users
+  const handleSearch = async () => {
+    if (!searchTerm.trim()) {
+      setUsers([]);
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
     try {
-      // TODO: Call API to start impersonation session
-      // This should:
-      // 1. Log the impersonation action
-      // 2. Create a temporary session
-      // 3. Redirect to user's dashboard
+      const response = await fetch(
+        `/api/superadmin/users?search=${encodeURIComponent(searchTerm)}&limit=20`
+      );
 
-      // For now, just redirect (in production, this would be handled by the API)
-      window.location.href = `/dashboard/impersonate/${user.id}`;
-    } catch (error) {
-      console.error('Failed to impersonate user:', error);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to search users');
+      }
+
+      const data = await response.json();
+      setUsers(data.users || []);
+    } catch (err) {
+      console.error('Search error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to search users');
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle impersonate with confirmation
+  const confirmImpersonate = (user: User) => {
+    if (user.status !== 'ACTIVE') {
+      setError(`Cannot impersonate ${user.status.toLowerCase()} users`);
+      return;
+    }
+    setSelectedUser(user);
+  };
+
+  // Execute impersonation
+  const handleImpersonate = async () => {
+    if (!selectedUser) return;
+
+    setImpersonating(true);
+    setError('');
+
+    try {
+      // Option 1: Use query parameter (simpler, for testing)
+      // Router will pass impersonate userId to dashboard
+      router.push(`/dashboard?impersonate=${selectedUser.id}`);
+
+      // Option 2: Use dedicated API (more secure, recommended for production)
+      // const response = await fetch('/api/superadmin/impersonate', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ userId: selectedUser.id }),
+      // });
+      // 
+      // if (!response.ok) {
+      //   const data = await response.json();
+      //   throw new Error(data.error || 'Failed to impersonate user');
+      // }
+      // 
+      // // Redirect to their dashboard
+      // router.push('/dashboard');
+    } catch (err) {
+      console.error('Impersonate error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to impersonate user');
       setImpersonating(false);
     }
   };
 
-  const getRoleBadgeColor = (role: string) => {
+  const getRoleBadgeColor = (userType: string) => {
     const colors: Record<string, string> = {
-      PLAYER: 'bg-blue-900 text-blue-200',
-      PLAYER_PRO: 'bg-purple-900 text-purple-200',
-      COACH: 'bg-gold-900 text-gold-200',
-      CLUB_MANAGER: 'bg-orange-900 text-orange-200',
-      LEAGUE_ADMIN: 'bg-red-900 text-red-200',
-      SUPERADMIN: 'bg-pink-900 text-pink-200',
+      SUPERADMIN: 'bg-pink-900 text-pink-200 border-pink-700',
+      LEAGUEADMIN: 'bg-red-900 text-red-200 border-red-700',
+      MANAGER: 'bg-orange-900 text-orange-200 border-orange-700',
+      COACH: 'bg-yellow-900 text-yellow-200 border-yellow-700',
+      PLAYER_PRO: 'bg-purple-900 text-purple-200 border-purple-700',
+      PLAYER: 'bg-blue-900 text-blue-200 border-blue-700',
     };
-    return colors[role] || 'bg-charcoal-700 text-charcoal-200';
+    return colors[userType] || 'bg-gray-900 text-gray-200 border-gray-700';
+  };
+
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      ACTIVE: 'bg-green-900 text-green-200 border-green-700',
+      SUSPENDED: 'bg-orange-900 text-orange-200 border-orange-700',
+      BANNED: 'bg-red-900 text-red-200 border-red-700',
+      INACTIVE: 'bg-gray-900 text-gray-200 border-gray-700',
+    };
+    return colors[status] || 'bg-gray-900 text-gray-200 border-gray-700';
+  };
+
+  const formatUserTypeName = (type: string) => {
+    return type.replace('_', ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">View as User</h1>
-        <p className="text-charcoal-400">
-          Impersonate users to test their experience and debug issues
-        </p>
-      </div>
-
-      {/* Warning Banner */}
-      <div className="p-4 bg-red-950 border border-red-800 rounded-lg flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+      <div className="flex items-center justify-between">
         <div>
-          <p className="text-red-200 font-semibold text-sm">
-            Impersonation Warning
+          <h1 className="text-3xl font-bold text-white mb-2">View as User</h1>
+          <p className="text-charcoal-400">
+            Impersonate a user to see their dashboard and experience
           </p>
-          <p className="text-red-300 text-sm mt-1">
-            When you impersonate a user, you will see exactly what they see. All actions
-            will be logged and attributed to you. Use this feature responsibly for testing
-            and support purposes only. Session will auto-logout after 30 minutes.
+        </div>
+        <Button
+          onClick={() => router.back()}
+          variant="outline"
+          className="text-charcoal-400 hover:bg-charcoal-700"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
+        </Button>
+      </div>
+
+      {/* Warning */}
+      <div className="bg-orange-950 border border-orange-700 rounded-xl p-4 flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <h3 className="text-orange-200 font-semibold mb-1">Security Notice</h3>
+          <p className="text-orange-300 text-sm">
+            All impersonation sessions are logged and monitored. You'll see exactly what the
+            user sees, including their personal data. Use this feature responsibly and only
+            for support or debugging purposes.
           </p>
         </div>
       </div>
 
-      {/* Search & Filter */}
+      {/* Search */}
       <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              Search Users
-            </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-3 w-5 h-5 text-charcoal-500" />
-              <Input
-                type="text"
-                placeholder="Name or email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-charcoal-900 border-charcoal-600"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              Filter by Role
-            </label>
-            <Select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="bg-charcoal-900 border-charcoal-600"
-            >
-              <option value="ALL">All Roles</option>
-              <option value="PLAYER">Player</option>
-              <option value="PLAYER_PRO">Player Pro</option>
-              <option value="COACH">Coach</option>
-              <option value="CLUB_MANAGER">Club Manager</option>
-              <option value="LEAGUE_ADMIN">League Admin</option>
-            </Select>
-          </div>
-          <div className="flex items-end">
-            <Button
-              onClick={() => {
-                setSearchTerm('');
-                setRoleFilter('ALL');
-              }}
-              variant="outline"
-              className="w-full text-charcoal-700 hover:bg-charcoal-700"
-            >
-              Clear Filters
-            </Button>
+        <h2 className="text-xl font-bold text-white mb-4">Search Users</h2>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-3 w-5 h-5 text-charcoal-500" />
+            <Input
+              type="text"
+              placeholder="Search by name, email, or user ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-charcoal-900 border-charcoal-600 text-white"
+            />
+            {loading && (
+              <Loader2 className="absolute right-3 top-3 w-5 h-5 text-gold-500 animate-spin" />
+            )}
           </div>
         </div>
+
+        {error && (
+          <div className="mt-4 p-3 bg-red-950 border border-red-700 rounded-lg">
+            <p className="text-red-200 text-sm">{error}</p>
+          </div>
+        )}
       </div>
 
-      {/* Users List */}
-      <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-charcoal-700 bg-charcoal-900">
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white">
-                  User
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white">
-                  Role
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white">
-                  Status
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-white">
-                  Last Login
-                </th>
-                <th className="px-6 py-4 text-right text-sm font-semibold text-white">
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="border-b border-charcoal-700 hover:bg-charcoal-700 transition-colors"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-gold-500 to-orange-400 rounded-full flex items-center justify-center">
-                          <User className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-white">{user.name}</p>
-                          <p className="text-charcoal-400 text-sm">{user.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
+      {/* Results */}
+      {users.length > 0 && (
+        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-charcoal-700">
+            <h2 className="text-xl font-bold text-white">Search Results</h2>
+            <p className="text-charcoal-400 text-sm mt-1">
+              Found {users.length} user{users.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+
+          <div className="divide-y divide-charcoal-700">
+            {users.map((user) => (
+              <div
+                key={user.id}
+                className="px-6 py-4 hover:bg-charcoal-700 transition-colors flex items-center justify-between"
+              >
+                <div className="flex items-center gap-4 flex-1">
+                  {/* Avatar */}
+                  <div className="w-12 h-12 rounded-full bg-charcoal-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                    {user.avatar ? (
+                      <img
+                        src={user.avatar}
+                        alt={`${user.firstName} ${user.lastName}`}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span>{user.firstName.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+
+                  {/* User info */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-semibold truncate">
+                      {user.firstName} {user.lastName}
+                    </h3>
+                    <p className="text-charcoal-400 text-sm truncate">{user.email}</p>
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {/* Role */}
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold ${getRoleBadgeColor(
-                          user.role
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border ${getRoleBadgeColor(
+                          user.userType
                         )}`}
                       >
-                        {user.role}
+                        {formatUserTypeName(user.userType)}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full" />
-                        <span className="text-sm text-green-400">{user.status}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 text-charcoal-400 text-sm">
-                        <Clock className="w-4 h-4" />
-                        {user.lastLogin
-                          ? new Date(user.lastLogin).toLocaleDateString('en-GB')
-                          : 'Never'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Button
-                        onClick={() => handleImpersonate(user)}
-                        disabled={impersonating}
-                        className="bg-purple-600 hover:bg-purple-700 text-white text-sm"
+                      {/* Status */}
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(
+                          user.status
+                        )}`}
                       >
-                        <Eye className="w-4 h-4 mr-2" />
-                        View as User
-                      </Button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center">
-                    <p className="text-charcoal-400">No users found</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                        {user.status}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
-        {/* Results Info */}
-        <div className="px-6 py-4 bg-charcoal-900 border-t border-charcoal-700">
-          <p className="text-sm text-charcoal-400">
-            Showing {filteredUsers.length} of {users.length} users
+                {/* Action */}
+                <Button
+                  onClick={() => confirmImpersonate(user)}
+                  disabled={user.status !== 'ACTIVE'}
+                  className="bg-gold-600 hover:bg-gold-700 text-charcoal-900 ml-4 flex-shrink-0"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  View as User
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* No results */}
+      {searchTerm && !loading && users.length === 0 && !error && (
+        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-12 text-center">
+          <Search className="w-12 h-12 text-charcoal-600 mx-auto mb-3" />
+          <h3 className="text-white font-semibold mb-2">No users found</h3>
+          <p className="text-charcoal-400 text-sm">
+            Try searching with a different name, email, or user ID
           </p>
         </div>
-      </div>
+      )}
 
-      {/* Tips */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
-          <h3 className="font-bold text-white mb-3">✓ What You'll See</h3>
-          <ul className="space-y-2 text-charcoal-300 text-sm">
-            <li>• Their complete dashboard view</li>
-            <li>• All their teams and data</li>
-            <li>• Their actual permissions</li>
-            <li>• Their navigation options</li>
-          </ul>
+      {/* Empty state */}
+      {!searchTerm && users.length === 0 && (
+        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-12 text-center">
+          <Search className="w-16 h-16 text-charcoal-600 mx-auto mb-4" />
+          <h3 className="text-white text-lg font-semibold mb-2">
+            Search for a user to impersonate
+          </h3>
+          <p className="text-charcoal-400 mb-6">
+            Enter a name, email, or user ID above to find users
+          </p>
+          <div className="max-w-md mx-auto text-left space-y-2">
+            <div className="flex items-start gap-2 text-sm text-charcoal-400">
+              <span className="text-gold-500 font-semibold">•</span>
+              <span>You'll see exactly what the user sees in their dashboard</span>
+            </div>
+            <div className="flex items-start gap-2 text-sm text-charcoal-400">
+              <span className="text-gold-500 font-semibold">•</span>
+              <span>All impersonation sessions are logged for security audits</span>
+            </div>
+            <div className="flex items-start gap-2 text-sm text-charcoal-400">
+              <span className="text-gold-500 font-semibold">•</span>
+              <span>Only ACTIVE users can be impersonated</span>
+            </div>
+            <div className="flex items-start gap-2 text-sm text-charcoal-400">
+              <span className="text-gold-500 font-semibold">•</span>
+              <span>Look for the admin banner to return to superadmin panel</span>
+            </div>
+          </div>
         </div>
-        <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
-          <h3 className="font-bold text-white mb-3">⚠️ Important Notes</h3>
-          <ul className="space-y-2 text-charcoal-300 text-sm">
-            <li>• All actions are logged with your ID</li>
-            <li>• Session expires after 30 minutes</li>
-            <li>• Email notifications are NOT sent</li>
-            <li>• Use for testing and debugging only</li>
-          </ul>
+      )}
+
+      {/* Confirmation Modal */}
+      {selectedUser && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-charcoal-800 rounded-xl border border-charcoal-700 max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-white">Confirm Impersonation</h3>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-charcoal-300">You are about to view the platform as:</p>
+              
+              <div className="bg-charcoal-900 rounded-lg p-4 space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-charcoal-700 flex items-center justify-center text-white font-semibold">
+                    {selectedUser.avatar ? (
+                      <img
+                        src={selectedUser.avatar}
+                        alt={`${selectedUser.firstName} ${selectedUser.lastName}`}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span>{selectedUser.firstName.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-white">
+                      {selectedUser.firstName} {selectedUser.lastName}
+                    </p>
+                    <p className="text-charcoal-400 text-sm">{selectedUser.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getRoleBadgeColor(selectedUser.userType)}`}>
+                    {formatUserTypeName(selectedUser.userType)}
+                  </span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(selectedUser.status)}`}>
+                    {selectedUser.status}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-yellow-900 border border-yellow-700 rounded-lg p-3">
+                <p className="text-yellow-200 text-sm">
+                  ⚠️ This action will be logged. You'll have full access to this user's data
+                  and dashboard.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={() => {
+                  setSelectedUser(null);
+                  setError('');
+                }}
+                variant="outline"
+                className="flex-1 text-charcoal-400 hover:bg-charcoal-700"
+                disabled={impersonating}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleImpersonate}
+                className="flex-1 bg-gold-600 hover:bg-gold-700 text-charcoal-900"
+                disabled={impersonating}
+              >
+                {impersonating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Switching...
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-4 h-4 mr-2" />
+                    Confirm & View
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

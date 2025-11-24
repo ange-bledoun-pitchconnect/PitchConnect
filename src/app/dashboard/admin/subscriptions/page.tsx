@@ -57,99 +57,35 @@ export default function SubscriptionsPage() {
   const [planFilter, setPlanFilter] = useState<string>('ALL');
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedSub, setSelectedSub] = useState<Subscription | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
 
-  // Fetch subscriptions
-  useEffect(() => {
-    const fetchSubscriptions = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(`/api/superadmin/subscriptions?tab=${activeTab}`);
-        const data = await response.json();
-        setSubscriptions(data.subscriptions || mockSubscriptions);
-      } catch (error) {
-        console.error('Failed to fetch subscriptions:', error);
-        setSubscriptions(mockSubscriptions);
-      } finally {
-        setLoading(false);
+  // FIXED: Fetch REAL subscriptions from API
+  const fetchSubscriptions = async () => {
+    setRefreshing(true);
+    try {
+      const response = await fetch(`/api/superadmin/subscriptions?tab=${activeTab}`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSubscriptions(data.subscriptions || []);
+      } else {
+        console.error('Failed to fetch subscriptions:', data.error);
+        setSubscriptions([]);
       }
-    };
+    } catch (error) {
+      console.error('Failed to fetch subscriptions:', error);
+      setSubscriptions([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
+  useEffect(() => {
     fetchSubscriptions();
   }, [activeTab]);
-
-  // Mock data for development
-  const mockSubscriptions: Subscription[] = [
-    {
-      id: 'sub-1',
-      userId: 'user-1',
-      userName: 'John Smith',
-      userEmail: 'john@example.com',
-      plan: 'COACH',
-      status: 'ACTIVE',
-      price: 9.99,
-      currency: 'GBP',
-      billingCycle: 'MONTHLY',
-      startDate: '2025-01-15T10:00:00Z',
-      renewalDate: '2025-12-15T10:00:00Z',
-      expiresAt: '2025-12-15T10:00:00Z',
-      isTrial: false,
-      paymentMethod: 'card_****1234',
-      lastPaymentDate: '2025-11-15T10:00:00Z',
-      nextBillingDate: '2025-12-15T10:00:00Z',
-    },
-    {
-      id: 'sub-2',
-      userId: 'user-2',
-      userName: 'Sarah Johnson',
-      userEmail: 'sarah@example.com',
-      plan: 'PLAYER_PRO',
-      status: 'TRIAL',
-      price: 4.99,
-      currency: 'GBP',
-      billingCycle: 'MONTHLY',
-      startDate: '2025-11-16T10:00:00Z',
-      renewalDate: '2025-11-30T10:00:00Z',
-      expiresAt: '2025-11-30T10:00:00Z',
-      isTrial: true,
-      trialEndsAt: '2025-11-30T10:00:00Z',
-    },
-    {
-      id: 'sub-3',
-      userId: 'user-3',
-      userName: 'Mike Brown',
-      userEmail: 'mike@example.com',
-      plan: 'MANAGER',
-      status: 'EXPIRED',
-      price: 19.99,
-      currency: 'GBP',
-      billingCycle: 'ANNUAL',
-      startDate: '2024-01-15T10:00:00Z',
-      renewalDate: '2025-01-15T10:00:00Z',
-      expiresAt: '2025-01-15T10:00:00Z',
-      isTrial: false,
-      lastPaymentDate: '2025-01-15T10:00:00Z',
-    },
-    {
-      id: 'sub-4',
-      userId: 'user-4',
-      userName: 'Emma Wilson',
-      userEmail: 'emma@example.com',
-      plan: 'LEAGUE_ADMIN',
-      status: 'ACTIVE',
-      price: 29.99,
-      currency: 'GBP',
-      billingCycle: 'ANNUAL',
-      startDate: '2024-11-20T10:00:00Z',
-      renewalDate: '2025-11-20T10:00:00Z',
-      expiresAt: '2025-11-20T10:00:00Z',
-      isTrial: false,
-      paymentMethod: 'card_****5678',
-      lastPaymentDate: '2024-11-20T10:00:00Z',
-      nextBillingDate: '2025-11-20T10:00:00Z',
-    },
-  ];
 
   // Filter subscriptions based on active tab and search
   const getFilteredSubscriptions = () => {
@@ -172,7 +108,6 @@ export default function SubscriptionsPage() {
       case 'overdue':
         filtered = filtered.filter((s) => s.status === 'EXPIRED');
         break;
-      // 'active' tab shows all active subscriptions (default)
       case 'active':
         filtered = filtered.filter((s) => s.status === 'ACTIVE');
         break;
@@ -268,18 +203,27 @@ export default function SubscriptionsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="text-charcoal-700 hover:bg-charcoal-700">
+          <Button
+            onClick={fetchSubscriptions}
+            disabled={refreshing}
+            variant="outline"
+            className="text-charcoal-400 hover:bg-charcoal-700"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
+          <Button variant="outline" className="text-charcoal-400 hover:bg-charcoal-700">
             <Download className="w-4 h-4 mr-2" />
             Export Report
           </Button>
-          <Button className="bg-gold-600 hover:bg-gold-700 text-white">
+          <Button className="bg-gold-600 hover:bg-gold-700 text-charcoal-900">
             <Gift className="w-4 h-4 mr-2" />
             Grant Subscription
           </Button>
         </div>
       </div>
 
-      {/* Quick Stats */}
+      {/* Quick Stats - REAL DATA */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
           <div className="flex items-center justify-between mb-2">
@@ -289,6 +233,7 @@ export default function SubscriptionsPage() {
           <p className="text-3xl font-bold text-white">
             {subscriptions.filter((s) => s.status === 'ACTIVE').length}
           </p>
+          <p className="text-xs text-charcoal-500 mt-1">Currently active</p>
         </div>
 
         <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
@@ -297,6 +242,7 @@ export default function SubscriptionsPage() {
             <Clock className="w-5 h-5 text-yellow-500" />
           </div>
           <p className="text-3xl font-bold text-white">{getTabCount('expiring')}</p>
+          <p className="text-xs text-charcoal-500 mt-1">Next 7 days</p>
         </div>
 
         <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
@@ -311,6 +257,7 @@ export default function SubscriptionsPage() {
               .reduce((sum, s) => sum + s.price, 0)
               .toFixed(2)}
           </p>
+          <p className="text-xs text-charcoal-500 mt-1">Recurring monthly</p>
         </div>
 
         <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
@@ -319,6 +266,7 @@ export default function SubscriptionsPage() {
             <AlertTriangle className="w-5 h-5 text-red-500" />
           </div>
           <p className="text-3xl font-bold text-white">{getTabCount('overdue')}</p>
+          <p className="text-xs text-charcoal-500 mt-1">Requires attention</p>
         </div>
       </div>
 
@@ -431,7 +379,15 @@ export default function SubscriptionsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredSubscriptions.length > 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gold-500"></div>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredSubscriptions.length > 0 ? (
                 filteredSubscriptions.map((sub) => (
                   <tr
                     key={sub.id}
@@ -465,7 +421,7 @@ export default function SubscriptionsPage() {
                               : 'bg-red-500'
                           }`}
                         />
-                        <span className={`text-sm ${getStatusBadgeColor(sub.status)}`}>
+                        <span className={`text-sm px-2 py-1 rounded border ${getStatusBadgeColor(sub.status)}`}>
                           {sub.status}
                         </span>
                       </div>
@@ -488,7 +444,7 @@ export default function SubscriptionsPage() {
                       </p>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm font-semibold">
+                      <span className="text-sm font-semibold text-white">
                         {sub.status === 'TRIAL' && sub.trialEndsAt
                           ? `${getDaysUntil(sub.trialEndsAt)} days`
                           : sub.status === 'ACTIVE'
@@ -510,6 +466,7 @@ export default function SubscriptionsPage() {
                           size="sm"
                           variant="ghost"
                           className="text-gold-400 hover:bg-gold-950"
+                          onClick={fetchSubscriptions}
                         >
                           <RefreshCw className="w-4 h-4" />
                         </Button>
@@ -530,7 +487,9 @@ export default function SubscriptionsPage() {
                     <CreditCard className="w-12 h-12 text-charcoal-600 mx-auto mb-3" />
                     <p className="text-charcoal-400 font-medium">No subscriptions found</p>
                     <p className="text-charcoal-500 text-sm mt-1">
-                      Try adjusting your filters or search query
+                      {searchTerm || planFilter !== 'ALL'
+                        ? 'Try adjusting your filters or search query'
+                        : 'No subscription data available'}
                     </p>
                   </td>
                 </tr>
@@ -545,10 +504,10 @@ export default function SubscriptionsPage() {
             Showing {filteredSubscriptions.length} of {subscriptions.length} subscriptions
           </p>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" disabled className="text-charcoal-700">
+            <Button size="sm" variant="outline" disabled className="text-charcoal-400">
               Previous
             </Button>
-            <Button size="sm" variant="outline" className="text-charcoal-700 hover:bg-charcoal-700">
+            <Button size="sm" variant="outline" className="text-charcoal-400 hover:bg-charcoal-700">
               Next
             </Button>
           </div>
@@ -620,11 +579,11 @@ export default function SubscriptionsPage() {
             </div>
 
             <div className="flex gap-3 pt-4 border-t border-charcoal-700">
-              <Button className="flex-1 bg-gold-600 hover:bg-gold-700 text-white">
+              <Button className="flex-1 bg-gold-600 hover:bg-gold-700 text-charcoal-900">
                 <Gift className="w-4 h-4 mr-2" />
                 Extend Trial
               </Button>
-              <Button variant="outline" className="flex-1 text-charcoal-700 hover:bg-charcoal-700">
+              <Button variant="outline" className="flex-1 text-charcoal-400 hover:bg-charcoal-700">
                 <Send className="w-4 h-4 mr-2" />
                 Send Invoice
               </Button>
