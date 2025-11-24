@@ -6,7 +6,6 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   DollarSign,
   TrendingUp,
@@ -21,7 +20,6 @@ import {
   XCircle,
   Clock,
   FileText,
-  Filter,
   RefreshCw,
   AlertCircle,
 } from 'lucide-react';
@@ -39,7 +37,7 @@ interface FinancialStats {
   lifetimeValue: number;
   paymentSuccessRate: number;
   pendingPayouts: number;
-  growthRate?: number;
+  monthlyGrowth?: number;
 }
 
 interface RevenueData {
@@ -58,19 +56,6 @@ interface PaymentStatus {
   method: string;
 }
 
-interface FinancialResponse {
-  success: boolean;
-  stats: FinancialStats;
-  revenueData: RevenueData[];
-  payments: PaymentStatus[];
-  metadata?: {
-    range: string;
-    startDate: string;
-    endDate: string;
-    generatedAt: string;
-  };
-}
-
 export default function FinancialReportsPage() {
   const { data: session } = useSession();
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');
@@ -87,18 +72,32 @@ export default function FinancialReportsPage() {
     setError(null);
 
     try {
+      console.log('📊 Fetching financial data for range:', timeRange);
+      
       const response = await fetch(`/api/superadmin/financial?range=${timeRange}`);
-      const data: FinancialResponse = await response.json();
+      console.log('📊 Response status:', response.status);
 
-      if (response.ok && data.success) {
-        setStats(data.stats || null);
-        setRevenueData(data.revenueData || []);
-        setPayments(data.payments || []);
-      } else {
-        throw new Error(data.error || 'Failed to fetch financial data');
+      if (!response.ok) {
+        // Try to parse error message
+        let errorMessage = 'Failed to fetch financial data';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+          console.error('📊 API Error:', errorData);
+        } catch (parseError) {
+          console.error('📊 Failed to parse error response');
+        }
+        throw new Error(errorMessage);
       }
+
+      const data = await response.json();
+      console.log('📊 Financial data received:', data);
+
+      setStats(data.stats || null);
+      setRevenueData(data.revenueData || []);
+      setPayments(data.payments || []);
     } catch (err) {
-      console.error('Failed to fetch financial data:', err);
+      console.error('❌ Failed to fetch financial data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load financial data');
       setStats(null);
       setRevenueData([]);
@@ -120,6 +119,10 @@ export default function FinancialReportsPage() {
     }).format(amount);
   };
 
+  const formatPercentage = (value: number) => {
+    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-GB', {
       day: 'numeric',
@@ -128,11 +131,6 @@ export default function FinancialReportsPage() {
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
-
-  const formatPercentage = (value: number) => {
-    const sign = value >= 0 ? '+' : '';
-    return `${sign}${value.toFixed(1)}%`;
   };
 
   const getPaymentStatusColor = (status: PaymentStatus['status']) => {
@@ -166,14 +164,13 @@ export default function FinancialReportsPage() {
           <div className="h-10 w-64 bg-charcoal-700 rounded animate-pulse"></div>
           <div className="flex gap-3">
             <div className="h-10 w-32 bg-charcoal-700 rounded animate-pulse"></div>
-            <div className="h-10 w-24 bg-charcoal-700 rounded animate-pulse"></div>
             <div className="h-10 w-32 bg-charcoal-700 rounded animate-pulse"></div>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
-              <div className="h-24 bg-charcoal-700 rounded animate-pulse"></div>
+              <div className="h-32 bg-charcoal-700 rounded animate-pulse"></div>
             </div>
           ))}
         </div>
@@ -199,9 +196,9 @@ export default function FinancialReportsPage() {
           <AlertCircle className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" />
           <div>
             <h3 className="text-red-200 font-semibold mb-1">Failed to Load Financial Data</h3>
-            <p className="text-red-300 text-sm">{error}</p>
-            <p className="text-red-400 text-xs mt-2">
-              Please check your connection and try again.
+            <p className="text-red-300 text-sm mb-2">{error}</p>
+            <p className="text-red-400 text-xs">
+              Check the console for more details or verify the API endpoint exists.
             </p>
           </div>
         </div>
@@ -259,21 +256,21 @@ export default function FinancialReportsPage() {
           <p className="text-3xl font-bold text-white">
             {stats ? formatCurrency(stats.totalRevenue) : '---'}
           </p>
-          {stats?.growthRate !== undefined && (
+          {stats?.monthlyGrowth !== undefined && (
             <div className="flex items-center gap-1 mt-2">
-              {stats.growthRate >= 0 ? (
+              {stats.monthlyGrowth >= 0 ? (
                 <ArrowUpRight className="w-4 h-4 text-green-500" />
               ) : (
                 <ArrowDownRight className="w-4 h-4 text-red-500" />
               )}
               <span
                 className={`text-sm font-semibold ${
-                  stats.growthRate >= 0 ? 'text-green-500' : 'text-red-500'
+                  stats.monthlyGrowth >= 0 ? 'text-green-500' : 'text-red-500'
                 }`}
               >
-                {formatPercentage(stats.growthRate)}
+                {formatPercentage(stats.monthlyGrowth)}
               </span>
-              <span className="text-charcoal-500 text-sm">growth</span>
+              <span className="text-charcoal-500 text-sm">vs last month</span>
             </div>
           )}
         </div>
@@ -286,9 +283,6 @@ export default function FinancialReportsPage() {
           <p className="text-3xl font-bold text-white">
             {stats ? formatCurrency(stats.monthlyRevenue) : '---'}
           </p>
-          <div className="flex items-center gap-1 mt-2">
-            <span className="text-charcoal-500 text-sm">Recurring monthly</span>
-          </div>
         </div>
 
         <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl p-6">
@@ -315,9 +309,6 @@ export default function FinancialReportsPage() {
           <p className="text-3xl font-bold text-white">
             {stats ? `${stats.churnRate.toFixed(1)}%` : '---'}
           </p>
-          <div className="flex items-center gap-1 mt-2">
-            <span className="text-charcoal-500 text-sm">Cancellation rate</span>
-          </div>
         </div>
       </div>
 
@@ -372,50 +363,48 @@ export default function FinancialReportsPage() {
           <h2 className="text-xl font-bold text-white">Revenue Trend</h2>
           <div className="flex items-center gap-2">
             <span className="text-charcoal-400 text-sm">
-              {revenueData.length} months
+              Showing: {revenueData.length} month{revenueData.length !== 1 ? 's' : ''}
             </span>
           </div>
         </div>
 
-        {/* Bar Chart */}
+        {/* Simple Bar Chart */}
         <div className="space-y-4">
           {revenueData.length > 0 ? (
             revenueData.map((data, index) => {
-              const maxRevenue = Math.max(...revenueData.map((d) => d.revenue));
-              const widthPercentage = maxRevenue > 0 ? (data.revenue / maxRevenue) * 100 : 0;
+              const maxRevenue = Math.max(...revenueData.map((d) => d.revenue), 1);
+              const widthPercentage = Math.max((data.revenue / maxRevenue) * 100, 5);
 
               return (
                 <div key={index} className="flex items-center gap-4">
-                  <span className="text-charcoal-400 text-sm w-12 text-right">{data.month}</span>
-                  <div className="flex-1 bg-charcoal-900 rounded-full h-10 relative overflow-hidden">
-                    {widthPercentage > 0 && (
-                      <div
-                        className="bg-gradient-to-r from-gold-600 to-gold-500 h-full rounded-full flex items-center justify-end px-4 transition-all duration-500"
-                        style={{ width: `${Math.max(widthPercentage, 5)}%` }}
-                      >
-                        {widthPercentage > 15 && (
-                          <span className="text-white text-sm font-semibold">
-                            {formatCurrency(data.revenue)}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {widthPercentage <= 15 && widthPercentage > 0 && (
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-charcoal-300 text-sm font-semibold">
+                  <span className="text-charcoal-400 text-sm w-12">{data.month}</span>
+                  <div className="flex-1 bg-charcoal-900 rounded-full h-8 relative overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-gold-600 to-gold-500 h-full rounded-full flex items-center justify-end px-4 transition-all duration-500"
+                      style={{ width: `${widthPercentage}%` }}
+                    >
+                      {widthPercentage > 15 && (
+                        <span className="text-white text-sm font-semibold">
+                          {formatCurrency(data.revenue)}
+                        </span>
+                      )}
+                    </div>
+                    {widthPercentage <= 15 && data.revenue > 0 && (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-charcoal-300 text-sm font-semibold">
                         {formatCurrency(data.revenue)}
                       </span>
                     )}
                   </div>
-                  <span className="text-charcoal-400 text-sm w-24 text-right">
+                  <span className="text-charcoal-400 text-sm w-20">
                     {data.subscriptions} subs
                   </span>
                 </div>
               );
             })
           ) : (
-            <div className="text-center py-12">
-              <TrendingUp className="w-12 h-12 text-charcoal-600 mx-auto mb-3" />
-              <p className="text-charcoal-400">No revenue data available for this period</p>
+            <div className="text-center py-8">
+              <Calendar className="w-12 h-12 text-charcoal-600 mx-auto mb-3" />
+              <p className="text-charcoal-400">No revenue data for this period</p>
             </div>
           )}
         </div>
@@ -424,12 +413,9 @@ export default function FinancialReportsPage() {
       {/* Recent Payments */}
       <div className="bg-charcoal-800 border border-charcoal-700 rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-charcoal-700">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">Recent Payments</h2>
-            <span className="text-charcoal-400 text-sm">
-              Last {payments.length} transactions
-            </span>
-          </div>
+          <h2 className="text-xl font-bold text-white">
+            Recent Payments ({payments.length})
+          </h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -501,10 +487,7 @@ export default function FinancialReportsPage() {
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center">
                     <CreditCard className="w-12 h-12 text-charcoal-600 mx-auto mb-3" />
-                    <p className="text-charcoal-400 font-medium">No payments found</p>
-                    <p className="text-charcoal-500 text-sm mt-1">
-                      No payment activity in the selected period
-                    </p>
+                    <p className="text-charcoal-400">No payments found</p>
                   </td>
                 </tr>
               )}
@@ -516,13 +499,17 @@ export default function FinancialReportsPage() {
         {payments.length > 0 && (
           <div className="px-6 py-4 bg-charcoal-900 border-t border-charcoal-700 flex items-center justify-between">
             <p className="text-sm text-charcoal-400">
-              Showing {payments.length} recent payments
+              Showing {payments.length} of {payments.length} payments
             </p>
             <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" disabled className="text-charcoal-400">
                 Previous
               </Button>
-              <Button size="sm" variant="outline" className="text-charcoal-400 hover:bg-charcoal-700">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-charcoal-400 hover:bg-charcoal-700"
+              >
                 Next
               </Button>
             </div>

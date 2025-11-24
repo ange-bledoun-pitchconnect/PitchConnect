@@ -25,11 +25,11 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const unreadOnly = searchParams.get('unreadOnly') === 'true';
 
-    // Get notifications
+    // Get notifications (FIXED: isRead → read)
     const notifications = await prisma.notification.findMany({
       where: {
         userId: user.id,
-        ...(unreadOnly && { isRead: false }),
+        ...(unreadOnly && { read: false }),  // ✅ FIXED: was isRead
       },
       orderBy: {
         createdAt: 'desc',
@@ -37,11 +37,11 @@ export async function GET(request: NextRequest) {
       take: limit,
     });
 
-    // Calculate unread count
+    // Calculate unread count (FIXED: already correct)
     const unreadCount = await prisma.notification.count({
       where: {
         userId: user.id,
-        read: false,
+        read: false,  // ✅ Already correct
       },
     });
 
@@ -51,11 +51,10 @@ export async function GET(request: NextRequest) {
         type: n.type,
         title: n.title,
         message: n.message,
-        isRead: n.isRead,
-        read: n.isRead, // Alias for compatibility
+        read: n.read,  // ✅ FIXED: use n.read directly
+        isRead: n.read, // Alias for backward compatibility
         createdAt: n.createdAt.toISOString(),
         link: n.link,
-        icon: n.icon,
         metadata: n.metadata,
       })),
       unreadCount,
@@ -93,7 +92,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { userId, type, title, message, link, metadata } = body;
 
-    // Create notification
+    // Create notification (FIXED: isRead → read)
     const notification = await prisma.notification.create({
       data: {
         userId: userId || user.id,
@@ -102,7 +101,7 @@ export async function POST(request: NextRequest) {
         message,
         link: link || null,
         metadata: metadata || null,
-        isRead: false,
+        read: false,  // ✅ FIXED: was isRead
       },
     });
 
@@ -145,14 +144,14 @@ export async function PATCH(request: NextRequest) {
     const { notificationId, notificationIds, markAllAsRead } = body;
 
     if (markAllAsRead) {
-      // Mark all notifications as read
+      // Mark all notifications as read (FIXED: isRead → read)
       await prisma.notification.updateMany({
         where: {
           userId: user.id,
-          isRead: false,
+          read: false,  // ✅ FIXED: was isRead
         },
         data: {
-          isRead: true,
+          read: true,  // ✅ FIXED: was isRead
         },
       });
 
@@ -161,14 +160,14 @@ export async function PATCH(request: NextRequest) {
         message: 'All notifications marked as read',
       });
     } else if (notificationIds && Array.isArray(notificationIds)) {
-      // Mark multiple notifications as read
+      // Mark multiple notifications as read (FIXED: isRead → read)
       await prisma.notification.updateMany({
         where: {
           id: { in: notificationIds },
           userId: user.id,
         },
         data: {
-          isRead: true,
+          read: true,  // ✅ FIXED: was isRead
         },
       });
 
@@ -177,14 +176,14 @@ export async function PATCH(request: NextRequest) {
         message: 'Notifications marked as read',
       });
     } else if (notificationId) {
-      // Mark single notification as read
+      // Mark single notification as read (FIXED: isRead → read)
       await prisma.notification.update({
         where: {
           id: notificationId,
           userId: user.id,
         },
         data: {
-          isRead: true,
+          read: true,  // ✅ FIXED: was isRead
         },
       });
 

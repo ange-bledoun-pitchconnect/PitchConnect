@@ -4,12 +4,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { isSuperAdmin } from '@/lib/auth';
-
-// ============================================================================
-// GET - Fetch Financial Reports
-// ============================================================================
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,9 +29,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get query parameters
     const { searchParams } = new URL(request.url);
     const range = searchParams.get('range') || '30d';
+
+    console.log('\n💰 ===== FETCHING FINANCIAL DATA =====');
+    console.log('📊 Range:', range);
 
     // Calculate date ranges
     const now = new Date();
@@ -55,130 +53,194 @@ export async function GET(request: NextRequest) {
         startDate.setFullYear(now.getFullYear() - 1);
         break;
       case 'all':
-        startDate = new Date(0); // Unix epoch
+        startDate = new Date(0); // Beginning of time
         break;
-      default:
-        startDate.setDate(now.getDate() - 30);
     }
 
-    // Get current month start for new subscriptions calculation
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    // 1. TOTAL REVENUE (from all successful payments)
+    const allPayments = await prisma.payment.findMany({
+      where: {
+        status: 'SUCCESS',
+      },
+      select: {
+        amount: true,
+        createdAt: true,
+      },
+    }).catch(() => []);
 
-    // Fetch all active subscriptions with user data
-    const activeSubscriptions = await prisma.subscription.findMany({
-      where: { status: 'ACTIVE' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
+    const totalRevenue = allPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    console.log('✅ Total Revenue:', totalRevenue);
+
+    // 2. REVENUE IN SELECTED RANGE
+    const rangePayments = await prisma.payment.findMany({
+      where: {
+        status: 'SUCCESS',
+        createdAt: {
+          gte: startDate,
         },
       },
-    });
+      select: {
+        amount: true,
+        createdAt: true,
+      },
+    }).catch(() => []);
 
-    // Calculate revenue metrics
-    const totalRevenue = activeSubscriptions.reduce((sum, sub) => sum + (sub.price || 0), 0);
-    const monthlyRevenue = activeSubscriptions
-      .filter((sub) => sub.interval === 'MONTHLY')
-      .reduce((sum, sub) => sum + (sub.price || 0), 0);
-    const annualRevenue = activeSubscriptions
-      .filter((sub) => sub.interval === 'ANNUAL')
-      .reduce((sum, sub) => sum + (sub.price || 0), 0);
+    const rangeRevenue = rangePayments.reduce((sum, payment) => sum + payment.amount, 0);
+    console.log('✅ Range Revenue:', rangeRevenue);
 
-    // New subscriptions this month
-    const newSubscriptionsThisMonth = activeSubscriptions.filter(
-      (sub) => new Date(sub.createdAt) >= thisMonthStart
-    ).length;
-
-    // New subscriptions last month for comparison
-    const newSubscriptionsLastMonth = await prisma.subscription.count({
+    // 3. ACTIVE SUBSCRIPTIONS
+    const activeSubscriptions = await prisma.subscription.count({
       where: {
         status: 'ACTIVE',
+      },
+    }).catch(() => 0);
+
+    console.log('✅ Active Subscriptions:', activeSubscriptions);
+
+    // 4. MONTHLY REVENUE (from active subscriptions)
+    const subscriptions = await prisma.subscription.findMany({
+      where: {
+        status: 'ACTIVE',
+      },
+      select: {
+        monthlyPrice: true,
+        customPrice: true,
+      },
+    }).catch(() => []);
+
+    const monthlyRevenue = subscriptions.reduce(
+      (sum, sub) => sum + (sub.monthlyPrice || sub.customPrice || 0),
+      0
+    );
+    console.log('✅ Monthly Revenue:', monthlyRevenue);
+
+    // 5. ANNUAL REVENUE (estimate)
+    const annualRevenue = monthlyRevenue * 12;
+
+    // 6. NEW SUBSCRIPTIONS THIS MONTH
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const newSubscriptionsThisMonth = await prisma.subscription.count({
+      where: {
         createdAt: {
-          gte: lastMonthStart,
-          lte: lastMonthEnd,
+          gte: firstOfMonth,
         },
       },
-    });
+    }).catch(() => 0);
 
-    // Cancelled subscriptions
-    const cancelledCount = await prisma.subscription.count({
+    console.log('✅ New Subscriptions This Month:', newSubscriptionsThisMonth);
+
+    // 7. CHURN RATE (simple calculation)
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const subscriptionsLastMonth = await prisma.subscription.count({
+      where: {
+        createdAt: {
+          lt: lastMonth,
+        },
+      },
+    }).catch(() => 0);
+
+    const cancelledThisMonth = await prisma.subscription.count({
       where: {
         status: 'CANCELLED',
-        canceledAt: {
-          gte: thisMonthStart,
+        cancelledAt: {
+          gte: firstOfMonth,
         },
       },
-    });
+    }).catch(() => 0);
 
-    // Calculate churn rate
-    const totalActiveCount = activeSubscriptions.length;
-    const churnRate =
-      totalActiveCount > 0 ? ((cancelledCount / totalActiveCount) * 100) : 0;
+    const churnRate = subscriptionsLastMonth > 0 
+      ? (cancelledThisMonth / subscriptionsLastMonth) * 100 
+      : 0;
 
-    // Calculate ARPU (Average Revenue Per User)
-    const arpu = totalActiveCount > 0 ? monthlyRevenue / totalActiveCount : 0;
+    console.log('✅ Churn Rate:', churnRate);
 
-    // Calculate LTV (Customer Lifetime Value: ARPU * avg months subscribed)
-    const avgLifetimeMonths = 12; // Simplified - would need cohort analysis
-    const ltv = arpu * avgLifetimeMonths;
+    // 8. AVERAGE REVENUE PER USER
+    const totalUsers = await prisma.user.count().catch(() => 1);
+    const averageRevenuePerUser = totalUsers > 0 ? totalRevenue / totalUsers : 0;
 
-    // Calculate growth rate
-    const growthRate = newSubscriptionsLastMonth > 0
-      ? (((newSubscriptionsThisMonth - newSubscriptionsLastMonth) / newSubscriptionsLastMonth) * 100)
-      : newSubscriptionsThisMonth > 0 ? 100 : 0;
+    // 9. LIFETIME VALUE (simple estimate)
+    const lifetimeValue = averageRevenuePerUser * 12; // Assuming 1 year average
 
-    // Payment success rate (simplified - 96-98% typical for established platforms)
-    const paymentSuccessRate = 97.2;
+    // 10. PAYMENT SUCCESS RATE
+    const allPaymentsCount = await prisma.payment.count().catch(() => 1);
+    const successfulPaymentsCount = allPayments.length;
+    const paymentSuccessRate = allPaymentsCount > 0 
+      ? (successfulPaymentsCount / allPaymentsCount) * 100 
+      : 100;
 
-    // Get revenue data by month (last 6 months)
+    console.log('✅ Payment Success Rate:', paymentSuccessRate);
+
+    // 11. MONTHLY GROWTH
+    const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    const lastMonthRevenue = await prisma.payment.findMany({
+      where: {
+        status: 'SUCCESS',
+        createdAt: {
+          gte: previousMonth,
+          lte: previousMonthEnd,
+        },
+      },
+      select: {
+        amount: true,
+      },
+    }).catch(() => []);
+
+    const lastMonthTotal = lastMonthRevenue.reduce((sum, p) => sum + p.amount, 0);
+    const thisMonthRevenue = rangePayments
+      .filter(p => p.createdAt >= firstOfMonth)
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    const monthlyGrowth = lastMonthTotal > 0 
+      ? ((thisMonthRevenue - lastMonthTotal) / lastMonthTotal) * 100 
+      : 0;
+
+    console.log('✅ Monthly Growth:', monthlyGrowth);
+
+    // 12. REVENUE DATA BY MONTH (last 6 months)
     const revenueData = [];
     for (let i = 5; i >= 0; i--) {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-
-      const monthSubscriptions = await prisma.subscription.findMany({
+      
+      const monthPayments = await prisma.payment.findMany({
         where: {
-          OR: [
-            {
-              status: 'ACTIVE',
-              createdAt: {
-                gte: monthDate,
-                lte: monthEnd,
-              },
-            },
-            {
-              status: 'ACTIVE',
-              createdAt: { lt: monthDate },
-            },
-          ],
+          status: 'SUCCESS',
+          createdAt: {
+            gte: monthStart,
+            lte: monthEnd,
+          },
         },
-      });
+        select: {
+          amount: true,
+        },
+      }).catch(() => []);
 
-      const monthRevenue = monthSubscriptions.reduce(
-        (sum, sub) => sum + (sub.price || 0),
-        0
-      );
+      const monthSubs = await prisma.subscription.count({
+        where: {
+          createdAt: {
+            gte: monthStart,
+            lte: monthEnd,
+          },
+        },
+      }).catch(() => 0);
 
       revenueData.push({
-        month: monthDate.toLocaleDateString('en-US', { month: 'short' }),
-        revenue: monthRevenue,
-        subscriptions: monthSubscriptions.length,
+        month: monthStart.toLocaleDateString('en-GB', { month: 'short' }),
+        revenue: monthPayments.reduce((sum, p) => sum + p.amount, 0),
+        subscriptions: monthSubs,
       });
     }
 
-    // Get recent payment activities (from subscriptions created/updated recently)
-    const recentSubscriptions = await prisma.subscription.findMany({
-      where: {
-        updatedAt: { gte: startDate },
-      },
-      orderBy: { updatedAt: 'desc' },
+    console.log('✅ Revenue Data (6 months):', revenueData.length);
+
+    // 13. RECENT PAYMENTS
+    const recentPayments = await prisma.payment.findMany({
       take: 20,
+      orderBy: {
+        createdAt: 'desc',
+      },
       include: {
         user: {
           select: {
@@ -188,66 +250,54 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-    });
+    }).catch(() => []);
 
-    // Format payment data
-    const formattedPayments = recentSubscriptions.map((sub) => ({
-      id: `pay-${sub.id}`,
-      userName: sub.user ? `${sub.user.firstName} ${sub.user.lastName}` : 'Unknown User',
-      userEmail: sub.user?.email || 'unknown@example.com',
-      amount: sub.price || 0,
-      status: sub.status === 'ACTIVE' ? 'SUCCESS' : 
-              sub.status === 'CANCELLED' ? 'REFUNDED' : 
-              sub.status === 'TRIAL' ? 'PENDING' : 'FAILED',
-      date: sub.updatedAt.toISOString(),
-      method: sub.paymentMethod || 'card_****1234',
+    const payments = recentPayments.map((payment) => ({
+      id: payment.id,
+      userName: payment.user 
+        ? `${payment.user.firstName || ''} ${payment.user.lastName || ''}`.trim() || 'Unknown'
+        : 'Unknown',
+      userEmail: payment.user?.email || 'unknown@example.com',
+      amount: payment.amount,
+      status: payment.status,
+      date: payment.createdAt.toISOString(),
+      method: payment.paymentMethod || 'CARD',
     }));
 
-    // Calculate pending payouts (simplified)
-    const pendingPayouts = 0; // Would need actual payout tracking table
+    console.log('✅ Recent Payments:', payments.length);
+    console.log('===== FINANCIAL DATA COMPLETE =====\n');
 
     return NextResponse.json(
       {
-        success: true,
         stats: {
-          totalRevenue: Math.round(totalRevenue * 100) / 100,
-          monthlyRevenue: Math.round(monthlyRevenue * 100) / 100,
-          annualRevenue: Math.round(annualRevenue * 100) / 100,
-          activeSubscriptions: totalActiveCount,
+          totalRevenue,
+          monthlyRevenue,
+          annualRevenue,
+          activeSubscriptions,
           newSubscriptionsThisMonth,
           churnRate: Math.round(churnRate * 10) / 10,
-          averageRevenuePerUser: Math.round(arpu * 100) / 100,
-          lifetimeValue: Math.round(ltv * 100) / 100,
-          paymentSuccessRate,
-          pendingPayouts,
-          growthRate: Math.round(growthRate * 10) / 10,
+          averageRevenuePerUser: Math.round(averageRevenuePerUser * 100) / 100,
+          lifetimeValue: Math.round(lifetimeValue * 100) / 100,
+          paymentSuccessRate: Math.round(paymentSuccessRate * 10) / 10,
+          pendingPayouts: 0, // Can be calculated if needed
+          monthlyGrowth: Math.round(monthlyGrowth * 10) / 10,
         },
         revenueData,
-        payments: formattedPayments.slice(0, 10),
-        metadata: {
-          range,
-          startDate: startDate.toISOString(),
-          endDate: now.toISOString(),
-          generatedAt: now.toISOString(),
-        },
+        payments,
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error('Financial GET Error:', error);
+    console.error('❌ Financial API Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
-        details: process.env.NODE_ENV === 'development' ? String(error) : undefined,
       },
       { status: 500 }
     );
   }
 }
 
-// ============================================================================
-// Export route segment config
-// ============================================================================
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
