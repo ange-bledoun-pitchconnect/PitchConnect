@@ -1,7 +1,3 @@
-// ============================================================================
-// FILE 1: src/app/dashboard/layout.tsx 
-// ============================================================================
-
 'use client';
 
 import { ReactNode } from 'react';
@@ -19,7 +15,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { data: session, status } = useSession();
-  const pathname = usePathname(); // ADDED: Track current path
+  const pathname = usePathname(); // Track current path
 
   // Redirect to login if not authenticated
   if (status === 'unauthenticated') {
@@ -28,16 +24,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:to-charcoal-800 transition-colors duration-200">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gold-200 border-t-gold-500 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-charcoal-600 font-semibold">Loading...</p>
+          <div className="w-12 h-12 border-4 border-gold-200 dark:border-gold-800 border-t-gold-500 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-charcoal-600 dark:text-charcoal-400 font-semibold">Loading...</p>
         </div>
       </div>
     );
   }
 
-  // FIXED: Check if user is SuperAdmin
+  // Check if user is SuperAdmin
   // If SuperAdmin, don't render the main dashboard sidebar
   // Admin layout will handle its own sidebar
   const isSuperAdmin = session?.user?.isSuperAdmin === true;
@@ -46,20 +42,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   if (isSuperAdmin) {
     return (
       <TeamFilterProvider>
-        <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100">
+        <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:to-charcoal-800 transition-colors duration-200">
           {children}
         </div>
       </TeamFilterProvider>
     );
   }
 
-  // ADDED: Check if on settings page
+  // Check if on settings page
   const isSettingsPage = pathname?.startsWith('/dashboard/settings');
 
   // Regular users get the full dashboard layout with sidebar
   return (
     <TeamFilterProvider>
-      <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100">
+      <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:to-charcoal-800 transition-colors duration-200">
         <div className="flex h-screen">
           {/* SIDEBAR - Only for non-SuperAdmin users */}
           <DashboardSidebar userType={session?.user?.userType as string} />
@@ -67,20 +63,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           {/* MAIN CONTENT */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* HEADER */}
-            <div className="bg-white border-b border-neutral-200 shadow-sm sticky top-0 z-40">
+            <div className="bg-white dark:bg-charcoal-800 border-b border-neutral-200 dark:border-charcoal-700 shadow-sm sticky top-0 z-40 transition-colors duration-200">
               <div className="px-6 py-4 flex items-center justify-between">
-                {/* ADDED: Back button for settings pages */}
+                {/* Back button for settings pages */}
                 <div className="flex items-center gap-4">
                   {isSettingsPage && (
                     <Link
                       href="/dashboard"
-                      className="flex items-center gap-2 px-3 py-2 bg-charcoal-100 hover:bg-charcoal-200 text-charcoal-700 rounded-lg transition-colors"
+                      className="flex items-center gap-2 px-3 py-2 bg-charcoal-100 dark:bg-charcoal-700 hover:bg-charcoal-200 dark:hover:bg-charcoal-600 text-charcoal-700 dark:text-charcoal-300 rounded-lg transition-colors"
                     >
                       <ArrowLeft className="w-4 h-4" />
                       <span className="text-sm font-medium">Back to Dashboard</span>
                     </Link>
                   )}
-                  <h1 className="text-2xl font-bold text-charcoal-900">
+                  <h1 className="text-2xl font-bold text-charcoal-900 dark:text-white">
                     {isSettingsPage ? 'Settings' : 'Dashboard'}
                   </h1>
                 </div>

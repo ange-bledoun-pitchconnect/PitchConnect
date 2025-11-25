@@ -2,17 +2,15 @@
 
 'use client';
 
-import { ReactNode } from 'react';
 import { SessionProvider } from 'next-auth/react';
+import { ThemeProvider } from '@/components/theme-provider';
 
-interface ProvidersProps {
-  children: ReactNode;
-}
-
-export function Providers({ children }: ProvidersProps) {
+export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
-      {children}
+      <ThemeProvider>
+        {children}
+      </ThemeProvider>
     </SessionProvider>
   );
 }

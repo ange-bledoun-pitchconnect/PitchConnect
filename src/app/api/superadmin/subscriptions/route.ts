@@ -15,110 +15,176 @@ import { prisma } from '@/lib/prisma';
 import { isSuperAdmin } from '@/lib/auth';
 
 // ============================================================================
-// GET - List All Subscriptions
+// PRICING STRUCTURE - All 6 Tiers
+// ============================================================================
+
+const PRICING = {
+  FREE: {
+    monthly: 0,
+    annual: 0,
+    features: ['Basic access', 'Limited stats', 'Community support']
+  },
+  PLAYER: {
+    monthly: 4.99,
+    annual: 49.99,
+    features: ['Player dashboard', 'Basic stats', 'Match history']
+  },
+  PLAYER_PRO: {
+    monthly: 9.99,
+    annual: 99.99,
+    features: ['Advanced stats', 'Performance tracking', 'Video analysis']
+  },
+  COACH: {
+    monthly: 19.99,
+    annual: 199.99,
+    features: ['Team management', 'Training plans', 'Player analytics']
+  },
+  CLUB_MANAGER: {
+    monthly: 29.99,
+    annual: 299.99,
+    features: ['Full club access', 'Financial management', 'Staff coordination']
+  },
+  LEAGUE_ADMIN: {
+    monthly: 49.99,
+    annual: 499.99,
+    features: ['League management', 'Multi-club access', 'Competition tools']
+  },
+};
+
+// ============================================================================
+// GET - List ALL Users with Subscriptions (Including FREE)
 // ============================================================================
 
 export async function GET(request: NextRequest) {
   try {
-    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized: No active session' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
 
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get query parameters
     const { searchParams } = new URL(request.url);
-    const tier = searchParams.get('tier');
-    const status = searchParams.get('status');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const tab = searchParams.get('tab') || 'all';
+    const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build query filters
-    const where: any = {};
+    console.log('\n💳 ===== FETCHING ALL USERS & SUBSCRIPTIONS =====');
+    console.log('📊 Tab:', tab);
 
-    if (tier) {
-      where.tier = tier;
-    }
-
-    if (status) {
-      where.status = status;
-    }
-
-    // Fetch subscriptions
-    const subscriptions = await prisma.subscription.findMany({
-      where,
-      orderBy: {
-        createdAt: 'desc',
-      },
+    // ENHANCED: Fetch ALL users (with or without subscriptions)
+    const users = await prisma.user.findMany({
       take: limit,
       skip: offset,
+      orderBy: { createdAt: 'desc' },
       include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
+        subscription: true,
+        userRoles: {
+          select: { roleName: true }
         },
       },
     });
 
-    // Get total count
-    const total = await prisma.subscription.count({ where });
+    console.log(`✅ Found ${users.length} total users`);
 
-    // Format response
-    const formattedSubscriptions = subscriptions.map((sub) => ({
-      id: sub.id,
-      user: {
-        id: sub.user.id,
-        name: `${sub.user.firstName} ${sub.user.lastName}`,
-        email: sub.user.email,
+    // Map ALL users to subscription format
+    const allSubscriptions = users.map((user) => {
+      const sub = user.subscription;
+      
+      // Build user name with fallback
+      const firstName = user.firstName || '';
+      const lastName = user.lastName || '';
+      const userName = `${firstName} ${lastName}`.trim() || 
+                       user.email?.split('@')[0] || 
+                       'User';
+
+      // Determine tier (default to FREE if no subscription)
+      const tier = sub?.tier || 'FREE';
+      const isFree = !sub || tier === 'FREE';
+      
+      // Get pricing for tier
+      const tierPricing = PRICING[tier as keyof typeof PRICING] || PRICING.FREE;
+      const billingCycle = sub?.interval || 'MONTHLY';
+      const price = sub?.price !== undefined ? sub.price : 
+                    (billingCycle === 'MONTHLY' ? tierPricing.monthly : tierPricing.annual);
+
+      console.log(`💳 ${user.email}: Tier=${tier}, Price=£${price}, Free=${isFree}`);
+
+      return {
+        id: sub?.id || user.id,
+        userId: user.id,
+        userName: userName,
+        userEmail: user.email,
+        plan: tier,
+        status: sub?.status || 'ACTIVE',
+        price: price,
+        currency: 'GBP',
+        billingCycle: billingCycle,
+        isFree: isFree,
+        isCustomPrice: sub?.isCustomPrice || false,
+        isTrial: sub?.isTrial || false,
+        isAdminGranted: sub?.isAdminGranted || false,
+        startDate: sub?.startDate?.toISOString() || user.createdAt.toISOString(),
+        renewalDate: sub?.currentPeriodEnd?.toISOString() || new Date().toISOString(),
+        expiresAt: sub?.currentPeriodEnd?.toISOString() || new Date().toISOString(),
+        trialEndsAt: sub?.trialEndsAt?.toISOString() || null,
+        paymentMethod: sub ? 'Card' : null,
+        lastPaymentDate: sub?.updatedAt?.toISOString() || null,
+        nextBillingDate: sub?.currentPeriodEnd?.toISOString() || null,
+        features: tierPricing.features,
+      };
+    });
+
+    // Calculate comprehensive stats
+    const stats = {
+      total: allSubscriptions.length,
+      free: allSubscriptions.filter(s => s.isFree).length,
+      paid: allSubscriptions.filter(s => !s.isFree).length,
+      active: allSubscriptions.filter(s => s.status === 'ACTIVE' && !s.isFree).length,
+      trial: allSubscriptions.filter(s => s.isTrial).length,
+      cancelled: allSubscriptions.filter(s => s.status === 'CANCELLED').length,
+      byTier: {
+        FREE: allSubscriptions.filter(s => s.plan === 'FREE').length,
+        PLAYER: allSubscriptions.filter(s => s.plan === 'PLAYER').length,
+        PLAYER_PRO: allSubscriptions.filter(s => s.plan === 'PLAYER_PRO').length,
+        COACH: allSubscriptions.filter(s => s.plan === 'COACH').length,
+        CLUB_MANAGER: allSubscriptions.filter(s => s.plan === 'CLUB_MANAGER').length,
+        LEAGUE_ADMIN: allSubscriptions.filter(s => s.plan === 'LEAGUE_ADMIN').length,
       },
-      tier: sub.tier,
-      status: sub.status,
-      price: sub.price,
-      currency: sub.currency,
-      interval: sub.interval,
-      isCustomPrice: sub.isCustomPrice,
-      isAdminGranted: sub.isAdminGranted,
-      isTrial: sub.isTrial,
-      trialEndsAt: sub.trialEndsAt?.toISOString() || null,
-      currentPeriodStart: sub.currentPeriodStart?.toISOString() || null,
-      currentPeriodEnd: sub.currentPeriodEnd?.toISOString() || null,
-      cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
-      canceledAt: sub.canceledAt?.toISOString() || null,
-      createdAt: sub.createdAt.toISOString(),
-    }));
+      revenue: {
+        monthly: allSubscriptions
+          .filter(s => !s.isFree && s.status === 'ACTIVE' && s.billingCycle === 'MONTHLY')
+          .reduce((sum, s) => sum + s.price, 0),
+        annual: allSubscriptions
+          .filter(s => !s.isFree && s.status === 'ACTIVE' && s.billingCycle === 'ANNUAL')
+          .reduce((sum, s) => sum + s.price, 0),
+      },
+    };
+
+    console.log('📊 Subscription Stats:', stats);
+    console.log('===== SUBSCRIPTIONS COMPLETE =====\n');
 
     return NextResponse.json(
       {
-        subscriptions: formattedSubscriptions,
+        subscriptions: allSubscriptions,
+        stats,
+        pricing: PRICING,
         pagination: {
-          total,
+          total: allSubscriptions.length,
           limit,
           offset,
-          hasMore: offset + limit < total,
+          hasMore: false,
         },
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error('Subscriptions GET Error:', error);
+    console.error('❌ Subscriptions GET Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -130,32 +196,23 @@ export async function GET(request: NextRequest) {
 }
 
 // ============================================================================
-// POST - Grant Subscription
+// POST - Grant Subscription (All 6 Tiers)
 // ============================================================================
 
 export async function POST(request: NextRequest) {
   try {
-    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized: No active session' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
 
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get SuperAdmin user
     const adminUser = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { id: true, firstName: true, lastName: true },
@@ -165,11 +222,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin user not found' }, { status: 404 });
     }
 
-    // Get request body
     const body = await request.json();
-    const { userId, tier, duration, price, reason } = body;
+    const { userId, tier, duration, customPrice, reason } = body;
 
-    // Validation
     if (!userId || !tier) {
       return NextResponse.json(
         { error: 'Missing required fields: userId, tier' },
@@ -177,13 +232,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Valid tiers
-    const validTiers = ['FREE', 'PLAYER_PRO', 'COACH', 'CLUB_MANAGER', 'LEAGUE_ADMIN'];
+    // ENHANCED: All 6 valid tiers
+    const validTiers = ['FREE', 'PLAYER', 'PLAYER_PRO', 'COACH', 'CLUB_MANAGER', 'LEAGUE_ADMIN'];
     if (!validTiers.includes(tier)) {
       return NextResponse.json({ error: 'Invalid tier' }, { status: 400 });
     }
 
-    // Get user
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: { subscription: true },
@@ -193,16 +247,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Calculate period dates
+    // Get pricing for tier
+    const tierPricing = PRICING[tier as keyof typeof PRICING];
+    const price = customPrice !== undefined ? customPrice : tierPricing.monthly;
+
     const now = new Date();
     const periodStart = now;
     const periodEnd = new Date();
-
-    // Duration in months (default 1 month, or custom)
     const durationMonths = duration || 1;
     periodEnd.setMonth(periodEnd.getMonth() + durationMonths);
 
-    // Use transaction for consistency
     const result = await prisma.$transaction(async (tx) => {
       // Delete existing subscription if any
       if (user.subscription) {
@@ -211,17 +265,17 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Create new subscription
+      // Create new subscription (even for FREE tier)
       const subscription = await tx.subscription.create({
         data: {
           userId: userId,
           tier: tier,
           status: 'ACTIVE',
-          price: price || 0, // Custom price or 0 for free grants
+          price: price,
           currency: 'GBP',
           interval: 'MONTHLY',
-          isCustomPrice: price ? true : false,
-          isAdminGranted: true, // Mark as admin-granted
+          isCustomPrice: customPrice !== undefined,
+          isAdminGranted: true,
           isTrial: false,
           currentPeriodStart: periodStart,
           currentPeriodEnd: periodEnd,
@@ -229,46 +283,52 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      // Update user role if needed
+      // Update user roles based on tier
       const roleMap: Record<string, string> = {
-        PLAYER_PRO: 'PLAYER_PRO',
+        PLAYER: 'PLAYER',
+        PLAYER_PRO: 'PLAYER',
         COACH: 'COACH',
         CLUB_MANAGER: 'CLUB_MANAGER',
         LEAGUE_ADMIN: 'LEAGUE_ADMIN',
       };
 
       if (roleMap[tier]) {
-        const newRoles = [...new Set([...user.roles, roleMap[tier]])];
-        await tx.user.update({
-          where: { id: userId },
-          data: { roles: newRoles },
+        await tx.userRoleUser.create({
+          data: {
+            userId: userId,
+            roleName: roleMap[tier],
+          },
+        }).catch(() => {
+          // Role might already exist
         });
       }
 
-      // Create audit log
+      // Audit log
       await tx.auditLog.create({
         data: {
           performedBy: adminUser.id,
           affectedUser: userId,
-          action: 'SUBSCRIPTION_GRANTED',
+          action: 'SUBSCRIPTIONGRANTED',
           entityType: 'Subscription',
           entityId: subscription.id,
-          newValue: {
+          newValue: JSON.stringify({
             tier: tier,
             duration: durationMonths,
-            price: price || 0,
-          },
-          reason: reason || `${tier} subscription granted by SuperAdmin for ${durationMonths} month(s)`,
+            price: price,
+          }),
+          reason: reason || `${tier} subscription granted for ${durationMonths} month(s)`,
         },
       });
 
-      // Create notification for user
+      // Notification
       await tx.notification.create({
         data: {
           userId: userId,
-          type: 'SUBSCRIPTION_CHANGED',
-          title: 'Premium Access Granted! 🎉',
-          message: `You have been granted ${tier} access for ${durationMonths} month(s). Enjoy your premium features!`,
+          type: 'SYSTEM_ALERT',
+          title: tier === 'FREE' ? 'Free Access Confirmed' : 'Premium Access Granted! 🎉',
+          message: tier === 'FREE' 
+            ? 'You have free access to basic features.'
+            : `You have been granted ${tier.replace('_', ' ')} access for ${durationMonths} month(s).`,
           link: '/dashboard',
         },
       });
@@ -283,13 +343,14 @@ export async function POST(request: NextRequest) {
           id: result.id,
           tier: result.tier,
           status: result.status,
+          price: result.price,
           validUntil: result.currentPeriodEnd?.toISOString(),
         },
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error('Subscriptions POST Error:', error);
+    console.error('❌ Subscriptions POST Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -306,27 +367,18 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized: No active session' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
 
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get SuperAdmin user
     const adminUser = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { id: true },
@@ -336,11 +388,9 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Admin user not found' }, { status: 404 });
     }
 
-    // Get request body
     const body = await request.json();
     const { subscriptionId, action, data } = body;
 
-    // Validation
     if (!subscriptionId || !action) {
       return NextResponse.json(
         { error: 'Missing required fields: subscriptionId, action' },
@@ -348,20 +398,15 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Get subscription
     const subscription = await prisma.subscription.findUnique({
       where: { id: subscriptionId },
       include: { user: true },
     });
 
     if (!subscription) {
-      return NextResponse.json(
-        { error: 'Subscription not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
     }
 
-    // Handle different actions
     let updatedSubscription;
     let auditAction;
     let auditReason;
@@ -378,9 +423,9 @@ export async function PATCH(request: NextRequest) {
           data: { currentPeriodEnd: newEndDate },
         });
 
-        auditAction = 'SUBSCRIPTION_EXTENDED';
-        auditReason = `Subscription extended by ${extensionMonths} month(s)`;
-        notificationMessage = `Your ${subscription.tier} subscription has been extended by ${extensionMonths} month(s)!`;
+        auditAction = 'SUBSCRIPTIONCHANGED';
+        auditReason = `Extended by ${extensionMonths} month(s)`;
+        notificationMessage = `Your ${subscription.tier} subscription extended by ${extensionMonths} month(s)!`;
         break;
 
       case 'PAUSE':
@@ -389,8 +434,8 @@ export async function PATCH(request: NextRequest) {
           data: { status: 'PAUSED' },
         });
 
-        auditAction = 'SUBSCRIPTION_PAUSED';
-        auditReason = data?.reason || 'Subscription paused by SuperAdmin';
+        auditAction = 'SUBSCRIPTIONCHANGED';
+        auditReason = data?.reason || 'Paused by SuperAdmin';
         notificationMessage = 'Your subscription has been paused.';
         break;
 
@@ -400,8 +445,8 @@ export async function PATCH(request: NextRequest) {
           data: { status: 'ACTIVE' },
         });
 
-        auditAction = 'SUBSCRIPTION_RESUMED';
-        auditReason = 'Subscription resumed by SuperAdmin';
+        auditAction = 'SUBSCRIPTIONCHANGED';
+        auditReason = 'Resumed by SuperAdmin';
         notificationMessage = 'Your subscription has been resumed!';
         break;
 
@@ -415,9 +460,9 @@ export async function PATCH(request: NextRequest) {
           data: { tier: data.tier },
         });
 
-        auditAction = 'SUBSCRIPTION_CHANGED';
+        auditAction = 'SUBSCRIPTIONCHANGED';
         auditReason = `Tier changed from ${subscription.tier} to ${data.tier}`;
-        notificationMessage = `Your subscription has been upgraded to ${data.tier}!`;
+        notificationMessage = `Subscription upgraded to ${data.tier.replace('_', ' ')}!`;
         break;
 
       case 'UPDATE_PRICE':
@@ -433,16 +478,15 @@ export async function PATCH(request: NextRequest) {
           },
         });
 
-        auditAction = 'SUBSCRIPTION_CHANGED';
+        auditAction = 'SUBSCRIPTIONCHANGED';
         auditReason = `Price updated to £${data.price}`;
-        notificationMessage = `Your subscription price has been updated to £${data.price}/month.`;
+        notificationMessage = `Subscription price updated to £${data.price}/month.`;
         break;
 
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
-    // Create audit log
     await prisma.auditLog.create({
       data: {
         performedBy: adminUser.id,
@@ -450,25 +494,24 @@ export async function PATCH(request: NextRequest) {
         action: auditAction,
         entityType: 'Subscription',
         entityId: subscriptionId,
-        previousValue: {
+        previousValue: JSON.stringify({
           tier: subscription.tier,
           status: subscription.status,
           price: subscription.price,
-        },
-        newValue: {
+        }),
+        newValue: JSON.stringify({
           tier: updatedSubscription.tier,
           status: updatedSubscription.status,
           price: updatedSubscription.price,
-        },
+        }),
         reason: auditReason,
       },
     });
 
-    // Send notification
     await prisma.notification.create({
       data: {
         userId: subscription.userId,
-        type: 'SUBSCRIPTION_CHANGED',
+        type: 'SYSTEM_ALERT',
         title: 'Subscription Updated',
         message: notificationMessage,
         link: '/dashboard/settings',
@@ -487,7 +530,7 @@ export async function PATCH(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Subscriptions PATCH Error:', error);
+    console.error('❌ Subscriptions PATCH Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -504,27 +547,18 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized: No active session' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
 
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get SuperAdmin user
     const adminUser = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { id: true },
@@ -534,7 +568,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Admin user not found' }, { status: 404 });
     }
 
-    // Get query parameters
     const { searchParams } = new URL(request.url);
     const subscriptionId = searchParams.get('subscriptionId');
     const reason = searchParams.get('reason');
@@ -546,22 +579,16 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Get subscription
     const subscription = await prisma.subscription.findUnique({
       where: { id: subscriptionId },
       include: { user: true },
     });
 
     if (!subscription) {
-      return NextResponse.json(
-        { error: 'Subscription not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
     }
 
-    // Use transaction
     await prisma.$transaction(async (tx) => {
-      // Update to cancelled status instead of deleting
       await tx.subscription.update({
         where: { id: subscriptionId },
         data: {
@@ -571,23 +598,21 @@ export async function DELETE(request: NextRequest) {
         },
       });
 
-      // Create audit log
       await tx.auditLog.create({
         data: {
           performedBy: adminUser.id,
           affectedUser: subscription.userId,
-          action: 'SUBSCRIPTION_REVOKED',
+          action: 'SUBSCRIPTIONCANCELLED',
           entityType: 'Subscription',
           entityId: subscriptionId,
-          reason: reason || 'Subscription revoked by SuperAdmin',
+          reason: reason || 'Revoked by SuperAdmin',
         },
       });
 
-      // Send notification
       await tx.notification.create({
         data: {
           userId: subscription.userId,
-          type: 'SUBSCRIPTION_CHANGED',
+          type: 'SYSTEM_ALERT',
           title: 'Subscription Cancelled',
           message: reason || 'Your subscription has been cancelled by an administrator.',
           link: '/dashboard/settings',
@@ -600,7 +625,7 @@ export async function DELETE(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Subscriptions DELETE Error:', error);
+    console.error('❌ Subscriptions DELETE Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -611,8 +636,5 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// ============================================================================
-// Export route segment config
-// ============================================================================
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;

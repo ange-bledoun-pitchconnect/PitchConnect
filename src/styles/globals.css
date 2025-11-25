@@ -4,9 +4,143 @@
    ============================================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* ============================================================================
-   ROOT VARIABLES & COLOR SYSTEM
+   THEME COLORS - Light & Dark Mode
+   ============================================================================ */
+
+@layer base {
+  :root {
+    /* Light Mode (Default) */
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%;
+    
+    /* Card colors */
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+    
+    /* Popover colors */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    
+    /* Primary brand colors */
+    --primary: 43 74% 52%; /* Gold */
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary colors */
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    
+    /* Muted colors */
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    
+    /* Accent colors */
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    
+    /* Destructive colors */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    
+    /* Border colors */
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 43 74% 52%;
+    
+    /* Chart colors */
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    
+    --radius: 0.5rem;
+  }
+  
+  .dark {
+    /* Dark Mode */
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    
+    /* Card colors */
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    
+    /* Popover colors */
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    
+    /* Primary brand colors */
+    --primary: 43 74% 52%; /* Gold */
+    --primary-foreground: 222.2 47.4% 11.2%;
+    
+    /* Secondary colors */
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    
+    /* Muted colors */
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    
+    /* Accent colors */
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    
+    /* Destructive colors */
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    
+    /* Border colors */
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    
+    /* Chart colors */
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+/* ============================================================================
+   BASE STYLES WITH THEME SUPPORT
+   ============================================================================ */
+
+@layer base {
+  * {
+    @apply border-border;
+    transition: background-color 200ms ease-in-out, 
+                color 200ms ease-in-out, 
+                border-color 200ms ease-in-out;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Prevent theme flash on page load */
+  html.dark {
+    color-scheme: dark;
+  }
+  
+  html.light {
+    color-scheme: light;
+  }
+}
+
+/* ============================================================================
+   CUSTOM BRAND COLORS (Work in both themes)
    ============================================================================ */
 
 :root {
@@ -23,326 +157,100 @@
   --color-purple-light: #D8B4FE;
   --color-purple-dark: #7E22CE;
   
-  /* Neutrals */
-  --color-white: #FFFFFF;
-  --color-black: #1F2937;
-  --color-charcoal: #374151;
-  --color-gray-light: #F3F4F6;
-  --color-gray-medium: #E5E7EB;
-  --color-gray-dark: #6B7280;
-  
   /* Semantic */
   --color-success: #10B981;
   --color-error: #EF4444;
   --color-warning: #F59E0B;
   --color-info: #3B82F6;
   
-  /* Spacing */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-base: 1rem;
-  --spacing-md: 1.5rem;
-  --spacing-lg: 2rem;
-  --spacing-xl: 3rem;
-  --spacing-2xl: 4rem;
-  --spacing-3xl: 6rem;
-  
-  /* Typography */
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-base: 1rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
-  --font-size-3xl: 1.875rem;
-  --font-size-4xl: 2.25rem;
-  --font-size-5xl: 3rem;
-  
-  /* Line Heights */
-  --line-height-tight: 1.25;
-  --line-height-normal: 1.5;
-  --line-height-relaxed: 1.75;
-  
-  /* Transitions */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
-  
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
   --shadow-gold: 0 10px 25px -5px rgba(212, 175, 55, 0.3);
-  --shadow-purple: 0 10px 25px -5px rgba(168, 85, 247, 0.3);
-  --shadow-orange: 0 10px 25px -5px rgba(255, 107, 53, 0.3);
 }
 
-/* Dark Mode Support */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-white: #111827;
-    --color-gray-light: #1F2937;
-    --color-gray-medium: #374151;
-  }
+.dark {
+  /* Adjust shadows for dark mode */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
 }
 
 /* ============================================================================
-   TAILWIND DIRECTIVES
-   ============================================================================ */
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ============================================================================
-   BASE STYLES
-   ============================================================================ */
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-  scroll-padding-top: 80px;
-}
-
-body {
-  font-family: var(--font-family);
-  background-color: var(--color-white);
-  color: var(--color-black);
-  line-height: var(--line-height-normal);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* ============================================================================
-   TYPOGRAPHY STYLES
+   TYPOGRAPHY
    ============================================================================ */
 
 h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
-  line-height: var(--line-height-tight);
+  line-height: 1.25;
   letter-spacing: -0.02em;
-  color: var(--color-black);
-}
-
-h1 {
-  font-size: var(--font-size-5xl);
-}
-
-h2 {
-  font-size: var(--font-size-4xl);
-}
-
-h3 {
-  font-size: var(--font-size-3xl);
-}
-
-h4 {
-  font-size: var(--font-size-2xl);
-}
-
-h5 {
-  font-size: var(--font-size-xl);
-}
-
-h6 {
-  font-size: var(--font-size-lg);
-}
-
-p {
-  font-size: var(--font-size-base);
-  line-height: var(--line-height-normal);
-  color: var(--color-charcoal);
-}
-
-a {
-  color: var(--color-gold);
-  text-decoration: none;
-  transition: color var(--transition-normal);
-}
-
-a:hover {
-  color: var(--color-orange);
 }
 
 /* ============================================================================
-   BUTTON STYLES
+   SCROLLBAR STYLING
    ============================================================================ */
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.75rem 1.5rem;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  border-radius: 0.5rem;
-  border: none;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  white-space: nowrap;
-  user-select: none;
+/* Light mode scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
 
-.btn:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
 }
 
-.btn:active {
-  transform: translateY(0);
-}
-
-/* Primary Button */
-.btn-primary {
-  background: linear-gradient(135deg, var(--color-gold) 0%, var(--color-orange) 100%);
-  color: white;
-  font-weight: 700;
-  box-shadow: var(--shadow-gold);
-}
-
-.btn-primary:hover {
-  box-shadow: var(--shadow-lg);
-  background: linear-gradient(135deg, #C9A830 0%, #E85A24 100%);
-}
-
-/* Secondary Button */
-.btn-secondary {
-  background: var(--color-white);
-  border: 2px solid var(--color-gold);
-  color: var(--color-gold);
-  font-weight: 600;
-}
-
-.btn-secondary:hover {
+::-webkit-scrollbar-thumb {
   background: var(--color-gold);
-  color: white;
+  border-radius: 5px;
 }
 
-/* Outline Button */
-.btn-outline {
-  background: transparent;
-  border: 2px solid var(--color-charcoal);
-  color: var(--color-charcoal);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-orange);
 }
 
-.btn-outline:hover {
-  background: var(--color-charcoal);
-  color: white;
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--color-gold-dark);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gold);
 }
 
 /* ============================================================================
-   CARD STYLES
+   FOCUS STYLES
    ============================================================================ */
 
-.card {
-  background: var(--color-white);
-  border: 1px solid var(--color-gray-medium);
-  border-radius: 1rem;
-  padding: 1.5rem;
-  transition: all var(--transition-normal);
-  box-shadow: var(--shadow-sm);
-}
-
-.card:hover {
-  border-color: var(--color-gold);
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-4px);
-}
-
-.card-elevated {
-  box-shadow: var(--shadow-lg);
+*:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
 }
 
 /* ============================================================================
-   INPUT & FORM STYLES
+   ACCESSIBILITY
    ============================================================================ */
 
-input,
-textarea,
-select {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  font-family: var(--font-family);
-  font-size: var(--font-size-base);
-  border: 1px solid var(--color-gray-medium);
-  border-radius: 0.5rem;
-  background: var(--color-white);
-  color: var(--color-black);
-  transition: all var(--transition-normal);
-}
-
-input:focus,
-textarea:focus,
-select:focus {
-  outline: none;
-  border-color: var(--color-gold);
-  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
-}
-
-input::placeholder {
-  color: var(--color-gray-dark);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ============================================================================
-   BADGE STYLES
-   ============================================================================ */
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.375rem 0.75rem;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  border-radius: 9999px;
-  white-space: nowrap;
-}
-
-.badge-gold {
-  background: rgba(212, 175, 55, 0.1);
-  color: var(--color-gold);
-}
-
-.badge-orange {
-  background: rgba(255, 107, 53, 0.1);
-  color: var(--color-orange);
-}
-
-.badge-purple {
-  background: rgba(168, 85, 247, 0.1);
-  color: var(--color-purple);
-}
-
-.badge-success {
-  background: rgba(16, 185, 129, 0.1);
-  color: var(--color-success);
-}
-
-/* ============================================================================
-   CONTAINER UTILITIES
-   ============================================================================ */
-
-.container-max {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 1rem;
-}
-
-.container-wide {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 0 1rem;
-}
-
-/* ============================================================================
-   GRADIENT UTILITIES
+   UTILITY CLASSES
    ============================================================================ */
 
 .gradient-text-gold {
@@ -352,24 +260,19 @@ input::placeholder {
   background-clip: text;
 }
 
-.gradient-text-purple {
-  background: linear-gradient(135deg, var(--color-purple) 0%, var(--color-gold) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.container-max {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1rem;
 }
 
 /* ============================================================================
-   ANIMATION CLASSES
+   ANIMATIONS
    ============================================================================ */
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {
@@ -394,26 +297,6 @@ input::placeholder {
   }
 }
 
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes gradientShift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
 .animate-fade-in {
   animation: fadeIn 0.5s ease-in-out;
 }
@@ -424,217 +307,4 @@ input::placeholder {
 
 .animate-slide-down {
   animation: slideDown 0.6s ease-in-out;
-}
-
-.animate-scale-in {
-  animation: scaleIn 0.3s ease-in-out;
-}
-
-/* ============================================================================
-   RESPONSIVE UTILITIES
-   ============================================================================ */
-
-@media (max-width: 768px) {
-  h1 {
-    font-size: 2rem;
-  }
-
-  h2 {
-    font-size: 1.5rem;
-  }
-
-  h3 {
-    font-size: 1.25rem;
-  }
-
-  .btn {
-    padding: 0.625rem 1.25rem;
-    font-size: var(--font-size-sm);
-  }
-}
-
-/* ============================================================================
-   UTILITY CLASSES FOR COMMON PATTERNS
-   ============================================================================ */
-
-.text-center {
-  text-align: center;
-}
-
-.text-left {
-  text-align: left;
-}
-
-.text-right {
-  text-align: right;
-}
-
-.flex-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.grid-auto {
-  display: grid;
-  grid-auto-flow: dense;
-  gap: 1.5rem;
-}
-
-.gap-4 {
-  gap: 1rem;
-}
-
-.gap-6 {
-  gap: 1.5rem;
-}
-
-.gap-8 {
-  gap: 2rem;
-}
-
-.rounded-lg {
-  border-radius: 0.75rem;
-}
-
-.rounded-xl {
-  border-radius: 1rem;
-}
-
-.shadow-lg {
-  box-shadow: var(--shadow-lg);
-}
-
-.transition-all {
-  transition: all var(--transition-normal);
-}
-
-/* ============================================================================
-   SCROLLBAR STYLING (Webkit)
-   ============================================================================ */
-
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--color-gray-light);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-gold);
-  border-radius: 5px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-orange);
-}
-
-/* ============================================================================
-   ACCESSIBILITY
-   ============================================================================ */
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* High Contrast Mode */
-@media (prefers-contrast: more) {
-  :root {
-    --color-gold: #C9A830;
-    --color-black: #000000;
-  }
-}
-
-/* ============================================================================
-   FOCUS VISIBLE FOR KEYBOARD NAVIGATION
-   ============================================================================ */
-
-*:focus-visible {
-  outline: 2px solid var(--color-gold);
-  outline-offset: 2px;
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--color-gold);
-  outline-offset: 2px;
-}
-
-
-
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
-  }
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-  }
-}
-
-
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
 }

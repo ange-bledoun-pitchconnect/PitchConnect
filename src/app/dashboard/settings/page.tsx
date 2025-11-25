@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { useTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -19,8 +20,6 @@ import {
   Smartphone,
   Lock,
   Mail,
-  Eye,
-  EyeOff,
   Download,
   Trash2,
   CheckCircle,
@@ -29,11 +28,15 @@ import {
   ChevronRight,
   RefreshCw,
   Plus,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const [activeSection, setActiveSection] = useState('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -63,8 +66,7 @@ export default function SettingsPage() {
     showActivity: true,
     allowMessages: true,
     
-    // Appearance
-    theme: 'auto',
+    // Regional
     language: 'en-GB',
     timezone: 'Europe/London',
     dateFormat: 'DD/MM/YYYY',
@@ -100,19 +102,43 @@ export default function SettingsPage() {
     { id: 'data', label: 'Data & Storage', icon: Download },
   ];
 
+  const themeOptions = [
+    {
+      value: 'light',
+      label: 'Light',
+      icon: Sun,
+      description: 'Clean and bright',
+      preview: 'bg-white border-2',
+    },
+    {
+      value: 'dark',
+      label: 'Dark',
+      icon: Moon,
+      description: 'Easy on the eyes',
+      preview: 'bg-charcoal-900 border-2',
+    },
+    {
+      value: 'system',
+      label: 'Auto',
+      icon: Monitor,
+      description: 'Match system',
+      preview: 'bg-gradient-to-r from-white to-charcoal-900 border-2',
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 p-4 sm:p-6 lg:p-8 transition-colors">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-charcoal-900 mb-2">Settings</h1>
-          <p className="text-charcoal-600">Manage your account preferences and app settings</p>
+          <h1 className="text-4xl font-bold text-charcoal-900 dark:text-white mb-2">Settings</h1>
+          <p className="text-charcoal-600 dark:text-charcoal-400">Manage your account preferences and app settings</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sidebar Navigation */}
           <div className="lg:col-span-1">
-            <Card className="sticky top-6">
+            <Card className="sticky top-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
               <CardContent className="p-4">
                 <nav className="space-y-1">
                   {sections.map((section) => {
@@ -124,7 +150,7 @@ export default function SettingsPage() {
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
                           activeSection === section.id
                             ? 'bg-gradient-to-r from-gold-500 to-orange-400 text-white shadow-md'
-                            : 'text-charcoal-700 hover:bg-neutral-100'
+                            : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700'
                         }`}
                       >
                         <Icon className="w-5 h-5" />
@@ -142,82 +168,86 @@ export default function SettingsPage() {
           <div className="lg:col-span-3 space-y-6">
             {/* Save Success Banner */}
             {saveSuccess && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3 animate-slide-down">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                <p className="text-sm font-medium text-green-800">Settings saved successfully!</p>
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl p-4 flex items-center gap-3 animate-slide-down">
+                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">Settings saved successfully!</p>
               </div>
             )}
 
             {/* Profile Section */}
             {activeSection === 'profile' && (
-              <Card>
+              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
                     <User className="w-5 h-5 text-gold-500" />
                     Profile Information
                   </CardTitle>
-                  <CardDescription>Update your personal information and profile details</CardDescription>
+                  <CardDescription className="dark:text-charcoal-400">Update your personal information and profile details</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="firstName">First Name</Label>
+                      <Label htmlFor="firstName" className="dark:text-white">First Name</Label>
                       <Input
                         id="firstName"
                         value={settings.firstName}
                         onChange={(e) => setSettings({ ...settings, firstName: e.target.value })}
                         placeholder="John"
+                        className="dark:bg-charcoal-900 dark:border-charcoal-600 dark:text-white"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="lastName">Last Name</Label>
+                      <Label htmlFor="lastName" className="dark:text-white">Last Name</Label>
                       <Input
                         id="lastName"
                         value={settings.lastName}
                         onChange={(e) => setSettings({ ...settings, lastName: e.target.value })}
                         placeholder="Doe"
+                        className="dark:bg-charcoal-900 dark:border-charcoal-600 dark:text-white"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
+                    <Label htmlFor="email" className="dark:text-white">Email Address</Label>
                     <Input
                       id="email"
                       type="email"
                       value={settings.email}
                       onChange={(e) => setSettings({ ...settings, email: e.target.value })}
                       placeholder="your@email.com"
+                      className="dark:bg-charcoal-900 dark:border-charcoal-600 dark:text-white"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="phone">Phone Number (Optional)</Label>
+                    <Label htmlFor="phone" className="dark:text-white">Phone Number (Optional)</Label>
                     <Input
                       id="phone"
                       type="tel"
                       value={settings.phone}
                       onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
                       placeholder="+44 7700 900000"
+                      className="dark:bg-charcoal-900 dark:border-charcoal-600 dark:text-white"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="bio">Bio</Label>
+                    <Label htmlFor="bio" className="dark:text-white">Bio</Label>
                     <textarea
                       id="bio"
                       value={settings.bio}
                       onChange={(e) => setSettings({ ...settings, bio: e.target.value })}
                       placeholder="Tell us about yourself..."
-                      className="w-full min-h-[100px] px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 text-charcoal-900"
+                      className="w-full min-h-[100px] px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 text-charcoal-900 dark:text-white dark:bg-charcoal-900"
                     />
-                    <p className="text-xs text-charcoal-500">Maximum 500 characters</p>
+                    <p className="text-xs text-charcoal-500 dark:text-charcoal-400">Maximum 500 characters</p>
                   </div>
 
                   <Button
                     onClick={() => router.push('/dashboard/settings/profile')}
                     variant="outline"
-                    className="w-full md:w-auto"
+                    className="w-full md:w-auto dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700"
                   >
                     Edit Full Profile
                   </Button>
@@ -227,25 +257,25 @@ export default function SettingsPage() {
 
             {/* Notifications Section */}
             {activeSection === 'notifications' && (
-              <Card>
+              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
                     <Bell className="w-5 h-5 text-gold-500" />
                     Notification Preferences
                   </CardTitle>
-                  <CardDescription>Choose how you want to be notified about activity</CardDescription>
+                  <CardDescription className="dark:text-charcoal-400">Choose how you want to be notified about activity</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Notification Channels */}
                   <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900">Notification Channels</h3>
+                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Notification Channels</h3>
                     
-                    <div className="flex items-center justify-between py-3 border-b">
+                    <div className="flex items-center justify-between py-3 border-b dark:border-charcoal-700">
                       <div className="flex items-center gap-3">
-                        <Mail className="w-5 h-5 text-charcoal-500" />
+                        <Mail className="w-5 h-5 text-charcoal-500 dark:text-charcoal-400" />
                         <div>
-                          <p className="font-medium text-charcoal-900">Email Notifications</p>
-                          <p className="text-sm text-charcoal-600">Receive updates via email</p>
+                          <p className="font-medium text-charcoal-900 dark:text-white">Email Notifications</p>
+                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Receive updates via email</p>
                         </div>
                       </div>
                       <Switch
@@ -256,12 +286,12 @@ export default function SettingsPage() {
                       />
                     </div>
 
-                    <div className="flex items-center justify-between py-3 border-b">
+                    <div className="flex items-center justify-between py-3 border-b dark:border-charcoal-700">
                       <div className="flex items-center gap-3">
-                        <Bell className="w-5 h-5 text-charcoal-500" />
+                        <Bell className="w-5 h-5 text-charcoal-500 dark:text-charcoal-400" />
                         <div>
-                          <p className="font-medium text-charcoal-900">Push Notifications</p>
-                          <p className="text-sm text-charcoal-600">Get alerts on your device</p>
+                          <p className="font-medium text-charcoal-900 dark:text-white">Push Notifications</p>
+                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Get alerts on your device</p>
                         </div>
                       </div>
                       <Switch
@@ -272,12 +302,12 @@ export default function SettingsPage() {
                       />
                     </div>
 
-                    <div className="flex items-center justify-between py-3 border-b">
+                    <div className="flex items-center justify-between py-3 border-b dark:border-charcoal-700">
                       <div className="flex items-center gap-3">
-                        <Smartphone className="w-5 h-5 text-charcoal-500" />
+                        <Smartphone className="w-5 h-5 text-charcoal-500 dark:text-charcoal-400" />
                         <div>
-                          <p className="font-medium text-charcoal-900">SMS Notifications</p>
-                          <p className="text-sm text-charcoal-600">Receive text messages</p>
+                          <p className="font-medium text-charcoal-900 dark:text-white">SMS Notifications</p>
+                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Receive text messages</p>
                         </div>
                       </div>
                       <Switch
@@ -291,72 +321,28 @@ export default function SettingsPage() {
 
                   {/* Notification Types */}
                   <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900">What to Notify</h3>
+                    <h3 className="font-semibold text-charcoal-900 dark:text-white">What to Notify</h3>
                     
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="font-medium text-charcoal-900">Match Reminders</p>
-                        <p className="text-sm text-charcoal-600">Get notified before matches</p>
+                    {[
+                      { key: 'matchReminders', label: 'Match Reminders', desc: 'Get notified before matches' },
+                      { key: 'trainingReminders', label: 'Training Reminders', desc: 'Training session alerts' },
+                      { key: 'teamUpdates', label: 'Team Updates', desc: 'News and announcements' },
+                      { key: 'statsUpdates', label: 'Stats Updates', desc: 'Performance statistics' },
+                      { key: 'achievementAlerts', label: 'Achievement Alerts', desc: 'When you unlock achievements' },
+                    ].map((item) => (
+                      <div key={item.key} className="flex items-center justify-between py-3">
+                        <div>
+                          <p className="font-medium text-charcoal-900 dark:text-white">{item.label}</p>
+                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{item.desc}</p>
+                        </div>
+                        <Switch
+                          checked={settings[item.key as keyof typeof settings] as boolean}
+                          onCheckedChange={(checked) =>
+                            setSettings({ ...settings, [item.key]: checked })
+                          }
+                        />
                       </div>
-                      <Switch
-                        checked={settings.matchReminders}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, matchReminders: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="font-medium text-charcoal-900">Training Reminders</p>
-                        <p className="text-sm text-charcoal-600">Training session alerts</p>
-                      </div>
-                      <Switch
-                        checked={settings.trainingReminders}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, trainingReminders: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="font-medium text-charcoal-900">Team Updates</p>
-                        <p className="text-sm text-charcoal-600">News and announcements</p>
-                      </div>
-                      <Switch
-                        checked={settings.teamUpdates}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, teamUpdates: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="font-medium text-charcoal-900">Stats Updates</p>
-                        <p className="text-sm text-charcoal-600">Performance statistics</p>
-                      </div>
-                      <Switch
-                        checked={settings.statsUpdates}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, statsUpdates: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="font-medium text-charcoal-900">Achievement Alerts</p>
-                        <p className="text-sm text-charcoal-600">When you unlock achievements</p>
-                      </div>
-                      <Switch
-                        checked={settings.achievementAlerts}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, achievementAlerts: checked })
-                        }
-                      />
-                    </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -364,121 +350,73 @@ export default function SettingsPage() {
 
             {/* Privacy & Security Section */}
             {activeSection === 'privacy' && (
-              <Card>
+              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
                     <Shield className="w-5 h-5 text-gold-500" />
                     Privacy & Security
                   </CardTitle>
-                  <CardDescription>Control your privacy and security settings</CardDescription>
+                  <CardDescription className="dark:text-charcoal-400">Control your privacy and security settings</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900">Profile Visibility</h3>
+                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Profile Visibility</h3>
                     
                     <div className="space-y-3">
-                      <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-neutral-50">
-                        <input
-                          type="radio"
-                          name="visibility"
-                          value="public"
-                          checked={settings.profileVisibility === 'public'}
-                          onChange={(e) =>
-                            setSettings({ ...settings, profileVisibility: e.target.value })
-                          }
-                          className="w-4 h-4 text-gold-500"
-                        />
-                        <div>
-                          <p className="font-medium text-charcoal-900">Public</p>
-                          <p className="text-sm text-charcoal-600">Anyone can see your profile</p>
-                        </div>
-                      </label>
-
-                      <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-neutral-50">
-                        <input
-                          type="radio"
-                          name="visibility"
-                          value="team"
-                          checked={settings.profileVisibility === 'team'}
-                          onChange={(e) =>
-                            setSettings({ ...settings, profileVisibility: e.target.value })
-                          }
-                          className="w-4 h-4 text-gold-500"
-                        />
-                        <div>
-                          <p className="font-medium text-charcoal-900">Team Only</p>
-                          <p className="text-sm text-charcoal-600">Only your teammates can see</p>
-                        </div>
-                      </label>
-
-                      <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-neutral-50">
-                        <input
-                          type="radio"
-                          name="visibility"
-                          value="private"
-                          checked={settings.profileVisibility === 'private'}
-                          onChange={(e) =>
-                            setSettings({ ...settings, profileVisibility: e.target.value })
-                          }
-                          className="w-4 h-4 text-gold-500"
-                        />
-                        <div>
-                          <p className="font-medium text-charcoal-900">Private</p>
-                          <p className="text-sm text-charcoal-600">Only you can see your profile</p>
-                        </div>
-                      </label>
+                      {[
+                        { value: 'public', label: 'Public', desc: 'Anyone can see your profile' },
+                        { value: 'team', label: 'Team Only', desc: 'Only your teammates can see' },
+                        { value: 'private', label: 'Private', desc: 'Only you can see your profile' },
+                      ].map((option) => (
+                        <label key={option.value} className="flex items-center gap-3 p-3 border dark:border-charcoal-700 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-charcoal-700">
+                          <input
+                            type="radio"
+                            name="visibility"
+                            value={option.value}
+                            checked={settings.profileVisibility === option.value}
+                            onChange={(e) =>
+                              setSettings({ ...settings, profileVisibility: e.target.value })
+                            }
+                            className="w-4 h-4 text-gold-500"
+                          />
+                          <div>
+                            <p className="font-medium text-charcoal-900 dark:text-white">{option.label}</p>
+                            <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{option.desc}</p>
+                          </div>
+                        </label>
+                      ))}
                     </div>
                   </div>
 
                   <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900">Data Sharing</h3>
+                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Data Sharing</h3>
                     
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="font-medium text-charcoal-900">Show Statistics</p>
-                        <p className="text-sm text-charcoal-600">Display your performance stats</p>
+                    {[
+                      { key: 'showStats', label: 'Show Statistics', desc: 'Display your performance stats' },
+                      { key: 'showActivity', label: 'Show Activity', desc: 'Display your recent activity' },
+                      { key: 'allowMessages', label: 'Allow Messages', desc: 'Let others message you' },
+                    ].map((item) => (
+                      <div key={item.key} className="flex items-center justify-between py-3">
+                        <div>
+                          <p className="font-medium text-charcoal-900 dark:text-white">{item.label}</p>
+                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{item.desc}</p>
+                        </div>
+                        <Switch
+                          checked={settings[item.key as keyof typeof settings] as boolean}
+                          onCheckedChange={(checked) =>
+                            setSettings({ ...settings, [item.key]: checked })
+                          }
+                        />
                       </div>
-                      <Switch
-                        checked={settings.showStats}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, showStats: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="font-medium text-charcoal-900">Show Activity</p>
-                        <p className="text-sm text-charcoal-600">Display your recent activity</p>
-                      </div>
-                      <Switch
-                        checked={settings.showActivity}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, showActivity: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-3">
-                      <div>
-                        <p className="font-medium text-charcoal-900">Allow Messages</p>
-                        <p className="text-sm text-charcoal-600">Let others message you</p>
-                      </div>
-                      <Switch
-                        checked={settings.allowMessages}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, allowMessages: checked })
-                        }
-                      />
-                    </div>
+                    ))}
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t">
-                    <Button variant="outline" className="w-full justify-start text-left">
+                  <div className="space-y-3 pt-4 border-t dark:border-charcoal-700">
+                    <Button variant="outline" className="w-full justify-start text-left dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700">
                       <Lock className="w-4 h-4 mr-2" />
                       Change Password
                     </Button>
-                    <Button variant="outline" className="w-full justify-start text-left">
+                    <Button variant="outline" className="w-full justify-start text-left dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700">
                       <Shield className="w-4 h-4 mr-2" />
                       Two-Factor Authentication
                     </Button>
@@ -487,83 +425,86 @@ export default function SettingsPage() {
               </Card>
             )}
 
-            {/* Appearance Section */}
+            {/* Appearance Section - WITH WORKING THEME TOGGLE */}
             {activeSection === 'appearance' && (
-              <Card>
+              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
                     <Palette className="w-5 h-5 text-gold-500" />
                     Appearance
                   </CardTitle>
-                  <CardDescription>Customize how the app looks</CardDescription>
+                  <CardDescription className="dark:text-charcoal-400">Customize how the app looks</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900">Theme</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-charcoal-900 dark:text-white">Theme</h3>
+                      <Badge className="bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-300 border-gold-200 dark:border-gold-700">
+                        {theme === 'system' ? `Auto (${resolvedTheme})` : theme.charAt(0).toUpperCase() + theme.slice(1)}
+                      </Badge>
+                    </div>
                     
-                    <div className="grid grid-cols-3 gap-3">
-                      <label className="cursor-pointer">
-                        <input
-                          type="radio"
-                          name="theme"
-                          value="light"
-                          checked={settings.theme === 'light'}
-                          onChange={(e) => setSettings({ ...settings, theme: e.target.value })}
-                          className="sr-only"
-                        />
-                        <div
-                          className={`p-4 border-2 rounded-lg text-center ${
-                            settings.theme === 'light'
-                              ? 'border-gold-500 bg-gold-50'
-                              : 'border-neutral-200'
-                          }`}
-                        >
-                          <div className="w-12 h-12 bg-white border rounded mx-auto mb-2" />
-                          <p className="text-sm font-medium">Light</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {themeOptions.map((option) => {
+                        const Icon = option.icon;
+                        const isSelected = theme === option.value;
+                        
+                        return (
+                          <button
+                            key={option.value}
+                            onClick={() => setTheme(option.value as 'light' | 'dark' | 'system')}
+                            className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
+                              isSelected
+                                ? 'border-gold-500 bg-gold-50 dark:bg-gold-900/20 shadow-lg scale-105'
+                                : 'border-neutral-200 dark:border-charcoal-600 hover:border-gold-300 dark:hover:border-gold-600 hover:shadow-md'
+                            }`}
+                          >
+                            {/* Preview Box */}
+                            <div className={`w-full h-24 rounded-lg mb-4 flex items-center justify-center ${option.preview}`}>
+                              <Icon className={`w-8 h-8 ${
+                                isSelected ? 'text-gold-600 dark:text-gold-400' : 'text-charcoal-400 dark:text-charcoal-500'
+                              }`} />
+                            </div>
+                            
+                            {/* Label */}
+                            <div className="text-center space-y-1">
+                              <p className={`font-semibold ${
+                                isSelected ? 'text-gold-700 dark:text-gold-300' : 'text-charcoal-900 dark:text-white'
+                              }`}>
+                                {option.label}
+                              </p>
+                              <p className={`text-xs ${
+                                isSelected ? 'text-gold-600 dark:text-gold-400' : 'text-charcoal-500 dark:text-charcoal-400'
+                              }`}>
+                                {option.description}
+                              </p>
+                            </div>
+                            
+                            {/* Selected Indicator */}
+                            {isSelected && (
+                              <div className="absolute top-2 right-2">
+                                <CheckCircle className="w-5 h-5 text-gold-600 dark:text-gold-400 fill-gold-100 dark:fill-gold-900" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Theme Info */}
+                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                      <div className="flex gap-3">
+                        <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm">
+                          <p className="font-medium text-blue-900 dark:text-blue-200 mb-1">
+                            Theme preference saved
+                          </p>
+                          <p className="text-blue-700 dark:text-blue-300">
+                            Your theme selection is saved and will persist across sessions. 
+                            {theme === 'system' && ' Auto mode will automatically switch based on your system preferences.'}
+                          </p>
                         </div>
-                      </label>
-
-                      <label className="cursor-pointer">
-                        <input
-                          type="radio"
-                          name="theme"
-                          value="dark"
-                          checked={settings.theme === 'dark'}
-                          onChange={(e) => setSettings({ ...settings, theme: e.target.value })}
-                          className="sr-only"
-                        />
-                        <div
-                          className={`p-4 border-2 rounded-lg text-center ${
-                            settings.theme === 'dark'
-                              ? 'border-gold-500 bg-gold-50'
-                              : 'border-neutral-200'
-                          }`}
-                        >
-                          <div className="w-12 h-12 bg-charcoal-900 border rounded mx-auto mb-2" />
-                          <p className="text-sm font-medium">Dark</p>
-                        </div>
-                      </label>
-
-                      <label className="cursor-pointer">
-                        <input
-                          type="radio"
-                          name="theme"
-                          value="auto"
-                          checked={settings.theme === 'auto'}
-                          onChange={(e) => setSettings({ ...settings, theme: e.target.value })}
-                          className="sr-only"
-                        />
-                        <div
-                          className={`p-4 border-2 rounded-lg text-center ${
-                            settings.theme === 'auto'
-                              ? 'border-gold-500 bg-gold-50'
-                              : 'border-neutral-200'
-                          }`}
-                        >
-                          <div className="w-12 h-12 bg-gradient-to-r from-white to-charcoal-900 border rounded mx-auto mb-2" />
-                          <p className="text-sm font-medium">Auto</p>
-                        </div>
-                      </label>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -572,22 +513,22 @@ export default function SettingsPage() {
 
             {/* Regional Section */}
             {activeSection === 'regional' && (
-              <Card>
+              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
                     <Globe className="w-5 h-5 text-gold-500" />
                     Regional Settings
                   </CardTitle>
-                  <CardDescription>Language, timezone, and regional preferences</CardDescription>
+                  <CardDescription className="dark:text-charcoal-400">Language, timezone, and regional preferences</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
-                    <Label htmlFor="language">Language</Label>
+                    <Label htmlFor="language" className="dark:text-white">Language</Label>
                     <select
                       id="language"
                       value={settings.language}
                       onChange={(e) => setSettings({ ...settings, language: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
+                      className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 dark:bg-charcoal-900 dark:text-white"
                     >
                       <option value="en-GB">English (UK)</option>
                       <option value="en-US">English (US)</option>
@@ -598,12 +539,12 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="timezone">Timezone</Label>
+                    <Label htmlFor="timezone" className="dark:text-white">Timezone</Label>
                     <select
                       id="timezone"
                       value={settings.timezone}
                       onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
+                      className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 dark:bg-charcoal-900 dark:text-white"
                     >
                       <option value="Europe/London">London (GMT)</option>
                       <option value="Europe/Paris">Paris (CET)</option>
@@ -613,12 +554,12 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="dateFormat">Date Format</Label>
+                    <Label htmlFor="dateFormat" className="dark:text-white">Date Format</Label>
                     <select
                       id="dateFormat"
                       value={settings.dateFormat}
                       onChange={(e) => setSettings({ ...settings, dateFormat: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
+                      className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 dark:bg-charcoal-900 dark:text-white"
                     >
                       <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                       <option value="MM/DD/YYYY">MM/DD/YYYY</option>
@@ -631,22 +572,22 @@ export default function SettingsPage() {
 
             {/* Billing Section */}
             {activeSection === 'billing' && (
-              <Card>
+              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
                     <CreditCard className="w-5 h-5 text-gold-500" />
                     Billing & Subscription
                   </CardTitle>
-                  <CardDescription>Manage your subscription and payment methods</CardDescription>
+                  <CardDescription className="dark:text-charcoal-400">Manage your subscription and payment methods</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="p-4 bg-gradient-to-r from-gold-50 to-orange-50 rounded-xl border border-gold-200">
+                  <div className="p-4 bg-gradient-to-r from-gold-50 to-orange-50 dark:from-gold-900/20 dark:to-orange-900/20 rounded-xl border border-gold-200 dark:border-gold-700">
                     <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="font-bold text-charcoal-900 text-lg">Player (Free)</h3>
-                        <p className="text-sm text-charcoal-600">Basic features included</p>
+                        <h3 className="font-bold text-charcoal-900 dark:text-white text-lg">Player (Free)</h3>
+                        <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Basic features included</p>
                       </div>
-                      <Badge className="bg-green-100 text-green-700 border-green-200">Active</Badge>
+                      <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700">Active</Badge>
                     </div>
                     <Button className="w-full bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
                       Upgrade to Pro
@@ -654,17 +595,17 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-3">
-                    <h3 className="font-semibold text-charcoal-900">Payment Methods</h3>
-                    <p className="text-sm text-charcoal-600">No payment methods added</p>
-                    <Button variant="outline" className="w-full">
+                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Payment Methods</h3>
+                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400">No payment methods added</p>
+                    <Button variant="outline" className="w-full dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700">
                       <Plus className="w-4 h-4 mr-2" />
                       Add Payment Method
                     </Button>
                   </div>
 
                   <div className="space-y-3">
-                    <h3 className="font-semibold text-charcoal-900">Billing History</h3>
-                    <p className="text-sm text-charcoal-600">No billing history</p>
+                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Billing History</h3>
+                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400">No billing history</p>
                   </div>
                 </CardContent>
               </Card>
@@ -672,19 +613,19 @@ export default function SettingsPage() {
 
             {/* Data & Storage Section */}
             {activeSection === 'data' && (
-              <Card>
+              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
                     <Download className="w-5 h-5 text-gold-500" />
                     Data & Storage
                   </CardTitle>
-                  <CardDescription>Manage your data and storage preferences</CardDescription>
+                  <CardDescription className="dark:text-charcoal-400">Manage your data and storage preferences</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="flex items-center justify-between py-3">
                     <div>
-                      <p className="font-medium text-charcoal-900">Auto-Sync Data</p>
-                      <p className="text-sm text-charcoal-600">Automatically sync your data</p>
+                      <p className="font-medium text-charcoal-900 dark:text-white">Auto-Sync Data</p>
+                      <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Automatically sync your data</p>
                     </div>
                     <Switch
                       checked={settings.autoSyncData}
@@ -694,21 +635,21 @@ export default function SettingsPage() {
                     />
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t">
-                    <h3 className="font-semibold text-charcoal-900">Export Your Data</h3>
-                    <Button variant="outline" className="w-full justify-start">
+                  <div className="space-y-3 pt-4 border-t dark:border-charcoal-700">
+                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Export Your Data</h3>
+                    <Button variant="outline" className="w-full justify-start dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700">
                       <Download className="w-4 h-4 mr-2" />
                       Download All Data
                     </Button>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t">
-                    <h3 className="font-semibold text-charcoal-900 text-red-600">Danger Zone</h3>
+                  <div className="space-y-3 pt-4 border-t dark:border-charcoal-700">
+                    <h3 className="font-semibold text-red-600 dark:text-red-400">Danger Zone</h3>
                     <Button variant="destructive" className="w-full justify-start">
                       <Trash2 className="w-4 h-4 mr-2" />
                       Delete Account
                     </Button>
-                    <p className="text-xs text-charcoal-500">
+                    <p className="text-xs text-charcoal-500 dark:text-charcoal-400">
                       This action cannot be undone. All your data will be permanently deleted.
                     </p>
                   </div>

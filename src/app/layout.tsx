@@ -175,7 +175,7 @@ export default async function RootLayout({
       </head>
 
       <body
-        className="bg-white text-charcoal-800 font-inter antialiased"
+        className="bg-white dark:bg-charcoal-900 text-charcoal-800 dark:text-white font-inter antialiased transition-colors duration-200"
         suppressHydrationWarning
       >
         {/* SKIP TO MAIN CONTENT LINK (Accessibility) */}
@@ -192,8 +192,8 @@ export default async function RootLayout({
             {children}
           </main>
 
-          {/* FOOTER - Professional, Branded */}
-          <footer className="bg-charcoal-800 text-white border-t border-gold/20">
+          {/* FOOTER - Professional, Branded with Dark Mode */}
+          <footer className="bg-charcoal-800 dark:bg-charcoal-900 text-white border-t border-gold/20 dark:border-gold/10 transition-colors duration-200">
             <div className="container-max py-12">
               {/* Footer Grid */}
               <div className="grid grid-cols-1 md:grid-cols-5 gap-8 mb-8">
@@ -202,27 +202,27 @@ export default async function RootLayout({
                   <h3 className="text-xl font-bold mb-2">
                     <span className="gradient-text-gold">PitchConnect</span>
                   </h3>
-                  <p className="text-gray-400 text-sm leading-relaxed">
+                  <p className="text-gray-400 dark:text-gray-500 text-sm leading-relaxed">
                     Elite team management platform for professional coaches, managers, and athletes across all sports.
                   </p>
                   <div className="flex gap-4 mt-6">
                     <a
                       href="#"
-                      className="text-gray-400 hover:text-gold transition-colors"
+                      className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors"
                       aria-label="Twitter"
                     >
                       <span className="text-lg">𝕏</span>
                     </a>
                     <a
                       href="#"
-                      className="text-gray-400 hover:text-gold transition-colors"
+                      className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors"
                       aria-label="LinkedIn"
                     >
                       <span className="text-lg">in</span>
                     </a>
                     <a
                       href="#"
-                      className="text-gray-400 hover:text-gold transition-colors"
+                      className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors"
                       aria-label="GitHub"
                     >
                       <span className="text-lg">⚙️</span>
@@ -237,7 +237,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#features"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Features
                       </a>
@@ -245,7 +245,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#pricing"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Pricing
                       </a>
@@ -253,7 +253,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Roadmap
                       </a>
@@ -261,7 +261,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         FAQ
                       </a>
@@ -276,7 +276,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         About
                       </a>
@@ -284,7 +284,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Blog
                       </a>
@@ -292,7 +292,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Careers
                       </a>
@@ -300,7 +300,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Contact
                       </a>
@@ -315,7 +315,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Documentation
                       </a>
@@ -323,7 +323,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Help Center
                       </a>
@@ -331,7 +331,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         API
                       </a>
@@ -339,7 +339,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Status
                       </a>
@@ -354,7 +354,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Privacy Policy
                       </a>
@@ -362,7 +362,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Terms of Service
                       </a>
@@ -370,7 +370,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         Cookie Policy
                       </a>
@@ -378,7 +378,7 @@ export default async function RootLayout({
                     <li>
                       <a
                         href="#"
-                        className="text-gray-400 hover:text-gold transition-colors text-sm"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gold dark:hover:text-gold transition-colors text-sm"
                       >
                         GDPR
                       </a>
@@ -388,18 +388,18 @@ export default async function RootLayout({
               </div>
 
               {/* Footer Bottom */}
-              <div className="border-t border-gold/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-                <p className="text-gray-500 text-sm">
+              <div className="border-t border-gold/10 dark:border-gold/5 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+                <p className="text-gray-500 dark:text-gray-600 text-sm">
                   &copy; 2025 PitchConnect. All rights reserved. | Elevating sports team management globally.
                 </p>
-                <div className="flex gap-6 text-sm text-gray-500">
-                  <a href="#" className="hover:text-gold transition-colors">
+                <div className="flex gap-6 text-sm text-gray-500 dark:text-gray-600">
+                  <a href="#" className="hover:text-gold dark:hover:text-gold transition-colors">
                     Privacy
                   </a>
-                  <a href="#" className="hover:text-gold transition-colors">
+                  <a href="#" className="hover:text-gold dark:hover:text-gold transition-colors">
                     Terms
                   </a>
-                  <a href="#" className="hover:text-gold transition-colors">
+                  <a href="#" className="hover:text-gold dark:hover:text-gold transition-colors">
                     Cookies
                   </a>
                 </div>

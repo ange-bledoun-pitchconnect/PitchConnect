@@ -81,35 +81,35 @@ export function DashboardHeader({
             variant="ghost"
             size="sm"
             onClick={handleNotificationClick}
-            className="relative hover:bg-neutral-100"
+            className="relative hover:bg-neutral-100 dark:hover:bg-charcoal-700"
           >
-            <Bell className="w-5 h-5 text-charcoal-700" />
+            <Bell className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
             {/* Notification Badge */}
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
           </Button>
 
           {/* Notifications Dropdown */}
           {showNotifications && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-neutral-200 z-50 max-h-96 overflow-y-auto">
-              <div className="p-4 border-b border-neutral-200">
-                <h3 className="font-bold text-charcoal-900">Notifications</h3>
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 max-h-96 overflow-y-auto transition-colors duration-200">
+              <div className="p-4 border-b border-neutral-200 dark:border-charcoal-700">
+                <h3 className="font-bold text-charcoal-900 dark:text-white">Notifications</h3>
               </div>
               <div className="p-2">
                 {/* Sample Notification */}
-                <div className="p-3 hover:bg-neutral-50 rounded-lg cursor-pointer">
-                  <p className="text-sm font-semibold text-charcoal-900">
+                <div className="p-3 hover:bg-neutral-50 dark:hover:bg-charcoal-700 rounded-lg cursor-pointer transition-colors">
+                  <p className="text-sm font-semibold text-charcoal-900 dark:text-white">
                     Welcome to PitchConnect!
                   </p>
-                  <p className="text-xs text-charcoal-600 mt-1">
+                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-1">
                     Get started by creating your first club.
                   </p>
-                  <p className="text-xs text-charcoal-400 mt-2">Just now</p>
+                  <p className="text-xs text-charcoal-400 dark:text-charcoal-500 mt-2">Just now</p>
                 </div>
 
                 {/* Empty State */}
                 <div className="text-center py-8">
-                  <Bell className="w-12 h-12 text-neutral-300 mx-auto mb-2" />
-                  <p className="text-sm text-charcoal-600">No new notifications</p>
+                  <Bell className="w-12 h-12 text-neutral-300 dark:text-charcoal-600 mx-auto mb-2" />
+                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">No new notifications</p>
                 </div>
               </div>
             </div>
@@ -121,9 +121,9 @@ export function DashboardHeader({
           variant="ghost"
           size="sm"
           onClick={handleSettingsClick}
-          className="hover:bg-neutral-100"
+          className="hover:bg-neutral-100 dark:hover:bg-charcoal-700"
         >
-          <Settings className="w-5 h-5 text-charcoal-700" />
+          <Settings className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
         </Button>
 
         {/* Profile Menu */}
@@ -132,24 +132,24 @@ export function DashboardHeader({
             variant="ghost"
             size="sm"
             onClick={() => setShowProfileMenu(!showProfileMenu)}
-            className="hover:bg-neutral-100"
+            className="hover:bg-neutral-100 dark:hover:bg-charcoal-700"
           >
-            <User className="w-5 h-5 text-charcoal-700" />
+            <User className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
           </Button>
 
           {showProfileMenu && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-neutral-200 z-50">
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 transition-colors duration-200">
               <div className="p-2">
                 <button
                   onClick={handleSettingsClick}
-                  className="w-full text-left px-4 py-2 text-sm text-charcoal-700 hover:bg-neutral-50 rounded-lg flex items-center gap-2"
+                  className="w-full text-left px-4 py-2 text-sm text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700 rounded-lg flex items-center gap-2 transition-colors"
                 >
                   <Settings className="w-4 h-4" />
                   Settings
                 </button>
                 <button
                   onClick={() => signOut({ callbackUrl: '/auth/login' })}
-                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2"
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg flex items-center gap-2 transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out

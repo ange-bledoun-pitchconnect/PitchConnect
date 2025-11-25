@@ -121,15 +121,15 @@ export function DashboardSidebar({ className }: DashboardSidebarProps) {
 
   // Get role badge
   const getRoleBadge = () => {
-    if (isSuperAdmin) return { text: 'SUPERADMIN', color: 'bg-red-100 text-red-700' };
-    if (roles.includes('LEAGUE_ADMIN')) return { text: 'LEAGUE ADMIN', color: 'bg-purple-100 text-purple-700' };
-    if (roles.includes('CLUB_MANAGER')) return { text: 'CLUB MANAGER', color: 'bg-blue-100 text-blue-700' };
-    if (roles.includes('COACH')) return { text: 'COACH', color: 'bg-green-100 text-green-700' };
-    if (roles.includes('TREASURER')) return { text: 'TREASURER', color: 'bg-yellow-100 text-yellow-700' };
-    if (roles.includes('PLAYER_PRO')) return { text: 'PLAYER PRO', color: 'bg-gold-100 text-gold-700' };
-    if (roles.includes('PLAYER')) return { text: 'PLAYER', color: 'bg-teal-100 text-teal-700' };
-    if (roles.includes('PARENT')) return { text: 'PARENT', color: 'bg-pink-100 text-pink-700' };
-    return { text: 'USER', color: 'bg-gray-100 text-gray-700' };
+    if (isSuperAdmin) return { text: 'SUPERADMIN', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' };
+    if (roles.includes('LEAGUE_ADMIN')) return { text: 'LEAGUE ADMIN', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' };
+    if (roles.includes('CLUB_MANAGER')) return { text: 'CLUB MANAGER', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' };
+    if (roles.includes('COACH')) return { text: 'COACH', color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' };
+    if (roles.includes('TREASURER')) return { text: 'TREASURER', color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' };
+    if (roles.includes('PLAYER_PRO')) return { text: 'PLAYER PRO', color: 'bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-300' };
+    if (roles.includes('PLAYER')) return { text: 'PLAYER', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300' };
+    if (roles.includes('PARENT')) return { text: 'PARENT', color: 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300' };
+    return { text: 'USER', color: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300' };
   };
 
   const roleBadge = getRoleBadge();
@@ -137,13 +137,13 @@ export function DashboardSidebar({ className }: DashboardSidebarProps) {
   return (
     <aside
       className={cn(
-        'bg-white border-r border-neutral-200 transition-all duration-300 flex flex-col shadow-sm h-screen sticky top-0',
+        'bg-white dark:bg-charcoal-800 border-r border-neutral-200 dark:border-charcoal-700 transition-all duration-300 flex flex-col shadow-sm h-screen sticky top-0',
         isCollapsed ? 'w-20' : 'w-64',
         className
       )}
     >
       {/* Logo */}
-      <div className="p-4 border-b border-neutral-200">
+      <div className="p-4 border-b border-neutral-200 dark:border-charcoal-700">
         <Link href="/" className="flex items-center gap-3 group">
           <div className="w-10 h-10 bg-gradient-to-br from-gold-500 to-orange-400 rounded-xl flex items-center justify-center text-white font-bold shadow-md group-hover:shadow-lg transition-shadow">
             ⚽
@@ -158,12 +158,12 @@ export function DashboardSidebar({ className }: DashboardSidebarProps) {
 
       {/* User Info */}
       {!isCollapsed && (
-        <div className="p-4 border-b border-neutral-200">
+        <div className="p-4 border-b border-neutral-200 dark:border-charcoal-700">
           <div className="space-y-2">
-            <p className="font-semibold text-charcoal-900 truncate">
+            <p className="font-semibold text-charcoal-900 dark:text-white truncate">
               {user?.name || 'User'}
             </p>
-            <p className="text-xs text-charcoal-600 truncate">{user?.email}</p>
+            <p className="text-xs text-charcoal-600 dark:text-charcoal-400 truncate">{user?.email}</p>
             <span className={cn('text-xs px-2 py-1 rounded-full font-semibold inline-block', roleBadge.color)}>
               {roleBadge.text}
             </span>
@@ -184,15 +184,15 @@ export function DashboardSidebar({ className }: DashboardSidebarProps) {
               className={cn(
                 'flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-semibold text-sm group relative',
                 active
-                  ? 'bg-gradient-to-r from-gold-100 to-orange-100 text-gold-700 shadow-sm'
-                  : 'text-charcoal-600 hover:bg-neutral-100 hover:text-gold-600'
+                  ? 'bg-gradient-to-r from-gold-100 to-orange-100 dark:from-gold-900/30 dark:to-orange-900/30 text-gold-700 dark:text-gold-300 shadow-sm'
+                  : 'text-charcoal-600 dark:text-charcoal-400 hover:bg-neutral-100 dark:hover:bg-charcoal-700 hover:text-gold-600 dark:hover:text-gold-400'
               )}
               title={isCollapsed ? item.label : undefined}
             >
               {active && (
                 <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-gold-500 to-orange-400 rounded-r-full" />
               )}
-              <Icon className={cn('w-5 h-5 flex-shrink-0', active ? 'text-gold-600' : '')} />
+              <Icon className={cn('w-5 h-5 flex-shrink-0', active ? 'text-gold-600 dark:text-gold-400' : '')} />
               {!isCollapsed && <span>{item.label}</span>}
             </Link>
           );
@@ -200,14 +200,14 @@ export function DashboardSidebar({ className }: DashboardSidebarProps) {
       </nav>
 
       {/* Settings */}
-      <div className="border-t border-neutral-200 p-3">
+      <div className="border-t border-neutral-200 dark:border-charcoal-700 p-3">
         <Link
           href="/dashboard/settings/profile"
           className={cn(
             'flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-semibold text-sm',
             pathname.startsWith('/dashboard/settings')
-              ? 'bg-purple-100 text-purple-700'
-              : 'text-charcoal-600 hover:bg-neutral-100 hover:text-purple-600'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+              : 'text-charcoal-600 dark:text-charcoal-400 hover:bg-neutral-100 dark:hover:bg-charcoal-700 hover:text-purple-600 dark:hover:text-purple-400'
           )}
           title={isCollapsed ? 'Settings' : undefined}
         >
@@ -218,7 +218,7 @@ export function DashboardSidebar({ className }: DashboardSidebarProps) {
         {/* Sign Out */}
         <button
           onClick={() => signOut({ callbackUrl: '/auth/login' })}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-semibold text-sm text-red-600 hover:bg-red-50 mt-2"
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all font-semibold text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 mt-2"
           title={isCollapsed ? 'Sign Out' : undefined}
         >
           <LogOut className="w-5 h-5 flex-shrink-0" />
@@ -227,10 +227,10 @@ export function DashboardSidebar({ className }: DashboardSidebarProps) {
       </div>
 
       {/* Collapse Button */}
-      <div className="border-t border-neutral-200 p-3">
+      <div className="border-t border-neutral-200 dark:border-charcoal-700 p-3">
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="w-full flex items-center justify-center p-3 text-charcoal-600 hover:bg-neutral-100 rounded-lg transition-all"
+          className="w-full flex items-center justify-center p-3 text-charcoal-600 dark:text-charcoal-400 hover:bg-neutral-100 dark:hover:bg-charcoal-700 rounded-lg transition-all"
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
@@ -241,3 +241,4 @@ export function DashboardSidebar({ className }: DashboardSidebarProps) {
 }
 
 DashboardSidebar.displayName = 'DashboardSidebar';
+

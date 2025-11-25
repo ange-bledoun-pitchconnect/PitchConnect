@@ -51,11 +51,35 @@ interface PaymentStatus {
   userName: string;
   userEmail: string;
   amount: number;
-  status: 'SUCCESS' | 'FAILED' | 'PENDING' | 'REFUNDED';
+  status: 'COMPLETED' | 'FAILED' | 'PENDING' | 'REFUNDED'; // FIXED: SUCCESS → COMPLETED
   date: string;
   method: string;
 }
 
+// FIXED: Update the status color function
+const getPaymentStatusColor = (status: PaymentStatus['status']) => {
+  const colors = {
+    COMPLETED: 'bg-green-900 text-green-200 border-green-700', // FIXED: SUCCESS → COMPLETED
+    FAILED: 'bg-red-900 text-red-200 border-red-700',
+    PENDING: 'bg-yellow-900 text-yellow-200 border-yellow-700',
+    REFUNDED: 'bg-gray-900 text-gray-200 border-gray-700',
+  };
+  return colors[status];
+};
+
+// FIXED: Update the status icon function
+const getPaymentStatusIcon = (status: PaymentStatus['status']) => {
+  switch (status) {
+    case 'COMPLETED': // FIXED: SUCCESS → COMPLETED
+      return <CheckCircle2 className="w-4 h-4" />;
+    case 'FAILED':
+      return <XCircle className="w-4 h-4" />;
+    case 'PENDING':
+      return <Clock className="w-4 h-4" />;
+    default:
+      return null;
+  }
+};
 export default function FinancialReportsPage() {
   const { data: session } = useSession();
   const [timeRange, setTimeRange] = useState<TimeRange>('30d');

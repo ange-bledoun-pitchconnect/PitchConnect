@@ -19,7 +19,6 @@ import { isSuperAdmin } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
@@ -29,7 +28,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
 
     if (!isAdmin) {
@@ -39,7 +37,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get query parameters
     const { searchParams } = new URL(request.url);
     const tab = searchParams.get('tab') || 'all';
     const search = searchParams.get('search') || '';
@@ -48,7 +45,6 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Build where clause
     const where: any = {};
 
     // Tab filtering
@@ -58,6 +54,12 @@ export async function GET(request: NextRequest) {
         break;
       case 'suspended':
         where.status = 'SUSPENDED';
+        break;
+      case 'banned':
+        where.status = 'BANNED';
+        break;
+      case 'inactive':
+        where.status = 'INACTIVE';
         break;
       case 'recent':
         const sevenDaysAgo = new Date();
@@ -80,7 +82,7 @@ export async function GET(request: NextRequest) {
       where.status = statusFilter;
     }
 
-    // Role filtering - FIXED to match your schema
+    // Role filtering
     if (roleFilter && roleFilter !== 'all') {
       where.userRoles = {
         some: {
@@ -89,7 +91,9 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Fetch users - FIXED field names to match your schema
+    console.log('\n📊 Fetching users with filter:', { tab, search, roleFilter, statusFilter });
+
+    // Fetch users
     const users = await prisma.user.findMany({
       where,
       orderBy: {
@@ -121,36 +125,49 @@ export async function GET(request: NextRequest) {
         },
         _count: {
           select: {
-            teamMemberships: true,  // FIXED: was playerTeams
-            clubMemberships: true,  // FIXED: was coachTeams
+            teamMemberships: true,
+            clubMemberships: true,
           },
         },
       },
     });
 
-    // Get total count
     const total = await prisma.user.count({ where });
 
-    // Format users - FIXED to use actual field names
-    const formattedUsers = users.map((user) => ({
-      id: user.id,
-      name: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      avatar: user.avatar,
-      roles: user.userRoles.map((ur) => ur.roleName),
-      status: user.status,
-      isSuperAdmin: user.isSuperAdmin,
-      subscription: user.subscription
-        ? {
-            tier: user.subscription.tier,
-            status: user.subscription.status,
-          }
-        : null,
-      teamCount: user._count.teamMemberships + user._count.clubMemberships,
-      lastLogin: user.lastLogin?.toISOString() || null,
-      createdAt: user.createdAt.toISOString(),
-      phoneNumber: user.phoneNumber,
-    }));
+    console.log(`✅ Found ${users.length} users (total: ${total})`);
+
+    // FIXED: Format users with proper roles array and name handling
+    const formattedUsers = users.map((user) => {
+      // Extract roles as simple string array
+      const roles = user.userRoles.map((ur) => ur.roleName);
+      
+      // Build name with proper fallback
+      const firstName = user.firstName || '';
+      const lastName = user.lastName || '';
+      const name = `${firstName} ${lastName}`.trim() || user.email.split('@')[0] || 'User';
+
+      console.log(`👤 User: ${user.email}, Roles: [${roles.join(', ')}], Name: ${name}`);
+
+      return {
+        id: user.id,
+        name: name,
+        email: user.email,
+        avatar: user.avatar,
+        roles: roles, // FIXED: Return as flat array
+        status: user.status,
+        isSuperAdmin: user.isSuperAdmin,
+        subscription: user.subscription
+          ? {
+              tier: user.subscription.tier,
+              status: user.subscription.status,
+            }
+          : null,
+        teamCount: user._count.teamMemberships + user._count.clubMemberships,
+        lastLogin: user.lastLogin?.toISOString() || null,
+        createdAt: user.createdAt.toISOString(),
+        phoneNumber: user.phoneNumber,
+      };
+    });
 
     return NextResponse.json(
       {
@@ -165,7 +182,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Users GET Error:', error);
+    console.error('❌ Users GET Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -177,32 +194,23 @@ export async function GET(request: NextRequest) {
 }
 
 // ============================================================================
-// PATCH - Update User(s)
+// PATCH - Update User(s) - ENHANCED WITH BULK ACTIONS
 // ============================================================================
 
 export async function PATCH(request: NextRequest) {
   try {
-    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized: No active session' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
 
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get SuperAdmin user
     const adminUser = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { id: true, firstName: true, lastName: true },
@@ -212,11 +220,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Admin user not found' }, { status: 404 });
     }
 
-    // Get request body
     const body = await request.json();
     const { userId, userIds, action, data } = body;
 
-    // Determine bulk or single operation
+    // ENHANCED: Support bulk operations
     const isBulk = Array.isArray(userIds);
     const targetIds = isBulk ? userIds : [userId];
 
@@ -234,13 +241,13 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Validate action
+    console.log(`\n🔧 ${action} action for ${targetIds.length} user(s)`);
+
     const validActions = ['SUSPEND', 'ACTIVATE', 'BAN', 'UPDATE_ROLES', 'UPDATE_PROFILE'];
     if (!validActions.includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
-    // Get affected users
     const affectedUsers = await prisma.user.findMany({
       where: { id: { in: targetIds } },
       select: {
@@ -270,7 +277,6 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Perform action based on type
     const results = [];
     const errors = [];
 
@@ -283,7 +289,7 @@ export async function PATCH(request: NextRequest) {
         switch (action) {
           case 'SUSPEND':
             if (user.status === 'SUSPENDED') {
-              errors.push({ userId: user.id, error: 'User already suspended' });
+              errors.push({ userId: user.id, error: 'Already suspended' });
               continue;
             }
 
@@ -292,13 +298,13 @@ export async function PATCH(request: NextRequest) {
               data: { status: 'SUSPENDED' },
             });
 
-            auditAction = 'USERSUSPENDED';
-            notificationMessage = `Your account has been suspended. Reason: ${data?.reason || 'No reason provided'}`;
+            auditAction = 'USER_SUSPENDED';
+            notificationMessage = `Your account has been suspended. Reason: ${data?.reason || 'Administrative action'}`;
             break;
 
           case 'ACTIVATE':
             if (user.status === 'ACTIVE') {
-              errors.push({ userId: user.id, error: 'User already active' });
+              errors.push({ userId: user.id, error: 'Already active' });
               continue;
             }
 
@@ -307,13 +313,13 @@ export async function PATCH(request: NextRequest) {
               data: { status: 'ACTIVE' },
             });
 
-            auditAction = 'USERUPDATED';
-            notificationMessage = 'Your account has been reactivated!';
+            auditAction = 'USER_ACTIVATED';
+            notificationMessage = 'Your account has been activated!';
             break;
 
           case 'BAN':
             if (user.status === 'BANNED') {
-              errors.push({ userId: user.id, error: 'User already banned' });
+              errors.push({ userId: user.id, error: 'Already banned' });
               continue;
             }
 
@@ -322,8 +328,8 @@ export async function PATCH(request: NextRequest) {
               data: { status: 'BANNED' },
             });
 
-            auditAction = 'USERBANNED';
-            notificationMessage = `Your account has been banned. Reason: ${data?.reason || 'No reason provided'}`;
+            auditAction = 'USER_BANNED';
+            notificationMessage = `Your account has been banned. Reason: ${data?.reason || 'Terms violation'}`;
             break;
 
           case 'UPDATE_ROLES':
@@ -338,37 +344,39 @@ export async function PATCH(request: NextRequest) {
             });
 
             // Create new roles
-            await prisma.userRoleUser.createMany({
-              data: data.roles.map((roleName: string) => ({
-                userId: user.id,
-                roleName: roleName,
-              })),
-            });
+            if (data.roles.length > 0) {
+              await prisma.userRoleUser.createMany({
+                data: data.roles.map((roleName: string) => ({
+                  userId: user.id,
+                  roleName: roleName,
+                })),
+              });
+            }
 
             updatedUser = await prisma.user.findUnique({
               where: { id: user.id },
             });
 
-            auditAction = 'ROLEUPGRADED';
-            notificationMessage = `Your role has been updated to: ${data.roles.join(', ')}`;
+            auditAction = 'ROLE_UPDATED';
+            notificationMessage = `Your roles have been updated to: ${data.roles.join(', ')}`;
             break;
 
           case 'UPDATE_PROFILE':
             if (!data) {
-              errors.push({ userId: user.id, error: 'No profile data provided' });
+              errors.push({ userId: user.id, error: 'No profile data' });
               continue;
             }
 
             updatedUser = await prisma.user.update({
               where: { id: user.id },
               data: {
-                firstName: data.firstName || user.firstName,
-                lastName: data.lastName || user.lastName,
+                firstName: data.firstName !== undefined ? data.firstName : user.firstName,
+                lastName: data.lastName !== undefined ? data.lastName : user.lastName,
                 phoneNumber: data.phoneNumber !== undefined ? data.phoneNumber : user.phoneNumber,
               },
             });
 
-            auditAction = 'USERUPDATED';
+            auditAction = 'USER_UPDATED';
             notificationMessage = 'Your profile has been updated by an administrator.';
             break;
 
@@ -385,15 +393,15 @@ export async function PATCH(request: NextRequest) {
             action: auditAction,
             entityType: 'User',
             entityId: user.id,
-            previousValue: {
+            previousValue: JSON.stringify({
               status: user.status,
               roles: user.userRoles.map((r) => r.roleName),
-            },
-            newValue: {
+            }),
+            newValue: JSON.stringify({
               status: updatedUser?.status,
               action: action,
-            },
-            reason: data?.reason || `${action} action performed by SuperAdmin`,
+            }),
+            reason: data?.reason || `${action} by SuperAdmin`,
             ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
           },
         });
@@ -402,7 +410,7 @@ export async function PATCH(request: NextRequest) {
         await prisma.notification.create({
           data: {
             userId: user.id,
-            type: 'SYSTEMALERT',
+            type: 'SYSTEM_ALERT',
             title: 'Account Update',
             message: notificationMessage,
             link: '/dashboard/settings',
@@ -414,7 +422,10 @@ export async function PATCH(request: NextRequest) {
           success: true,
           action: action,
         });
+
+        console.log(`✅ ${action} completed for user: ${user.email}`);
       } catch (error) {
+        console.error(`❌ ${action} failed for user ${user.id}:`, error);
         errors.push({
           userId: user.id,
           error: error instanceof Error ? error.message : 'Update failed',
@@ -424,7 +435,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json(
       {
-        message: `${action} completed`,
+        message: `${action} completed for ${results.length} user(s)`,
         results,
         errors: errors.length > 0 ? errors : undefined,
         successCount: results.length,
@@ -433,7 +444,7 @@ export async function PATCH(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Users PATCH Error:', error);
+    console.error('❌ Users PATCH Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -445,32 +456,23 @@ export async function PATCH(request: NextRequest) {
 }
 
 // ============================================================================
-// DELETE - Delete User(s)
+// DELETE - Delete User(s) - ENHANCED WITH BULK DELETE
 // ============================================================================
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized: No active session' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SuperAdmin check
     const isAdmin = await isSuperAdmin(session.user.email);
 
     if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get SuperAdmin user
     const adminUser = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { id: true },
@@ -480,12 +482,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Admin user not found' }, { status: 404 });
     }
 
-    // Get query parameters
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
     const userIdsParam = searchParams.get('userIds');
 
-    // Determine bulk or single operation
     const isBulk = !!userIdsParam;
     const targetIds = isBulk
       ? userIdsParam.split(',').filter(Boolean)
@@ -507,7 +507,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Get affected users
+    console.log(`\n🗑️ Deleting ${targetIds.length} user(s)`);
+
     const affectedUsers = await prisma.user.findMany({
       where: { id: { in: targetIds } },
       select: {
@@ -538,7 +539,7 @@ export async function DELETE(request: NextRequest) {
 
     for (const user of affectedUsers) {
       try {
-        // Soft delete: set status to INACTIVE instead of hard delete
+        // Soft delete: set status to INACTIVE
         await prisma.user.update({
           where: { id: user.id },
           data: { status: 'INACTIVE' },
@@ -549,7 +550,7 @@ export async function DELETE(request: NextRequest) {
           data: {
             performedBy: adminUser.id,
             affectedUser: user.id,
-            action: 'USERDELETED',
+            action: 'USER_DELETED',
             entityType: 'User',
             entityId: user.id,
             reason: 'User deleted by SuperAdmin',
@@ -561,7 +562,10 @@ export async function DELETE(request: NextRequest) {
           userId: user.id,
           success: true,
         });
+
+        console.log(`✅ Deleted user: ${user.email}`);
       } catch (error) {
+        console.error(`❌ Delete failed for user ${user.id}:`, error);
         errors.push({
           userId: user.id,
           error: error instanceof Error ? error.message : 'Delete failed',
@@ -580,7 +584,7 @@ export async function DELETE(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Users DELETE Error:', error);
+    console.error('❌ Users DELETE Error:', error);
     return NextResponse.json(
       {
         error: 'Internal server error',
@@ -591,8 +595,5 @@ export async function DELETE(request: NextRequest) {
   }
 }
 
-// ============================================================================
-// Export route segment config
-// ============================================================================
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
