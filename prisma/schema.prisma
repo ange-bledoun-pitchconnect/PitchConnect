@@ -2,7 +2,7 @@
 // PITCHCONNECT DATABASE SCHEMA (Prisma ORM)
 // PostgreSQL via Supabase
 // Production-ready with TypeScript strict mode support
-// ENHANCED: Clubs, Teams, Match Attendance, Treasurer, Coach Timesheets, Join Requests
+// ENHANCED: Complete League Admin System with Referee, Seasons, Invitations
 // ============================================================================
 
 generator client {
@@ -29,6 +29,7 @@ enum UserRole {
   LEAGUE_ADMIN
   PARENT
   TREASURER
+  REFEREE        // ✅ NEW: Added for referee functionality
 }
 
 enum UserStatus {
@@ -222,6 +223,35 @@ enum PaymentType {
   OTHER
 }
 
+// ✅ NEW: League Admin Enums
+enum LeagueFormat {
+  ROUND_ROBIN          // Everyone plays everyone once
+  DOUBLE_ROUND_ROBIN   // Home and away
+  KNOCKOUT             // Single elimination
+  GROUP_KNOCKOUT       // Group stage + knockout
+  CUSTOM               // Configurable format
+}
+
+enum LeagueVisibility {
+  PUBLIC     // Anyone can view
+  PRIVATE    // Only teams and admins
+  UNLISTED   // Only with direct link
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum ResultApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISPUTED
+}
+
 // ============================================================================
 // USER & AUTHENTICATION MODELS
 // ============================================================================
@@ -259,6 +289,7 @@ model User {
   leagueAdmin         LeagueAdmin?
   parentProfile       Parent?
   treasurerProfile    Treasurer?
+  refereeProfile      Referee?             // ✅ NEW: Added referee profile
   subscription        Subscription?
   payments            Payment[]
   notifications       Notification[]
@@ -423,9 +454,10 @@ model Team {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  club         Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
   members      TeamMember[]
   joinRequests JoinRequest[]
+  invitations  LeagueInvitation[]  // ✅ NEW: League invitations received
 
   @@index([clubId])
   @@index([status])
@@ -633,6 +665,26 @@ model Treasurer {
   @@map("treasurers")
 }
 
+// ✅ NEW: Referee Model
+model Referee {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  licenseNumber     String?  @unique
+  licenseLevel      String?  // FIFA, UEFA, National, Regional, etc.
+  yearsOfExperience Int?
+  specialization    String?  // Sport specialization
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchAssignments  Match[]                 // Matches assigned to this referee
+  resultApprovals   MatchResultApproval[]   // Results approved by this referee
+  
+  @@index([userId])
+  @@map("referees")
+}
+
 // OLD CLUB MODEL (Renamed to avoid conflict)
 model OldClub {
   id       String    @id @default(cuid())
@@ -707,13 +759,14 @@ model TeamPlayer {
 }
 
 // ============================================================================
-// LEAGUE & FIXTURES MODELS
+// LEAGUE & FIXTURES MODELS (ENHANCED)
 // ============================================================================
 
 model League {
   id      String  @id @default(cuid())
   name    String
   code    String  @unique
+  sport   String  @default("Football")  // ✅ ADDED: Sport type
   logo    String?
   country String
   season  Int
@@ -723,11 +776,20 @@ model League {
   pointsDraw Int @default(1)
   pointsLoss Int @default(0)
 
+  // ✅ NEW: League configuration
+  format     LeagueFormat     @default(ROUND_ROBIN)
+  visibility LeagueVisibility @default(PUBLIC)
+
   adminId   String
   admin     LeagueAdmin  @relation(fields: [adminId], references: [id])
   teams     LeagueTeam[]
   fixtures  Fixture[]
   standings Standings[]
+  
+  // ✅ NEW: Enhanced relations
+  seasons       LeagueSeason[]
+  configuration LeagueConfiguration?
+  invitations   LeagueInvitation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -738,6 +800,91 @@ model League {
   @@map("leagues")
 }
 
+// ✅ NEW: League Season Model
+model LeagueSeason {
+  id          String    @id @default(cuid())
+  leagueId    String
+  name        String    // e.g., "2024/25", "Spring 2025"
+  startDate   DateTime
+  endDate     DateTime?
+  isActive    Boolean   @default(true)
+  isCurrent   Boolean   @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@index([leagueId])
+  @@map("league_seasons")
+}
+
+// ✅ NEW: League Configuration Model
+model LeagueConfiguration {
+  id                String  @id @default(cuid())
+  leagueId          String  @unique
+  
+  // Points system
+  pointsForWin      Int     @default(3)
+  pointsForDraw     Int     @default(1)
+  pointsForLoss     Int     @default(0)
+  
+  // Bonus points
+  bonusPointsEnabled Boolean @default(false)
+  bonusPointsForGoals Int?
+  
+  // Team limits
+  minTeams          Int     @default(2)
+  maxTeams          Int?    // null = unlimited
+  
+  // Registration settings
+  registrationOpen  Boolean @default(true)
+  registrationDeadline DateTime?
+  entryFee          Float?  // Registration fee
+  
+  // Player eligibility
+  minPlayerAge      Int?
+  maxPlayerAge      Int?
+  maxPlayersPerTeam Int?
+  
+  // Tiebreaker rules (priority order)
+  tiebreaker1       String  @default("GOAL_DIFFERENCE")
+  tiebreaker2       String  @default("GOALS_SCORED")
+  tiebreaker3       String  @default("HEAD_TO_HEAD")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  @@map("league_configurations")
+}
+
+// ✅ NEW: League Invitation Model
+model LeagueInvitation {
+  id          String            @id @default(cuid())
+  leagueId    String
+  teamId      String
+  invitedBy   String           // LeagueAdmin ID
+  message     String?
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime?
+  respondedAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  league    League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  admin     LeagueAdmin @relation(fields: [invitedBy], references: [id], onDelete: Cascade)
+  
+  @@unique([leagueId, teamId])
+  @@index([leagueId])
+  @@index([teamId])
+  @@index([invitedBy])
+  @@map("league_invitations")
+}
+
 model LeagueAdmin {
   id     String @id @default(cuid())
   userId String @unique
@@ -745,8 +892,9 @@ model LeagueAdmin {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  leagues League[]
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leagues         League[]
+  invitationsSent LeagueInvitation[] // ✅ NEW: Track invitations sent
 
   @@index([userId])
   @@map("league_admins")
@@ -813,7 +961,7 @@ model Standings {
 }
 
 // ============================================================================
-// MATCH & EVENT MODELS
+// MATCH & EVENT MODELS (ENHANCED)
 // ============================================================================
 
 model Match {
@@ -821,6 +969,7 @@ model Match {
   fixtureId  String?
   homeTeamId String
   awayTeamId String
+  refereeId  String?     // ✅ NEW: Referee assignment
   date       DateTime
   venue      String?
   status     MatchStatus @default(SCHEDULED)
@@ -831,12 +980,14 @@ model Match {
 
   attendanceDeadline DateTime?
 
-  fixture           Fixture?           @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
-  homeTeam          OldTeam            @relation("HomeTeam", fields: [homeTeamId], references: [id])
-  awayTeam          OldTeam            @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  fixture           Fixture?              @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
+  homeTeam          OldTeam               @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam          OldTeam               @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  referee           Referee?              @relation(fields: [refereeId], references: [id], onDelete: SetNull) // ✅ NEW
   events            MatchEvent[]
   stats             MatchStats?
   playerAttendances MatchAttendance[]
+  resultApprovals   MatchResultApproval[] // ✅ NEW: Result approval workflow
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -844,9 +995,38 @@ model Match {
   @@index([fixtureId])
   @@index([homeTeamId])
   @@index([awayTeamId])
+  @@index([refereeId])
   @@index([date])
   @@index([status])
   @@map("matches")
+}
+
+// ✅ NEW: Match Result Approval Model
+model MatchResultApproval {
+  id          String               @id @default(cuid())
+  matchId     String
+  submittedBy String              // User ID who submitted
+  approvedBy  String?             // Referee/LeagueAdmin who approved
+  status      ResultApprovalStatus @default(PENDING)
+  
+  homeScore   Int
+  awayScore   Int
+  notes       String?
+  
+  submittedAt DateTime  @default(now())
+  reviewedAt  DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  match     Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  referee   Referee?  @relation(fields: [approvedBy], references: [id], onDelete: SetNull)
+  
+  @@index([matchId])
+  @@index([submittedBy])
+  @@index([approvedBy])
+  @@index([status])
+  @@map("match_result_approvals")
 }
 
 model MatchAttendance {

@@ -4,21 +4,24 @@ C:.
 |   .env
 |   .env.local
 |   .eslintrc.json
+|   .gitignore
 |   .prettierrc.json
 |   .vercelignore
-|   clean-structure.txt
+|   components.json
 |   next-env.d.ts
 |   next.config.js
 |   package-lock.json
 |   package.json
 |   postcss.config.js
+|   project-structure.txt
 |   README.md
 |   tailwind.config.ts
+|   test-db.js
 |   tsconfig.json
 |   
++---.next
 |   |   app-build-manifest.json
 |   |   build-manifest.json
-|   |   fallback-build-manifest.json
 |   |   package.json
 |   |   prerender-manifest.json
 |   |   react-loadable-manifest.json
@@ -28,7 +31,6 @@ C:.
 |   +---cache
 |   |   |   .previewinfo
 |   |   |   .rscinfo
-|   |   |   chrome-devtools-workspace-uuid
 |   |   |   next-devtools-config.json
 |   |   |   
 |   |   +---swc
@@ -38,12 +40,53 @@ C:.
 |   |       +---client-development
 |   |       |       0.pack.gz
 |   |       |       1.pack.gz
+|   |       |       10.pack.gz
+|   |       |       11.pack.gz
+|   |       |       12.pack.gz
+|   |       |       13.pack.gz
+|   |       |       14.pack.gz
+|   |       |       15.pack.gz
+|   |       |       16.pack.gz
+|   |       |       17.pack.gz
+|   |       |       18.pack.gz
+|   |       |       19.pack.gz
 |   |       |       2.pack.gz
+|   |       |       20.pack.gz
+|   |       |       21.pack.gz
+|   |       |       22.pack.gz
+|   |       |       23.pack.gz
+|   |       |       24.pack.gz
+|   |       |       25.pack.gz
+|   |       |       26.pack.gz
+|   |       |       27.pack.gz
+|   |       |       28.pack.gz
+|   |       |       29.pack.gz
 |   |       |       3.pack.gz
+|   |       |       30.pack.gz
+|   |       |       31.pack.gz
+|   |       |       32.pack.gz
+|   |       |       33.pack.gz
+|   |       |       34.pack.gz
+|   |       |       35.pack.gz
+|   |       |       36.pack.gz
+|   |       |       37.pack.gz
+|   |       |       38.pack.gz
+|   |       |       39.pack.gz
 |   |       |       4.pack.gz
+|   |       |       40.pack.gz
+|   |       |       41.pack.gz
+|   |       |       42.pack.gz
+|   |       |       43.pack.gz
+|   |       |       44.pack.gz
+|   |       |       45.pack.gz
+|   |       |       46.pack.gz
+|   |       |       47.pack.gz
+|   |       |       48.pack.gz
 |   |       |       5.pack.gz
 |   |       |       6.pack.gz
 |   |       |       7.pack.gz
+|   |       |       8.pack.gz
+|   |       |       9.pack.gz
 |   |       |       index.pack.gz
 |   |       |       index.pack.gz.old
 |   |       |       
@@ -53,7 +96,14 @@ C:.
 |   |       |       
 |   |       +---client-production
 |   |       |       0.pack
+|   |       |       1.pack
+|   |       |       2.pack
 |   |       |       index.pack
+|   |       |       index.pack.old
+|   |       |       
+|   |       +---edge-server-development
+|   |       |       0.pack.gz
+|   |       |       index.pack.gz
 |   |       |       
 |   |       +---edge-server-production
 |   |       |       0.pack
@@ -62,48 +112,217 @@ C:.
 |   |       +---server-development
 |   |       |       0.pack.gz
 |   |       |       1.pack.gz
+|   |       |       10.pack.gz
+|   |       |       11.pack.gz
+|   |       |       12.pack.gz
+|   |       |       13.pack.gz
+|   |       |       14.pack.gz
+|   |       |       15.pack.gz
+|   |       |       16.pack.gz
+|   |       |       17.pack.gz
+|   |       |       18.pack.gz
+|   |       |       19.pack.gz
 |   |       |       2.pack.gz
+|   |       |       20.pack.gz
+|   |       |       21.pack.gz
+|   |       |       22.pack.gz
+|   |       |       23.pack.gz
+|   |       |       24.pack.gz
+|   |       |       25.pack.gz
+|   |       |       26.pack.gz
+|   |       |       27.pack.gz
+|   |       |       28.pack.gz
+|   |       |       29.pack.gz
 |   |       |       3.pack.gz
+|   |       |       30.pack.gz
+|   |       |       31.pack.gz
+|   |       |       32.pack.gz
+|   |       |       33.pack.gz
+|   |       |       34.pack.gz
+|   |       |       35.pack.gz
+|   |       |       36.pack.gz
+|   |       |       37.pack.gz
+|   |       |       38.pack.gz
+|   |       |       39.pack.gz
 |   |       |       4.pack.gz
+|   |       |       40.pack.gz
+|   |       |       41.pack.gz
+|   |       |       42.pack.gz
+|   |       |       43.pack.gz
+|   |       |       44.pack.gz
+|   |       |       45.pack.gz
+|   |       |       46.pack.gz
+|   |       |       47.pack.gz
+|   |       |       48.pack.gz
 |   |       |       5.pack.gz
 |   |       |       6.pack.gz
+|   |       |       7.pack.gz
+|   |       |       8.pack.gz
+|   |       |       9.pack.gz
 |   |       |       index.pack.gz
 |   |       |       index.pack.gz.old
 |   |       |       
 |   |       \---server-production
 |   |               0.pack
+|   |               1.pack
+|   |               2.pack
 |   |               index.pack
+|   |               index.pack.old
 |   |               
 |   +---server
 |   |   |   app-paths-manifest.json
+|   |   |   edge-runtime-webpack.js
 |   |   |   interception-route-rewrite-manifest.js
 |   |   |   middleware-build-manifest.js
 |   |   |   middleware-manifest.json
 |   |   |   middleware-react-loadable-manifest.js
+|   |   |   middleware.js
 |   |   |   next-font-manifest.js
 |   |   |   next-font-manifest.json
 |   |   |   pages-manifest.json
 |   |   |   server-reference-manifest.js
 |   |   |   server-reference-manifest.json
 |   |   |   webpack-runtime.js
-|   |   |   _error.js
 |   |   |   
 |   |   +---app
-|   |   |       page.js
-|   |   |       
-|   |   +---pages
-|   |   |       _app.js
-|   |   |       _document.js
-|   |   |       _error.js
-|   |   |       
+|   |   |   +---api
+|   |   |   |   +---auth
+|   |   |   |   |   \---[...nextauth]
+|   |   |   |   |           route.js
+|   |   |   |   |           route_client-reference-manifest.js
+|   |   |   |   |           
+|   |   |   |   +---notifications
+|   |   |   |   |       route.js
+|   |   |   |   |       route_client-reference-manifest.js
+|   |   |   |   |       
+|   |   |   |   +---settings
+|   |   |   |   |   \---notifications
+|   |   |   |   |           route.js
+|   |   |   |   |           route_client-reference-manifest.js
+|   |   |   |   |           
+|   |   |   |   \---superadmin
+|   |   |   |       +---feed
+|   |   |   |       |       route.js
+|   |   |   |       |       route_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       +---financial
+|   |   |   |       |       route.js
+|   |   |   |       |       route_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       +---impersonate
+|   |   |   |       |       route.js
+|   |   |   |       |       route_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       +---stats
+|   |   |   |       |       route.js
+|   |   |   |       |       route_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       +---subscriptions
+|   |   |   |       |       route.js
+|   |   |   |       |       route_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       +---system
+|   |   |   |       |       route.js
+|   |   |   |       |       route_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       \---users
+|   |   |   |           |   route.js
+|   |   |   |           |   route_client-reference-manifest.js
+|   |   |   |           |   
+|   |   |   |           \---[userId]
+|   |   |   |                   route.js
+|   |   |   |                   route_client-reference-manifest.js
+|   |   |   |                   
+|   |   |   +---auth
+|   |   |   |   \---login
+|   |   |   |           page.js
+|   |   |   |           page_client-reference-manifest.js
+|   |   |   |           
+|   |   |   +---dashboard
+|   |   |   |   |   page.js
+|   |   |   |   |   page_client-reference-manifest.js
+|   |   |   |   |   
+|   |   |   |   +---admin
+|   |   |   |   |   |   page.js
+|   |   |   |   |   |   page_client-reference-manifest.js
+|   |   |   |   |   |   
+|   |   |   |   |   +---feed
+|   |   |   |   |   |       page.js
+|   |   |   |   |   |       page_client-reference-manifest.js
+|   |   |   |   |   |       
+|   |   |   |   |   +---financial
+|   |   |   |   |   |       page.js
+|   |   |   |   |   |       page_client-reference-manifest.js
+|   |   |   |   |   |       
+|   |   |   |   |   +---impersonate
+|   |   |   |   |   |       page.js
+|   |   |   |   |   |       page_client-reference-manifest.js
+|   |   |   |   |   |       
+|   |   |   |   |   +---settings
+|   |   |   |   |   |       page.js
+|   |   |   |   |   |       page_client-reference-manifest.js
+|   |   |   |   |   |       
+|   |   |   |   |   +---subscriptions
+|   |   |   |   |   |       page.js
+|   |   |   |   |   |       page_client-reference-manifest.js
+|   |   |   |   |   |       
+|   |   |   |   |   +---system
+|   |   |   |   |   |       page.js
+|   |   |   |   |   |       page_client-reference-manifest.js
+|   |   |   |   |   |       
+|   |   |   |   |   \---users
+|   |   |   |   |       |   page.js
+|   |   |   |   |       |   page_client-reference-manifest.js
+|   |   |   |   |       |   
+|   |   |   |   |       \---[userId]
+|   |   |   |   |               page.js
+|   |   |   |   |               page_client-reference-manifest.js
+|   |   |   |   |               
+|   |   |   |   \---settings
+|   |   |   |       |   page.js
+|   |   |   |       |   page_client-reference-manifest.js
+|   |   |   |       |   
+|   |   |   |       +---account
+|   |   |   |       |       page.js
+|   |   |   |       |       page_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       +---billing
+|   |   |   |       |       page.js
+|   |   |   |       |       page_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       +---notifications
+|   |   |   |       |       page.js
+|   |   |   |       |       page_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       +---profile
+|   |   |   |       |       page.js
+|   |   |   |       |       page_client-reference-manifest.js
+|   |   |   |       |       
+|   |   |   |       \---security
+|   |   |   |               page.js
+|   |   |   |               page_client-reference-manifest.js
+|   |   |   |               
+|   |   |   \---_not-found
+|   |   |           page.js
+|   |   |           page_client-reference-manifest.js
+|   |   |           
+|   |   +---static
+|   |   |   \---webpack
+|   |   |           633457081244afec._.hot-update.json
+|   |   |           
 |   |   \---vendor-chunks
 |   |           @babel.js
+|   |           @floating-ui.js
 |   |           @panva.js
 |   |           @radix-ui.js
 |   |           @swc.js
+|   |           aria-hidden.js
+|   |           bcryptjs.js
 |   |           class-variance-authority.js
 |   |           clsx.js
 |   |           cookie.js
+|   |           get-nonce.js
+|   |           goober.js
 |   |           jose.js
 |   |           lru-cache.js
 |   |           lucide-react.js
@@ -115,29 +334,297 @@ C:.
 |   |           openid-client.js
 |   |           preact-render-to-string.js
 |   |           preact.js
+|   |           react-hot-toast.js
+|   |           react-remove-scroll-bar.js
+|   |           react-remove-scroll.js
+|   |           react-style-singleton.js
 |   |           tailwind-merge.js
+|   |           tslib.js
+|   |           use-callback-ref.js
+|   |           use-sidecar.js
 |   |           uuid.js
 |   |           yallist.js
 |   |           
 |   +---static
 |   |   +---chunks
+|   |   |   |   app-pages-internals.js
+|   |   |   |   main-app.js
 |   |   |   |   polyfills.js
+|   |   |   |   webpack.js
+|   |   |   |   _app-pages-browser_node_modules_next_dist_client_dev_noop-turbopack-hmr_js.js
 |   |   |   |   
-|   |   |   \---fallback
-|   |   |       |   amp.js
-|   |   |       |   main-app.js
-|   |   |       |   main.js
-|   |   |       |   react-refresh.js
-|   |   |       |   webpack.js
+|   |   |   \---app
+|   |   |       |   layout.js
 |   |   |       |   
-|   |   |       \---pages
-|   |   |               _app.js
-|   |   |               _error.js
+|   |   |       +---api
+|   |   |       |   +---auth
+|   |   |       |   |   \---[...nextauth]
+|   |   |       |   |           route.js
+|   |   |       |   |           
+|   |   |       |   +---notifications
+|   |   |       |   |       route.js
+|   |   |       |   |       
+|   |   |       |   +---settings
+|   |   |       |   |   \---notifications
+|   |   |       |   |           route.js
+|   |   |       |   |           
+|   |   |       |   \---superadmin
+|   |   |       |       +---feed
+|   |   |       |       |       route.js
+|   |   |       |       |       
+|   |   |       |       +---financial
+|   |   |       |       |       route.js
+|   |   |       |       |       
+|   |   |       |       +---impersonate
+|   |   |       |       |       route.js
+|   |   |       |       |       
+|   |   |       |       +---stats
+|   |   |       |       |       route.js
+|   |   |       |       |       
+|   |   |       |       +---subscriptions
+|   |   |       |       |       route.js
+|   |   |       |       |       
+|   |   |       |       +---system
+|   |   |       |       |       route.js
+|   |   |       |       |       
+|   |   |       |       \---users
+|   |   |       |           |   route.js
+|   |   |       |           |   
+|   |   |       |           \---[userId]
+|   |   |       |                   route.js
+|   |   |       |                   
+|   |   |       +---auth
+|   |   |       |   |   layout.js
+|   |   |       |   |   
+|   |   |       |   \---login
+|   |   |       |           page.js
+|   |   |       |           
+|   |   |       +---dashboard
+|   |   |       |   |   layout.js
+|   |   |       |   |   page.js
+|   |   |       |   |   
+|   |   |       |   +---admin
+|   |   |       |   |   |   layout.js
+|   |   |       |   |   |   page.js
+|   |   |       |   |   |   
+|   |   |       |   |   +---feed
+|   |   |       |   |   |       page.js
+|   |   |       |   |   |       
+|   |   |       |   |   +---financial
+|   |   |       |   |   |       page.js
+|   |   |       |   |   |       
+|   |   |       |   |   +---impersonate
+|   |   |       |   |   |       page.js
+|   |   |       |   |   |       
+|   |   |       |   |   +---settings
+|   |   |       |   |   |       page.js
+|   |   |       |   |   |       
+|   |   |       |   |   +---subscriptions
+|   |   |       |   |   |       page.js
+|   |   |       |   |   |       
+|   |   |       |   |   +---system
+|   |   |       |   |   |       page.js
+|   |   |       |   |   |       
+|   |   |       |   |   \---users
+|   |   |       |   |       |   page.js
+|   |   |       |   |       |   
+|   |   |       |   |       \---[userId]
+|   |   |       |   |               page.js
+|   |   |       |   |               
+|   |   |       |   \---settings
+|   |   |       |       |   layout.js
+|   |   |       |       |   page.js
+|   |   |       |       |   
+|   |   |       |       +---account
+|   |   |       |       |       page.js
+|   |   |       |       |       
+|   |   |       |       +---billing
+|   |   |       |       |       page.js
+|   |   |       |       |       
+|   |   |       |       +---notifications
+|   |   |       |       |       page.js
+|   |   |       |       |       
+|   |   |       |       +---profile
+|   |   |       |       |       page.js
+|   |   |       |       |       
+|   |   |       |       \---security
+|   |   |       |               page.js
+|   |   |       |               
+|   |   |       \---_not-found
+|   |   |               page.js
 |   |   |               
-|   |   \---development
-|   |           _buildManifest.js
-|   |           _ssgManifest.js
-|   |           
+|   |   +---css
+|   |   |   \---app
+|   |   |           layout.css
+|   |   |           
+|   |   +---development
+|   |   |       _buildManifest.js
+|   |   |       _ssgManifest.js
+|   |   |       
+|   |   +---media
+|   |   |       19cfc7226ec3afaa-s.woff2
+|   |   |       21350d82a1f187e9-s.woff2
+|   |   |       8e9860b6e62d6359-s.woff2
+|   |   |       ba9851c3c22cd980-s.woff2
+|   |   |       c5fe6dc8356a8c31-s.woff2
+|   |   |       df0a9ae256c0569c-s.woff2
+|   |   |       e4af272ccee01ff0-s.p.woff2
+|   |   |       
+|   |   \---webpack
+|   |       |   0595b3245440b7b2.webpack.hot-update.json
+|   |       |   075dff82dd216ed3.webpack.hot-update.json
+|   |       |   0a9766fa64430071.webpack.hot-update.json
+|   |       |   0f6fcf8cd522195f.webpack.hot-update.json
+|   |       |   13a7e43357e6baa7.webpack.hot-update.json
+|   |       |   1faffa06e3f4d86c.webpack.hot-update.json
+|   |       |   2c4cd5caf8c698e0.webpack.hot-update.json
+|   |       |   2efdc89b182fc151.webpack.hot-update.json
+|   |       |   3760209c6ba8b62c.webpack.hot-update.json
+|   |       |   452456068957ea10.webpack.hot-update.json
+|   |       |   45a6ceca64d46199.webpack.hot-update.json
+|   |       |   4edc003d86d7849d.webpack.hot-update.json
+|   |       |   55f0de14cf23d7ef.webpack.hot-update.json
+|   |       |   57808cbdd9d0e142.webpack.hot-update.json
+|   |       |   5a4d5765131593bb.webpack.hot-update.json
+|   |       |   60a3a4e39a204506.webpack.hot-update.json
+|   |       |   633457081244afec._.hot-update.json
+|   |       |   6b441c995b1d3929.webpack.hot-update.json
+|   |       |   76321133afbabb0a.webpack.hot-update.json
+|   |       |   7ce52f8c51fd5383.webpack.hot-update.json
+|   |       |   8bfe1dd63b0aacb8.webpack.hot-update.json
+|   |       |   8f4a10c24f6ac003.webpack.hot-update.json
+|   |       |   939c7d0bfe07a730.webpack.hot-update.json
+|   |       |   94719d7839953009.webpack.hot-update.json
+|   |       |   9840f6af9f623e70.webpack.hot-update.json
+|   |       |   98be743e1b0f7145.webpack.hot-update.json
+|   |       |   9b894173425a3ff1.webpack.hot-update.json
+|   |       |   9c939546bfe326cb.webpack.hot-update.json
+|   |       |   a26e43e3ec7d8bdb.webpack.hot-update.json
+|   |       |   ac0a0d52162b2a8e.webpack.hot-update.json
+|   |       |   af91a4090fa5d309.webpack.hot-update.json
+|   |       |   ba368709b660dc97.webpack.hot-update.json
+|   |       |   be0a8bd4889ebe88.webpack.hot-update.json
+|   |       |   bec8543f6178021f.webpack.hot-update.json
+|   |       |   c0d3fa1696ef4a52.webpack.hot-update.json
+|   |       |   c3ab3125ed130576.webpack.hot-update.json
+|   |       |   c56536ebc4300f24.webpack.hot-update.json
+|   |       |   cbc1c691b331f480.webpack.hot-update.json
+|   |       |   d47c82fda70c5efb.webpack.hot-update.json
+|   |       |   e356b7b6de5238f9.webpack.hot-update.json
+|   |       |   e4c9a7982eaf070d.webpack.hot-update.json
+|   |       |   e81be821ec1c0c3b.webpack.hot-update.json
+|   |       |   e83e57d43dff3c5b.webpack.hot-update.json
+|   |       |   e96c7403253bc202.webpack.hot-update.json
+|   |       |   ececee47224f6042.webpack.hot-update.json
+|   |       |   eddd473ec1069e77.webpack.hot-update.json
+|   |       |   ee91ab7704885aa1.webpack.hot-update.json
+|   |       |   f56c9b3f2f7d07a3.webpack.hot-update.json
+|   |       |   fbb777b40b6adce1.webpack.hot-update.json
+|   |       |   feba744009aca7a0.webpack.hot-update.json
+|   |       |   ffc218bdca7400b0.webpack.hot-update.json
+|   |       |   webpack.0595b3245440b7b2.hot-update.js
+|   |       |   webpack.075dff82dd216ed3.hot-update.js
+|   |       |   webpack.0a9766fa64430071.hot-update.js
+|   |       |   webpack.0f6fcf8cd522195f.hot-update.js
+|   |       |   webpack.13a7e43357e6baa7.hot-update.js
+|   |       |   webpack.1faffa06e3f4d86c.hot-update.js
+|   |       |   webpack.2c4cd5caf8c698e0.hot-update.js
+|   |       |   webpack.2efdc89b182fc151.hot-update.js
+|   |       |   webpack.3760209c6ba8b62c.hot-update.js
+|   |       |   webpack.452456068957ea10.hot-update.js
+|   |       |   webpack.45a6ceca64d46199.hot-update.js
+|   |       |   webpack.4edc003d86d7849d.hot-update.js
+|   |       |   webpack.55f0de14cf23d7ef.hot-update.js
+|   |       |   webpack.57808cbdd9d0e142.hot-update.js
+|   |       |   webpack.5a4d5765131593bb.hot-update.js
+|   |       |   webpack.60a3a4e39a204506.hot-update.js
+|   |       |   webpack.6b441c995b1d3929.hot-update.js
+|   |       |   webpack.76321133afbabb0a.hot-update.js
+|   |       |   webpack.7ce52f8c51fd5383.hot-update.js
+|   |       |   webpack.8bfe1dd63b0aacb8.hot-update.js
+|   |       |   webpack.8f4a10c24f6ac003.hot-update.js
+|   |       |   webpack.939c7d0bfe07a730.hot-update.js
+|   |       |   webpack.94719d7839953009.hot-update.js
+|   |       |   webpack.9840f6af9f623e70.hot-update.js
+|   |       |   webpack.98be743e1b0f7145.hot-update.js
+|   |       |   webpack.9b894173425a3ff1.hot-update.js
+|   |       |   webpack.9c939546bfe326cb.hot-update.js
+|   |       |   webpack.a26e43e3ec7d8bdb.hot-update.js
+|   |       |   webpack.ac0a0d52162b2a8e.hot-update.js
+|   |       |   webpack.af91a4090fa5d309.hot-update.js
+|   |       |   webpack.ba368709b660dc97.hot-update.js
+|   |       |   webpack.be0a8bd4889ebe88.hot-update.js
+|   |       |   webpack.bec8543f6178021f.hot-update.js
+|   |       |   webpack.c0d3fa1696ef4a52.hot-update.js
+|   |       |   webpack.c3ab3125ed130576.hot-update.js
+|   |       |   webpack.c56536ebc4300f24.hot-update.js
+|   |       |   webpack.cbc1c691b331f480.hot-update.js
+|   |       |   webpack.d47c82fda70c5efb.hot-update.js
+|   |       |   webpack.e356b7b6de5238f9.hot-update.js
+|   |       |   webpack.e4c9a7982eaf070d.hot-update.js
+|   |       |   webpack.e81be821ec1c0c3b.hot-update.js
+|   |       |   webpack.e83e57d43dff3c5b.hot-update.js
+|   |       |   webpack.e96c7403253bc202.hot-update.js
+|   |       |   webpack.ececee47224f6042.hot-update.js
+|   |       |   webpack.eddd473ec1069e77.hot-update.js
+|   |       |   webpack.ee91ab7704885aa1.hot-update.js
+|   |       |   webpack.f56c9b3f2f7d07a3.hot-update.js
+|   |       |   webpack.fbb777b40b6adce1.hot-update.js
+|   |       |   webpack.feba744009aca7a0.hot-update.js
+|   |       |   webpack.ffc218bdca7400b0.hot-update.js
+|   |       |   
+|   |       \---app
+|   |           |   layout.0595b3245440b7b2.hot-update.js
+|   |           |   layout.075dff82dd216ed3.hot-update.js
+|   |           |   layout.13a7e43357e6baa7.hot-update.js
+|   |           |   layout.2c4cd5caf8c698e0.hot-update.js
+|   |           |   layout.3760209c6ba8b62c.hot-update.js
+|   |           |   layout.452456068957ea10.hot-update.js
+|   |           |   layout.45a6ceca64d46199.hot-update.js
+|   |           |   layout.55f0de14cf23d7ef.hot-update.js
+|   |           |   layout.57808cbdd9d0e142.hot-update.js
+|   |           |   layout.5a4d5765131593bb.hot-update.js
+|   |           |   layout.60a3a4e39a204506.hot-update.js
+|   |           |   layout.6b441c995b1d3929.hot-update.js
+|   |           |   layout.76321133afbabb0a.hot-update.js
+|   |           |   layout.7ce52f8c51fd5383.hot-update.js
+|   |           |   layout.8f4a10c24f6ac003.hot-update.js
+|   |           |   layout.9840f6af9f623e70.hot-update.js
+|   |           |   layout.9c939546bfe326cb.hot-update.js
+|   |           |   layout.ac0a0d52162b2a8e.hot-update.js
+|   |           |   layout.ba368709b660dc97.hot-update.js
+|   |           |   layout.be0a8bd4889ebe88.hot-update.js
+|   |           |   layout.bec8543f6178021f.hot-update.js
+|   |           |   layout.c0d3fa1696ef4a52.hot-update.js
+|   |           |   layout.c3ab3125ed130576.hot-update.js
+|   |           |   layout.e83e57d43dff3c5b.hot-update.js
+|   |           |   layout.e96c7403253bc202.hot-update.js
+|   |           |   layout.ececee47224f6042.hot-update.js
+|   |           |   layout.f56c9b3f2f7d07a3.hot-update.js
+|   |           |   layout.fbb777b40b6adce1.hot-update.js
+|   |           |   layout.feba744009aca7a0.hot-update.js
+|   |           |   
+|   |           \---dashboard
+|   |               |   layout.55f0de14cf23d7ef.hot-update.js
+|   |               |   layout.5a4d5765131593bb.hot-update.js
+|   |               |   layout.feba744009aca7a0.hot-update.js
+|   |               |   
+|   |               +---admin
+|   |               |   |   page.c3ab3125ed130576.hot-update.js
+|   |               |   |   
+|   |               |   +---financial
+|   |               |   |       page.0595b3245440b7b2.hot-update.js
+|   |               |   |       
+|   |               |   +---settings
+|   |               |   |       page.3760209c6ba8b62c.hot-update.js
+|   |               |   |       page.c3ab3125ed130576.hot-update.js
+|   |               |   |       
+|   |               |   \---subscriptions
+|   |               |           page.c0d3fa1696ef4a52.hot-update.js
+|   |               |           
+|   |               \---settings
+|   |                       page.fbb777b40b6adce1.hot-update.js
+|   |                       
 |   \---types
 |       |   cache-life.d.ts
 |       |   package.json
@@ -145,10 +632,104 @@ C:.
 |       |   validator.ts
 |       |   
 |       \---app
-|               layout.ts
-|               page.ts
-|               
+|           |   layout.ts
+|           |   
+|           +---api
+|           |   +---auth
+|           |   |   \---[...nextauth]
+|           |   |           route.ts
+|           |   |           
+|           |   +---notifications
+|           |   |       route.ts
+|           |   |       
+|           |   +---settings
+|           |   |   \---notifications
+|           |   |           route.ts
+|           |   |           
+|           |   \---superadmin
+|           |       +---feed
+|           |       |       route.ts
+|           |       |       
+|           |       +---financial
+|           |       |       route.ts
+|           |       |       
+|           |       +---impersonate
+|           |       |       route.ts
+|           |       |       
+|           |       +---stats
+|           |       |       route.ts
+|           |       |       
+|           |       +---subscriptions
+|           |       |       route.ts
+|           |       |       
+|           |       +---system
+|           |       |       route.ts
+|           |       |       
+|           |       \---users
+|           |           |   route.ts
+|           |           |   
+|           |           \---[userId]
+|           |                   route.ts
+|           |                   
+|           +---auth
+|           |   |   layout.ts
+|           |   |   
+|           |   \---login
+|           |           page.ts
+|           |           
+|           \---dashboard
+|               |   layout.ts
+|               |   page.ts
+|               |   
+|               +---admin
+|               |   |   layout.ts
+|               |   |   page.ts
+|               |   |   
+|               |   +---feed
+|               |   |       page.ts
+|               |   |       
+|               |   +---financial
+|               |   |       page.ts
+|               |   |       
+|               |   +---impersonate
+|               |   |       page.ts
+|               |   |       
+|               |   +---settings
+|               |   |       page.ts
+|               |   |       
+|               |   +---subscriptions
+|               |   |       page.ts
+|               |   |       
+|               |   +---system
+|               |   |       page.ts
+|               |   |       
+|               |   \---users
+|               |       |   page.ts
+|               |       |   
+|               |       \---[userId]
+|               |               page.ts
+|               |               
+|               \---settings
+|                   |   layout.ts
+|                   |   page.ts
+|                   |   
+|                   +---account
+|                   |       page.ts
+|                   |       
+|                   +---billing
+|                   |       page.ts
+|                   |       
+|                   +---notifications
+|                   |       page.ts
+|                   |       
+|                   +---profile
+|                   |       page.ts
+|                   |       
+|                   \---security
+|                           page.ts
+|                           
 +---docs
++---node_modules
 |   |   .package-lock.json
 |   |   
 |   +---.bin
@@ -167,12 +748,18 @@ C:.
 |   |       browserslist
 |   |       browserslist.cmd
 |   |       browserslist.ps1
+|   |       cssesc
+|   |       cssesc.cmd
+|   |       cssesc.ps1
 |   |       esbuild
 |   |       esbuild.cmd
 |   |       esbuild.ps1
 |   |       eslint
 |   |       eslint.cmd
 |   |       eslint.ps1
+|   |       glob
+|   |       glob.cmd
+|   |       glob.ps1
 |   |       jiti
 |   |       jiti.cmd
 |   |       jiti.ps1
@@ -209,6 +796,18 @@ C:.
 |   |       semver
 |   |       semver.cmd
 |   |       semver.ps1
+|   |       sucrase
+|   |       sucrase-node
+|   |       sucrase-node.cmd
+|   |       sucrase-node.ps1
+|   |       sucrase.cmd
+|   |       sucrase.ps1
+|   |       tailwind
+|   |       tailwind.cmd
+|   |       tailwind.ps1
+|   |       tailwindcss
+|   |       tailwindcss.cmd
+|   |       tailwindcss.ps1
 |   |       ts-node
 |   |       ts-node-cwd
 |   |       ts-node-cwd.cmd
@@ -248,24 +847,29 @@ C:.
 |   |       \---master
 |   |           \---605197351a3c8bdd595af2d2a9bc3025bca48ea2
 |   |               \---windows
+|   |                       libquery-engine
+|   |                       libquery-engine.gz.sha256
+|   |                       libquery-engine.sha256
+|   |                       
 |   +---.prisma
 |   |   \---client
-|   |       |   default.d.ts
-|   |       |   default.js
-|   |       |   edge.d.ts
-|   |       |   edge.js
-|   |       |   index-browser.js
-|   |       |   index.d.ts
-|   |       |   index.js
-|   |       |   package.json
-|   |       |   query_engine-windows.dll.node
-|   |       |   schema.prisma
-|   |       |   wasm.d.ts
-|   |       |   wasm.js
-|   |       |   
-|   |       \---deno
-|   |               edge.d.ts
-|   |               
+|   |           default.d.ts
+|   |           default.js
+|   |           edge.d.ts
+|   |           edge.js
+|   |           index-browser.js
+|   |           index.d.ts
+|   |           index.js
+|   |           package.json
+|   |           query_engine-windows.dll.node
+|   |           query_engine_bg.js
+|   |           query_engine_bg.wasm
+|   |           schema.prisma
+|   |           wasm-edge-light-loader.mjs
+|   |           wasm-worker-loader.mjs
+|   |           wasm.d.ts
+|   |           wasm.js
+|   |           
 |   +---@alloc
 |   |   \---quick-lru
 |   |           index.d.ts
@@ -545,6 +1149,7 @@ C:.
 |   |       |   source-map-support.d.ts
 |   |       |   source-map-support.js
 |   |       |   
+|   |       \---node_modules
 |   |           \---@jridgewell
 |   |               \---trace-mapping
 |   |                   |   LICENSE
@@ -852,6 +1457,7 @@ C:.
 |   |   |   |   package.json
 |   |   |   |   README.md
 |   |   |   |   
+|   |   |   \---node_modules
 |   |   |       \---eslint-visitor-keys
 |   |   |           |   LICENSE
 |   |   |           |   package.json
@@ -1647,6 +2253,19 @@ C:.
 |   |               sharp-win32-x64.node
 |   |               
 |   +---@isaacs
+|   |   \---cliui
+|   |       |   index.mjs
+|   |       |   LICENSE.txt
+|   |       |   package.json
+|   |       |   README.md
+|   |       |   
+|   |       \---build
+|   |           |   index.cjs
+|   |           |   index.d.cts
+|   |           |   
+|   |           \---lib
+|   |                   index.js
+|   |                   
 |   +---@jridgewell
 |   |   +---gen-mapping
 |   |   |   |   LICENSE
@@ -2036,6 +2655,29 @@ C:.
 |   |                       hkdf.js
 |   |                       
 |   +---@pkgjs
+|   |   \---parseargs
+|   |       |   .editorconfig
+|   |       |   CHANGELOG.md
+|   |       |   index.js
+|   |       |   LICENSE
+|   |       |   package.json
+|   |       |   README.md
+|   |       |   utils.js
+|   |       |   
+|   |       +---examples
+|   |       |       is-default-value.js
+|   |       |       limit-long-syntax.js
+|   |       |       negate.js
+|   |       |       no-repeated-options.js
+|   |       |       ordered-options.mjs
+|   |       |       simple-hard-coded.js
+|   |       |       
+|   |       \---internal
+|   |               errors.js
+|   |               primordials.js
+|   |               util.js
+|   |               validators.js
+|   |               
 |   +---@prisma
 |   |   +---client
 |   |   |   |   default.d.ts
@@ -2116,6 +2758,7 @@ C:.
 |   |   |   |           postinstall.d.ts
 |   |   |   |           postinstall.js
 |   |   |   |           
+|   |   |   +---node_modules
 |   |   |   |   \---.cache
 |   |   |   |       \---prisma
 |   |   |   |           \---master
@@ -2275,6 +2918,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   +---node_modules
 |   |   |   |   \---@radix-ui
 |   |   |   |       \---react-slot
 |   |   |   |           |   LICENSE
@@ -2320,6 +2964,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           +---react-context
 |   |   |           |   |   LICENSE
@@ -2386,6 +3031,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-slot
 |   |   |               |   LICENSE
@@ -2437,6 +3083,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-slot
 |   |   |               |   LICENSE
@@ -2540,6 +3187,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-primitive
 |   |   |               |   LICENSE
@@ -2567,6 +3215,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-slot
 |   |   |               |   LICENSE
@@ -2594,6 +3243,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-slot
 |   |   |               |   LICENSE
@@ -2660,6 +3310,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-slot
 |   |   |               |   LICENSE
@@ -2687,6 +3338,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           +---react-context
 |   |   |           |   |   LICENSE
@@ -2766,6 +3418,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-slot
 |   |   |               |   LICENSE
@@ -2793,6 +3446,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-primitive
 |   |   |               |   LICENSE
@@ -2885,6 +3539,7 @@ C:.
 |   |   |   |       index.mjs
 |   |   |   |       index.mjs.map
 |   |   |   |       
+|   |   |   \---node_modules
 |   |   |       \---@radix-ui
 |   |   |           \---react-slot
 |   |   |               |   LICENSE
@@ -4682,16 +5337,81 @@ C:.
 |   |   |   |   package.json
 |   |   |   |   README.md
 |   |   |   |   
-|   |   |   \---dist
-|   |   |           esm-cache.loader.d.mts
-|   |   |           esm-cache.loader.mjs
-|   |   |           index.d.mts
-|   |   |           index.d.ts
-|   |   |           index.js
-|   |   |           index.mjs
-|   |   |           require-cache.d.ts
-|   |   |           require-cache.js
-|   |   |           
+|   |   |   +---dist
+|   |   |   |       esm-cache.loader.d.mts
+|   |   |   |       esm-cache.loader.mjs
+|   |   |   |       index.d.mts
+|   |   |   |       index.d.ts
+|   |   |   |       index.js
+|   |   |   |       index.mjs
+|   |   |   |       require-cache.d.ts
+|   |   |   |       require-cache.js
+|   |   |   |       
+|   |   |   \---node_modules
+|   |   |       +---.bin
+|   |   |       |       jiti
+|   |   |       |       jiti.cmd
+|   |   |       |       jiti.ps1
+|   |   |       |       
+|   |   |       +---jiti
+|   |   |       |   |   LICENSE
+|   |   |       |   |   package.json
+|   |   |       |   |   README.md
+|   |   |       |   |   
+|   |   |       |   +---dist
+|   |   |       |   |       babel.cjs
+|   |   |       |   |       jiti.cjs
+|   |   |       |   |       
+|   |   |       |   \---lib
+|   |   |       |           jiti-cli.mjs
+|   |   |       |           jiti-hooks.mjs
+|   |   |       |           jiti-native.mjs
+|   |   |       |           jiti-register.d.mts
+|   |   |       |           jiti-register.mjs
+|   |   |       |           jiti.cjs
+|   |   |       |           jiti.d.cts
+|   |   |       |           jiti.d.mts
+|   |   |       |           jiti.mjs
+|   |   |       |           types.d.ts
+|   |   |       |           
+|   |   |       \---tailwindcss
+|   |   |           |   index.css
+|   |   |           |   LICENSE
+|   |   |           |   package.json
+|   |   |           |   preflight.css
+|   |   |           |   README.md
+|   |   |           |   theme.css
+|   |   |           |   utilities.css
+|   |   |           |   
+|   |   |           \---dist
+|   |   |                   chunk-GFBUASX3.mjs
+|   |   |                   chunk-HTB5LLOP.mjs
+|   |   |                   chunk-MEY3PWYT.mjs
+|   |   |                   colors-b_6i0Oi7.d.ts
+|   |   |                   colors.d.mts
+|   |   |                   colors.d.ts
+|   |   |                   colors.js
+|   |   |                   colors.mjs
+|   |   |                   default-theme.d.mts
+|   |   |                   default-theme.d.ts
+|   |   |                   default-theme.js
+|   |   |                   default-theme.mjs
+|   |   |                   flatten-color-palette.d.mts
+|   |   |                   flatten-color-palette.d.ts
+|   |   |                   flatten-color-palette.js
+|   |   |                   flatten-color-palette.mjs
+|   |   |                   lib.d.mts
+|   |   |                   lib.d.ts
+|   |   |                   lib.js
+|   |   |                   lib.mjs
+|   |   |                   plugin.d.mts
+|   |   |                   plugin.d.ts
+|   |   |                   plugin.js
+|   |   |                   plugin.mjs
+|   |   |                   resolve-config-BIFUA2FY.d.ts
+|   |   |                   resolve-config-QUZ9b-Gn.d.mts
+|   |   |                   types-WlZgYgM8.d.mts
+|   |   |                   
 |   |   +---oxide
 |   |   |       index.d.ts
 |   |   |       index.js
@@ -4709,12 +5429,51 @@ C:.
 |   |       |   package.json
 |   |       |   README.md
 |   |       |   
-|   |       \---dist
-|   |               index.d.mts
-|   |               index.d.ts
-|   |               index.js
-|   |               index.mjs
-|   |               
+|   |       +---dist
+|   |       |       index.d.mts
+|   |       |       index.d.ts
+|   |       |       index.js
+|   |       |       index.mjs
+|   |       |       
+|   |       \---node_modules
+|   |           \---tailwindcss
+|   |               |   index.css
+|   |               |   LICENSE
+|   |               |   package.json
+|   |               |   preflight.css
+|   |               |   README.md
+|   |               |   theme.css
+|   |               |   utilities.css
+|   |               |   
+|   |               \---dist
+|   |                       chunk-GFBUASX3.mjs
+|   |                       chunk-HTB5LLOP.mjs
+|   |                       chunk-MEY3PWYT.mjs
+|   |                       colors-b_6i0Oi7.d.ts
+|   |                       colors.d.mts
+|   |                       colors.d.ts
+|   |                       colors.js
+|   |                       colors.mjs
+|   |                       default-theme.d.mts
+|   |                       default-theme.d.ts
+|   |                       default-theme.js
+|   |                       default-theme.mjs
+|   |                       flatten-color-palette.d.mts
+|   |                       flatten-color-palette.d.ts
+|   |                       flatten-color-palette.js
+|   |                       flatten-color-palette.mjs
+|   |                       lib.d.mts
+|   |                       lib.d.ts
+|   |                       lib.js
+|   |                       lib.mjs
+|   |                       plugin.d.mts
+|   |                       plugin.d.ts
+|   |                       plugin.js
+|   |                       plugin.mjs
+|   |                       resolve-config-BIFUA2FY.d.ts
+|   |                       resolve-config-QUZ9b-Gn.d.mts
+|   |                       types-WlZgYgM8.d.mts
+|   |                       
 |   +---@tanstack
 |   |   +---query-core
 |   |   |   |   LICENSE
@@ -6167,6 +6926,7 @@ C:.
 |   |   |   |           types.d.ts
 |   |   |   |           types.js
 |   |   |   |           
+|   |   |   \---node_modules
 |   |   |       \---ignore
 |   |   |               index.d.ts
 |   |   |               index.js
@@ -6734,12 +7494,14 @@ C:.
 |   |   |   |           ts-nodes.d.ts
 |   |   |   |           ts-nodes.js
 |   |   |   |           
+|   |   |   \---node_modules
 |   |   |       +---brace-expansion
 |   |   |       |   |   index.js
 |   |   |       |   |   LICENSE
 |   |   |       |   |   package.json
 |   |   |       |   |   README.md
 |   |   |       |   |   
+|   |   |       |   \---.github
 |   |   |       |           FUNDING.yml
 |   |   |       |           
 |   |   |       +---fast-glob
@@ -7296,12 +8058,71 @@ C:.
 |   |           publish-built-version
 |   |           travis-gh-pages
 |   |           
+|   +---ansi-regex
+|   |       index.d.ts
+|   |       index.js
+|   |       license
+|   |       package.json
+|   |       readme.md
+|   |       
 |   +---ansi-styles
 |   |       index.d.ts
 |   |       index.js
 |   |       license
 |   |       package.json
 |   |       readme.md
+|   |       
+|   +---any-promise
+|   |   |   .jshintrc
+|   |   |   .npmignore
+|   |   |   implementation.d.ts
+|   |   |   implementation.js
+|   |   |   index.d.ts
+|   |   |   index.js
+|   |   |   LICENSE
+|   |   |   loader.js
+|   |   |   optional.js
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   register-shim.js
+|   |   |   register.d.ts
+|   |   |   register.js
+|   |   |   
+|   |   \---register
+|   |           bluebird.d.ts
+|   |           bluebird.js
+|   |           es6-promise.d.ts
+|   |           es6-promise.js
+|   |           lie.d.ts
+|   |           lie.js
+|   |           native-promise-only.d.ts
+|   |           native-promise-only.js
+|   |           pinkie.d.ts
+|   |           pinkie.js
+|   |           promise.d.ts
+|   |           promise.js
+|   |           q.d.ts
+|   |           q.js
+|   |           rsvp.d.ts
+|   |           rsvp.js
+|   |           vow.d.ts
+|   |           vow.js
+|   |           when.d.ts
+|   |           when.js
+|   |           
+|   +---anymatch
+|   |       index.d.ts
+|   |       index.js
+|   |       LICENSE
+|   |       package.json
+|   |       README.md
+|   |       
+|   +---arg
+|   |       index.d.ts
+|   |       index.js
+|   |       LICENSE.md
+|   |       package.json
+|   |       README.md
 |   |       
 |   +---argparse
 |   |   |   argparse.js
@@ -7517,6 +8338,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7536,6 +8358,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7558,6 +8381,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7579,6 +8403,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7601,6 +8426,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7623,6 +8449,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7644,6 +8471,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7695,6 +8523,7 @@ C:.
 |   |   |   require.mjs
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7804,6 +8633,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -7990,6 +8820,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   \---.github
 |   |           FUNDING.yml
 |   |           
 |   +---baseline-browser-mapping
@@ -8020,6 +8851,15 @@ C:.
 |   |           package.json
 |   |           types.d.ts
 |   |           
+|   +---binary-extensions
+|   |       binary-extensions.json
+|   |       binary-extensions.json.d.ts
+|   |       index.d.ts
+|   |       index.js
+|   |       license
+|   |       package.json
+|   |       readme.md
+|   |       
 |   +---brace-expansion
 |   |       index.js
 |   |       LICENSE
@@ -8064,6 +8904,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -8091,6 +8932,7 @@ C:.
 |   |   |   reflectApply.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -8107,6 +8949,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -8118,6 +8961,13 @@ C:.
 |   |       license
 |   |       package.json
 |   |       readme.md
+|   |       
+|   +---camelcase-css
+|   |       index-es5.js
+|   |       index.js
+|   |       license
+|   |       package.json
+|   |       README.md
 |   |       
 |   +---caniuse-lite
 |   |   |   LICENSE
@@ -8980,6 +9830,28 @@ C:.
 |   |           templates.js
 |   |           util.js
 |   |           
+|   +---chokidar
+|   |   |   index.js
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   +---lib
+|   |   |       constants.js
+|   |   |       fsevents-handler.js
+|   |   |       nodefs-handler.js
+|   |   |       
+|   |   +---node_modules
+|   |   |   \---glob-parent
+|   |   |           CHANGELOG.md
+|   |   |           index.js
+|   |   |           LICENSE
+|   |   |           package.json
+|   |   |           README.md
+|   |   |           
+|   |   \---types
+|   |           index.d.ts
+|   |           
 |   +---class-variance-authority
 |   |   |   LICENSE
 |   |   |   package.json
@@ -9056,6 +9928,16 @@ C:.
 |   |       package.json
 |   |       README.md
 |   |       
+|   +---commander
+|   |   |   CHANGELOG.md
+|   |   |   index.js
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   Readme.md
+|   |   |   
+|   |   \---typings
+|   |           index.d.ts
+|   |           
 |   +---concat-map
 |   |   |   .travis.yml
 |   |   |   index.js
@@ -9099,6 +9981,18 @@ C:.
 |   |               readShebang.js
 |   |               resolveCommand.js
 |   |               
+|   +---cssesc
+|   |   |   cssesc.js
+|   |   |   LICENSE-MIT.txt
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   +---bin
+|   |   |       cssesc
+|   |   |       
+|   |   \---man
+|   |           cssesc.1
+|   |           
 |   +---csstype
 |   |       index.d.ts
 |   |       index.js.flow
@@ -9588,6 +10482,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -9604,6 +10499,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -9620,6 +10516,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -18366,6 +19263,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -18381,6 +19279,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   \---.github
 |   |           FUNDING.yml
 |   |           
 |   +---detect-libc
@@ -18409,6 +19308,13 @@ C:.
 |   |           browser.js
 |   |           node.js
 |   |           
+|   +---didyoumean
+|   |       didYouMean-1.2.1.js
+|   |       didYouMean-1.2.1.min.js
+|   |       LICENSE
+|   |       package.json
+|   |       README.md
+|   |       
 |   +---diff
 |   |   |   CONTRIBUTING.md
 |   |   |   LICENSE
@@ -18450,6 +19356,19 @@ C:.
 |   |               distance-iterator.js
 |   |               params.js
 |   |               
+|   +---dlv
+|   |   |   index.js
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---dist
+|   |           dlv.es.js
+|   |           dlv.es.js.map
+|   |           dlv.js
+|   |           dlv.js.map
+|   |           dlv.umd.js
+|   |           dlv.umd.js.map
+|   |           
 |   +---doctrine
 |   |   |   CHANGELOG.md
 |   |   |   LICENSE
@@ -18876,6 +19795,7 @@ C:.
 |   |   |   set.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -18883,6 +19803,11 @@ C:.
 |   |           index.js
 |   |           set.js
 |   |           
+|   +---eastasianwidth
+|   |       eastasianwidth.js
+|   |       package.json
+|   |       README.md
+|   |       
 |   +---electron-to-chromium
 |   |       chromium-versions.js
 |   |       chromium-versions.json
@@ -21540,6 +22465,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -21567,6 +22493,7 @@ C:.
 |   |   |   uri.d.ts
 |   |   |   uri.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -21583,6 +22510,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---aos
@@ -21774,6 +22702,7 @@ C:.
 |   |   |   ToObject.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -21804,6 +22733,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -21829,6 +22759,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---helpers
@@ -22359,6 +23290,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   \---node_modules
 |   |       \---debug
 |   |           |   CHANGELOG.md
 |   |           |   LICENSE
@@ -22420,6 +23352,7 @@ C:.
 |   |   |   visit.d.ts
 |   |   |   visit.js
 |   |   |   
+|   |   \---node_modules
 |   |       \---debug
 |   |           |   CHANGELOG.md
 |   |           |   LICENSE
@@ -22584,6 +23517,7 @@ C:.
 |   |   |       LICENSE
 |   |   |       README.md
 |   |   |       
+|   |   \---node_modules
 |   |       +---.bin
 |   |       |       semver
 |   |       |       semver.cmd
@@ -23287,6 +24221,7 @@ C:.
 |   |   |           version.d.ts.map
 |   |   |           version.js
 |   |   |           
+|   |   \---node_modules
 |   |       +---.bin
 |   |       |       resolve
 |   |       |       resolve.cmd
@@ -23307,6 +24242,7 @@ C:.
 |   |       |   |   SECURITY.md
 |   |       |   |   sync.js
 |   |       |   |   
+|   |       |   +---.github
 |   |       |   |       FUNDING.yml
 |   |       |   |       
 |   |       |   +---bin
@@ -23487,14 +24423,17 @@ C:.
 |   |       |       |   |   |       package.json
 |   |       |       |   |   |       
 |   |       |       |   |   \---_
+|   |       |       |   |       +---node_modules
 |   |       |       |   |       |       foo.js
 |   |       |       |   |       |       
 |   |       |       |   |       \---symlink_target
+|   |       |       |   |               .gitkeep
 |   |       |       |   |               
 |   |       |       |   \---without_basedir
 |   |       |       |           main.js
 |   |       |       |           
 |   |       |       \---shadowed_core
+|   |       |           \---node_modules
 |   |       |               \---util
 |   |       |                       index.js
 |   |       |                       
@@ -23704,6 +24643,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---node_modules
 |   |   |   \---glob-parent
 |   |   |           CHANGELOG.md
 |   |   |           index.js
@@ -23790,6 +24730,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---benchmark
@@ -23825,6 +24766,7 @@ C:.
 |   |   |   README.md
 |   |   |   SECURITY.md
 |   |   |   
+|   |   +---.github
 |   |   |   |   dependabot.yml
 |   |   |   |   
 |   |   |   \---workflows
@@ -23914,12 +24856,57 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       SECURITY.md
 |   |   |       
 |   |   \---test
 |   |           test.js
 |   |           
+|   +---foreground-child
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---dist
+|   |       +---commonjs
+|   |       |       all-signals.d.ts
+|   |       |       all-signals.d.ts.map
+|   |       |       all-signals.js
+|   |       |       all-signals.js.map
+|   |       |       index.d.ts
+|   |       |       index.d.ts.map
+|   |       |       index.js
+|   |       |       index.js.map
+|   |       |       package.json
+|   |       |       proxy-signals.d.ts
+|   |       |       proxy-signals.d.ts.map
+|   |       |       proxy-signals.js
+|   |       |       proxy-signals.js.map
+|   |       |       watchdog.d.ts
+|   |       |       watchdog.d.ts.map
+|   |       |       watchdog.js
+|   |       |       watchdog.js.map
+|   |       |       
+|   |       \---esm
+|   |               all-signals.d.ts
+|   |               all-signals.d.ts.map
+|   |               all-signals.js
+|   |               all-signals.js.map
+|   |               index.d.ts
+|   |               index.d.ts.map
+|   |               index.js
+|   |               index.js.map
+|   |               package.json
+|   |               proxy-signals.d.ts
+|   |               proxy-signals.d.ts.map
+|   |               proxy-signals.js
+|   |               proxy-signals.js.map
+|   |               watchdog.d.ts
+|   |               watchdog.d.ts.map
+|   |               watchdog.js
+|   |               watchdog.js.map
+|   |               
 |   +---fraction.js
 |   |   |   CHANGELOG.md
 |   |   |   fraction.d.mts
@@ -24482,6 +25469,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       SECURITY.md
 |   |   |       
@@ -24503,6 +25491,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---helpers
@@ -24525,6 +25514,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24545,6 +25535,7 @@ C:.
 |   |   |   require.mjs
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24559,6 +25550,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24594,6 +25586,7 @@ C:.
 |   |   |   Reflect.getPrototypeOf.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24612,6 +25605,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24628,6 +25622,148 @@ C:.
 |   |           index.d.mts
 |   |           index.mjs
 |   |           
+|   +---glob
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   +---dist
+|   |   |   +---commonjs
+|   |   |   |       glob.d.ts
+|   |   |   |       glob.d.ts.map
+|   |   |   |       glob.js
+|   |   |   |       glob.js.map
+|   |   |   |       has-magic.d.ts
+|   |   |   |       has-magic.d.ts.map
+|   |   |   |       has-magic.js
+|   |   |   |       has-magic.js.map
+|   |   |   |       ignore.d.ts
+|   |   |   |       ignore.d.ts.map
+|   |   |   |       ignore.js
+|   |   |   |       ignore.js.map
+|   |   |   |       index.d.ts
+|   |   |   |       index.d.ts.map
+|   |   |   |       index.js
+|   |   |   |       index.js.map
+|   |   |   |       package.json
+|   |   |   |       pattern.d.ts
+|   |   |   |       pattern.d.ts.map
+|   |   |   |       pattern.js
+|   |   |   |       pattern.js.map
+|   |   |   |       processor.d.ts
+|   |   |   |       processor.d.ts.map
+|   |   |   |       processor.js
+|   |   |   |       processor.js.map
+|   |   |   |       walker.d.ts
+|   |   |   |       walker.d.ts.map
+|   |   |   |       walker.js
+|   |   |   |       walker.js.map
+|   |   |   |       
+|   |   |   \---esm
+|   |   |           bin.d.mts
+|   |   |           bin.d.mts.map
+|   |   |           bin.mjs
+|   |   |           bin.mjs.map
+|   |   |           glob.d.ts
+|   |   |           glob.d.ts.map
+|   |   |           glob.js
+|   |   |           glob.js.map
+|   |   |           has-magic.d.ts
+|   |   |           has-magic.d.ts.map
+|   |   |           has-magic.js
+|   |   |           has-magic.js.map
+|   |   |           ignore.d.ts
+|   |   |           ignore.d.ts.map
+|   |   |           ignore.js
+|   |   |           ignore.js.map
+|   |   |           index.d.ts
+|   |   |           index.d.ts.map
+|   |   |           index.js
+|   |   |           index.js.map
+|   |   |           package.json
+|   |   |           pattern.d.ts
+|   |   |           pattern.d.ts.map
+|   |   |           pattern.js
+|   |   |           pattern.js.map
+|   |   |           processor.d.ts
+|   |   |           processor.d.ts.map
+|   |   |           processor.js
+|   |   |           processor.js.map
+|   |   |           walker.d.ts
+|   |   |           walker.d.ts.map
+|   |   |           walker.js
+|   |   |           walker.js.map
+|   |   |           
+|   |   \---node_modules
+|   |       +---brace-expansion
+|   |       |   |   index.js
+|   |       |   |   LICENSE
+|   |       |   |   package.json
+|   |       |   |   README.md
+|   |       |   |   
+|   |       |   \---.github
+|   |       |           FUNDING.yml
+|   |       |           
+|   |       \---minimatch
+|   |           |   LICENSE
+|   |           |   package.json
+|   |           |   README.md
+|   |           |   
+|   |           \---dist
+|   |               +---commonjs
+|   |               |       assert-valid-pattern.d.ts
+|   |               |       assert-valid-pattern.d.ts.map
+|   |               |       assert-valid-pattern.js
+|   |               |       assert-valid-pattern.js.map
+|   |               |       ast.d.ts
+|   |               |       ast.d.ts.map
+|   |               |       ast.js
+|   |               |       ast.js.map
+|   |               |       brace-expressions.d.ts
+|   |               |       brace-expressions.d.ts.map
+|   |               |       brace-expressions.js
+|   |               |       brace-expressions.js.map
+|   |               |       escape.d.ts
+|   |               |       escape.d.ts.map
+|   |               |       escape.js
+|   |               |       escape.js.map
+|   |               |       index.d.ts
+|   |               |       index.d.ts.map
+|   |               |       index.js
+|   |               |       index.js.map
+|   |               |       package.json
+|   |               |       unescape.d.ts
+|   |               |       unescape.d.ts.map
+|   |               |       unescape.js
+|   |               |       unescape.js.map
+|   |               |       
+|   |               \---esm
+|   |                       assert-valid-pattern.d.ts
+|   |                       assert-valid-pattern.d.ts.map
+|   |                       assert-valid-pattern.js
+|   |                       assert-valid-pattern.js.map
+|   |                       ast.d.ts
+|   |                       ast.d.ts.map
+|   |                       ast.js
+|   |                       ast.js.map
+|   |                       brace-expressions.d.ts
+|   |                       brace-expressions.d.ts.map
+|   |                       brace-expressions.js
+|   |                       brace-expressions.js.map
+|   |                       escape.d.ts
+|   |                       escape.d.ts.map
+|   |                       escape.js
+|   |                       escape.js.map
+|   |                       index.d.ts
+|   |                       index.d.ts.map
+|   |                       index.js
+|   |                       index.js.map
+|   |                       package.json
+|   |                       unescape.d.ts
+|   |                       unescape.d.ts.map
+|   |                       unescape.js
+|   |                       unescape.js.map
+|   |                       
 |   +---glob-parent
 |   |       index.js
 |   |       LICENSE
@@ -24771,6 +25907,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24819,6 +25956,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24840,6 +25978,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24859,6 +25998,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24879,6 +26019,7 @@ C:.
 |   |   |   shams.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24902,6 +26043,7 @@ C:.
 |   |   |   shams.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24923,6 +26065,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   \---.github
 |   |           FUNDING.yml
 |   |           
 |   +---ignore
@@ -24959,6 +26102,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -24987,6 +26131,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25024,11 +26169,19 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
 |   |           index.js
 |   |           
+|   +---is-binary-path
+|   |       index.d.ts
+|   |       index.js
+|   |       license
+|   |       package.json
+|   |       readme.md
+|   |       
 |   +---is-boolean-object
 |   |   |   .editorconfig
 |   |   |   .eslintrc
@@ -25041,6 +26194,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25068,6 +26222,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25098,6 +26253,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25115,6 +26271,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25137,11 +26294,19 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
 |   |           index.js
 |   |           
+|   +---is-fullwidth-code-point
+|   |       index.d.ts
+|   |       index.js
+|   |       license
+|   |       package.json
+|   |       readme.md
+|   |       
 |   +---is-generator-function
 |   |   |   .eslintrc
 |   |   |   .nvmrc
@@ -25168,6 +26333,7 @@ C:.
 |   +---is-map
 |   |   |   .editorconfig
 |   |   |   .eslintrc
+|   |   |   .gitattributes
 |   |   |   .nycrc
 |   |   |   CHANGELOG.md
 |   |   |   index.d.ts
@@ -25177,6 +26343,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25194,6 +26361,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25217,6 +26385,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25240,6 +26409,7 @@ C:.
 |   +---is-set
 |   |   |   .editorconfig
 |   |   |   .eslintrc
+|   |   |   .gitattributes
 |   |   |   .nycrc
 |   |   |   CHANGELOG.md
 |   |   |   index.d.ts
@@ -25249,6 +26419,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25265,6 +26436,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25281,6 +26453,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25298,6 +26471,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25315,6 +26489,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25332,6 +26507,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25348,6 +26524,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25356,6 +26533,7 @@ C:.
 |   +---is-weakset
 |   |   |   .editorconfig
 |   |   |   .eslintrc
+|   |   |   .gitattributes
 |   |   |   .nycrc
 |   |   |   CHANGELOG.md
 |   |   |   index.d.ts
@@ -25365,6 +26543,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -25396,31 +26575,63 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
 |   |           index.js
 |   |           
+|   +---jackspeak
+|   |   |   LICENSE.md
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---dist
+|   |       +---commonjs
+|   |       |       index.d.ts
+|   |       |       index.d.ts.map
+|   |       |       index.js
+|   |       |       index.js.map
+|   |       |       package.json
+|   |       |       parse-args-cjs.cjs.map
+|   |       |       parse-args-cjs.d.cts.map
+|   |       |       parse-args.d.ts
+|   |       |       parse-args.js
+|   |       |       
+|   |       \---esm
+|   |               index.d.ts
+|   |               index.d.ts.map
+|   |               index.js
+|   |               index.js.map
+|   |               package.json
+|   |               parse-args.d.ts
+|   |               parse-args.d.ts.map
+|   |               parse-args.js
+|   |               parse-args.js.map
+|   |               
 |   +---jiti
 |   |   |   LICENSE
 |   |   |   package.json
 |   |   |   README.md
+|   |   |   register.js
 |   |   |   
-|   |   +---dist
-|   |   |       babel.cjs
-|   |   |       jiti.cjs
+|   |   +---bin
+|   |   |       jiti.js
 |   |   |       
+|   |   +---dist
+|   |   |   |   babel.d.ts
+|   |   |   |   babel.js
+|   |   |   |   jiti.d.ts
+|   |   |   |   jiti.js
+|   |   |   |   types.d.ts
+|   |   |   |   utils.d.ts
+|   |   |   |   
+|   |   |   \---plugins
+|   |   |           babel-plugin-transform-import-meta.d.ts
+|   |   |           import-meta-env.d.ts
+|   |   |           
 |   |   \---lib
-|   |           jiti-cli.mjs
-|   |           jiti-hooks.mjs
-|   |           jiti-native.mjs
-|   |           jiti-register.d.mts
-|   |           jiti-register.mjs
-|   |           jiti.cjs
-|   |           jiti.d.cts
-|   |           jiti.d.mts
-|   |           jiti.mjs
-|   |           types.d.ts
+|   |           index.js
 |   |           
 |   +---jose
 |   |   |   LICENSE.md
@@ -25961,6 +27172,7 @@ C:.
 |   |   |   propName.js
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---lib
@@ -26137,6 +27349,24 @@ C:.
 |   |       package.json
 |   |       README.md
 |   |       
+|   +---lilconfig
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   readme.md
+|   |   |   
+|   |   \---src
+|   |           index.d.ts
+|   |           index.js
+|   |           
+|   +---lines-and-columns
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---build
+|   |           index.d.ts
+|   |           index.js
+|   |           
 |   +---locate-path
 |   |       index.d.ts
 |   |       index.js
@@ -30809,6 +32039,7 @@ C:.
 |   |   |   sign.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---constants
@@ -30849,6 +32080,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---example
@@ -30871,6 +32103,26 @@ C:.
 |   |           unknown.js
 |   |           whitespace.js
 |   |           
+|   +---minipass
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---dist
+|   |       +---commonjs
+|   |       |       index.d.ts
+|   |       |       index.d.ts.map
+|   |       |       index.js
+|   |       |       index.js.map
+|   |       |       package.json
+|   |       |       
+|   |       \---esm
+|   |               index.d.ts
+|   |               index.d.ts.map
+|   |               index.js
+|   |               index.js.map
+|   |               package.json
+|   |               
 |   +---motion-dom
 |   |   |   LICENSE.md
 |   |   |   package.json
@@ -30973,6 +32225,19 @@ C:.
 |   |       license.md
 |   |       package.json
 |   |       readme.md
+|   |       
+|   +---mz
+|   |       child_process.js
+|   |       crypto.js
+|   |       dns.js
+|   |       fs.js
+|   |       HISTORY.md
+|   |       index.js
+|   |       LICENSE
+|   |       package.json
+|   |       readline.js
+|   |       README.md
+|   |       zlib.js
 |   |       
 |   +---nanoid
 |   |   |   index.browser.cjs
@@ -39516,6 +40781,7 @@ C:.
 |   |   |   \---compat
 |   |   |           navigation.d.ts
 |   |   |           
+|   |   +---node_modules
 |   |   |   +---@img
 |   |   |   |   \---sharp-win32-x64
 |   |   |   |       |   LICENSE
@@ -40204,6 +41470,12 @@ C:.
 |   |       \---release-schedule
 |   |               release-schedule.json
 |   |               
+|   +---normalize-path
+|   |       index.js
+|   |       LICENSE
+|   |       package.json
+|   |       README.md
+|   |       
 |   +---normalize-range
 |   |       index.js
 |   |       license
@@ -40270,6 +41542,7 @@ C:.
 |   |   |   test-core-js.js
 |   |   |   util.inspect.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---example
@@ -40331,6 +41604,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---dist
@@ -40399,6 +41673,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -40499,6 +41774,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -40518,6 +41794,26 @@ C:.
 |   |       package.json
 |   |       readme.md
 |   |       
+|   +---package-json-from-dist
+|   |   |   LICENSE.md
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---dist
+|   |       +---commonjs
+|   |       |       index.d.ts
+|   |       |       index.d.ts.map
+|   |       |       index.js
+|   |       |       index.js.map
+|   |       |       package.json
+|   |       |       
+|   |       \---esm
+|   |               index.d.ts
+|   |               index.d.ts.map
+|   |               index.js
+|   |               index.js.map
+|   |               package.json
+|   |               
 |   +---parent-module
 |   |       index.js
 |   |       license
@@ -40544,6 +41840,51 @@ C:.
 |   |       package.json
 |   |       README.md
 |   |       
+|   +---path-scurry
+|   |   |   LICENSE.md
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   +---dist
+|   |   |   +---commonjs
+|   |   |   |       index.d.ts
+|   |   |   |       index.d.ts.map
+|   |   |   |       index.js
+|   |   |   |       index.js.map
+|   |   |   |       package.json
+|   |   |   |       
+|   |   |   \---esm
+|   |   |           index.d.ts
+|   |   |           index.d.ts.map
+|   |   |           index.js
+|   |   |           index.js.map
+|   |   |           package.json
+|   |   |           
+|   |   \---node_modules
+|   |       \---lru-cache
+|   |           |   LICENSE
+|   |           |   package.json
+|   |           |   README.md
+|   |           |   
+|   |           \---dist
+|   |               +---commonjs
+|   |               |       index.d.ts
+|   |               |       index.d.ts.map
+|   |               |       index.js
+|   |               |       index.js.map
+|   |               |       index.min.js
+|   |               |       index.min.js.map
+|   |               |       package.json
+|   |               |       
+|   |               \---esm
+|   |                       index.d.ts
+|   |                       index.d.ts.map
+|   |                       index.js
+|   |                       index.js.map
+|   |                       index.min.js
+|   |                       index.min.js.map
+|   |                       package.json
+|   |                       
 |   +---picocolors
 |   |       LICENSE
 |   |       package.json
@@ -40567,6 +41908,21 @@ C:.
 |   |           scan.js
 |   |           utils.js
 |   |           
+|   +---pify
+|   |       index.js
+|   |       license
+|   |       package.json
+|   |       readme.md
+|   |       
+|   +---pirates
+|   |   |   index.d.ts
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---lib
+|   |           index.js
+|   |           
 |   +---possible-typed-array-names
 |   |   |   .eslintrc
 |   |   |   CHANGELOG.md
@@ -40577,6 +41933,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -40641,6 +41998,97 @@ C:.
 |   |           warning.d.ts
 |   |           warning.js
 |   |           
+|   +---postcss-import
+|   |   |   index.js
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---lib
+|   |           assign-layer-names.js
+|   |           data-url.js
+|   |           join-layer.js
+|   |           join-media.js
+|   |           load-content.js
+|   |           parse-statements.js
+|   |           process-content.js
+|   |           resolve-id.js
+|   |           
+|   +---postcss-js
+|   |       async.js
+|   |       index.js
+|   |       index.mjs
+|   |       LICENSE
+|   |       objectifier.js
+|   |       package.json
+|   |       parser.js
+|   |       process-result.js
+|   |       README.md
+|   |       sync.js
+|   |       
+|   +---postcss-load-config
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---src
+|   |           index.d.ts
+|   |           index.js
+|   |           options.js
+|   |           plugins.js
+|   |           req.js
+|   |           
+|   +---postcss-nested
+|   |       index.d.ts
+|   |       index.js
+|   |       LICENSE
+|   |       package.json
+|   |       README.md
+|   |       
+|   +---postcss-selector-parser
+|   |   |   API.md
+|   |   |   CHANGELOG.md
+|   |   |   LICENSE-MIT
+|   |   |   package.json
+|   |   |   postcss-selector-parser.d.ts
+|   |   |   README.md
+|   |   |   
+|   |   \---dist
+|   |       |   index.js
+|   |       |   parser.js
+|   |       |   processor.js
+|   |       |   sortAscending.js
+|   |       |   tokenize.js
+|   |       |   tokenTypes.js
+|   |       |   
+|   |       +---selectors
+|   |       |       attribute.js
+|   |       |       className.js
+|   |       |       combinator.js
+|   |       |       comment.js
+|   |       |       constructors.js
+|   |       |       container.js
+|   |       |       guards.js
+|   |       |       id.js
+|   |       |       index.js
+|   |       |       namespace.js
+|   |       |       nesting.js
+|   |       |       node.js
+|   |       |       pseudo.js
+|   |       |       root.js
+|   |       |       selector.js
+|   |       |       string.js
+|   |       |       tag.js
+|   |       |       types.js
+|   |       |       universal.js
+|   |       |       
+|   |       \---util
+|   |               ensureObject.js
+|   |               getProp.js
+|   |               index.js
+|   |               stripComments.js
+|   |               unesc.js
+|   |               
 |   +---postcss-value-parser
 |   |   |   LICENSE
 |   |   |   package.json
@@ -41155,6 +42603,10 @@ C:.
 |   |   |                   databrowser.html
 |   |   |                   splash.html
 |   |   |                   
+|   |   +---engines
+|   |   |   \---605197351a3c8bdd595af2d2a9bc3025bca48ea2
+|   |   |           query_engine-windows.dll.node
+|   |   |           
 |   |   +---preinstall
 |   |   |       index.js
 |   |   |       
@@ -41237,6 +42689,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   +---dist
@@ -42643,6 +44096,19 @@ C:.
 |   |   \---TransitionGroupContext
 |   |           package.json
 |   |           
+|   +---read-cache
+|   |       index.js
+|   |       LICENSE
+|   |       package.json
+|   |       README.md
+|   |       
+|   +---readdirp
+|   |       index.d.ts
+|   |       index.js
+|   |       LICENSE
+|   |       package.json
+|   |       README.md
+|   |       
 |   +---recharts
 |   |   |   CHANGELOG.md
 |   |   |   CONTRIBUTING.md
@@ -42890,6 +44356,7 @@ C:.
 |   |   |       \---tooltip
 |   |   |               translate.js
 |   |   |               
+|   |   +---node_modules
 |   |   |   \---react-is
 |   |   |       |   index.js
 |   |   |       |   LICENSE
@@ -43116,6 +44583,7 @@ C:.
 |   |   |   SECURITY.md
 |   |   |   sync.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       INCIDENT_RESPONSE_PROCESS.md
 |   |   |       THREAT_MODEL.md
@@ -43286,14 +44754,17 @@ C:.
 |   |       |   |   |       package.json
 |   |       |   |   |       
 |   |       |   |   \---_
+|   |       |   |       +---node_modules
 |   |       |   |       |       foo.js
 |   |       |   |       |       
 |   |       |   |       \---symlink_target
+|   |       |   |               .gitkeep
 |   |       |   |               
 |   |       |   \---without_basedir
 |   |       |           main.js
 |   |       |           
 |   |       \---shadowed_core
+|   |           \---node_modules
 |   |               \---util
 |   |                       index.js
 |   |                       
@@ -43325,6 +44796,7 @@ C:.
 |   |   |   test.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |   |   dependabot.yml
 |   |   |   |   
 |   |   |   \---workflows
@@ -43352,6 +44824,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -43368,6 +44841,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -43384,6 +44858,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -43485,6 +44960,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   \---.github
 |   |           FUNDING.yml
 |   |           
 |   +---set-function-name
@@ -43497,6 +44973,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   \---.github
 |   |           FUNDING.yml
 |   |           
 |   +---set-proto
@@ -43514,6 +44991,7 @@ C:.
 |   |   |   Reflect.setPrototypeOf.js
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -43584,6 +45062,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -43602,6 +45081,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -43619,6 +45099,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -43636,11 +45117,48 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
 |   |           index.js
 |   |           
+|   +---signal-exit
+|   |   |   LICENSE.txt
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---dist
+|   |       +---cjs
+|   |       |       browser.d.ts
+|   |       |       browser.d.ts.map
+|   |       |       browser.js
+|   |       |       browser.js.map
+|   |       |       index.d.ts
+|   |       |       index.d.ts.map
+|   |       |       index.js
+|   |       |       index.js.map
+|   |       |       package.json
+|   |       |       signals.d.ts
+|   |       |       signals.d.ts.map
+|   |       |       signals.js
+|   |       |       signals.js.map
+|   |       |       
+|   |       \---mjs
+|   |               browser.d.ts
+|   |               browser.d.ts.map
+|   |               browser.js
+|   |               browser.js.map
+|   |               index.d.ts
+|   |               index.d.ts.map
+|   |               index.js
+|   |               index.js.map
+|   |               package.json
+|   |               signals.d.ts
+|   |               signals.d.ts.map
+|   |               signals.js
+|   |               signals.js.map
+|   |               
 |   +---simple-swizzle
 |   |       index.js
 |   |       LICENSE
@@ -43689,14 +45207,57 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
 |   |           index.js
 |   |           
+|   +---string-width
+|   |       index.d.ts
+|   |       index.js
+|   |       license
+|   |       package.json
+|   |       readme.md
+|   |       
+|   +---string-width-cjs
+|   |   |   index.d.ts
+|   |   |   index.js
+|   |   |   license
+|   |   |   package.json
+|   |   |   readme.md
+|   |   |   
+|   |   \---node_modules
+|   |       +---ansi-regex
+|   |       |       index.d.ts
+|   |       |       index.js
+|   |       |       license
+|   |       |       package.json
+|   |       |       readme.md
+|   |       |       
+|   |       +---emoji-regex
+|   |       |   |   index.d.ts
+|   |       |   |   index.js
+|   |       |   |   LICENSE-MIT.txt
+|   |       |   |   package.json
+|   |       |   |   README.md
+|   |       |   |   text.js
+|   |       |   |   
+|   |       |   \---es2015
+|   |       |           index.js
+|   |       |           text.js
+|   |       |           
+|   |       \---strip-ansi
+|   |               index.d.ts
+|   |               index.js
+|   |               license
+|   |               package.json
+|   |               readme.md
+|   |               
 |   +---string.prototype.includes
 |   |   |   .editorconfig
 |   |   |   .eslintrc
+|   |   |   .gitattributes
 |   |   |   .travis.yml
 |   |   |   auto.js
 |   |   |   implementation.js
@@ -43707,6 +45268,7 @@ C:.
 |   |   |   README.md
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |   \---workflows
 |   |   |           node-aught.yml
 |   |   |           node-pretest.yml
@@ -43736,6 +45298,7 @@ C:.
 |   |   |   regexp-matchall.js
 |   |   |   shim.js
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -43745,6 +45308,7 @@ C:.
 |   |           
 |   +---string.prototype.repeat
 |   |   |   .editorconfig
+|   |   |   .gitattributes
 |   |   |   .travis.yml
 |   |   |   auto.js
 |   |   |   implementation.js
@@ -43820,6 +45384,28 @@ C:.
 |   |           shimmed.js
 |   |           tests.js
 |   |           
+|   +---strip-ansi
+|   |       index.d.ts
+|   |       index.js
+|   |       license
+|   |       package.json
+|   |       readme.md
+|   |       
+|   +---strip-ansi-cjs
+|   |   |   index.d.ts
+|   |   |   index.js
+|   |   |   license
+|   |   |   package.json
+|   |   |   readme.md
+|   |   |   
+|   |   \---node_modules
+|   |       \---ansi-regex
+|   |               index.d.ts
+|   |               index.js
+|   |               license
+|   |               package.json
+|   |               readme.md
+|   |               
 |   +---strip-bom
 |   |       index.js
 |   |       license
@@ -44626,6 +46212,258 @@ C:.
 |   |           style-transform.js
 |   |           stylesheet.js
 |   |           
+|   +---sucrase
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   +---bin
+|   |   |       sucrase
+|   |   |       sucrase-node
+|   |   |       
+|   |   +---dist
+|   |   |   |   CJSImportProcessor.js
+|   |   |   |   cli.js
+|   |   |   |   computeSourceMap.js
+|   |   |   |   HelperManager.js
+|   |   |   |   identifyShadowedGlobals.js
+|   |   |   |   index.js
+|   |   |   |   NameManager.js
+|   |   |   |   Options-gen-types.js
+|   |   |   |   Options.js
+|   |   |   |   register.js
+|   |   |   |   TokenProcessor.js
+|   |   |   |   
+|   |   |   +---esm
+|   |   |   |   |   CJSImportProcessor.js
+|   |   |   |   |   cli.js
+|   |   |   |   |   computeSourceMap.js
+|   |   |   |   |   HelperManager.js
+|   |   |   |   |   identifyShadowedGlobals.js
+|   |   |   |   |   index.js
+|   |   |   |   |   NameManager.js
+|   |   |   |   |   Options-gen-types.js
+|   |   |   |   |   Options.js
+|   |   |   |   |   register.js
+|   |   |   |   |   TokenProcessor.js
+|   |   |   |   |   
+|   |   |   |   +---parser
+|   |   |   |   |   |   index.js
+|   |   |   |   |   |   
+|   |   |   |   |   +---plugins
+|   |   |   |   |   |   |   flow.js
+|   |   |   |   |   |   |   types.js
+|   |   |   |   |   |   |   typescript.js
+|   |   |   |   |   |   |   
+|   |   |   |   |   |   \---jsx
+|   |   |   |   |   |           index.js
+|   |   |   |   |   |           xhtml.js
+|   |   |   |   |   |           
+|   |   |   |   |   +---tokenizer
+|   |   |   |   |   |       index.js
+|   |   |   |   |   |       keywords.js
+|   |   |   |   |   |       readWord.js
+|   |   |   |   |   |       readWordTree.js
+|   |   |   |   |   |       state.js
+|   |   |   |   |   |       types.js
+|   |   |   |   |   |       
+|   |   |   |   |   +---traverser
+|   |   |   |   |   |       base.js
+|   |   |   |   |   |       expression.js
+|   |   |   |   |   |       index.js
+|   |   |   |   |   |       lval.js
+|   |   |   |   |   |       statement.js
+|   |   |   |   |   |       util.js
+|   |   |   |   |   |       
+|   |   |   |   |   \---util
+|   |   |   |   |           charcodes.js
+|   |   |   |   |           identifier.js
+|   |   |   |   |           whitespace.js
+|   |   |   |   |           
+|   |   |   |   +---transformers
+|   |   |   |   |       CJSImportTransformer.js
+|   |   |   |   |       ESMImportTransformer.js
+|   |   |   |   |       FlowTransformer.js
+|   |   |   |   |       JestHoistTransformer.js
+|   |   |   |   |       JSXTransformer.js
+|   |   |   |   |       NumericSeparatorTransformer.js
+|   |   |   |   |       OptionalCatchBindingTransformer.js
+|   |   |   |   |       OptionalChainingNullishTransformer.js
+|   |   |   |   |       ReactDisplayNameTransformer.js
+|   |   |   |   |       ReactHotLoaderTransformer.js
+|   |   |   |   |       RootTransformer.js
+|   |   |   |   |       Transformer.js
+|   |   |   |   |       TypeScriptTransformer.js
+|   |   |   |   |       
+|   |   |   |   \---util
+|   |   |   |           elideImportEquals.js
+|   |   |   |           formatTokens.js
+|   |   |   |           getClassInfo.js
+|   |   |   |           getDeclarationInfo.js
+|   |   |   |           getIdentifierNames.js
+|   |   |   |           getImportExportSpecifierInfo.js
+|   |   |   |           getJSXPragmaInfo.js
+|   |   |   |           getNonTypeIdentifiers.js
+|   |   |   |           getTSImportedNames.js
+|   |   |   |           isAsyncOperation.js
+|   |   |   |           isExportFrom.js
+|   |   |   |           isIdentifier.js
+|   |   |   |           removeMaybeImportAttributes.js
+|   |   |   |           shouldElideDefaultExport.js
+|   |   |   |           
+|   |   |   +---parser
+|   |   |   |   |   index.js
+|   |   |   |   |   
+|   |   |   |   +---plugins
+|   |   |   |   |   |   flow.js
+|   |   |   |   |   |   types.js
+|   |   |   |   |   |   typescript.js
+|   |   |   |   |   |   
+|   |   |   |   |   \---jsx
+|   |   |   |   |           index.js
+|   |   |   |   |           xhtml.js
+|   |   |   |   |           
+|   |   |   |   +---tokenizer
+|   |   |   |   |       index.js
+|   |   |   |   |       keywords.js
+|   |   |   |   |       readWord.js
+|   |   |   |   |       readWordTree.js
+|   |   |   |   |       state.js
+|   |   |   |   |       types.js
+|   |   |   |   |       
+|   |   |   |   +---traverser
+|   |   |   |   |       base.js
+|   |   |   |   |       expression.js
+|   |   |   |   |       index.js
+|   |   |   |   |       lval.js
+|   |   |   |   |       statement.js
+|   |   |   |   |       util.js
+|   |   |   |   |       
+|   |   |   |   \---util
+|   |   |   |           charcodes.js
+|   |   |   |           identifier.js
+|   |   |   |           whitespace.js
+|   |   |   |           
+|   |   |   +---transformers
+|   |   |   |       CJSImportTransformer.js
+|   |   |   |       ESMImportTransformer.js
+|   |   |   |       FlowTransformer.js
+|   |   |   |       JestHoistTransformer.js
+|   |   |   |       JSXTransformer.js
+|   |   |   |       NumericSeparatorTransformer.js
+|   |   |   |       OptionalCatchBindingTransformer.js
+|   |   |   |       OptionalChainingNullishTransformer.js
+|   |   |   |       ReactDisplayNameTransformer.js
+|   |   |   |       ReactHotLoaderTransformer.js
+|   |   |   |       RootTransformer.js
+|   |   |   |       Transformer.js
+|   |   |   |       TypeScriptTransformer.js
+|   |   |   |       
+|   |   |   +---types
+|   |   |   |   |   CJSImportProcessor.d.ts
+|   |   |   |   |   cli.d.ts
+|   |   |   |   |   computeSourceMap.d.ts
+|   |   |   |   |   HelperManager.d.ts
+|   |   |   |   |   identifyShadowedGlobals.d.ts
+|   |   |   |   |   index.d.ts
+|   |   |   |   |   NameManager.d.ts
+|   |   |   |   |   Options-gen-types.d.ts
+|   |   |   |   |   Options.d.ts
+|   |   |   |   |   register.d.ts
+|   |   |   |   |   TokenProcessor.d.ts
+|   |   |   |   |   
+|   |   |   |   +---parser
+|   |   |   |   |   |   index.d.ts
+|   |   |   |   |   |   
+|   |   |   |   |   +---plugins
+|   |   |   |   |   |   |   flow.d.ts
+|   |   |   |   |   |   |   types.d.ts
+|   |   |   |   |   |   |   typescript.d.ts
+|   |   |   |   |   |   |   
+|   |   |   |   |   |   \---jsx
+|   |   |   |   |   |           index.d.ts
+|   |   |   |   |   |           xhtml.d.ts
+|   |   |   |   |   |           
+|   |   |   |   |   +---tokenizer
+|   |   |   |   |   |       index.d.ts
+|   |   |   |   |   |       keywords.d.ts
+|   |   |   |   |   |       readWord.d.ts
+|   |   |   |   |   |       readWordTree.d.ts
+|   |   |   |   |   |       state.d.ts
+|   |   |   |   |   |       types.d.ts
+|   |   |   |   |   |       
+|   |   |   |   |   +---traverser
+|   |   |   |   |   |       base.d.ts
+|   |   |   |   |   |       expression.d.ts
+|   |   |   |   |   |       index.d.ts
+|   |   |   |   |   |       lval.d.ts
+|   |   |   |   |   |       statement.d.ts
+|   |   |   |   |   |       util.d.ts
+|   |   |   |   |   |       
+|   |   |   |   |   \---util
+|   |   |   |   |           charcodes.d.ts
+|   |   |   |   |           identifier.d.ts
+|   |   |   |   |           whitespace.d.ts
+|   |   |   |   |           
+|   |   |   |   +---transformers
+|   |   |   |   |       CJSImportTransformer.d.ts
+|   |   |   |   |       ESMImportTransformer.d.ts
+|   |   |   |   |       FlowTransformer.d.ts
+|   |   |   |   |       JestHoistTransformer.d.ts
+|   |   |   |   |       JSXTransformer.d.ts
+|   |   |   |   |       NumericSeparatorTransformer.d.ts
+|   |   |   |   |       OptionalCatchBindingTransformer.d.ts
+|   |   |   |   |       OptionalChainingNullishTransformer.d.ts
+|   |   |   |   |       ReactDisplayNameTransformer.d.ts
+|   |   |   |   |       ReactHotLoaderTransformer.d.ts
+|   |   |   |   |       RootTransformer.d.ts
+|   |   |   |   |       Transformer.d.ts
+|   |   |   |   |       TypeScriptTransformer.d.ts
+|   |   |   |   |       
+|   |   |   |   \---util
+|   |   |   |           elideImportEquals.d.ts
+|   |   |   |           formatTokens.d.ts
+|   |   |   |           getClassInfo.d.ts
+|   |   |   |           getDeclarationInfo.d.ts
+|   |   |   |           getIdentifierNames.d.ts
+|   |   |   |           getImportExportSpecifierInfo.d.ts
+|   |   |   |           getJSXPragmaInfo.d.ts
+|   |   |   |           getNonTypeIdentifiers.d.ts
+|   |   |   |           getTSImportedNames.d.ts
+|   |   |   |           isAsyncOperation.d.ts
+|   |   |   |           isExportFrom.d.ts
+|   |   |   |           isIdentifier.d.ts
+|   |   |   |           removeMaybeImportAttributes.d.ts
+|   |   |   |           shouldElideDefaultExport.d.ts
+|   |   |   |           
+|   |   |   \---util
+|   |   |           elideImportEquals.js
+|   |   |           formatTokens.js
+|   |   |           getClassInfo.js
+|   |   |           getDeclarationInfo.js
+|   |   |           getIdentifierNames.js
+|   |   |           getImportExportSpecifierInfo.js
+|   |   |           getJSXPragmaInfo.js
+|   |   |           getNonTypeIdentifiers.js
+|   |   |           getTSImportedNames.js
+|   |   |           isAsyncOperation.js
+|   |   |           isExportFrom.js
+|   |   |           isIdentifier.js
+|   |   |           removeMaybeImportAttributes.js
+|   |   |           shouldElideDefaultExport.js
+|   |   |           
+|   |   +---register
+|   |   |       index.js
+|   |   |       js.js
+|   |   |       jsx.js
+|   |   |       ts-legacy-module-interop.js
+|   |   |       ts.js
+|   |   |       tsx-legacy-module-interop.js
+|   |   |       tsx.js
+|   |   |       
+|   |   \---ts-node-plugin
+|   |           index.js
+|   |           
 |   +---supports-color
 |   |       browser.js
 |   |       index.js
@@ -44643,6 +46481,7 @@ C:.
 |   |   |   package.json
 |   |   |   README.md
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -44686,43 +46525,410 @@ C:.
 |   |               validators.ts
 |   |               
 |   +---tailwindcss
-|   |   |   index.css
+|   |   |   base.css
+|   |   |   CHANGELOG.md
+|   |   |   colors.d.ts
+|   |   |   colors.js
+|   |   |   components.css
+|   |   |   defaultConfig.d.ts
+|   |   |   defaultConfig.js
+|   |   |   defaultTheme.d.ts
+|   |   |   defaultTheme.js
 |   |   |   LICENSE
+|   |   |   loadConfig.d.ts
+|   |   |   loadConfig.js
 |   |   |   package.json
-|   |   |   preflight.css
+|   |   |   plugin.d.ts
+|   |   |   plugin.js
+|   |   |   prettier.config.js
 |   |   |   README.md
-|   |   |   theme.css
+|   |   |   resolveConfig.d.ts
+|   |   |   resolveConfig.js
+|   |   |   screens.css
+|   |   |   tailwind.css
 |   |   |   utilities.css
+|   |   |   variants.css
 |   |   |   
-|   |   \---dist
-|   |           chunk-GFBUASX3.mjs
-|   |           chunk-HTB5LLOP.mjs
-|   |           chunk-MEY3PWYT.mjs
-|   |           colors-b_6i0Oi7.d.ts
-|   |           colors.d.mts
-|   |           colors.d.ts
-|   |           colors.js
-|   |           colors.mjs
-|   |           default-theme.d.mts
-|   |           default-theme.d.ts
-|   |           default-theme.js
-|   |           default-theme.mjs
-|   |           flatten-color-palette.d.mts
-|   |           flatten-color-palette.d.ts
-|   |           flatten-color-palette.js
-|   |           flatten-color-palette.mjs
-|   |           lib.d.mts
-|   |           lib.d.ts
-|   |           lib.js
-|   |           lib.mjs
-|   |           plugin.d.mts
-|   |           plugin.d.ts
-|   |           plugin.js
-|   |           plugin.mjs
-|   |           resolve-config-BIFUA2FY.d.ts
-|   |           resolve-config-QUZ9b-Gn.d.mts
-|   |           types-WlZgYgM8.d.mts
-|   |           
+|   |   +---lib
+|   |   |   |   cli-peer-dependencies.js
+|   |   |   |   cli.js
+|   |   |   |   corePluginList.js
+|   |   |   |   corePlugins.js
+|   |   |   |   featureFlags.js
+|   |   |   |   index.js
+|   |   |   |   plugin.js
+|   |   |   |   processTailwindFeatures.js
+|   |   |   |   
+|   |   |   +---cli
+|   |   |   |   |   index.js
+|   |   |   |   |   
+|   |   |   |   +---build
+|   |   |   |   |       deps.js
+|   |   |   |   |       index.js
+|   |   |   |   |       plugin.js
+|   |   |   |   |       utils.js
+|   |   |   |   |       watching.js
+|   |   |   |   |       
+|   |   |   |   +---help
+|   |   |   |   |       index.js
+|   |   |   |   |       
+|   |   |   |   \---init
+|   |   |   |           index.js
+|   |   |   |           
+|   |   |   +---css
+|   |   |   |       LICENSE
+|   |   |   |       preflight.css
+|   |   |   |       
+|   |   |   +---lib
+|   |   |   |       cacheInvalidation.js
+|   |   |   |       collapseAdjacentRules.js
+|   |   |   |       collapseDuplicateDeclarations.js
+|   |   |   |       content.js
+|   |   |   |       defaultExtractor.js
+|   |   |   |       evaluateTailwindFunctions.js
+|   |   |   |       expandApplyAtRules.js
+|   |   |   |       expandTailwindAtRules.js
+|   |   |   |       findAtConfigPath.js
+|   |   |   |       generateRules.js
+|   |   |   |       getModuleDependencies.js
+|   |   |   |       load-config.js
+|   |   |   |       normalizeTailwindDirectives.js
+|   |   |   |       offsets.js
+|   |   |   |       partitionApplyAtRules.js
+|   |   |   |       regex.js
+|   |   |   |       remap-bitfield.js
+|   |   |   |       resolveDefaultsAtRules.js
+|   |   |   |       setupContextUtils.js
+|   |   |   |       setupTrackingContext.js
+|   |   |   |       sharedState.js
+|   |   |   |       substituteScreenAtRules.js
+|   |   |   |       
+|   |   |   +---postcss-plugins
+|   |   |   |   \---nesting
+|   |   |   |           index.js
+|   |   |   |           plugin.js
+|   |   |   |           README.md
+|   |   |   |           
+|   |   |   +---public
+|   |   |   |       colors.js
+|   |   |   |       create-plugin.js
+|   |   |   |       default-config.js
+|   |   |   |       default-theme.js
+|   |   |   |       load-config.js
+|   |   |   |       resolve-config.js
+|   |   |   |       
+|   |   |   +---util
+|   |   |   |       applyImportantSelector.js
+|   |   |   |       bigSign.js
+|   |   |   |       buildMediaQuery.js
+|   |   |   |       cloneDeep.js
+|   |   |   |       cloneNodes.js
+|   |   |   |       color.js
+|   |   |   |       colorNames.js
+|   |   |   |       configurePlugins.js
+|   |   |   |       createPlugin.js
+|   |   |   |       createUtilityPlugin.js
+|   |   |   |       dataTypes.js
+|   |   |   |       defaults.js
+|   |   |   |       escapeClassName.js
+|   |   |   |       escapeCommas.js
+|   |   |   |       flattenColorPalette.js
+|   |   |   |       formatVariantSelector.js
+|   |   |   |       getAllConfigs.js
+|   |   |   |       hashConfig.js
+|   |   |   |       isKeyframeRule.js
+|   |   |   |       isPlainObject.js
+|   |   |   |       isSyntacticallyValidPropertyValue.js
+|   |   |   |       log.js
+|   |   |   |       nameClass.js
+|   |   |   |       negateValue.js
+|   |   |   |       normalizeConfig.js
+|   |   |   |       normalizeScreens.js
+|   |   |   |       parseAnimationValue.js
+|   |   |   |       parseBoxShadowValue.js
+|   |   |   |       parseDependency.js
+|   |   |   |       parseGlob.js
+|   |   |   |       parseObjectStyles.js
+|   |   |   |       pluginUtils.js
+|   |   |   |       prefixSelector.js
+|   |   |   |       pseudoElements.js
+|   |   |   |       removeAlphaVariables.js
+|   |   |   |       resolveConfig.js
+|   |   |   |       resolveConfigPath.js
+|   |   |   |       responsive.js
+|   |   |   |       splitAtTopLevelOnly.js
+|   |   |   |       tap.js
+|   |   |   |       toColorValue.js
+|   |   |   |       toPath.js
+|   |   |   |       transformThemeValue.js
+|   |   |   |       validateConfig.js
+|   |   |   |       validateFormalSyntax.js
+|   |   |   |       withAlphaVariable.js
+|   |   |   |       
+|   |   |   \---value-parser
+|   |   |           index.d.js
+|   |   |           index.js
+|   |   |           LICENSE
+|   |   |           parse.js
+|   |   |           README.md
+|   |   |           stringify.js
+|   |   |           unit.js
+|   |   |           walk.js
+|   |   |           
+|   |   +---nesting
+|   |   |       index.d.ts
+|   |   |       index.js
+|   |   |       
+|   |   +---node_modules
+|   |   |   +---fast-glob
+|   |   |   |   |   LICENSE
+|   |   |   |   |   package.json
+|   |   |   |   |   README.md
+|   |   |   |   |   
+|   |   |   |   +---node_modules
+|   |   |   |   |   \---glob-parent
+|   |   |   |   |           CHANGELOG.md
+|   |   |   |   |           index.js
+|   |   |   |   |           LICENSE
+|   |   |   |   |           package.json
+|   |   |   |   |           README.md
+|   |   |   |   |           
+|   |   |   |   \---out
+|   |   |   |       |   index.d.ts
+|   |   |   |       |   index.js
+|   |   |   |       |   settings.d.ts
+|   |   |   |       |   settings.js
+|   |   |   |       |   
+|   |   |   |       +---managers
+|   |   |   |       |       tasks.d.ts
+|   |   |   |       |       tasks.js
+|   |   |   |       |       
+|   |   |   |       +---providers
+|   |   |   |       |   |   async.d.ts
+|   |   |   |       |   |   async.js
+|   |   |   |       |   |   provider.d.ts
+|   |   |   |       |   |   provider.js
+|   |   |   |       |   |   stream.d.ts
+|   |   |   |       |   |   stream.js
+|   |   |   |       |   |   sync.d.ts
+|   |   |   |       |   |   sync.js
+|   |   |   |       |   |   
+|   |   |   |       |   +---filters
+|   |   |   |       |   |       deep.d.ts
+|   |   |   |       |   |       deep.js
+|   |   |   |       |   |       entry.d.ts
+|   |   |   |       |   |       entry.js
+|   |   |   |       |   |       error.d.ts
+|   |   |   |       |   |       error.js
+|   |   |   |       |   |       
+|   |   |   |       |   +---matchers
+|   |   |   |       |   |       matcher.d.ts
+|   |   |   |       |   |       matcher.js
+|   |   |   |       |   |       partial.d.ts
+|   |   |   |       |   |       partial.js
+|   |   |   |       |   |       
+|   |   |   |       |   \---transformers
+|   |   |   |       |           entry.d.ts
+|   |   |   |       |           entry.js
+|   |   |   |       |           
+|   |   |   |       +---readers
+|   |   |   |       |       async.d.ts
+|   |   |   |       |       async.js
+|   |   |   |       |       reader.d.ts
+|   |   |   |       |       reader.js
+|   |   |   |       |       stream.d.ts
+|   |   |   |       |       stream.js
+|   |   |   |       |       sync.d.ts
+|   |   |   |       |       sync.js
+|   |   |   |       |       
+|   |   |   |       +---types
+|   |   |   |       |       index.d.ts
+|   |   |   |       |       index.js
+|   |   |   |       |       
+|   |   |   |       \---utils
+|   |   |   |               array.d.ts
+|   |   |   |               array.js
+|   |   |   |               errno.d.ts
+|   |   |   |               errno.js
+|   |   |   |               fs.d.ts
+|   |   |   |               fs.js
+|   |   |   |               index.d.ts
+|   |   |   |               index.js
+|   |   |   |               path.d.ts
+|   |   |   |               path.js
+|   |   |   |               pattern.d.ts
+|   |   |   |               pattern.js
+|   |   |   |               stream.d.ts
+|   |   |   |               stream.js
+|   |   |   |               string.d.ts
+|   |   |   |               string.js
+|   |   |   |               
+|   |   |   \---object-hash
+|   |   |       |   index.js
+|   |   |       |   LICENSE
+|   |   |       |   package.json
+|   |   |       |   readme.markdown
+|   |   |       |   
+|   |   |       \---dist
+|   |   |               object_hash.js
+|   |   |               
+|   |   +---peers
+|   |   |       index.js
+|   |   |       
+|   |   +---scripts
+|   |   |       create-plugin-list.js
+|   |   |       generate-types.js
+|   |   |       release-channel.js
+|   |   |       release-notes.js
+|   |   |       type-utils.js
+|   |   |       
+|   |   +---src
+|   |   |   |   cli-peer-dependencies.js
+|   |   |   |   cli.js
+|   |   |   |   corePluginList.js
+|   |   |   |   corePlugins.js
+|   |   |   |   featureFlags.js
+|   |   |   |   index.js
+|   |   |   |   plugin.js
+|   |   |   |   processTailwindFeatures.js
+|   |   |   |   
+|   |   |   +---cli
+|   |   |   |   |   index.js
+|   |   |   |   |   
+|   |   |   |   +---build
+|   |   |   |   |       deps.js
+|   |   |   |   |       index.js
+|   |   |   |   |       plugin.js
+|   |   |   |   |       utils.js
+|   |   |   |   |       watching.js
+|   |   |   |   |       
+|   |   |   |   +---help
+|   |   |   |   |       index.js
+|   |   |   |   |       
+|   |   |   |   \---init
+|   |   |   |           index.js
+|   |   |   |           
+|   |   |   +---css
+|   |   |   |       LICENSE
+|   |   |   |       preflight.css
+|   |   |   |       
+|   |   |   +---lib
+|   |   |   |       cacheInvalidation.js
+|   |   |   |       collapseAdjacentRules.js
+|   |   |   |       collapseDuplicateDeclarations.js
+|   |   |   |       content.js
+|   |   |   |       defaultExtractor.js
+|   |   |   |       evaluateTailwindFunctions.js
+|   |   |   |       expandApplyAtRules.js
+|   |   |   |       expandTailwindAtRules.js
+|   |   |   |       findAtConfigPath.js
+|   |   |   |       generateRules.js
+|   |   |   |       getModuleDependencies.js
+|   |   |   |       load-config.ts
+|   |   |   |       normalizeTailwindDirectives.js
+|   |   |   |       offsets.js
+|   |   |   |       partitionApplyAtRules.js
+|   |   |   |       regex.js
+|   |   |   |       remap-bitfield.js
+|   |   |   |       resolveDefaultsAtRules.js
+|   |   |   |       setupContextUtils.js
+|   |   |   |       setupTrackingContext.js
+|   |   |   |       sharedState.js
+|   |   |   |       substituteScreenAtRules.js
+|   |   |   |       
+|   |   |   +---postcss-plugins
+|   |   |   |   \---nesting
+|   |   |   |           index.js
+|   |   |   |           plugin.js
+|   |   |   |           README.md
+|   |   |   |           
+|   |   |   +---public
+|   |   |   |       colors.js
+|   |   |   |       create-plugin.js
+|   |   |   |       default-config.js
+|   |   |   |       default-theme.js
+|   |   |   |       load-config.js
+|   |   |   |       resolve-config.js
+|   |   |   |       
+|   |   |   +---util
+|   |   |   |       applyImportantSelector.js
+|   |   |   |       bigSign.js
+|   |   |   |       buildMediaQuery.js
+|   |   |   |       cloneDeep.js
+|   |   |   |       cloneNodes.js
+|   |   |   |       color.js
+|   |   |   |       colorNames.js
+|   |   |   |       configurePlugins.js
+|   |   |   |       createPlugin.js
+|   |   |   |       createUtilityPlugin.js
+|   |   |   |       dataTypes.js
+|   |   |   |       defaults.js
+|   |   |   |       escapeClassName.js
+|   |   |   |       escapeCommas.js
+|   |   |   |       flattenColorPalette.js
+|   |   |   |       formatVariantSelector.js
+|   |   |   |       getAllConfigs.js
+|   |   |   |       hashConfig.js
+|   |   |   |       isKeyframeRule.js
+|   |   |   |       isPlainObject.js
+|   |   |   |       isSyntacticallyValidPropertyValue.js
+|   |   |   |       log.js
+|   |   |   |       nameClass.js
+|   |   |   |       negateValue.js
+|   |   |   |       normalizeConfig.js
+|   |   |   |       normalizeScreens.js
+|   |   |   |       parseAnimationValue.js
+|   |   |   |       parseBoxShadowValue.js
+|   |   |   |       parseDependency.js
+|   |   |   |       parseGlob.js
+|   |   |   |       parseObjectStyles.js
+|   |   |   |       pluginUtils.js
+|   |   |   |       prefixSelector.js
+|   |   |   |       pseudoElements.js
+|   |   |   |       removeAlphaVariables.js
+|   |   |   |       resolveConfig.js
+|   |   |   |       resolveConfigPath.js
+|   |   |   |       responsive.js
+|   |   |   |       splitAtTopLevelOnly.js
+|   |   |   |       tap.js
+|   |   |   |       toColorValue.js
+|   |   |   |       toPath.js
+|   |   |   |       transformThemeValue.js
+|   |   |   |       validateConfig.js
+|   |   |   |       validateFormalSyntax.js
+|   |   |   |       withAlphaVariable.js
+|   |   |   |       
+|   |   |   \---value-parser
+|   |   |           index.d.ts
+|   |   |           index.js
+|   |   |           LICENSE
+|   |   |           parse.js
+|   |   |           README.md
+|   |   |           stringify.js
+|   |   |           unit.js
+|   |   |           walk.js
+|   |   |           
+|   |   +---stubs
+|   |   |       .npmignore
+|   |   |       .prettierrc.json
+|   |   |       config.full.js
+|   |   |       config.simple.js
+|   |   |       postcss.config.cjs
+|   |   |       postcss.config.js
+|   |   |       tailwind.config.cjs
+|   |   |       tailwind.config.js
+|   |   |       tailwind.config.ts
+|   |   |       
+|   |   \---types
+|   |       |   config.d.ts
+|   |       |   index.d.ts
+|   |       |   
+|   |       \---generated
+|   |               .gitkeep
+|   |               colors.d.ts
+|   |               corePluginList.d.ts
+|   |               default-theme.d.ts
+|   |               
 |   +---tailwindcss-animate
 |   |       index.d.ts
 |   |       index.js
@@ -44754,6 +46960,20 @@ C:.
 |   |           SyncWaterfallHook.js
 |   |           util-browser.js
 |   |           
+|   +---thenify
+|   |       History.md
+|   |       index.js
+|   |       LICENSE
+|   |       package.json
+|   |       README.md
+|   |       
+|   +---thenify-all
+|   |       History.md
+|   |       index.js
+|   |       LICENSE
+|   |       package.json
+|   |       README.md
+|   |       
 |   +---tiny-invariant
 |   |   |   LICENSE
 |   |   |   package.json
@@ -44786,6 +47006,7 @@ C:.
 |   |   |       index.d.mts
 |   |   |       index.mjs
 |   |   |       
+|   |   \---node_modules
 |   |       \---picomatch
 |   |           |   index.js
 |   |           |   LICENSE
@@ -44816,6 +47037,19 @@ C:.
 |   |           index.d.cts
 |   |           index.d.ts
 |   |           index.js
+|   |           
+|   +---ts-interface-checker
+|   |   |   LICENSE
+|   |   |   package.json
+|   |   |   README.md
+|   |   |   
+|   |   \---dist
+|   |           index.d.ts
+|   |           index.js
+|   |           types.d.ts
+|   |           types.js
+|   |           util.d.ts
+|   |           util.js
 |   |           
 |   +---ts-node
 |   |   |   child-loader.mjs
@@ -44948,6 +47182,7 @@ C:.
 |   |   +---node16
 |   |   |       tsconfig.json
 |   |   |       
+|   |   +---node_modules
 |   |   |   \---arg
 |   |   |           index.d.ts
 |   |   |           index.js
@@ -45158,6 +47393,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -45174,6 +47410,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -45190,6 +47427,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -45206,6 +47444,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -45387,6 +47626,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -45671,6 +47911,14 @@ C:.
 |   |           index.native.js
 |   |           with-selector.js
 |   |           
+|   +---util-deprecate
+|   |       browser.js
+|   |       History.md
+|   |       LICENSE
+|   |       node.js
+|   |       package.json
+|   |       README.md
+|   |       
 |   +---uuid
 |   |   |   CHANGELOG.md
 |   |   |   CONTRIBUTING.md
@@ -46161,6 +48409,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -46191,6 +48440,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -46208,6 +48458,7 @@ C:.
 |   |   |   README.md
 |   |   |   tsconfig.json
 |   |   |   
+|   |   +---.github
 |   |   |       FUNDING.yml
 |   |   |       
 |   |   \---test
@@ -46220,6 +48471,61 @@ C:.
 |   |       package.json
 |   |       README.md
 |   |       
+|   +---wrap-ansi
+|   |   |   index.d.ts
+|   |   |   index.js
+|   |   |   license
+|   |   |   package.json
+|   |   |   readme.md
+|   |   |   
+|   |   \---node_modules
+|   |       \---ansi-styles
+|   |               index.d.ts
+|   |               index.js
+|   |               license
+|   |               package.json
+|   |               readme.md
+|   |               
+|   +---wrap-ansi-cjs
+|   |   |   index.js
+|   |   |   license
+|   |   |   package.json
+|   |   |   readme.md
+|   |   |   
+|   |   \---node_modules
+|   |       +---ansi-regex
+|   |       |       index.d.ts
+|   |       |       index.js
+|   |       |       license
+|   |       |       package.json
+|   |       |       readme.md
+|   |       |       
+|   |       +---emoji-regex
+|   |       |   |   index.d.ts
+|   |       |   |   index.js
+|   |       |   |   LICENSE-MIT.txt
+|   |       |   |   package.json
+|   |       |   |   README.md
+|   |       |   |   text.js
+|   |       |   |   
+|   |       |   \---es2015
+|   |       |           index.js
+|   |       |           text.js
+|   |       |           
+|   |       +---string-width
+|   |       |       index.d.ts
+|   |       |       index.js
+|   |       |       license
+|   |       |       package.json
+|   |       |       readme.md
+|   |       |       
+|   |       \---strip-ansi
+|   |               index.d.ts
+|   |               index.js
+|   |               license
+|   |               package.json
+|   |               readme.md
+|   |               
 |   +---ws
 |   |   |   browser.js
 |   |   |   index.js
@@ -46981,8 +49287,10 @@ C:.
 |               
 +---PitchConnect
 |   |   .eslintrc.json
+|   |   .gitignore
 |   |   .prettierrc.json
 |   |   .vercelignore
+|   |   clean-structure.txt
 |   |   next.config.js
 |   |   package-lock.json
 |   |   package.json
@@ -46996,7 +49304,16 @@ C:.
 |   |       schema.prisma
 |   |       seed.ts
 |   |       
+|   +---public
+|   |       manifest.json
+|   |       
+|   +---scripts
+|   |       create-superadmin.ts
+|   |       create-test-upgrade-request.ts
+|   |       
 |   \---src
+|       |   middleware.ts
+|       |   
 |       +---app
 |       |   |   layout.tsx
 |       |   |   page.tsx
@@ -47010,6 +49327,19 @@ C:.
 |       |   |   |   +---signup
 |       |   |   |   |       route.ts
 |       |   |   |   |       
+|       |   |   |   \---[...nextauth]
+|       |   |   |           route.ts
+|       |   |   |           
+|       |   |   +---coach
+|       |   |   |   \---dashboard
+|       |   |   |           route.ts
+|       |   |   |           
+|       |   |   +---league-admin
+|       |   |   |   \---dashboard
+|       |   |   |           route.ts
+|       |   |   |           
+|       |   |   +---manager
+|       |   |   |   \---dashboard
 |       |   |   |           route.ts
 |       |   |   |           
 |       |   |   +---matches
@@ -47018,9 +49348,35 @@ C:.
 |       |   |   +---payments
 |       |   |   |       route.ts
 |       |   |   |       
+|       |   |   +---player
+|       |   |   |   \---dashboard
+|       |   |   |           route.ts
+|       |   |   |           
 |       |   |   +---players
 |       |   |   |       route.ts
 |       |   |   |       
+|       |   |   +---superadmin
+|       |   |   |   +---analytics
+|       |   |   |   |       route.ts
+|       |   |   |   |       
+|       |   |   |   +---bulk-operations
+|       |   |   |   |       route.ts
+|       |   |   |   |       
+|       |   |   |   +---dashboard
+|       |   |   |   |       route.ts
+|       |   |   |   |       
+|       |   |   |   +---notifications
+|       |   |   |   |       route.ts
+|       |   |   |   |       
+|       |   |   |   +---subscriptions
+|       |   |   |   |       route.ts
+|       |   |   |   |       
+|       |   |   |   +---upgrade-requests
+|       |   |   |   |       route.ts
+|       |   |   |   |       
+|       |   |   |   \---users
+|       |   |   |           route.ts
+|       |   |   |           
 |       |   |   \---teams
 |       |   |           route.ts
 |       |   |           
@@ -47034,6 +49390,7 @@ C:.
 |       |   |           page.tsx
 |       |   |           
 |       |   \---dashboard
+|       |       |   layout.tsx
 |       |       |   page.tsx
 |       |       |   
 |       |       +---coach
@@ -47059,6 +49416,24 @@ C:.
 |       |       |   \---standings
 |       |       |           page.tsx
 |       |       |           
+|       |       +---league-admin
+|       |       |   |   page.tsx
+|       |       |   |   
+|       |       |   +---competitions
+|       |       |   |       page.tsx
+|       |       |   |       
+|       |       |   \---standings
+|       |       |           page.tsx
+|       |       |           
+|       |       +---manager
+|       |       |   |   page.tsx
+|       |       |   |   
+|       |       |   +---analytics
+|       |       |   |       page.tsx
+|       |       |   |       
+|       |       |   \---clubs
+|       |       |           page.tsx
+|       |       |           
 |       |       +---player
 |       |       |   |   page.tsx
 |       |       |   |   
@@ -47074,24 +49449,70 @@ C:.
 |       |       |   \---teams
 |       |       |           page.tsx
 |       |       |           
-|       |       \---settings
-|       |           +---account
-|       |           |       page.tsx
-|       |           |       
-|       |           \---profile
-|       |                   page.tsx
-|       |                   
+|       |       +---settings
+|       |       |   +---account
+|       |       |   |       page.tsx
+|       |       |   |       
+|       |       |   +---billing
+|       |       |   |       page.tsx
+|       |       |   |       
+|       |       |   +---notifications
+|       |       |   |       page.tsx
+|       |       |   |       
+|       |       |   +---preferences
+|       |       |   |       page.tsx
+|       |       |   |       
+|       |       |   +---profile
+|       |       |   |       page.tsx
+|       |       |   |       
+|       |       |   +---security
+|       |       |   |       page.tsx
+|       |       |   |       
+|       |       |   \---teams
+|       |       |           page.tsx
+|       |       |           
+|       |       \---superadmin
+|       |               page.tsx
+|       |               
 |       +---components
+|       |   |   providers.tsx
+|       |   |   
+|       |   +---alerts
+|       |   |       Alert.tsx
+|       |   |       Banner.tsx
+|       |   |       Toast.tsx
+|       |   |       
+|       |   +---cards
+|       |   |       EmptyState.tsx
+|       |   |       StatCard.tsx
+|       |   |       
 |       |   +---common
+|       |   |       RoleRequestBadge.tsx
 |       |   |       TeamFilterDropdown.module.css
 |       |   |       TeamFilterDropdown.tsx
 |       |   |       UserAvatar.module.css
 |       |   |       UserAvatar.tsx
 |       |   |       
+|       |   +---forms
+|       |   |       FormCheckbox.tsx
+|       |   |       FormInput.tsx
+|       |   |       FormSelect.tsx
+|       |   |       
 |       |   +---layout
 |       |   |       DashboardHeader.tsx
+|       |   |       Header.tsx
 |       |   |       MainNav.module.css
 |       |   |       MainNav.tsx
+|       |   |       PageContainer.tsx
+|       |   |       Sidebar.tsx
+|       |   |       
+|       |   +---loading
+|       |   |       Skeleton.tsx
+|       |   |       Spinner.tsx
+|       |   |       
+|       |   +---modals
+|       |   |       ConfirmDialog.tsx
+|       |   |       FormModal.tsx
 |       |   |       
 |       |   +---providers
 |       |   |       TeamFilterProvider.tsx
@@ -47105,6 +49526,16 @@ C:.
 |       |   |           SquadWidget.module.css
 |       |   |           SquadWidget.tsx
 |       |   |           
+|       |   +---states
+|       |   |       ErrorBoundary.tsx
+|       |   |       
+|       |   +---superadmin
+|       |   |       BulkOperationsModal.tsx
+|       |   |       CSVImportModal.tsx
+|       |   |       
+|       |   +---tables
+|       |   |       DataTable.tsx
+|       |   |       
 |       |   \---ui
 |       |           badge.tsx
 |       |           button.tsx
@@ -47112,16 +49543,24 @@ C:.
 |       |           input.tsx
 |       |           label.tsx
 |       |           skeleton.tsx
+|       |           tabs.tsx
 |       |           
 |       +---config
 |       |       site.ts
 |       |       
 |       +---hooks
 |       |       useAuth.ts
+|       |       useConfirmDialog.ts
+|       |       useFormValidation.ts
+|       |       useModal.ts
+|       |       useNotification.ts
+|       |       usePagination.ts
 |       |       
 |       +---lib
+|       |   |   auth-helpers.ts
 |       |   |   auth.ts
 |       |   |   db.ts
+|       |   |   email.ts
 |       |   |   prisma.ts
 |       |   |   utils.ts
 |       |   |   
@@ -47129,26 +49568,45 @@ C:.
 |       |   |       football-avatars.ts
 |       |   |       
 |       |   +---dashboard
-|       |   |       team-context.ts
+|       |   |       team-context.tsx
 |       |   |       
 |       |   \---squad
 |       |           squad-queries.ts
 |       |           
-|       \---styles
-|               globals.css
+|       +---styles
+|       |       globals.css
+|       |       globals.css.d.ts
+|       |       
+|       \---types
+|               index.ts
 |               
 +---prisma
-|       schema.prisma
-|       seed.ts
-|       
+|   |   schema.prisma
+|   |   seed.ts
+|   |   
+|   \---migrations
+|       |   migration_lock.toml
+|       |   
+|       +---20251121164307_add_clubs_teams_and_user_role
+|       |       migration.sql
+|       |       
+|       \---20251121213102_add_join_request_and_nationality
+|               migration.sql
+|               
 +---public
 |       manifest.json
+|       
++---scripts
+|       create-superadmin.ts
+|       create-test-upgrade-request.ts
+|       make-superadmin.ts
 |       
 \---src
     |   middleware.ts
     |   
     +---app
     |   |   layout.tsx
+    |   |   manifest.ts
     |   |   page.tsx
     |   |   providers.tsx
     |   |   
@@ -47160,40 +49618,197 @@ C:.
     |   |   |   +---signup
     |   |   |   |       route.ts
     |   |   |   |       
+    |   |   |   \---[...nextauth]
     |   |   |           route.ts
     |   |   |           
+    |   |   +---clubs
+    |   |   |   +---create
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---upload-logo
+    |   |   |   \---[clubId]
+    |   |   |       |   route.ts
+    |   |   |       |   
+    |   |   |       \---teams
+    |   |   |           +---create
+    |   |   |           |       route.ts
+    |   |   |           |       
+    |   |   |           \---[teamId]
+    |   |   |               |   route.ts
+    |   |   |               |   
+    |   |   |               +---join-requests
+    |   |   |               |   |   route.ts
+    |   |   |               |   |   
+    |   |   |               |   \---[requestId]
+    |   |   |               |           route.ts
+    |   |   |               |           
+    |   |   |               \---members
+    |   |   |                   +---add
+    |   |   |                   |       route.ts
+    |   |   |                   |       
+    |   |   |                   \---[memberId]
+    |   |   |                           route.ts
+    |   |   |                           
     |   |   +---coach
-    |   |   |   \---dashboard
-    |   |   |           route.ts
-    |   |   |           
+    |   |   |   +---dashboard
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---rate
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   \---timesheets
+    |   |   |       |   route.ts
+    |   |   |       |   
+    |   |   |       \---create
+    |   |   |               route.ts
+    |   |   |               
     |   |   +---league-admin
     |   |   |   \---dashboard
     |   |   |           route.ts
     |   |   |           
+    |   |   +---leagues
+    |   |   |   +---create
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   \---[leagueId]
+    |   |   |       |   route.ts
+    |   |   |       |   
+    |   |   |       +---add-team
+    |   |   |       |       route.ts
+    |   |   |       |       
+    |   |   |       +---available-teams
+    |   |   |       |       route.ts
+    |   |   |       |       
+    |   |   |       \---standings
+    |   |   |               route.ts
+    |   |   |               
     |   |   +---manager
-    |   |   |   \---dashboard
-    |   |   |           route.ts
-    |   |   |           
+    |   |   |   +---dashboard
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   \---timesheets
+    |   |   |       +---pending
+    |   |   |       |       route.ts
+    |   |   |       |       
+    |   |   |       \---[timesheetId]
+    |   |   |           +---approve
+    |   |   |           |       route.ts
+    |   |   |           |       
+    |   |   |           \---reject
+    |   |   |                   route.ts
+    |   |   |                   
     |   |   +---matches
-    |   |   |       route.ts
-    |   |   |       
+    |   |   |   |   route.ts
+    |   |   |   |   
+    |   |   |   +---create
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   \---[matchId]
+    |   |   |       |   route.ts
+    |   |   |       |   
+    |   |   |       \---record-result
+    |   |   |               route.ts
+    |   |   |               
+    |   |   +---notifications
+    |   |   |   |   route.ts
+    |   |   |   |   
+    |   |   |   +---mark-all-read
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   \---[notificationId]
+    |   |   |       |   route.ts
+    |   |   |       |   
+    |   |   |       \---read
+    |   |   |               route.ts
+    |   |   |               
     |   |   +---payments
     |   |   |       route.ts
     |   |   |       
     |   |   +---player
-    |   |   |   \---dashboard
+    |   |   |   +---browse-teams
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---dashboard
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---join-requests
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---profile
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   \---stats
     |   |   |           route.ts
     |   |   |           
     |   |   +---players
     |   |   |       route.ts
     |   |   |       
-    |   |   +---superadmin
-    |   |   |   \---dashboard
+    |   |   +---settings
+    |   |   |   +---notifications
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   \---profile
     |   |   |           route.ts
     |   |   |           
-    |   |   \---teams
-    |   |           route.ts
-    |   |           
+    |   |   +---superadmin
+    |   |   |   +---analytics
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---bulk-operations
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---dashboard
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---feed
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---financial
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---impersonate
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---logs
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---notifications
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---stats
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---subscriptions
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---system
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   +---upgrade-requests
+    |   |   |   |       route.ts
+    |   |   |   |       
+    |   |   |   \---users
+    |   |   |       |   route.ts
+    |   |   |       |   
+    |   |   |       \---[userId]
+    |   |   |               route.ts
+    |   |   |               
+    |   |   +---teams
+    |   |   |       route.ts
+    |   |   |       
+    |   |   \---training
+    |   |       +---drills
+    |   |       |       route.ts
+    |   |       |       
+    |   |       \---sessions
+    |   |           |   route.ts
+    |   |           |   
+    |   |           +---create
+    |   |           |       route.ts
+    |   |           |       
+    |   |           \---[sessionId]
+    |   |                   route.ts
+    |   |                   
     |   +---auth
     |   |   |   layout.tsx
     |   |   |   
@@ -47207,6 +49822,51 @@ C:.
     |       |   layout.tsx
     |       |   page.tsx
     |       |   
+    |       +---admin
+    |       |   |   layout.tsx
+    |       |   |   page.tsx
+    |       |   |   
+    |       |   +---feed
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   +---financial
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   +---impersonate
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   +---settings
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   +---subscriptions
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   +---system
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   \---users
+    |       |       |   page.tsx
+    |       |       |   
+    |       |       \---[userId]
+    |       |               page.tsx
+    |       |               
+    |       +---clubs
+    |       |   +---create
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   \---[clubId]
+    |       |       |   page.tsx
+    |       |       |   
+    |       |       \---teams
+    |       |           +---create
+    |       |           |       page.tsx
+    |       |           |       
+    |       |           \---[teamId]
+    |       |               |   page.tsx
+    |       |               |   
+    |       |               \---join-requests
+    |       |                       page.tsx
+    |       |                       
     |       +---coach
     |       |   |   layout.tsx
     |       |   |   page.tsx
@@ -47223,6 +49883,12 @@ C:.
     |       |   +---team
     |       |   |       page.tsx
     |       |   |       
+    |       |   +---timesheets
+    |       |   |   |   page.tsx
+    |       |   |   |   
+    |       |   |   \---create
+    |       |   |           page.tsx
+    |       |   |           
     |       |   \---training
     |       |           page.tsx
     |       |           
@@ -47239,22 +49905,59 @@ C:.
     |       |   \---standings
     |       |           page.tsx
     |       |           
+    |       +---leagues
+    |       |   +---create
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   \---[leagueId]
+    |       |       |   page.tsx
+    |       |       |   
+    |       |       +---add-teams
+    |       |       |       page.tsx
+    |       |       |       
+    |       |       \---standings
+    |       |               page.tsx
+    |       |               
     |       +---manager
     |       |   |   page.tsx
     |       |   |   
     |       |   +---analytics
     |       |   |       page.tsx
     |       |   |       
-    |       |   \---clubs
+    |       |   +---clubs
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   \---timesheets
     |       |           page.tsx
     |       |           
+    |       +---matches
+    |       |   |   page.tsx
+    |       |   |   
+    |       |   +---create
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   \---[matchId]
+    |       |       |   page.tsx
+    |       |       |   
+    |       |       \---record-result
+    |       |               page.tsx
+    |       |               
+    |       +---notifications
+    |       |       page.tsx
+    |       |       
     |       +---player
     |       |   |   page.tsx
     |       |   |   
     |       |   +---achievements
     |       |   |       page.tsx
     |       |   |       
+    |       |   +---browse-teams
+    |       |   |       page.tsx
+    |       |   |       
     |       |   +---fixtures
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   +---profile
     |       |   |       page.tsx
     |       |   |       
     |       |   +---stats
@@ -47264,6 +49967,9 @@ C:.
     |       |           page.tsx
     |       |           
     |       +---settings
+    |       |   |   layout.tsx
+    |       |   |   page.tsx
+    |       |   |   
     |       |   +---account
     |       |   |       page.tsx
     |       |   |       
@@ -47285,12 +49991,31 @@ C:.
     |       |   \---teams
     |       |           page.tsx
     |       |           
-    |       \---superadmin
-    |               page.tsx
-    |               
+    |       +---superadmin
+    |       |   |   page.tsx
+    |       |   |   
+    |       |   +---system
+    |       |   |       page.tsx
+    |       |   |       
+    |       |   \---users
+    |       |           page.tsx
+    |       |           
+    |       \---training
+    |           |   page.tsx
+    |           |   
+    |           +---create
+    |           |       page.tsx
+    |           |       
+    |           \---[sessionId]
+    |                   page.tsx
+    |                   
     +---components
     |   |   providers.tsx
+    |   |   theme-provider.tsx
     |   |   
+    |   +---admin
+    |   |       AdminHeader.tsx
+    |   |       
     |   +---alerts
     |   |       Alert.tsx
     |   |       Banner.tsx
@@ -47328,6 +50053,9 @@ C:.
     |   |       ConfirmDialog.tsx
     |   |       FormModal.tsx
     |   |       
+    |   +---notifications
+    |   |       NotificationBell.tsx
+    |   |       
     |   +---providers
     |   |       TeamFilterProvider.tsx
     |   |       
@@ -47343,16 +50071,34 @@ C:.
     |   +---states
     |   |       ErrorBoundary.tsx
     |   |       
+    |   +---superadmin
+    |   |       BulkOperationsModal.tsx
+    |   |       CSVImportModal.tsx
+    |   |       
     |   +---tables
     |   |       DataTable.tsx
     |   |       
+    |   +---teams
+    |   |       AddMemberModal.tsx
+    |   |       
     |   \---ui
+    |           avatar.tsx
     |           badge.tsx
     |           button.tsx
     |           card.tsx
+    |           checkbox.tsx
+    |           dialog.tsx
+    |           dropdown-menu.tsx
     |           input.tsx
     |           label.tsx
+    |           radio-group.tsx
+    |           select.tsx
+    |           separator.tsx
     |           skeleton.tsx
+    |           switch.tsx
+    |           table.tsx
+    |           tabs.tsx
+    |           textarea.tsx
     |           
     +---config
     |       site.ts
@@ -47388,4 +50134,5 @@ C:.
     |       
     \---types
             index.ts
+            next-auth.d.ts
             
