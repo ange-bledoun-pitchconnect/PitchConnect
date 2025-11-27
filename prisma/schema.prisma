@@ -1553,3 +1553,78 @@ model AuditLog {
   @@index([createdAt])
   @@map("audit_logs")
 }
+// ============================================================================
+// Injury and Contract
+// ============================================================================
+model Injury {
+  id        String   @id @default(cuid())
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  type      String   // "Hamstring strain", "Fracture", etc.
+  severity  String   // "MILD", "MODERATE", "SEVERE"
+  dateOccurred DateTime
+  estimatedReturnDate DateTime?
+  clearedAt DateTime?
+  status    String   @default("ACTIVE") // "ACTIVE", "RECOVERING", "CLEARED"
+  notes     String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId])
+  @@index([status])
+}
+
+model Contract {
+  id        String   @id @default(cuid())
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  startDate DateTime
+  endDate   DateTime
+  salary    Int
+  position  String
+  contractType String // "PROFESSIONAL", "SEMI-PRO", "YOUTH"
+  status    String   @default("ACTIVE") // "ACTIVE", "EXPIRED", "TERMINATED"
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId])
+  @@index([status])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([creatorId])
+}
+
+model Video {
+  id        String   @id @default(cuid())
+  title     String
+  url       String
+  duration  Int      // in seconds
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy User    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  matchId   String?
+  match     Match?   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  
+  createdAt DateTime @default(now())
+
+  @@index([teamId])
+  @@index([matchId])
+}

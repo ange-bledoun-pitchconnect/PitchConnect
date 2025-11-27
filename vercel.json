@@ -1,0 +1,36 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "nodeVersion": "18.x",
+  "env": {
+    "DATABASE_URL": "@database_url",
+    "NEXTAUTH_SECRET": "@nextauth_secret",
+    "NEXTAUTH_URL": "@nextauth_url",
+    "SENTRY_DSN": "@sentry_dsn",
+    "AWS_ACCESS_KEY_ID": "@aws_access_key",
+    "AWS_SECRET_ACCESS_KEY": "@aws_secret_key"
+  },
+  "regions": ["lhr1", "iad1"],
+  "functions": {
+    "src/pages/api/**/*.{js,ts}": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
+  "redirects": [],
+  "rewrites": [],
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
+}

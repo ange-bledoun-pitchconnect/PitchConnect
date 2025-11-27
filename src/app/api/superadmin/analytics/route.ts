@@ -1,450 +1,285 @@
+// src/app/api/superadmin/analytics/route.ts
 /**
  * SuperAdmin Analytics API
- * Platform metrics, revenue analytics, and growth data
- * @route GET /api/superadmin/analytics - Get analytics data
- * @access SuperAdmin only
+ * GET - Get comprehensive dashboard metrics
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { prisma } from '@/lib/prisma';
-import { isSuperAdmin } from '@/lib/auth';
+import {
+  checkSuperAdminSession,
+  getDashboardMetrics,
+  getSignupMetrics,
+  getRevenueByTier,
+  findInactiveUsers,
+  createAuditLog,
+} from '@/lib/superadmin-helpers';
+import prisma from '@/lib/db';
 
-// ============================================================================
-// GET - Get Platform Analytics
-// ============================================================================
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // Authentication check
-    const session = await getServerSession(authOptions);
+    const admin = await checkSuperAdminSession();
 
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized: No active session' },
-        { status: 401 }
-      );
-    }
+    const searchParams = request.nextUrl.searchParams;
+    const period = searchParams.get('period') || 'month';
 
-    // SuperAdmin check
-    const isAdmin = await isSuperAdmin(session.user.email);
+    let daysBack = 30;
+    if (period === 'today') daysBack = 1;
+    else if (period === 'week') daysBack = 7;
+    else if (period === 'month') daysBack = 30;
+    else if (period === 'year') daysBack = 365;
 
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
-    }
+    const [
+      dashboardMetrics,
+      signupMetrics,
+      revenueByTier,
+      inactiveUsers,
+      statusBreakdown,
+      roleBreakdown,
+    ] = await Promise.all([
+      getDashboardMetrics(),
+      getSignupMetrics(daysBack),
+      getRevenueByTier(),
+      findInactiveUsers(30),
+      getStatusBreakdown(),
+      getRoleBreakdown(),
+    ]);
 
-    // Get query parameters
-    const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'month'; // day, week, month, year
-    const startDate = searchParams.get('startDate');
-    const endDate = searchParams.get('endDate');
+    const lastMonthSignups = Object.values(signupMetrics).reduce(
+      (sum, count) => sum + count,
+      0
+    );
 
-    // Calculate date ranges
-    const now = new Date();
-    let start: Date;
-    let end: Date = now;
+    const [previousMrr, previousRevenue] = await Promise.all([
+      getPreviousMRR(daysBack),
+      getPreviousRevenue(daysBack),
+    ]);
 
-    if (startDate && endDate) {
-      start = new Date(startDate);
-      end = new Date(endDate);
-    } else {
-      switch (period) {
-        case 'day':
-          start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-          break;
-        case 'week':
-          start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          break;
-        case 'year':
-          start = new Date(now.getFullYear(), 0, 1);
-          break;
-        case 'month':
-        default:
-          start = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
+    const mrrGrowth =
+      previousMrr > 0
+        ? ((dashboardMetrics.mrr - previousMrr) / previousMrr) * 100
+        : 0;
+    const revenueGrowth =
+      previousRevenue > 0
+        ? ((dashboardMetrics.totalRevenue - previousRevenue) /
+            previousRevenue) *
+          100
+        : 0;
+
+    await createAuditLog(
+      admin.id,
+      null,
+      'DATA_EXPORTED',
+      {
+        action: 'analytics_accessed',
+        period,
+      }
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          period,
+          metrics: {
+            totalUsers: dashboardMetrics.totalUsers,
+            activeSubscriptions: dashboardMetrics.activeSubscriptions,
+            totalRevenue: dashboardMetrics.totalRevenue,
+            mrr: dashboardMetrics.mrr,
+            churnRate: dashboardMetrics.churnRate,
+            conversionRate: dashboardMetrics.conversionRate,
+            newSignupsToday: dashboardMetrics.newSignupsToday,
+          },
+
+          growth: {
+            mrrGrowth: parseFloat(mrrGrowth.toFixed(2)),
+            revenueGrowth: parseFloat(revenueGrowth.toFixed(2)),
+            newSignupsThisPeriod: lastMonthSignups,
+          },
+
+          revenueByTier: Object.entries(revenueByTier).map(([tier, data]: any) => ({
+            tier,
+            subscribers: data.count,
+            price: data.price,
+            revenue: parseFloat(data.revenue.toFixed(2)),
+          })),
+
+          signupsTrend: Object.entries(signupMetrics).map(([date, count]) => ({
+            date,
+            signups: count,
+          })),
+
+          usersByStatus: statusBreakdown,
+
+          usersByRole: roleBreakdown,
+
+          inactiveUsersCount: inactiveUsers.length,
+          inactiveUsersNeeded: Math.min(5, inactiveUsers.length),
+
+          retention: await getRetentionMetrics(),
+
+          subscriptionMetrics: {
+            active: dashboardMetrics.activeSubscriptions,
+            cancelled: await prisma.subscription.count({
+              where: { status: 'CANCELLED' },
+            }),
+            paused: await prisma.subscription.count({
+              where: { status: 'PAUSED' },
+            }),
+            pastDue: await prisma.subscription.count({
+              where: { status: 'PAST_DUE' },
+            }),
+          },
+
+          mostPopularTier: getMostPopularTier(revenueByTier),
+        },
+        timestamp: new Date(),
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error('[SuperAdmin] Analytics GET error:', error);
+
+    if (error instanceof Error) {
+      if (error.message.includes('Unauthorized')) {
+        return NextResponse.json(
+          { success: false, error: error.message },
+          { status: 403 }
+        );
       }
     }
 
-    // ========================================
-    // 1. USER ANALYTICS
-    // ========================================
-
-    // Total users
-    const totalUsers = await prisma.user.count();
-
-    // New users in period
-    const newUsers = await prisma.user.count({
-      where: {
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-    });
-
-    // Active users (logged in within period)
-    const activeUsers = await prisma.user.count({
-      where: {
-        lastLogin: {
-          gte: start,
-          lte: end,
-        },
-        status: 'ACTIVE',
-      },
-    });
-
-    // Users by status
-    const usersByStatus = await prisma.user.groupBy({
-      by: ['status'],
-      _count: true,
-    });
-
-    const statusBreakdown = usersByStatus.reduce((acc, item) => {
-      acc[item.status] = item._count;
-      return acc;
-    }, {} as Record<string, number>);
-
-    // User growth over time (last 12 months)
-    const monthlyGrowth = [];
-    for (let i = 11; i >= 0; i--) {
-      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-
-      const count = await prisma.user.count({
-        where: {
-          createdAt: {
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-      });
-
-      monthlyGrowth.push({
-        month: monthStart.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }),
-        count,
-      });
-    }
-
-    // ========================================
-    // 2. REVENUE ANALYTICS
-    // ========================================
-
-    // Total revenue (all time)
-    const totalRevenueData = await prisma.payment.aggregate({
-      where: {
-        status: 'COMPLETED',
-      },
-      _sum: {
-        amount: true,
-      },
-    });
-    const totalRevenue = totalRevenueData._sum.amount || 0;
-
-    // Revenue in period
-    const periodRevenueData = await prisma.payment.aggregate({
-      where: {
-        status: 'COMPLETED',
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-      _sum: {
-        amount: true,
-      },
-      _count: true,
-    });
-    const periodRevenue = periodRevenueData._sum.amount || 0;
-    const periodTransactions = periodRevenueData._count;
-
-    // Average transaction value
-    const avgTransactionValue = periodTransactions > 0 
-      ? periodRevenue / periodTransactions 
-      : 0;
-
-    // Revenue by subscription tier
-    const revenueByTier = await prisma.payment.groupBy({
-      by: ['subscriptionTier'],
-      where: {
-        status: 'COMPLETED',
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-      _sum: {
-        amount: true,
-      },
-      _count: true,
-    });
-
-    const tierBreakdown = revenueByTier.map((item) => ({
-      tier: item.subscriptionTier || 'UNKNOWN',
-      revenue: item._sum.amount || 0,
-      count: item._count,
-    }));
-
-    // Monthly revenue (last 12 months)
-    const monthlyRevenue = [];
-    for (let i = 11; i >= 0; i--) {
-      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-
-      const revenueData = await prisma.payment.aggregate({
-        where: {
-          status: 'COMPLETED',
-          createdAt: {
-            gte: monthStart,
-            lte: monthEnd,
-          },
-        },
-        _sum: {
-          amount: true,
-        },
-      });
-
-      monthlyRevenue.push({
-        month: monthStart.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }),
-        revenue: revenueData._sum.amount || 0,
-      });
-    }
-
-    // ========================================
-    // 3. SUBSCRIPTION ANALYTICS
-    // ========================================
-
-    // Active subscriptions
-    const activeSubscriptions = await prisma.subscription.count({
-      where: {
-        status: 'ACTIVE',
-      },
-    });
-
-    // Subscriptions by tier
-    const subscriptionsByTier = await prisma.subscription.groupBy({
-      by: ['tier'],
-      where: {
-        status: 'ACTIVE',
-      },
-      _count: true,
-    });
-
-    const subscriptionTierBreakdown = subscriptionsByTier.reduce((acc, item) => {
-      acc[item.tier] = item._count;
-      return acc;
-    }, {} as Record<string, number>);
-
-    // Churn rate (cancelled in period)
-    const cancelledSubscriptions = await prisma.subscription.count({
-      where: {
-        status: 'CANCELLED',
-        canceledAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-    });
-
-    const churnRate = activeSubscriptions > 0
-      ? (cancelledSubscriptions / activeSubscriptions) * 100
-      : 0;
-
-    // Trial conversions
-    const trialsStarted = await prisma.subscription.count({
-      where: {
-        isTrial: true,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-    });
-
-    const trialsConverted = await prisma.subscription.count({
-      where: {
-        isTrial: false,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-        // Previously was trial (check if trialEndsAt exists)
-        trialEndsAt: {
-          not: null,
-        },
-      },
-    });
-
-    const trialConversionRate = trialsStarted > 0
-      ? (trialsConverted / trialsStarted) * 100
-      : 0;
-
-    // ========================================
-    // 4. ENGAGEMENT ANALYTICS
-    // ========================================
-
-    // Total teams
-    const totalTeams = await prisma.team.count();
-
-    // New teams in period
-    const newTeams = await prisma.team.count({
-      where: {
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-    });
-
-    // Total leagues
-    const totalLeagues = await prisma.league.count();
-
-    // New leagues in period
-    const newLeagues = await prisma.league.count({
-      where: {
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-    });
-
-    // Total matches
-    const totalMatches = await prisma.match.count();
-
-    // Matches in period
-    const matchesInPeriod = await prisma.match.count({
-      where: {
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-    });
-
-    // ========================================
-    // 5. TOP PERFORMERS
-    // ========================================
-
-    // Top revenue generating users
-    const topRevenueUsers = await prisma.payment.groupBy({
-      by: ['userId'],
-      where: {
-        status: 'COMPLETED',
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-      _sum: {
-        amount: true,
-      },
-      orderBy: {
-        _sum: {
-          amount: 'desc',
-        },
-      },
-      take: 10,
-    });
-
-    const topUsersWithDetails = await Promise.all(
-      topRevenueUsers.map(async (item) => {
-        const user = await prisma.user.findUnique({
-          where: { id: item.userId },
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        });
-
-        return {
-          user: user
-            ? {
-                id: user.id,
-                name: `${user.firstName} ${user.lastName}`,
-                email: user.email,
-              }
-            : null,
-          totalRevenue: item._sum.amount || 0,
-        };
-      })
-    );
-
-    // ========================================
-    // 6. BUILD RESPONSE
-    // ========================================
-
-    const analytics = {
-      period: {
-        type: period,
-        start: start.toISOString(),
-        end: end.toISOString(),
-      },
-      users: {
-        total: totalUsers,
-        new: newUsers,
-        active: activeUsers,
-        byStatus: statusBreakdown,
-        growthChart: monthlyGrowth,
-      },
-      revenue: {
-        total: Math.round(totalRevenue),
-        period: Math.round(periodRevenue),
-        transactions: periodTransactions,
-        avgTransactionValue: Math.round(avgTransactionValue * 100) / 100,
-        byTier: tierBreakdown,
-        monthlyChart: monthlyRevenue,
-      },
-      subscriptions: {
-        active: activeSubscriptions,
-        byTier: subscriptionTierBreakdown,
-        churnRate: Math.round(churnRate * 100) / 100,
-        trials: {
-          started: trialsStarted,
-          converted: trialsConverted,
-          conversionRate: Math.round(trialConversionRate * 100) / 100,
-        },
-      },
-      engagement: {
-        teams: {
-          total: totalTeams,
-          new: newTeams,
-        },
-        leagues: {
-          total: totalLeagues,
-          new: newLeagues,
-        },
-        matches: {
-          total: totalMatches,
-          inPeriod: matchesInPeriod,
-        },
-      },
-      topPerformers: {
-        revenueUsers: topUsersWithDetails,
-      },
-    };
-
-    return NextResponse.json(analytics, { status: 200 });
-
-  } catch (error) {
-    console.error('Analytics API Error:', error);
     return NextResponse.json(
-      {
-        error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
+      { success: false, error: 'Failed to fetch analytics' },
       { status: 500 }
     );
   }
 }
 
-// ============================================================================
-// Export route segment config
-// ============================================================================
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+async function getStatusBreakdown() {
+  const statusCounts = await prisma.user.groupBy({
+    by: ['status'],
+    _count: true,
+  });
+
+  const breakdown: any = {
+    ACTIVE: 0,
+    SUSPENDED: 0,
+    BANNED: 0,
+    PENDING_VERIFICATION: 0,
+  };
+
+  statusCounts.forEach((item) => {
+    breakdown[item.status] = item._count;
+  });
+
+  return breakdown;
+}
+
+async function getRoleBreakdown() {
+  const roleCounts = await prisma.userRole_User.groupBy({
+    by: ['roleName'],
+    _count: true,
+  });
+
+  const breakdown: Record<string, number> = {};
+  roleCounts.forEach((item) => {
+    breakdown[item.roleName] = item._count;
+  });
+
+  return breakdown;
+}
+
+async function getPreviousMRR(daysBack: number) {
+  const previousPeriodStart = new Date(
+    Date.now() - daysBack * 2 * 24 * 60 * 60 * 1000
+  );
+  const previousPeriodEnd = new Date(
+    Date.now() - daysBack * 24 * 60 * 60 * 1000
+  );
+
+  const subscriptions = await prisma.subscription.findMany({
+    where: {
+      createdAt: {
+        gte: previousPeriodStart,
+        lte: previousPeriodEnd,
+      },
+      status: 'ACTIVE',
+    },
+  });
+
+  const tierPrices: Record<string, number> = {
+    FREE: 0,
+    PLAYER_PRO: 4.99,
+    COACH: 9.99,
+    MANAGER: 19.99,
+    LEAGUE_ADMIN: 29.99,
+  };
+
+  return subscriptions.reduce((sum, sub) => {
+    const price = tierPrices[sub.tier] || 0;
+    return sum + price;
+  }, 0);
+}
+
+async function getPreviousRevenue(daysBack: number) {
+  const previousPeriodStart = new Date(
+    Date.now() - daysBack * 2 * 24 * 60 * 60 * 1000
+  );
+  const previousPeriodEnd = new Date(
+    Date.now() - daysBack * 24 * 60 * 60 * 1000
+  );
+
+  const result = await prisma.payment.aggregate({
+    where: {
+      status: 'COMPLETED',
+      createdAt: {
+        gte: previousPeriodStart,
+        lte: previousPeriodEnd,
+      },
+    },
+    _sum: {
+      amount: true,
+    },
+  });
+
+  return result._sum.amount || 0;
+}
+
+async function getRetentionMetrics() {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const usersThirtyDaysAgo = await prisma.user.count({
+    where: { createdAt: { lte: thirtyDaysAgo } },
+  });
+
+  const retainedUsers = await prisma.user.count({
+    where: {
+      createdAt: { lte: thirtyDaysAgo },
+      lastLogin: { gte: thirtyDaysAgo },
+    },
+  });
+
+  const retentionRate =
+    usersThirtyDaysAgo > 0
+      ? (retainedUsers / usersThirtyDaysAgo) * 100
+      : 0;
+
+  return {
+    thirtyDayRetention: parseFloat(retentionRate.toFixed(2)),
+    usersThirtyDaysAgo,
+    retainedUsers,
+  };
+}
+
+function getMostPopularTier(revenueByTier: any) {
+  let mostPopular = { tier: 'FREE', count: 0 };
+
+  Object.entries(revenueByTier).forEach(([tier, data]: any) => {
+    if (data.count > mostPopular.count) {
+      mostPopular = { tier, count: data.count };
+    }
+  });
+
+  return mostPopular;
+}
