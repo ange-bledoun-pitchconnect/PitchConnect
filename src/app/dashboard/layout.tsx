@@ -1,8 +1,10 @@
+// src/app/dashboard/layout.tsx
 'use client';
 
 import { ReactNode } from 'react';
 import { useSession } from 'next-auth/react';
-import { redirect, usePathname } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import { useEffect } from 'react';
 import { DashboardSidebar } from '@/components/layout/Sidebar';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { TeamFilterProvider } from '@/lib/dashboard/team-context';
@@ -15,12 +17,16 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const { data: session, status } = useSession();
-  const pathname = usePathname(); // Track current path
+  const pathname = usePathname();
+  const router = useRouter();
 
-  // Redirect to login if not authenticated
-  if (status === 'unauthenticated') {
-    redirect('/auth/login');
-  }
+  // ⚠️ CRITICAL: Use useEffect + router.replace() instead of redirect()
+  // This allows page.tsx router to work first
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.replace('/auth/login');
+    }
+  }, [status, router]);
 
   if (status === 'loading') {
     return (
@@ -34,8 +40,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   // Check if user is SuperAdmin
-  // If SuperAdmin, don't render the main dashboard sidebar
-  // Admin layout will handle its own sidebar
   const isSuperAdmin = session?.user?.isSuperAdmin === true;
 
   // If SuperAdmin, use minimal layout (admin layout will take over)

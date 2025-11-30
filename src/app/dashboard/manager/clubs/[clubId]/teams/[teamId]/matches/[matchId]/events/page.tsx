@@ -13,8 +13,8 @@ import {
   AlertCircle,
   Goal,
   Heart,
-  YellowCard,
-  RedCard,
+  AlertTriangle,
+  Square,
   Users,
   Clock,
   Check,
@@ -23,6 +23,22 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+
+// ============================================================================
+// CUSTOM CARD ICON COMPONENTS
+// ============================================================================
+
+const YellowCardIcon = ({ className = 'w-6 h-6' }) => (
+  <div className={`${className} bg-yellow-400 rounded-sm border-2 border-yellow-500`} />
+);
+
+const RedCardIcon = ({ className = 'w-6 h-6' }) => (
+  <div className={`${className} bg-red-500 rounded-sm border-2 border-red-600`} />
+);
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 interface Player {
   id: string;
@@ -52,15 +68,23 @@ interface Match {
   status: string;
 }
 
+// ============================================================================
+// EVENT TYPES CONFIGURATION
+// ============================================================================
+
 const EVENT_TYPES = [
   { value: 'GOAL', label: 'Goal', icon: Goal, color: 'text-green-600 dark:text-green-400' },
   { value: 'OWN_GOAL', label: 'Own Goal', icon: Heart, color: 'text-red-600 dark:text-red-400' },
   { value: 'ASSIST', label: 'Assist', icon: Users, color: 'text-blue-600 dark:text-blue-400' },
-  { value: 'YELLOW_CARD', label: 'Yellow Card', icon: YellowCard, color: 'text-yellow-600 dark:text-yellow-400' },
-  { value: 'RED_CARD', label: 'Red Card', icon: RedCard, color: 'text-red-700 dark:text-red-500' },
+  { value: 'YELLOW_CARD', label: 'Yellow Card', icon: YellowCardIcon, color: 'text-yellow-600 dark:text-yellow-400' },
+  { value: 'RED_CARD', label: 'Red Card', icon: RedCardIcon, color: 'text-red-700 dark:text-red-500' },
   { value: 'SUBSTITUTION_ON', label: 'Substitution On', icon: Users, color: 'text-purple-600 dark:text-purple-400' },
   { value: 'SUBSTITUTION_OFF', label: 'Substitution Off', icon: Users, color: 'text-orange-600 dark:text-orange-400' },
 ];
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
 
 export default function MatchEventsPage() {
   const router = useRouter();

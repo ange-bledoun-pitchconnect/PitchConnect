@@ -159,7 +159,7 @@ export async function GET() {
 
     // User growth calculation (with error handling)
     let userGrowth = 0;
-    let revenueGrowth = 0;
+    const revenueGrowth = 0;
 
     try {
       const firstDayOfMonth = new Date();

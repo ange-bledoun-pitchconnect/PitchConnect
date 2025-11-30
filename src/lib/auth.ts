@@ -1,4 +1,4 @@
-// src/lib/auth.ts
+auth.ts
 import { type NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
@@ -12,7 +12,9 @@ import prisma from '@/lib/prisma';
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // ========================================================================
     // Credentials Provider (Email/Password)
+    // ========================================================================
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
@@ -43,18 +45,20 @@ export const authOptions: NextAuthOptions = {
             throw new Error('Invalid email or password');
           }
 
+          // Verify password with bcrypt
           const passwordMatch = await bcrypt.compare(credentials.password, user.password);
 
           if (!passwordMatch) {
             throw new Error('Invalid email or password');
           }
 
-          // Update last login
+          // Update last login timestamp
           await prisma.user.update({
             where: { id: user.id },
             data: { lastLogin: new Date() },
           });
 
+          // Return user object with all required fields
           return {
             id: user.id,
             email: user.email,
@@ -69,14 +73,18 @@ export const authOptions: NextAuthOptions = {
       },
     }),
 
-    // Google OAuth
+    // ========================================================================
+    // Google OAuth Provider
+    // ========================================================================
     GoogleProvider({
       clientId: process.env['GOOGLE_CLIENT_ID'] || '',
       clientSecret: process.env['GOOGLE_CLIENT_SECRET'] || '',
       allowDangerousEmailAccountLinking: true,
     }),
 
-    // GitHub OAuth
+    // ========================================================================
+    // GitHub OAuth Provider
+    // ========================================================================
     GithubProvider({
       clientId: process.env['GITHUB_CLIENT_ID'] || '',
       clientSecret: process.env['GITHUB_CLIENT_SECRET'] || '',
@@ -84,14 +92,25 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
+  // ============================================================================
+  // Pages
+  // ============================================================================
   pages: {
     signIn: '/auth/login',
     error: '/auth/login',
   },
 
+  // ============================================================================
+  // Callbacks
+  // ============================================================================
   callbacks: {
+    /**
+     * JWT Callback
+     * Called whenever JWT is created or updated
+     * Adds custom claims to token
+     */
     async jwt({ token, user, account, trigger, session }) {
-      // On first login, get full user data including userRoles
+      // On first login, fetch full user data including roles
       if (user) {
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
@@ -147,6 +166,11 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
 
+    /**
+     * Session Callback
+     * Called whenever session is accessed
+     * Returns data available to client
+     */
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
@@ -160,6 +184,11 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
 
+    /**
+     * SignIn Callback
+     * Called on sign in
+     * Handles OAuth provider first logins
+     */
     async signIn({ user, account, profile }) {
       // Handle OAuth provider first logins
       if (account && profile) {
@@ -188,7 +217,7 @@ export const authOptions: NextAuthOptions = {
             },
           });
 
-          // Add default PLAYER role using UserRole_User table
+          // Add default PLAYER role
           await prisma.userRole_User.create({
             data: {
               userId: existingUser.id,
@@ -196,7 +225,7 @@ export const authOptions: NextAuthOptions = {
             },
           });
 
-          // Create player profile with ALL required fields
+          // Create player profile with all required fields
           await prisma.player.create({
             data: {
               userId: existingUser.id,
@@ -216,11 +245,17 @@ export const authOptions: NextAuthOptions = {
     },
   },
 
+  // ============================================================================
+  // Session Configuration
+  // ============================================================================
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
+  // ============================================================================
+  // JWT Secret
+  // ============================================================================
   secret: process.env['NEXTAUTH_SECRET'] || 'fallback-secret-change-in-production',
 };
 

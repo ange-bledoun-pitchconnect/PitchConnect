@@ -1,3 +1,4 @@
+// src/app/providers.tsx
 'use client';
 
 import React from 'react';
@@ -38,10 +39,22 @@ export function Providers({ children }: ProvidersProps) {
             toastOptions={{
               duration: 4000,
               style: {
-                background: 'hsl(var(--card))',
-                color: 'hsl(var(--card-foreground))',
-                borderRadius: 'var(--radius)',
+                background: '#ffffff',
+                color: '#1f2121',
+                borderRadius: '8px',
                 boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37)',
+              },
+              success: {
+                style: {
+                  background: '#f0fdf4',
+                  color: '#166534',
+                },
+              },
+              error: {
+                style: {
+                  background: '#fef2f2',
+                  color: '#991b1b',
+                },
               },
             }}
           />

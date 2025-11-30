@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    let whereClause: any = {};
+    const whereClause: any = {};
 
     if (email) {
       whereClause.email = {

@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Handle logo upload (if needed, you can integrate with cloud storage)
-    let logoUrl: string | null = null;
+    const logoUrl: string | null = null;
     if (logoFile && logoFile.size > 0) {
       // TODO: Implement cloud storage (e.g., AWS S3, Cloudinary, Supabase Storage)
       // For now, we'll store as base64 or implement later

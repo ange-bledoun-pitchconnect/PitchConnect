@@ -143,7 +143,7 @@ export async function POST(
     }
 
     // Get or create match
-    let match = await prisma.match.findUnique({
+    const match = await prisma.match.findUnique({
       where: { id: matchId },
     });
 

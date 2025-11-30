@@ -123,7 +123,7 @@ export async function PATCH(
     }
 
     // Handle captain assignment (only one captain per team)
-    let updateData: any = {
+    const updateData: any = {
       position: body.position !== undefined ? body.position : undefined,
       jerseyNumber: body.jerseyNumber !== undefined ? body.jerseyNumber : undefined,
       isCaptain: body.isCaptain !== undefined ? body.isCaptain : undefined,

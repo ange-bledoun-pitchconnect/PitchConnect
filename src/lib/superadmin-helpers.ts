@@ -4,13 +4,16 @@
  * Utilities for user management, analytics, audit logging, and data calculations
  */
 
+
 import prisma from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 
+
 // ============================================================================
 // VALIDATION & SECURITY
 // ============================================================================
+
 
 /**
  * Validate SuperAdmin access
@@ -29,11 +32,14 @@ export async function validateSuperAdminAccess(userId: string): Promise<boolean>
       },
     });
 
+
     if (!user) return false;
+
 
     const hasSuperAdminRole = user.userRoles.some(
       (role) => role.roleName === 'SUPERADMIN'
     );
+
 
     return user.isSuperAdmin || hasSuperAdminRole;
   } catch (error) {
@@ -41,6 +47,7 @@ export async function validateSuperAdminAccess(userId: string): Promise<boolean>
     return false;
   }
 }
+
 
 /**
  * Check SuperAdmin access from session
@@ -52,17 +59,21 @@ export async function checkSuperAdminSession() {
     throw new Error('Unauthorized: No session');
   }
 
+
   const isAdmin = await validateSuperAdminAccess(session.user.id);
   if (!isAdmin) {
     throw new Error('Unauthorized: SuperAdmin access required');
   }
 
+
   return session.user;
 }
+
 
 // ============================================================================
 // AUDIT LOGGING
 // ============================================================================
+
 
 export type AuditActionType =
   | 'USER_CREATED'
@@ -79,6 +90,7 @@ export type AuditActionType =
   | 'DATA_EXPORTED'
   | 'USER_IMPERSONATED'
   | 'IMPERSONATION_ENDED';
+
 
 /**
  * Log SuperAdmin action to audit trail
@@ -103,6 +115,7 @@ export async function createAuditLog(
     console.error('[SuperAdmin] Audit log creation error:', error);
   }
 }
+
 
 /**
  * Get audit logs for a user
@@ -130,9 +143,11 @@ export async function getUserAuditLogs(
   });
 }
 
+
 // ============================================================================
 // USER FILTERING & SEARCH
 // ============================================================================
+
 
 /**
  * Build Prisma filter for user search and filtering
@@ -147,6 +162,7 @@ export function buildUserFilter(query: {
 }) {
   const filter: any = {};
 
+
   // Search by email, firstName, lastName
   if (query.search) {
     filter.OR = [
@@ -156,10 +172,12 @@ export function buildUserFilter(query: {
     ];
   }
 
+
   // Filter by status
   if (query.status) {
     filter.status = query.status;
   }
+
 
   // Filter by sign-up date range
   if (query.dateFrom || query.dateTo) {
@@ -172,8 +190,10 @@ export function buildUserFilter(query: {
     }
   }
 
+
   return filter;
 }
+
 
 /**
  * Get users with advanced filtering
@@ -194,7 +214,9 @@ export async function getFilteredUsers(
   const limit = Math.min(100, Math.max(1, query.limit || 20));
   const skip = (page - 1) * limit;
 
+
   const filter = buildUserFilter(query);
+
 
   const [users, totalCount] = await Promise.all([
     prisma.user.findMany({
@@ -210,6 +232,7 @@ export async function getFilteredUsers(
     }),
     prisma.user.count({ where: filter }),
   ]);
+
 
   return {
     users: users.map((user) => ({
@@ -235,9 +258,11 @@ export async function getFilteredUsers(
   };
 }
 
+
 // ============================================================================
 // ANALYTICS & METRICS
 // ============================================================================
+
 
 /**
  * Calculate Monthly Recurring Revenue (MRR)
@@ -250,6 +275,7 @@ export async function calculateMRR() {
     },
   });
 
+
   const tierPrices: Record<string, number> = {
     FREE: 0,
     PLAYER_PRO: 4.99,
@@ -258,13 +284,16 @@ export async function calculateMRR() {
     LEAGUE_ADMIN: 29.99,
   };
 
+
   const mrr = activeSubscriptions.reduce((sum, sub) => {
     const price = tierPrices[sub.tier] || 0;
     return sum + price;
   }, 0);
 
+
   return mrr;
 }
+
 
 /**
  * Calculate churn rate (% of subscriptions cancelled)
@@ -272,6 +301,7 @@ export async function calculateMRR() {
 export async function calculateChurnRate() {
   const now = new Date();
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
 
   const [cancelledCount, activeCount] = await Promise.all([
     prisma.subscription.count({
@@ -285,9 +315,11 @@ export async function calculateChurnRate() {
     }),
   ]);
 
+
   const churnRate = activeCount > 0 ? (cancelledCount / activeCount) * 100 : 0;
   return parseFloat(churnRate.toFixed(2));
 }
+
 
 /**
  * Get conversion rate (FREE to paid)
@@ -297,14 +329,17 @@ export async function getConversionRate() {
     where: { tier: 'FREE' },
   });
 
+
   const paidSubscriptions = await prisma.subscription.count({
     where: { tier: { not: 'FREE' } },
   });
+
 
   const total = freePlayers + paidSubscriptions;
   const rate = total > 0 ? (paidSubscriptions / total) * 100 : 0;
   return parseFloat(rate.toFixed(2));
 }
+
 
 /**
  * Get sign-up metrics for date range
@@ -314,11 +349,13 @@ export async function getSignupMetrics(daysBack = 30) {
     Date.now() - daysBack * 24 * 60 * 60 * 1000
   );
 
+
   const signups = await prisma.user.groupBy({
     by: ['createdAt'],
     where: { createdAt: { gte: dateThreshold } },
     _count: true,
   });
+
 
   // Group by day
   const byDay: Record<string, number> = {};
@@ -329,6 +366,7 @@ export async function getSignupMetrics(daysBack = 30) {
     byDay[dateStr] = 0;
   }
 
+
   signups.forEach((signup) => {
     const dateStr = new Date(signup.createdAt)
       .toISOString()
@@ -336,8 +374,10 @@ export async function getSignupMetrics(daysBack = 30) {
     byDay[dateStr] = signup._count;
   });
 
+
   return byDay;
 }
+
 
 /**
  * Get revenue metrics by subscription tier
@@ -351,11 +391,13 @@ export async function getRevenueByTier() {
     LEAGUE_ADMIN: 29.99,
   };
 
+
   const subscriptions = await prisma.subscription.groupBy({
     by: ['tier'],
     where: { status: 'ACTIVE' },
     _count: true,
   });
+
 
   const byTier: Record<string, any> = {};
   subscriptions.forEach((sub) => {
@@ -366,8 +408,10 @@ export async function getRevenueByTier() {
     };
   });
 
+
   return byTier;
 }
+
 
 /**
  * Get comprehensive dashboard metrics
@@ -402,6 +446,7 @@ export async function getDashboardMetrics() {
     }),
   ]);
 
+
   return {
     totalUsers,
     activeSubscriptions,
@@ -415,15 +460,18 @@ export async function getDashboardMetrics() {
   };
 }
 
+
 // ============================================================================
 // USER OPERATIONS
 // ============================================================================
+
 
 /**
  * Find inactive users (no login for X days)
  */
 export async function findInactiveUsers(days = 30) {
   const threshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
 
   return await prisma.user.findMany({
     where: {
@@ -442,6 +490,7 @@ export async function findInactiveUsers(days = 30) {
     },
   });
 }
+
 
 /**
  * Get user with full details
@@ -463,13 +512,17 @@ export async function getUserDetails(userId: string) {
     },
   });
 
+
   return user;
 }
 
+
 /**
  * Suspend user (prevent login)
+ * @param userId - User ID to suspend
+ * @param _reason - Reason for suspension (tracked in audit log)
  */
-export async function suspendUser(userId: string, reason: string) {
+export async function suspendUser(userId: string, _reason: string) {
   return await prisma.user.update({
     where: { id: userId },
     data: {
@@ -479,10 +532,13 @@ export async function suspendUser(userId: string, reason: string) {
   });
 }
 
+
 /**
  * Ban user (permanent)
+ * @param userId - User ID to ban
+ * @param _reason - Reason for ban (tracked in audit log)
  */
-export async function banUser(userId: string, reason: string) {
+export async function banUser(userId: string, _reason: string) {
   return await prisma.user.update({
     where: { id: userId },
     data: {
@@ -491,6 +547,7 @@ export async function banUser(userId: string, reason: string) {
     },
   });
 }
+
 
 /**
  * Unban user
@@ -505,6 +562,7 @@ export async function unbanUser(userId: string) {
   });
 }
 
+
 /**
  * Grant subscription tier
  */
@@ -515,6 +573,7 @@ export async function grantSubscription(
 ) {
   const endDate = new Date();
   endDate.setDate(endDate.getDate() + durationDays);
+
 
   return await prisma.subscription.upsert({
     where: { userId },
@@ -533,10 +592,13 @@ export async function grantSubscription(
   });
 }
 
+
 /**
  * Cancel subscription
+ * @param userId - User ID whose subscription to cancel
+ * @param _reason - Reason for cancellation (tracked in audit log)
  */
-export async function cancelSubscription(userId: string, reason: string) {
+export async function cancelSubscription(userId: string, _reason: string) {
   return await prisma.subscription.update({
     where: { userId },
     data: {
@@ -546,9 +608,11 @@ export async function cancelSubscription(userId: string, reason: string) {
   });
 }
 
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
 
 /**
  * Format user response for API
@@ -571,6 +635,7 @@ export function formatUserResponse(user: any) {
     paymentCount: user._count?.payments || 0,
   };
 }
+
 
 /**
  * Calculate days since signup

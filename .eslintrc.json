@@ -1,13 +1,13 @@
-{
-  "extends": [
-    "next/core-web-vitals",
-    "plugin:@typescript-eslint/recommended"
-  ],
-  "plugins": ["@typescript-eslint"],
+
+  "extends": ["next/core-web-vitals", "next/typescript"],
   "rules": {
-    "react/no-unescaped-entities": "off",
-    "@next/next/no-img-element": "warn",
     "react-hooks/exhaustive-deps": "warn",
+    "@next/next/no-html-link-for-pages": "off",
+    "@next/next/no-img-element": "warn",
+    "react/display-name": "off",
+    "react/no-unescaped-entities": "warn",
+    "@typescript-eslint/no-unused-vars": "warn",
     "@typescript-eslint/no-explicit-any": "warn"
-  }
+  },
+  "ignorePatterns": ["node_modules", ".next", "dist", "build", "PitchConnect/scripts/**", "scripts/**"]
 }

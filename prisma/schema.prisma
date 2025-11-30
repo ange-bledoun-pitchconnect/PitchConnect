@@ -1,8 +1,8 @@
 // ============================================================================
-// PITCHCONNECT DATABASE SCHEMA (Prisma ORM)
+// PITCHCONNECT DATABASE SCHEMA (Prisma ORM) - ENHANCED PRODUCTION VERSION
 // PostgreSQL via Supabase
 // Production-ready with TypeScript strict mode support
-// ENHANCED: Complete League Admin System with Referee, Seasons, Invitations
+// INCLUDES: Complete League Admin System + SuperAdmin Audit & Security
 // ============================================================================
 
 generator client {
@@ -17,7 +17,7 @@ datasource db {
 }
 
 // ============================================================================
-// ENUMS
+// ENUMS - CORE SYSTEM
 // ============================================================================
 
 enum UserRole {
@@ -29,7 +29,7 @@ enum UserRole {
   LEAGUE_ADMIN
   PARENT
   TREASURER
-  REFEREE        // ✅ NEW: Added for referee functionality
+  REFEREE
 }
 
 enum UserStatus {
@@ -184,7 +184,7 @@ enum UpgradeRequestStatus {
   CANCELLED
 }
 
-enum AuditAction {
+enum AuditActionType {
   USER_CREATED
   USER_UPDATED
   USER_DELETED
@@ -197,12 +197,17 @@ enum AuditAction {
   SUBSCRIPTION_CANCELLED
   PAYMENT_REFUNDED
   DATA_EXPORTED
-  BULK_OPERATION
-  UPGRADE_REQUEST_APPROVED
-  UPGRADE_REQUEST_REJECTED
-  TIMESHEET_SUBMITTED
-  TIMESHEET_APPROVED
-  PAYMENT_PROCESSED
+  USER_IMPERSONATED
+  IMPERSONATION_ENDED
+  SECURITY_SETTINGS_UPDATED
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  LOGIN_ATTEMPT
+  FAILED_LOGIN
+  API_KEY_GENERATED
+  API_KEY_REVOKED
+  BULK_USER_ACTION
+  SYSTEM_MAINTENANCE
 }
 
 enum TimesheetStatus {
@@ -223,19 +228,18 @@ enum PaymentType {
   OTHER
 }
 
-// ✅ NEW: League Admin Enums
 enum LeagueFormat {
-  ROUND_ROBIN          // Everyone plays everyone once
-  DOUBLE_ROUND_ROBIN   // Home and away
-  KNOCKOUT             // Single elimination
-  GROUP_KNOCKOUT       // Group stage + knockout
-  CUSTOM               // Configurable format
+  ROUND_ROBIN
+  DOUBLE_ROUND_ROBIN
+  KNOCKOUT
+  GROUP_KNOCKOUT
+  CUSTOM
 }
 
 enum LeagueVisibility {
-  PUBLIC     // Anyone can view
-  PRIVATE    // Only teams and admins
-  UNLISTED   // Only with direct link
+  PUBLIC
+  PRIVATE
+  UNLISTED
 }
 
 enum InvitationStatus {
@@ -276,37 +280,59 @@ model User {
   loginAttempts Int       @default(0)
   lockedUntil   DateTime?
 
+  // Security & 2FA
+  twoFactorSecret       String?
+  twoFactorEnabled      Boolean                 @default(false)
+  twoFactorBackupCodes  String? // JSON array
+  twoFactorVerifiedAt   DateTime?
+  
+  // Login Security
+  lastFailedLoginAt     DateTime?
+  failedLoginCount      Int                     @default(0)
+  lockedUntilAt         DateTime?
+  passwordChangedAt     DateTime?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   lastLogin DateTime?
 
-  accounts            Account[]
-  sessions            Session[]
-  preferences         UserPreferences?
-  playerProfile       Player?
-  coachProfile        Coach?
-  clubManager         ClubManager?
-  leagueAdmin         LeagueAdmin?
-  parentProfile       Parent?
-  treasurerProfile    Treasurer?
-  refereeProfile      Referee?             // ✅ NEW: Added referee profile
-  subscription        Subscription?
-  payments            Payment[]
-  notifications       Notification[]
-  scoutingReports     ScoutingProfile[]
-  sentMessages        Message[]            @relation("MessageSender")
-  upgradeRequests     UpgradeRequest[]
-  auditLogs           AuditLog[]           @relation("AuditUser")
-  performedAudits     AuditLog[]           @relation("AuditPerformer")
-  approvedTimesheets  CoachTimesheet[]     @relation("TimesheetApprover")
-  processedPayments   CoachPayment[]       @relation("PaymentProcessor")
+  // Relations
+  accounts              Account[]
+  sessions              Session[]
+  preferences           UserPreferences?
+  playerProfile         Player?
+  coachProfile          Coach?
+  clubManager           ClubManager?
+  leagueAdmin           LeagueAdmin?
+  parentProfile         Parent?
+  treasurerProfile      Treasurer?
+  refereeProfile        Referee?
+  subscription          Subscription?
+  payments              Payment[]
+  notifications         Notification[]
+  scoutingReports       ScoutingProfile[]
+  sentMessages          Message[]         @relation("MessageSender")
+  upgradeRequests       UpgradeRequest[]
   
+  // Audit & Security
+  auditLogsPerformed    AuditLog[]              @relation("AuditLogPerformedBy")
+  auditLogsTarget       AuditLog[]              @relation("AuditLogTargetUser")
+  impersonationSessions ImpersonationSession[]  @relation("ImpersonationAdmin")
+  impersonationTargets  ImpersonationSession[]  @relation("ImpersonationTarget")
+  
+  // API Keys & Admin
+  apiKeys               ApiKey[]
+  approvedTimesheets    CoachTimesheet[]        @relation("TimesheetApprover")
+  processedPayments     CoachPayment[]          @relation("PaymentProcessor")
+  announcementsCreated  Announcement[]
+  videosUploaded        Video[]    @relation("videosUploaded")
+
   // Club & Team Relations
-  ownedClubs          Club[]               @relation("ClubOwner")
-  clubMemberships     ClubMember[]         @relation("ClubMemberships")
-  teamMemberships     TeamMember[]         @relation("TeamMemberships")
-  userRoles           UserRole_User[]      @relation("UserRoles")
-  joinRequests        JoinRequest[]        @relation("UserJoinRequests")
+  ownedClubs            Club[]          @relation("ClubOwner")
+  clubMemberships       ClubMember[]    @relation("ClubMemberships")
+  teamMemberships       TeamMember[]    @relation("TeamMemberships")
+  userRoles             UserRole_User[] @relation("UserRoles")
+  joinRequests          JoinRequest[]   @relation("UserJoinRequests")
 
   @@index([email])
   @@index([status])
@@ -314,12 +340,11 @@ model User {
   @@map("users")
 }
 
-// UserRole Junction Table
 model UserRole_User {
   id       String   @id @default(cuid())
   userId   String
   roleName UserRole
-  
+
   user User @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
@@ -394,6 +419,140 @@ model UserPreferences {
 }
 
 // ============================================================================
+// AUDIT & SECURITY MODELS (ENHANCED)
+// ============================================================================
+
+model AuditLog {
+  id            String          @id @default(cuid())
+  performedById String
+  performedBy   User            @relation("AuditLogPerformedBy", fields: [performedById], references: [id], onDelete: Cascade)
+  
+  targetUserId  String?
+  targetUser    User?           @relation("AuditLogTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  
+  action        AuditActionType
+  entityType    String? // USER, PAYMENT, SUBSCRIPTION, etc.
+  entityId      String?
+  changes       Json? // Track what changed: {old: {}, new: {}}
+  details       String?         @db.Text // Additional context as JSON
+  
+  ipAddress     String?
+  userAgent     String?
+  severity      String          @default("INFO") // INFO, WARNING, CRITICAL
+
+  createdAt DateTime @default(now())
+
+  @@index([performedById])
+  @@index([targetUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([severity])
+  @@index([entityType, entityId])
+  @@index([performedById, createdAt])
+  @@index([severity, createdAt])
+  @@map("audit_logs")
+}
+
+model ImpersonationSession {
+  id           String    @id @default(cuid())
+  adminId      String
+  admin        User      @relation("ImpersonationAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  
+  targetUserId String
+  targetUser   User      @relation("ImpersonationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  
+  ipAddress    String?
+  userAgent    String?
+  reason       String?
+  
+  activities   Json? // Track admin actions during impersonation
+  
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetUserId])
+  @@index([startedAt])
+  @@map("impersonation_sessions")
+}
+
+model SecuritySetting {
+  id String @id @default(cuid())
+
+  // Session Security
+  sessionTimeoutMinutes    Int     @default(30)
+  maxLoginAttemptsAllowed  Int     @default(5)
+  lockoutDurationMinutes   Int     @default(15)
+  passwordExpirationDays   Int?    @default(90)
+  
+  // IP & Access Control
+  ipWhitelist              String[] // JSON array of IPs
+  ipBlacklist              String[]
+  restrictAccessByIP       Boolean @default(false)
+  
+  // 2FA & Authentication
+  twoFactorRequired        Boolean @default(false)
+  allowApiKeys             Boolean @default(true)
+  apiKeyRotationDays       Int     @default(90)
+  
+  // Audit & Monitoring
+  auditLoggingEnabled      Boolean @default(true)
+  alertOnSuspiciousActivity Boolean @default(true)
+  
+  // Data Protection
+  encryptSensitiveData     Boolean @default(true)
+  gdprDeletionRetentionDays Int   @default(30)
+  
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("security_settings")
+}
+
+model LoginAttempt {
+  id       String   @id @default(cuid())
+  email    String
+  success  Boolean
+  ipAddress String?
+  userAgent String?
+  reason   String? // Why it failed (invalid password, account locked, etc.)
+  
+  attemptedAt DateTime @default(now())
+
+  @@index([email])
+  @@index([attemptedAt])
+  @@index([success])
+  @@index([email, attemptedAt])
+  @@map("login_attempts")
+}
+
+model ApiKey {
+  id       String   @id @default(cuid())
+  userId   String
+  name     String
+  key      String   @unique // Hash this in production
+  prefix   String   // First 8 chars for display
+  
+  lastUsedAt DateTime?
+  expiresAt DateTime?
+  revokedAt DateTime?
+  
+  scopes   String[] // Permissions: ["users:read", "payments:write", etc.]
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([key])
+  @@index([expiresAt])
+  @@map("api_keys")
+}
+
+// ============================================================================
 // CLUB & TEAM MODELS
 // ============================================================================
 
@@ -414,7 +573,7 @@ model Club {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner   User          @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner   User         @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   teams   Team[]
   members ClubMember[]
 
@@ -427,7 +586,7 @@ model ClubMember {
   id       String   @id @default(cuid())
   clubId   String
   userId   String
-  role     String   // OWNER, MANAGER, COACH, STAFF
+  role     String // OWNER, MANAGER, COACH, STAFF
   status   String   @default("ACTIVE")
   joinedAt DateTime @default(now())
 
@@ -447,17 +606,19 @@ model Team {
   id       String @id @default(cuid())
   name     String
   clubId   String
-  ageGroup String @default("SENIOR") // SENIOR, U21, U18, etc.
-  category String @default("FIRST_TEAM") // FIRST_TEAM, RESERVES, YOUTH, WOMENS
+  ageGroup String @default("SENIOR")
+  category String @default("FIRST_TEAM")
   status   String @default("ACTIVE")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club         Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  members      TeamMember[]
-  joinRequests JoinRequest[]
-  invitations  LeagueInvitation[]  // ✅ NEW: League invitations received
+  club          Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  members       TeamMember[]
+  joinRequests  JoinRequest[]
+  invitations   LeagueInvitation[]
+  announcements Announcement[]
+  videos        Video[]
 
   @@index([clubId])
   @@index([status])
@@ -468,7 +629,7 @@ model TeamMember {
   id       String   @id @default(cuid())
   teamId   String
   userId   String
-  role     String   // MANAGER, COACH, PLAYER, STAFF
+  role     String // MANAGER, COACH, PLAYER, STAFF
   status   String   @default("ACTIVE")
   joinedAt DateTime @default(now())
 
@@ -488,7 +649,7 @@ model JoinRequest {
   id        String   @id @default(cuid())
   teamId    String
   userId    String
-  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  status    String   @default("PENDING")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -534,16 +695,14 @@ model UpgradeRequest {
 // ============================================================================
 
 model Player {
-  id     String @id @default(cuid())
-  userId String @unique
-
-  firstName   String
-  lastName    String
-  dateOfBirth DateTime
-  nationality String
-  height      Float?
-  weight      Float?
-
+  id            String @id @default(cuid())
+  userId        String @unique
+  firstName     String
+  lastName      String
+  dateOfBirth   DateTime
+  nationality   String
+  height        Float?
+  weight        Float?
   position      Position
   preferredFoot PreferredFoot
   shirtNumber   Int?
@@ -564,6 +723,8 @@ model Player {
   trainingAttendance TrainingAttendance[]
   tacticPositions    TacticPlayer[]
   matchAttendance    MatchAttendance[]
+  injuries           Injury[]
+  contracts          Contract[]
 
   @@index([userId])
   @@index([position])
@@ -603,8 +764,49 @@ model PlayerStats {
   @@map("player_stats")
 }
 
+model Injury {
+  id          String    @id @default(cuid())
+  playerId    String
+  type        String    // MUSCLE_STRAIN, FRACTURE, etc.
+  severity    String    @default("MINOR")
+  dateFrom    DateTime
+  dateTo      DateTime?
+  description String?   @db.Text
+  treatment   String?
+  status      String    @default("ACTIVE") // ACTIVE, RECOVERED, CHRONIC
+  
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([playerId])
+  @@index([dateFrom])
+  @@map("injuries")
+}
+
+model Contract {
+  id          String   @id @default(cuid())
+  playerId    String
+  clubId      String?
+  position    Position
+  salary      Float?
+  startDate   DateTime
+  endDate     DateTime?
+  type        String   // PROFESSIONAL, SEMI_PRO, AMATEUR
+  status      String   @default("ACTIVE")
+  documentUrl String?
+  
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([playerId])
+  @@index([status])
+  @@map("contracts")
+}
+
 // ============================================================================
-// COACH & CLUB MODELS (OLD - KEEPING FOR COMPATIBILITY)
+// COACH & CLUB MANAGER MODELS
 // ============================================================================
 
 model Coach {
@@ -650,8 +852,8 @@ model ClubManager {
 }
 
 model Treasurer {
-  id          String @id @default(cuid())
-  userId      String @unique
+  id          String  @id @default(cuid())
+  userId      String  @unique
   clubId      String?
   permissions Json?
 
@@ -665,27 +867,42 @@ model Treasurer {
   @@map("treasurers")
 }
 
-// ✅ NEW: Referee Model
 model Referee {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  licenseNumber     String?  @unique
-  licenseLevel      String?  // FIFA, UEFA, National, Regional, etc.
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  licenseNumber     String? @unique
+  licenseLevel      String? // FIFA, UEFA, National, Regional
   yearsOfExperience Int?
-  specialization    String?  // Sport specialization
-  
+  specialization    String? // Sport specialization
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  matchAssignments  Match[]                 // Matches assigned to this referee
-  resultApprovals   MatchResultApproval[]   // Results approved by this referee
-  
+
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchAssignments Match[]
+  resultApprovals  MatchResultApproval[]
+
   @@index([userId])
   @@map("referees")
 }
 
-// OLD CLUB MODEL (Renamed to avoid conflict)
+model Parent {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("parents")
+}
+
+// ============================================================================
+// OLD CLUB & TEAM MODELS (Legacy - For backward compatibility)
+// ============================================================================
+
 model OldClub {
   id       String    @id @default(cuid())
   name     String
@@ -697,10 +914,9 @@ model OldClub {
   teamType TeamType
   status   String    @default("ACTIVE")
 
-  email   String?
-  phone   String?
-  website String?
-
+  email     String?
+  phone     String?
+  website   String?
   managerId String
   manager   ClubManager @relation(fields: [managerId], references: [id])
   teams     OldTeam[]
@@ -713,7 +929,6 @@ model OldClub {
   @@map("old_clubs")
 }
 
-// OLD TEAM MODEL (Renamed to avoid conflict)
 model OldTeam {
   id       String @id @default(cuid())
   clubId   String
@@ -766,7 +981,7 @@ model League {
   id      String  @id @default(cuid())
   name    String
   code    String  @unique
-  sport   String  @default("Football")  // ✅ ADDED: Sport type
+  sport   String  @default("Football")
   logo    String?
   country String
   season  Int
@@ -776,7 +991,6 @@ model League {
   pointsDraw Int @default(1)
   pointsLoss Int @default(0)
 
-  // ✅ NEW: League configuration
   format     LeagueFormat     @default(ROUND_ROBIN)
   visibility LeagueVisibility @default(PUBLIC)
 
@@ -785,8 +999,7 @@ model League {
   teams     LeagueTeam[]
   fixtures  Fixture[]
   standings Standings[]
-  
-  // ✅ NEW: Enhanced relations
+
   seasons       LeagueSeason[]
   configuration LeagueConfiguration?
   invitations   LeagueInvitation[]
@@ -800,84 +1013,75 @@ model League {
   @@map("leagues")
 }
 
-// ✅ NEW: League Season Model
 model LeagueSeason {
-  id          String    @id @default(cuid())
-  leagueId    String
-  name        String    // e.g., "2024/25", "Spring 2025"
-  startDate   DateTime
-  endDate     DateTime?
-  isActive    Boolean   @default(true)
-  isCurrent   Boolean   @default(false)
-  
+  id        String    @id @default(cuid())
+  leagueId  String
+  name      String
+  startDate DateTime
+  endDate   DateTime?
+  isActive  Boolean   @default(true)
+  isCurrent Boolean   @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  
+
   @@index([leagueId])
   @@map("league_seasons")
 }
 
-// ✅ NEW: League Configuration Model
 model LeagueConfiguration {
-  id                String  @id @default(cuid())
-  leagueId          String  @unique
-  
-  // Points system
-  pointsForWin      Int     @default(3)
-  pointsForDraw     Int     @default(1)
-  pointsForLoss     Int     @default(0)
-  
-  // Bonus points
-  bonusPointsEnabled Boolean @default(false)
+  id       String @id @default(cuid())
+  leagueId String @unique
+
+  pointsForWin  Int @default(3)
+  pointsForDraw Int @default(1)
+  pointsForLoss Int @default(0)
+
+  bonusPointsEnabled  Boolean @default(false)
   bonusPointsForGoals Int?
-  
-  // Team limits
-  minTeams          Int     @default(2)
-  maxTeams          Int?    // null = unlimited
-  
-  // Registration settings
-  registrationOpen  Boolean @default(true)
+
+  minTeams Int  @default(2)
+  maxTeams Int?
+
+  registrationOpen     Boolean   @default(true)
   registrationDeadline DateTime?
-  entryFee          Float?  // Registration fee
-  
-  // Player eligibility
+  entryFee             Float?
+
   minPlayerAge      Int?
   maxPlayerAge      Int?
   maxPlayersPerTeam Int?
-  
-  // Tiebreaker rules (priority order)
-  tiebreaker1       String  @default("GOAL_DIFFERENCE")
-  tiebreaker2       String  @default("GOALS_SCORED")
-  tiebreaker3       String  @default("HEAD_TO_HEAD")
-  
+
+  tiebreaker1 String @default("GOAL_DIFFERENCE")
+  tiebreaker2 String @default("GOALS_SCORED")
+  tiebreaker3 String @default("HEAD_TO_HEAD")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  
+
   @@map("league_configurations")
 }
 
-// ✅ NEW: League Invitation Model
 model LeagueInvitation {
-  id          String            @id @default(cuid())
+  id          String           @id @default(cuid())
   leagueId    String
   teamId      String
-  invitedBy   String           // LeagueAdmin ID
+  invitedBy   String
   message     String?
   status      InvitationStatus @default(PENDING)
   expiresAt   DateTime?
   respondedAt DateTime?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  league    League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  admin     LeagueAdmin @relation(fields: [invitedBy], references: [id], onDelete: Cascade)
-  
+
+  league League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  team   Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  admin  LeagueAdmin @relation(fields: [invitedBy], references: [id], onDelete: Cascade)
+
   @@unique([leagueId, teamId])
   @@index([leagueId])
   @@index([teamId])
@@ -894,7 +1098,7 @@ model LeagueAdmin {
 
   user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   leagues         League[]
-  invitationsSent LeagueInvitation[] // ✅ NEW: Track invitations sent
+  invitationsSent LeagueInvitation[]
 
   @@index([userId])
   @@map("league_admins")
@@ -969,7 +1173,7 @@ model Match {
   fixtureId  String?
   homeTeamId String
   awayTeamId String
-  refereeId  String?     // ✅ NEW: Referee assignment
+  refereeId  String?
   date       DateTime
   venue      String?
   status     MatchStatus @default(SCHEDULED)
@@ -983,11 +1187,12 @@ model Match {
   fixture           Fixture?              @relation(fields: [fixtureId], references: [id], onDelete: SetNull)
   homeTeam          OldTeam               @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeam          OldTeam               @relation("AwayTeam", fields: [awayTeamId], references: [id])
-  referee           Referee?              @relation(fields: [refereeId], references: [id], onDelete: SetNull) // ✅ NEW
+  referee           Referee?              @relation(fields: [refereeId], references: [id], onDelete: SetNull)
   events            MatchEvent[]
   stats             MatchStats?
   playerAttendances MatchAttendance[]
-  resultApprovals   MatchResultApproval[] // ✅ NEW: Result approval workflow
+  resultApprovals   MatchResultApproval[]
+  videos            Video[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1001,27 +1206,26 @@ model Match {
   @@map("matches")
 }
 
-// ✅ NEW: Match Result Approval Model
 model MatchResultApproval {
   id          String               @id @default(cuid())
   matchId     String
-  submittedBy String              // User ID who submitted
-  approvedBy  String?             // Referee/LeagueAdmin who approved
+  submittedBy String
+  approvedBy  String?
   status      ResultApprovalStatus @default(PENDING)
-  
-  homeScore   Int
-  awayScore   Int
-  notes       String?
-  
+
+  homeScore Int
+  awayScore Int
+  notes     String?
+
   submittedAt DateTime  @default(now())
   reviewedAt  DateTime?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  match     Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  referee   Referee?  @relation(fields: [approvedBy], references: [id], onDelete: SetNull)
-  
+
+  match   Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  referee Referee? @relation(fields: [approvedBy], references: [id], onDelete: SetNull)
+
   @@index([matchId])
   @@index([submittedBy])
   @@index([approvedBy])
@@ -1189,7 +1393,7 @@ model TrainingAttendance {
 // ============================================================================
 
 model CoachTimesheet {
-  id      String          @id @default(cuid())
+  id      String @id @default(cuid())
   coachId String
   period  String
 
@@ -1507,124 +1711,48 @@ model Notification {
 }
 
 // ============================================================================
-// PARENT/GUARDIAN MODELS
+// COMMUNICATION: ANNOUNCEMENTS & VIDEOS
 // ============================================================================
-
-model Parent {
-  id     String @id @default(cuid())
-  userId String @unique
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("parents")
-}
-
-// ============================================================================
-// AUDIT LOG MODELS
-// ============================================================================
-
-model AuditLog {
-  id            String      @id @default(cuid())
-  performedBy   String?
-  affectedUser  String?
-  action        AuditAction
-  entityType    String
-  entityId      String
-  changes       Json?
-  previousValue Json?
-  newValue      Json?
-  reason        String?
-  ipAddress     String?
-  userAgent     String?
-
-  performer User? @relation("AuditPerformer", fields: [performedBy], references: [id], onDelete: SetNull)
-  affected  User? @relation("AuditUser", fields: [affectedUser], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-
-  @@index([performedBy])
-  @@index([affectedUser])
-  @@index([action])
-  @@index([entityType])
-  @@index([createdAt])
-  @@map("audit_logs")
-}
-// ============================================================================
-// Injury and Contract
-// ============================================================================
-model Injury {
-  id        String   @id @default(cuid())
-  playerId  String
-  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  
-  type      String   // "Hamstring strain", "Fracture", etc.
-  severity  String   // "MILD", "MODERATE", "SEVERE"
-  dateOccurred DateTime
-  estimatedReturnDate DateTime?
-  clearedAt DateTime?
-  status    String   @default("ACTIVE") // "ACTIVE", "RECOVERING", "CLEARED"
-  notes     String?
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([playerId])
-  @@index([status])
-}
-
-model Contract {
-  id        String   @id @default(cuid())
-  playerId  String
-  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  
-  startDate DateTime
-  endDate   DateTime
-  salary    Int
-  position  String
-  contractType String // "PROFESSIONAL", "SEMI-PRO", "YOUTH"
-  status    String   @default("ACTIVE") // "ACTIVE", "EXPIRED", "TERMINATED"
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([playerId])
-  @@index([status])
-}
 
 model Announcement {
   id        String   @id @default(cuid())
-  title     String
-  content   String
   teamId    String
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  creatorId String
-  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  createdBy String
+  title     String
+  content   String   @db.Text
+  priority  String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  pinned    Boolean  @default(false)
+  
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [createdBy], references: [id])
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  
   @@index([teamId])
-  @@index([creatorId])
+  @@index([createdBy])
+  @@map("announcements")
 }
 
 model Video {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
+  teamId    String?
+  matchId   String?
+  createdBy String  
   title     String
   url       String
-  duration  Int      // in seconds
-  teamId    String
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  uploadedById String
-  uploadedBy User    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  matchId   String?
-  match     Match?   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  duration  Int?
+  type      String  @default("TRAINING")
+  
+  team    Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  match   Match?  @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  creator User    @relation("videosUploaded", fields: [createdBy], references: [id], onDelete: Cascade) // ✅ ADD THIS
   
   createdAt DateTime @default(now())
-
+  
   @@index([teamId])
   @@index([matchId])
+  @@index([createdBy]) 
+  @@map("videos")
 }
+

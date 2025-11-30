@@ -73,16 +73,16 @@ export async function GET(request: NextRequest) {
     // Calculate stats
     let totalGoals = 0;
     let totalAssists = 0;
-    let totalMatches = matchesInPeriod.length;
+    const totalMatches = matchesInPeriod.length;
     let totalMinutes = 0;
     let totalShots = 0;
     let shotsOnTarget = 0;
     let expectedGoals = 0;
     let tackles = 0;
     let interceptions = 0;
-    let totalPasses = 0;
-    let accuratePasses = 0;
-    let cleanSheets = 0;
+    const totalPasses = 0;
+    const accuratePasses = 0;
+    const cleanSheets = 0;
     let yellowCards = 0;
     let redCards = 0;
 

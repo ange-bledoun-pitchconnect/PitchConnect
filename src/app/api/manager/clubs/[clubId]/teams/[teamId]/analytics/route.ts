@@ -56,7 +56,7 @@ export async function GET(
     });
 
     // Calculate team stats
-    let totalMatches = matches.length;
+    const totalMatches = matches.length;
     let wins = 0;
     let draws = 0;
     let losses = 0;

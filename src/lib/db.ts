@@ -1,6 +1,16 @@
-/**
- * Database Client Alias
- * Re-exports Prisma client as 'db' for backward compatibility
- */
+import { PrismaClient } from '@prisma/client';
 
-export { default as db } from './prisma';
+const prismaClientSingleton = () => {
+  return new PrismaClient();
+};
+
+declare global {
+  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
+}
+
+const db = global.prisma ?? prismaClientSingleton();
+
+export { db };
+export default db;
+
+if (process.env.NODE_ENV !== 'production') global.prisma = db;
