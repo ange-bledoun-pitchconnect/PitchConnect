@@ -23,7 +23,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "next dev",
     "build": "npm run prisma:generate && next build",
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",

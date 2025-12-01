@@ -301,15 +301,9 @@ const nextConfig = {
   // ============================================================================
   
   webpack: (config, { isServer }) => {
-    // Client-side optimizations
-    if (!isServer) {
-      config.optimization = {
-        ...config.optimization,
-        usedExports: true,
-        sideEffects: false,
-      };
-    }
-
+    // REMOVED THE CONFLICTING optimization.usedExports
+    // This was causing the error with cacheUnaffected
+    
     // Add support for markdown files (if needed)
     config.module.rules.push({
       test: /\.md$/,
@@ -321,4 +315,3 @@ const nextConfig = {
 };
 
 export default nextConfig;
-
