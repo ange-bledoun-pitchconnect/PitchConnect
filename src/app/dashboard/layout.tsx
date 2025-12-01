@@ -39,11 +39,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     );
   }
 
-  // Check if user is SuperAdmin
+  // ✅ FIXED: Check if user is SuperAdmin AND on superadmin route
   const isSuperAdmin = session?.user?.isSuperAdmin === true;
+  const isOnSuperAdminRoute = pathname?.startsWith('/dashboard/superadmin');
 
-  // If SuperAdmin, use minimal layout (admin layout will take over)
-  if (isSuperAdmin) {
+  // ✅ FIXED: Only use minimal layout when SuperAdmin is on SuperAdmin route
+  // The SuperAdmin layout will handle its own sidebar and header
+  if (isSuperAdmin && isOnSuperAdminRoute) {
     return (
       <TeamFilterProvider>
         <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:to-charcoal-800 transition-colors duration-200">
@@ -56,12 +58,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // Check if on settings page
   const isSettingsPage = pathname?.startsWith('/dashboard/settings');
 
-  // Regular users get the full dashboard layout with sidebar
+  // ✅ ALL OTHER ROUTES get full layout (overview, player, coach, manager, league-admin)
   return (
     <TeamFilterProvider>
       <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:to-charcoal-800 transition-colors duration-200">
         <div className="flex h-screen">
-          {/* SIDEBAR - Only for non-SuperAdmin users */}
+          {/* SIDEBAR - For all non-superadmin routes */}
           <DashboardSidebar userType={session?.user?.userType as string} />
 
           {/* MAIN CONTENT */}

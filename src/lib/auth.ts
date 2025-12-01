@@ -28,10 +28,14 @@ export const authOptions: NextAuthOptions = {
         try {
           const user = await prisma.user.findUnique({
             where: { email: credentials.email },
-            include: {
-              userRoles: {
-                select: { roleName: true },
-              },
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+              password: true,
+              isSuperAdmin: true,
+              roles: true, // ✅ FIXED: Get roles array directly from User model
             },
           });
 
@@ -62,8 +66,10 @@ export const authOptions: NextAuthOptions = {
             id: user.id,
             email: user.email,
             name: `${user.firstName} ${user.lastName}`,
+            firstName: user.firstName,
+            lastName: user.lastName,
             isSuperAdmin: user.isSuperAdmin,
-            roles: user.userRoles.map((ur) => ur.roleName),
+            roles: user.roles, // ✅ FIXED: Use roles array directly
           };
         } catch (error) {
           console.error('[NextAuth] Credentials error:', error);
@@ -119,20 +125,20 @@ export const authOptions: NextAuthOptions = {
             firstName: true,
             lastName: true,
             isSuperAdmin: true,
-            userRoles: {
-              select: { roleName: true },
-            },
+            roles: true, // ✅ FIXED: Use roles array directly
           },
         });
 
         if (dbUser) {
           token.id = dbUser.id;
           token.email = dbUser.email;
+          token.firstName = dbUser.firstName;
+          token.lastName = dbUser.lastName;
           token.name = `${dbUser.firstName} ${dbUser.lastName}`;
           token.isSuperAdmin = dbUser.isSuperAdmin;
-          token.roles = dbUser.userRoles.map((ur) => ur.roleName);
+          token.roles = dbUser.roles || []; // ✅ FIXED: Use roles array
           // Set userType to first role or PLAYER as default
-          token.userType = dbUser.userRoles[0]?.roleName || 'PLAYER';
+          token.userType = dbUser.roles?.[0] || 'PLAYER';
         }
       }
 
@@ -142,18 +148,20 @@ export const authOptions: NextAuthOptions = {
           where: { email: token.email as string },
           select: {
             id: true,
+            firstName: true,
+            lastName: true,
             isSuperAdmin: true,
-            userRoles: {
-              select: { roleName: true },
-            },
+            roles: true, // ✅ FIXED: Use roles array directly
           },
         });
 
         if (dbUser) {
           token.id = dbUser.id;
+          token.firstName = dbUser.firstName;
+          token.lastName = dbUser.lastName;
           token.isSuperAdmin = dbUser.isSuperAdmin;
-          token.roles = dbUser.userRoles.map((ur) => ur.roleName);
-          token.userType = dbUser.userRoles[0]?.roleName || 'PLAYER';
+          token.roles = dbUser.roles || []; // ✅ FIXED: Use roles array
+          token.userType = dbUser.roles?.[0] || 'PLAYER';
         }
       }
 
@@ -175,6 +183,8 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.email = token.email as string;
         session.user.name = token.name as string;
+        session.user.firstName = token.firstName as string;
+        session.user.lastName = token.lastName as string;
         session.user.isSuperAdmin = token.isSuperAdmin as boolean;
         session.user.roles = (token.roles as string[]) || [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -213,14 +223,7 @@ export const authOptions: NextAuthOptions = {
               password: '', // OAuth users don't have passwords
               status: 'ACTIVE',
               emailVerified: new Date(),
-            },
-          });
-
-          // Add default PLAYER role
-          await prisma.userRole_User.create({
-            data: {
-              userId: existingUser.id,
-              roleName: 'PLAYER',
+              roles: ['PLAYER'], // ✅ FIXED: Add default PLAYER role to array
             },
           });
 
@@ -273,11 +276,7 @@ export async function isSuperAdmin(email: string): Promise<boolean> {
       where: { email },
       select: {
         isSuperAdmin: true,
-        userRoles: {
-          select: {
-            roleName: true,
-          },
-        },
+        roles: true, // ✅ FIXED: Use roles array
       },
     });
 
@@ -286,11 +285,9 @@ export async function isSuperAdmin(email: string): Promise<boolean> {
     }
 
     // Check if user has isSuperAdmin flag OR has SUPERADMIN role
-    const hasSuperAdminRole = user.userRoles.some(
-      (userRole) => userRole.roleName === 'SUPERADMIN'
-    );
+    const hasSuperAdminRole = user.roles?.includes('SUPERADMIN');
 
-    return user.isSuperAdmin || hasSuperAdminRole;
+    return user.isSuperAdmin || hasSuperAdminRole || false;
   } catch (error) {
     console.error('isSuperAdmin check error:', error);
     return false;
@@ -308,11 +305,7 @@ export async function hasRole(email: string, role: string): Promise<boolean> {
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
-        userRoles: {
-          select: {
-            roleName: true,
-          },
-        },
+        roles: true, // ✅ FIXED: Use roles array
       },
     });
 
@@ -320,7 +313,7 @@ export async function hasRole(email: string, role: string): Promise<boolean> {
       return false;
     }
 
-    return user.userRoles.some((userRole) => userRole.roleName === role);
+    return user.roles?.includes(role) || false;
   } catch (error) {
     console.error('hasRole check error:', error);
     return false;
@@ -337,11 +330,7 @@ export async function getUserRoles(email: string): Promise<string[]> {
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
-        userRoles: {
-          select: {
-            roleName: true,
-          },
-        },
+        roles: true, // ✅ FIXED: Use roles array
       },
     });
 
@@ -349,7 +338,7 @@ export async function getUserRoles(email: string): Promise<string[]> {
       return [];
     }
 
-    return user.userRoles.map((userRole) => userRole.roleName);
+    return user.roles || [];
   } catch (error) {
     console.error('getUserRoles error:', error);
     return [];
