@@ -32,7 +32,7 @@ async function makeSuperAdmin() {
         await prisma.userRole_User.create({
           data: {
             userId: user.id,
-            roleName: role,
+            roleName: role as UserRole,
           },
         });
         console.log(`✅ ${role} role added`);

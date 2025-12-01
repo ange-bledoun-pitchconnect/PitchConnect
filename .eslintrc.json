@@ -1,13 +1,23 @@
-
-  "extends": ["next/core-web-vitals", "next/typescript"],
+{
+  "extends": [
+    "next/core-web-vitals",
+    "next/typescript"
+  ],
+  "plugins": ["react-hooks"],
   "rules": {
     "react-hooks/exhaustive-deps": "warn",
-    "@next/next/no-html-link-for-pages": "off",
+    "react-hooks/rules-of-hooks": "error",
     "@next/next/no-img-element": "warn",
-    "react/display-name": "off",
-    "react/no-unescaped-entities": "warn",
-    "@typescript-eslint/no-unused-vars": "warn",
-    "@typescript-eslint/no-explicit-any": "warn"
+    "@next/next/no-html-link-for-pages": "warn",
+    "prefer-const": "warn",
+    "no-var": "warn"
   },
-  "ignorePatterns": ["node_modules", ".next", "dist", "build", "PitchConnect/scripts/**", "scripts/**"]
+  "overrides": [
+    {
+      "files": ["*.ts", "*.tsx"],
+      "rules": {
+        "no-undef": "off"
+      }
+    }
+  ]
 }
