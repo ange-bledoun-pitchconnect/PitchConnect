@@ -1,10 +1,32 @@
-.env.local
+# Git
+.git/
+
+# Build artifacts
+.next/
+out/
+build/
+
+# Dependencies
+node_modules/
+
+# Environment
 .env
-node_modules
-.git
-.gitignore
-README.md
-npm-debug.log
-.DS_Store
-"PitchConnect/" 
-"scripts/" 
+.env.local
+.env*.local
+
+# IDE
+.vscode/
+.idea/
+
+# Backups and duplicates
+PitchConnect/
+scripts/
+*.backup
+
+# Testing
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
