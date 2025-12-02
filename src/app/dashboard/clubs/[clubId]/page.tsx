@@ -1,368 +1,393 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  ArrowLeft,
-  Users,
-  Plus,
-  Settings,
-  Trophy,
-  Calendar,
-  MapPin,
-  Shield,
-  Loader2,
-  UserPlus,
-} from 'lucide-react';
-import Image from 'next/image';
-import Link from 'next/link';
+import { useToast } from '@/hooks/use-toast';
+import type { Club, Player, Match } from '@/types';
 
-/**
- * Club Dashboard Page
- * Displays club information, teams, members, and management options
- * Path: /dashboard/clubs/[clubId]
- */
-
-interface Team {
-  id: string;
-  name: string;
-  ageGroup: string;
-  category: string;
-  status: string;
-  _count: {
-    members: number;
-  };
-}
-
-interface Club {
-  id: string;
-  name: string;
-  city: string;
-  country: string;
-  foundedYear: number | null;
-  description: string | null;
-  stadiumName: string | null;
-  logoUrl: string | null;
-  primaryColor: string;
-  secondaryColor: string;
-  status: string;
-  owner: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-  };
-  teams: Team[];
-  members: any[];
-  stats: {
-    totalTeams: number;
-    totalMembers: number;
-  };
-}
-
-export default function ClubDashboardPage() {
-  const router = useRouter();
+export default function ClubDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const { data: session } = useSession();
+  const { toast } = useToast();
   const clubId = params.clubId as string;
 
-  // ============================================================================
-  // State Management
-  // ============================================================================
+  // ✅ State Management
   const [club, setClub] = useState<Club | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [userRole, setUserRole] = useState<string>('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
 
-  // ============================================================================
-  // Effects
-  // ============================================================================
-  useEffect(() => {
-    fetchClubData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clubId]); // Intentionally only depend on clubId
+  // ✅ Refs for cleanup
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // ============================================================================
-  // Fetch Club Data
-  // ============================================================================
-  const fetchClubData = async () => {
+  // ✅ Memoized API endpoints
+  const endpoints = useMemo(
+    () => ({
+      club: `/api/clubs/${clubId}`,
+      players: `/api/clubs/${clubId}/players`,
+      matches: `/api/clubs/${clubId}/matches`,
+      update: `/api/clubs/${clubId}`,
+    }),
+    [clubId]
+  );
+
+  // ✅ Fetch club details
+  const fetchClubDetails = useCallback(async () => {
     try {
-      const response = await fetch(`/api/clubs/${clubId}`);
-      if (!response.ok) throw new Error('Failed to fetch club');
+      abortControllerRef.current = new AbortController();
+      setIsLoading(true);
 
-      const data = await response.json();
-      setClub(data.club);
-      setUserRole(data.userRole);
+      const [clubRes, playersRes, matchesRes] = await Promise.all([
+        fetch(endpoints.club, { signal: abortControllerRef.current.signal }),
+        fetch(endpoints.players, { signal: abortControllerRef.current.signal }),
+        fetch(endpoints.matches, { signal: abortControllerRef.current.signal }),
+      ]);
+
+      if (!clubRes.ok || !playersRes.ok || !matchesRes.ok) {
+        throw new Error('Failed to fetch club data');
+      }
+
+      const clubData = await clubRes.json();
+      const playersData = await playersRes.json();
+      const matchesData = await matchesRes.json();
+
+      setClub(clubData);
+      setPlayers(playersData);
+      setMatches(matchesData);
     } catch (error) {
-      console.error('Error fetching club:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Fetch cancelled');
+        return;
+      }
+      console.error('❌ Error fetching club:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load club details',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [endpoints, toast]);
 
-  // ============================================================================
-  // Get Category Icon
-  // ============================================================================
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'FIRST_TEAM':
-        return Trophy;
-      case 'RESERVES':
-        return Users;
-      case 'YOUTH':
-        return Calendar;
-      case 'WOMENS':
-        return Shield;
-      default:
-        return Users;
+  // ✅ Initial load and subscription setup
+  useEffect(() => {
+    if (!clubId) {
+      router.push('/dashboard/clubs');
+      return;
     }
-  };
 
-  // ============================================================================
-  // Loading State
-  // ============================================================================
+    fetchClubDetails();
+
+    // ✅ Cleanup function
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, [clubId, fetchClubDetails, router]);
+
+  // ✅ Handle club update
+  const handleUpdateClub = useCallback(
+    async (updatedData: Partial<Club>) => {
+      try {
+        const response = await fetch(endpoints.update, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedData),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update club');
+        }
+
+        const updatedClub = await response.json();
+        setClub(updatedClub);
+        setIsEditing(false);
+
+        toast({
+          title: 'Success',
+          description: 'Club updated successfully',
+        });
+      } catch (error) {
+        console.error('❌ Error updating club:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to update club',
+          variant: 'destructive',
+        });
+      }
+    },
+    [endpoints.update, toast]
+  );
+
+  // ✅ Handle player removal
+  const handleRemovePlayer = useCallback(
+    async (playerId: string) => {
+      try {
+        const response = await fetch(`/api/clubs/${clubId}/players/${playerId}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to remove player');
+        }
+
+        setPlayers(prev => prev.filter(p => p.id !== playerId));
+        toast({
+          title: 'Success',
+          description: 'Player removed from club',
+        });
+      } catch (error) {
+        console.error('❌ Error removing player:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to remove player',
+          variant: 'destructive',
+        });
+      }
+    },
+    [clubId, toast]
+  );
+
+  // ✅ Can edit check
+  const canEdit = useMemo(() => {
+    return session?.user?.id === club?.managerId || session?.user?.role === 'ADMIN';
+  }, [session, club]);
+
+  // ✅ Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-gold-500" />
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
       </div>
     );
   }
 
-  // ============================================================================
-  // Not Found State
-  // ============================================================================
+  // ✅ Not found state
   if (!club) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl text-charcoal-600">Club not found</p>
-          <Button onClick={() => router.push('/dashboard')} className="mt-4">
-            Go to Dashboard
-          </Button>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <h1 className="text-2xl font-bold">Club Not Found</h1>
+        <Button onClick={() => router.push('/dashboard/clubs')}>Back to Clubs</Button>
       </div>
     );
   }
 
-  // ============================================================================
-  // Render
-  // ============================================================================
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/dashboard')}
-            className="mb-4 text-charcoal-700 dark:text-charcoal-300"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
-          </Button>
-
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-6">
-              {/* Club Logo */}
-              <div className="w-24 h-24 bg-gradient-to-br from-gold-100 to-orange-100 dark:from-gold-900/30 dark:to-orange-900/30 rounded-2xl flex items-center justify-center overflow-hidden border-4 border-white dark:border-charcoal-700 shadow-lg">
-                {club.logoUrl ? (
-                  <Image
-                    src={club.logoUrl}
-                    alt={club.name}
-                    width={96}
-                    height={96}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <Shield className="w-12 h-12 text-gold-600 dark:text-gold-400" />
-                )}
-              </div>
-
-              {/* Club Info */}
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <h1 className="text-4xl font-bold text-charcoal-900 dark:text-white">
-                    {club.name}
-                  </h1>
-                  <Badge>{club.status}</Badge>
-                  <Badge variant="outline">{userRole}</Badge>
-                </div>
-                <div className="flex items-center gap-4 text-charcoal-600 dark:text-charcoal-400">
-                  <div className="flex items-center gap-1">
-                    <MapPin className="w-4 h-4" />
-                    <span>
-                      {club.city}, {club.country}
-                    </span>
-                  </div>
-                  {club.foundedYear && (
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>Founded {club.foundedYear}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+    <div className="min-h-screen bg-background">
+      {/* ✅ Header Section */}
+      <div className="border-b bg-card p-6">
+        <div className="max-w-6xl mx-auto flex items-start justify-between">
+          <div className="flex-1">
+            <div className="flex items-center gap-4 mb-2">
+              <h1 className="text-4xl font-bold">{club.name}</h1>
+              <Badge>{club.tier || 'Amateur'}</Badge>
             </div>
-
-            {/* Actions */}
-            {(userRole === 'OWNER' || userRole === 'ADMIN') && (
-              <Button variant="outline" className="border-neutral-300 dark:border-charcoal-600">
-                <Settings className="w-4 h-4 mr-2" />
-                Club Settings
-              </Button>
-            )}
+            <p className="text-muted-foreground">{club.description}</p>
+            <div className="flex items-center gap-4 mt-4 text-sm">
+              <span>📍 {club.city || 'Location Unknown'}</span>
+              <span>👥 {players.length} Players</span>
+              <span>🏆 {club.trophies || 0} Trophies</span>
+            </div>
           </div>
-        </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Total Teams */}
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Total Teams</p>
-                  <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-                    {club.stats.totalTeams}
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-gold-100 dark:bg-gold-900/30 rounded-xl flex items-center justify-center">
-                  <Users className="w-6 h-6 text-gold-600 dark:text-gold-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Total Members */}
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Total Members</p>
-                  <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-                    {club.stats.totalMembers}
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-xl flex items-center justify-center">
-                  <UserPlus className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Active Players */}
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Active Players</p>
-                  <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-                    {club.teams.reduce((sum, team) => sum + team._count.members, 0)}
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center">
-                  <Trophy className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Teams Section */}
-        <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                  <Users className="w-5 h-5 text-gold-500" />
-                  Teams
-                </CardTitle>
-                <CardDescription className="text-charcoal-600 dark:text-charcoal-400">
-                  Manage your club's teams
-                </CardDescription>
-              </div>
-              {(userRole === 'OWNER' || userRole === 'MANAGER' || userRole === 'ADMIN') && (
-                <Link href={`/dashboard/clubs/${clubId}/teams/create`}>
-                  <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Team
-                  </Button>
-                </Link>
-              )}
+          {canEdit && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsEditing(!isEditing)}
+              >
+                {isEditing ? 'Cancel' : 'Edit'}
+              </Button>
+              <Button onClick={() => router.push(`/dashboard/clubs/${clubId}/settings`)}>
+                Settings
+              </Button>
             </div>
-          </CardHeader>
-          <CardContent>
-            {club.teams.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-charcoal-900 dark:text-white mb-2">
-                  No teams yet
-                </h3>
-                <p className="text-charcoal-600 dark:text-charcoal-400 mb-6">
-                  Create your first team to get started
-                </p>
-                {(userRole === 'OWNER' || userRole === 'MANAGER' || userRole === 'ADMIN') && (
-                  <Link href={`/dashboard/clubs/${clubId}/teams/create`}>
-                    <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Team
-                    </Button>
-                  </Link>
+          )}
+        </div>
+      </div>
+
+      {/* ✅ Main Content */}
+      <div className="max-w-6xl mx-auto p-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="squad">Squad</TabsTrigger>
+            <TabsTrigger value="matches">Matches</TabsTrigger>
+            <TabsTrigger value="statistics">Statistics</TabsTrigger>
+          </TabsList>
+
+          {/* ✅ Overview Tab */}
+          <TabsContent value="overview" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Club Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">Founded</label>
+                    <p className="text-muted-foreground">
+                      {club.foundedYear || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Manager</label>
+                    <p className="text-muted-foreground">
+                      {club.manager?.name || 'No Manager'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Stadium</label>
+                    <p className="text-muted-foreground">
+                      {club.stadium || 'N/A'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Season Performance</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">Wins</span>
+                    <span className="font-bold">{club.stats?.wins || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">Draws</span>
+                    <span className="font-bold">{club.stats?.draws || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium">Losses</span>
+                    <span className="font-bold">{club.stats?.losses || 0}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* ✅ Squad Tab */}
+          <TabsContent value="squad" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Squad Management</CardTitle>
+                <CardDescription>{players.length} players in squad</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {players.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">
+                    No players in squad
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {players.map(player => (
+                      <div
+                        key={player.id}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div>
+                          <p className="font-medium">{player.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {player.position}
+                          </p>
+                        </div>
+                        {canEdit && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleRemovePlayer(player.id)}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {club.teams.map((team) => {
-                  const CategoryIcon = getCategoryIcon(team.category);
-                  return (
-                    <Link key={team.id} href={`/dashboard/clubs/${clubId}/teams/${team.id}`}>
-                      <Card className="hover:shadow-lg transition-all cursor-pointer border-2 border-neutral-200 dark:border-charcoal-700 hover:border-gold-500 dark:hover:border-gold-500 bg-white dark:bg-charcoal-800">
-                        <CardContent className="pt-6">
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="w-12 h-12 bg-gradient-to-br from-gold-100 to-orange-100 dark:from-gold-900/30 dark:to-orange-900/30 rounded-xl flex items-center justify-center">
-                              <CategoryIcon className="w-6 h-6 text-gold-600 dark:text-gold-400" />
-                            </div>
-                            <Badge>{team.ageGroup}</Badge>
-                          </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                          <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2">
-                            {team.name}
-                          </h3>
+          {/* ✅ Matches Tab */}
+          <TabsContent value="matches" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Matches</CardTitle>
+                <CardDescription>{matches.length} matches this season</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {matches.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">
+                    No matches scheduled
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {matches.map(match => (
+                      <div
+                        key={match.id}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div>
+                          <p className="font-medium">
+                            {match.homeTeam?.name} vs {match.awayTeam?.name}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(match.scheduledDate).toLocaleDateString()}
+                          </p>
+                        </div>
+                        {match.result && (
+                          <Badge variant="secondary">
+                            {match.result.homeGoals} - {match.result.awayGoals}
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-charcoal-600 dark:text-charcoal-400">
-                              {team.category.replace('_', ' ')}
-                            </span>
-                            <div className="flex items-center gap-1 text-charcoal-600 dark:text-charcoal-400">
-                              <Users className="w-4 h-4" />
-                              <span>{team._count.members} members</span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Club Description */}
-        {club.description && (
-          <Card className="mt-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-            <CardHeader>
-              <CardTitle className="text-charcoal-900 dark:text-white">About</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-charcoal-700 dark:text-charcoal-300 leading-relaxed">
-                {club.description}
-              </p>
-            </CardContent>
-          </Card>
-        )}
+          {/* ✅ Statistics Tab */}
+          <TabsContent value="statistics" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Club Statistics</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">Goals Scored</p>
+                    <p className="text-2xl font-bold">{club.stats?.goalsFor || 0}</p>
+                  </div>
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">Goals Conceded</p>
+                    <p className="text-2xl font-bold">{club.stats?.goalsAgainst || 0}</p>
+                  </div>
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">Points</p>
+                    <p className="text-2xl font-bold">{club.stats?.points || 0}</p>
+                  </div>
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">Goal Difference</p>
+                    <p className="text-2xl font-bold">
+                      {(club.stats?.goalsFor || 0) - (club.stats?.goalsAgainst || 0)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

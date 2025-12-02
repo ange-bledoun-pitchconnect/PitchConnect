@@ -138,3 +138,4 @@ prisma/migrations/*/migration.sql
 *.backup
 *.bak
 *.old
+"scripts/" 
