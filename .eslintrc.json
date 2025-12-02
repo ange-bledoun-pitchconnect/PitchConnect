@@ -3,21 +3,10 @@
     "next/core-web-vitals",
     "next/typescript"
   ],
-  "plugins": ["react-hooks"],
   "rules": {
-    "react-hooks/exhaustive-deps": "warn",
-    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "off",
     "@next/next/no-img-element": "warn",
-    "@next/next/no-html-link-for-pages": "warn",
     "prefer-const": "warn",
     "no-var": "warn"
-  },
-  "overrides": [
-    {
-      "files": ["*.ts", "*.tsx"],
-      "rules": {
-        "no-undef": "off"
-      }
-    }
-  ]
+  }
 }

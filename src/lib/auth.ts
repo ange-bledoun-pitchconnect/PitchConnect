@@ -2,6 +2,7 @@
 
 import { type NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import { getServerSession } from 'next-auth'; // ✅ ADD THIS IMPORT
 import { prisma } from '@/lib/prisma';
 import * as bcrypt from 'bcryptjs';
 import { UserRole } from '@prisma/client';
@@ -110,6 +111,37 @@ export const authOptions: NextAuthOptions = {
   // ====== DEBUG ======
   debug: process.env.NODE_ENV === 'development',
 };
+
+// ============================================================================
+// HELPER FUNCTIONS - Middleware utilities for API routes
+// ============================================================================
+
+/**
+ * Verify if user is SuperAdmin in API routes
+ */
+export async function verifySuperAdmin(request: Request) {
+  const session = await getServerSession(authOptions);
+  
+  if (!session?.user?.isSuperAdmin) {
+    return null;
+  }
+  
+  return session;
+}
+
+/**
+ * Verify if user has specific role
+ */
+export async function verifyRole(request: Request, requiredRole: string) {
+  const session = await getServerSession(authOptions);
+  const roles = (session?.user?.roles as string[]) || [];
+  
+  if (!roles.includes(requiredRole) && !session?.user?.isSuperAdmin) {
+    return null;
+  }
+  
+  return session;
+}
 
 // ============================================================================
 // TYPE EXTENSIONS - Extend NextAuth types with custom fields
