@@ -43,9 +43,15 @@ export async function GET(_request: NextRequest) {
       );
     }
 
-    // Get teams with correct relations
+    // 🔧 FIXED: Get teams using many-to-many relationship
     const teams = await prisma.team.findMany({
-      where: { coachId: coach.id },
+      where: {
+        coaches: {
+          some: {
+            id: coach.id,
+          },
+        },
+      },
       include: {
         players: true,
         homeMatches: true,
