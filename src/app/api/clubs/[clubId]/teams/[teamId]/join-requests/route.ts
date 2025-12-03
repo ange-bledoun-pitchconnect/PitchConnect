@@ -1,4 +1,7 @@
-// ... existing imports ...
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
 export async function GET(
   request: NextRequest,
@@ -40,7 +43,7 @@ export async function GET(
         userId: true,
         position: true,
         preferredFoot: true,
-        shirtNumber: true, // 🔧 FIXED: Changed from jerseyNumber
+        shirtNumber: true,
         nationality: true,
       },
     });
@@ -59,7 +62,7 @@ export async function GET(
             ? {
                 position: profile.position,
                 preferredFoot: profile.preferredFoot,
-                jerseyNumber: profile.shirtNumber, // 🔧 Map to jerseyNumber
+                jerseyNumber: profile.shirtNumber,
                 nationality: profile.nationality,
               }
             : undefined,

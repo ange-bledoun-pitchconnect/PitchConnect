@@ -2,7 +2,7 @@
 
 import { type NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { getServerSession } from 'next-auth'; // ✅ ADD THIS IMPORT
+import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import * as bcrypt from 'bcryptjs';
 import { UserRole } from '@prisma/client';
@@ -115,6 +115,19 @@ export const authOptions: NextAuthOptions = {
 // ============================================================================
 // HELPER FUNCTIONS - Middleware utilities for API routes
 // ============================================================================
+
+/**
+ * Check if user is a SuperAdmin by email
+ * ✅ ADDED: This function for superadmin logs route
+ */
+export async function isSuperAdmin(email: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { isSuperAdmin: true },
+  });
+  
+  return user?.isSuperAdmin === true;
+}
 
 /**
  * Verify if user is SuperAdmin in API routes
