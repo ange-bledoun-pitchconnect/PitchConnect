@@ -9,7 +9,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
-import { isSuperAdmin } from '@/lib/auth';
 
 // ============================================================================
 // GET - Get Audit Logs
@@ -28,14 +27,18 @@ export async function GET(req: NextRequest) {
     }
 
     // SuperAdmin check
-    const isAdmin = await isSuperAdmin(session.user.email);
+const user = await prisma.user.findUnique({
+  where: { email: session.user.email },
+  select: { role: true },
+});
 
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden: SuperAdmin access required' },
-        { status: 403 }
-      );
-    }
+if (user?.role !== 'SUPERADMIN') {
+  return NextResponse.json(
+    { error: 'Forbidden: SuperAdmin access required' },
+    { status: 403 }
+  );
+}
+
 
     // Get query parameters
     const { searchParams } = new URL(req.url);
