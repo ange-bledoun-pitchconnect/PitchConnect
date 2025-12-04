@@ -225,7 +225,13 @@ export async function GET(request: NextRequest) {
           },
         ],
       },
-      include: {
+      select: {
+        id: true,
+        date: true,
+        status: true,
+        venue: true,
+        homeScore: true,
+        awayScore: true,
         homeTeam: {
           select: {
             id: true,
