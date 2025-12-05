@@ -232,6 +232,8 @@ export async function GET(request: NextRequest) {
         venue: true,
         homeGoals: true,
         awayGoals: true,
+        homeTeamId: true,
+        awayTeamId: true,
         homeTeam: {
           select: {
             id: true,
