@@ -54,8 +54,8 @@ interface CoachDashboardResponse {
     date: string;
     homeTeam: string;
     awayTeam: string;
-    homeScore: number | null;
-    awayScore: number | null;
+    homeGoals: number | null;
+    awayGoals: number | null;
     status: string;
     venue: string | null;
   }>;
@@ -230,8 +230,8 @@ export async function GET(request: NextRequest) {
         date: true,
         status: true,
         venue: true,
-        homeScore: true,
-        awayScore: true,
+        homeGoals: true,
+        awayGoals: true,
         homeTeam: {
           select: {
             id: true,
@@ -362,8 +362,8 @@ export async function GET(request: NextRequest) {
         date: match.date.toISOString(),
         homeTeam: match.homeTeam?.name || 'N/A',
         awayTeam: match.awayTeam?.name || 'N/A',
-        homeScore: match.homeScore,
-        awayScore: match.awayScore,
+        homeGoals: match.homeGoals,
+        awayGoals: match.awayGoals,
         status: match.status,
         venue: match.venue,
       })),
