@@ -31,29 +31,51 @@ export async function GET(_request: NextRequest) {
       );
     }
 
-    // Get competitions with correct relations
-    const competitions = await prisma.competition.findMany({
+    // Get leagues administered by this user
+    const leagueAdmin = await prisma.leagueAdmin.findUnique({
+      where: { userId: user.id },
       include: {
-        leagueMemberships: {
+        leagues: {
           include: {
-            team: true,
+            teams: {
+              include: {
+                team: true,
+              },
+            },
+            fixtures: {
+              include: {
+                matches: true,
+              },
+            },
+            standings: {
+              include: {
+                team: true,
+              },
+            },
           },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
         },
-        matches: true,
       },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
     });
 
-    // Get standings
-    const standings = await prisma.standing.findMany({
-      include: {
-        team: true,
-        competition: true,
-      },
-      orderBy: { points: 'desc' },
-      take: 10,
-    });
+    if (!leagueAdmin) {
+      return NextResponse.json(
+        { error: 'User is not a league admin' },
+        { status: 403 }
+      );
+    }
+
+    // Format response
+    const leagues = leagueAdmin.leagues || [];
+    
+    // Aggregate all matches across leagues
+    const allMatches = leagues.flatMap(
+      league => league.fixtures.flatMap(fixture => fixture.matches || [])
+    );
+
+    // Aggregate all standings across leagues
+    const allStandings = leagues.flatMap(league => league.standings || []);
 
     return NextResponse.json({
       leagueAdmin: {
@@ -61,30 +83,47 @@ export async function GET(_request: NextRequest) {
         name: `${user.firstName} ${user.lastName}`,
         email: user.email,
       },
-      competitions: competitions.map((comp) => ({
-        id: comp.id,
-        name: comp.name,
-        teamCount: comp.leagueMemberships?.length || 0,
-        matchCount: comp.matches?.length || 0,
+      leagues: leagues.map((league) => ({
+        id: league.id,
+        name: league.name,
+        code: league.code,
+        status: league.status,
+        teamCount: league.teams?.length || 0,
+        fixtureCount: league.fixtures?.length || 0,
+        matchCount: league.fixtures.reduce(
+          (sum, fixture) => sum + (fixture.matches?.length || 0),
+          0
+        ),
       })),
-      standings: standings.map((standing) => ({
+      standings: allStandings.map((standing) => ({
         id: standing.id,
-        teamName: standing.team.name,
+        teamName: standing.team?.name || 'Unknown',
+        position: standing.position,
+        played: standing.played,
+        won: standing.won,
+        drawn: standing.drawn,
+        lost: standing.lost,
+        goalsFor: standing.goalsFor,
+        goalsAgainst: standing.goalsAgainst,
+        goalDifference: standing.goalDifference,
         points: standing.points,
-        matches: standing.matchesPlayed,
-        wins: standing.wins,
-        draws: standing.draws,
-        losses: standing.losses,
       })),
       stats: {
-        totalCompetitions: competitions.length,
-        totalMatches: competitions.reduce((sum, comp) => sum + (comp.matches?.length || 0), 0),
+        totalLeagues: leagues.length,
+        totalTeams: leagues.reduce((sum, league) => sum + (league.teams?.length || 0), 0),
+        totalFixtures: leagues.reduce((sum, league) => sum + (league.fixtures?.length || 0), 0),
+        totalMatches: allMatches.length,
       },
     });
   } catch (error) {
     console.error('League admin dashboard error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Failed to fetch league admin dashboard',
+        message: process.env.NODE_ENV === 'development'
+          ? error instanceof Error ? error.message : 'Unknown error'
+          : undefined,
+      },
       { status: 500 }
     );
   }
