@@ -1,9 +1,9 @@
+timesheets-create-route-post.ts
 /**
- * Coach Timesheets API Route (GET & POST)
+ * Coach Timesheet Creation API Route
  * ============================================================================
- * Fetches all timesheets for a coach with filtering and pagination.
- * GET: Retrieve timesheets
- * POST: Create new timesheet (see /create/route.ts for creation logic)
+ * Creates a new timesheet entry for a coach.
+ * Handles timesheet validation, calculation of total hours and amounts.
  * Production-ready with comprehensive error handling.
  * ============================================================================
  */
@@ -17,38 +17,37 @@ import prisma from '@/lib/prisma';
 // TYPE DEFINITIONS
 // ============================================================================
 
-interface GetTimesheetsResponse {
+interface CreateTimesheetRequest {
+  startDate: string;
+  endDate: string;
+  trainingHours?: number;
+  matchHours?: number;
+  adminHours?: number;
+  otherHours?: number;
+  hourlyRate: number;
+  period: string; // e.g., "2025-01", "Week 1"
+}
+
+interface CreateTimesheetResponse {
   success: boolean;
-  data: Array<{
+  timesheetId: string;
+  message: string;
+  timesheet?: {
     id: string;
     period: string;
     startDate: string;
     endDate: string;
-    trainingHours: number;
-    matchHours: number;
-    adminHours: number;
-    otherHours: number;
     totalHours: number;
-    hourlyRate: number;
     totalAmount: number;
     status: string;
-    submittedAt: string | null;
-    reviewedAt: string | null;
-    approvedAt: string | null;
-  }>;
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
   };
 }
 
 // ============================================================================
-// GET HANDLER - FETCH TIMESHEETS
+// MAIN HANDLER
 // ============================================================================
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
     // ========================================================================
     // 1. AUTHENTICATION & AUTHORIZATION
@@ -86,82 +85,149 @@ export async function GET(request: NextRequest) {
     }
 
     // ========================================================================
-    // 2. PARSE QUERY PARAMETERS
+    // 2. PARSE & VALIDATE REQUEST BODY
     // ========================================================================
 
-    const searchParams = new URL(request.url).searchParams;
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '10', 10)));
-    const status = searchParams.get('status') || undefined;
-    const sortBy = searchParams.get('sortBy') || 'createdAt';
-    const sortOrder = (searchParams.get('order') || 'desc').toLowerCase() as 'asc' | 'desc';
+    const body: CreateTimesheetRequest = await request.json();
+    const {
+      startDate,
+      endDate,
+      trainingHours = 0,
+      matchHours = 0,
+      adminHours = 0,
+      otherHours = 0,
+      hourlyRate,
+      period,
+    } = body;
 
-    const skip = (page - 1) * limit;
+    // Validate required fields
+    if (!startDate || !endDate || !hourlyRate || !period) {
+      return NextResponse.json(
+        {
+          error: 'Missing required fields',
+          required: ['startDate', 'endDate', 'hourlyRate', 'period'],
+        },
+        { status: 400 }
+      );
+    }
 
-    // ========================================================================
-    // 3. BUILD QUERY FILTER
-    // ========================================================================
+    // Validate hourly rate
+    if (hourlyRate <= 0) {
+      return NextResponse.json(
+        { error: 'Hourly rate must be greater than 0' },
+        { status: 400 }
+      );
+    }
 
-    const where: any = {
-      coachId: user.coachProfile.id,
-    };
+    // Validate dates
+    const start = new Date(startDate);
+    const end = new Date(endDate);
 
-    // Optional status filter
-    if (status && ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'PAID'].includes(status)) {
-      where.status = status;
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return NextResponse.json(
+        { error: 'Invalid date format. Use ISO 8601 format (YYYY-MM-DD)' },
+        { status: 400 }
+      );
+    }
+
+    if (start > end) {
+      return NextResponse.json(
+        { error: 'Start date cannot be after end date' },
+        { status: 400 }
+      );
+    }
+
+    // Validate hours
+    const allHours = [trainingHours, matchHours, adminHours, otherHours];
+    if (allHours.some(h => h < 0)) {
+      return NextResponse.json(
+        { error: 'Hours cannot be negative' },
+        { status: 400 }
+      );
+    }
+
+    const totalHours = trainingHours + matchHours + adminHours + otherHours;
+    if (totalHours <= 0) {
+      return NextResponse.json(
+        { error: 'Total hours must be greater than 0' },
+        { status: 400 }
+      );
     }
 
     // ========================================================================
-    // 4. FETCH TIMESHEETS WITH PAGINATION
+    // 3. CHECK FOR EXISTING TIMESHEET IN SAME PERIOD
     // ========================================================================
 
-    const [timesheets, total] = await Promise.all([
-      prisma.coachTimesheet.findMany({
-        where,
-        orderBy: {
-          [sortBy]: sortOrder,
+    const existingTimesheet = await prisma.coachTimesheet.findFirst({
+      where: {
+        coachId: user.coachProfile.id,
+        period: period,
+        status: {
+          notIn: ['REJECTED'],
         },
-        skip,
-        take: limit,
-      }),
-      prisma.coachTimesheet.count({ where }),
-    ]);
+      },
+    });
+
+    if (existingTimesheet) {
+      return NextResponse.json(
+        {
+          error: `Timesheet already exists for period: ${period}`,
+          existingTimesheetId: existingTimesheet.id,
+        },
+        { status: 409 }
+      );
+    }
 
     // ========================================================================
-    // 5. FORMAT RESPONSE
+    // 4. CALCULATE TOTALS
     // ========================================================================
 
-    const response: GetTimesheetsResponse = {
+    const totalAmount = totalHours * hourlyRate;
+
+    // ========================================================================
+    // 5. CREATE TIMESHEET
+    // ========================================================================
+
+    const timesheet = await prisma.coachTimesheet.create({
+      data: {
+        coachId: user.coachProfile.id,
+        period: period,
+        startDate: start,
+        endDate: end,
+        trainingHours: trainingHours,
+        matchHours: matchHours,
+        adminHours: adminHours,
+        otherHours: otherHours,
+        totalHours: totalHours,
+        hourlyRate: hourlyRate,
+        totalAmount: totalAmount,
+        status: 'DRAFT',
+      },
+    });
+
+    // ========================================================================
+    // 6. RETURN SUCCESS RESPONSE
+    // ========================================================================
+
+    const response: CreateTimesheetResponse = {
       success: true,
-      data: timesheets.map(ts => ({
-        id: ts.id,
-        period: ts.period,
-        startDate: ts.startDate.toISOString(),
-        endDate: ts.endDate.toISOString(),
-        trainingHours: ts.trainingHours,
-        matchHours: ts.matchHours,
-        adminHours: ts.adminHours,
-        otherHours: ts.otherHours,
-        totalHours: ts.totalHours,
-        hourlyRate: ts.hourlyRate,
-        totalAmount: ts.totalAmount,
-        status: ts.status,
-        submittedAt: ts.submittedAt?.toISOString() || null,
-        reviewedAt: ts.reviewedAt?.toISOString() || null,
-        approvedAt: ts.approvedAt?.toISOString() || null,
-      })),
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
+      timesheetId: timesheet.id,
+      message: 'Timesheet created successfully',
+      timesheet: {
+        id: timesheet.id,
+        period: timesheet.period,
+        startDate: timesheet.startDate.toISOString(),
+        endDate: timesheet.endDate.toISOString(),
+        totalHours: timesheet.totalHours,
+        totalAmount: timesheet.totalAmount,
+        status: timesheet.status,
       },
     };
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, { status: 201 });
 
   } catch (error) {
-    console.error('🚨 Get timesheets error:', error);
+    console.error('🚨 Create timesheet error:', error);
 
     // Log structured error for monitoring
     if (error instanceof Error) {
@@ -171,7 +237,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error: 'Failed to fetch timesheets',
+        error: 'Failed to create timesheet',
         message: process.env.NODE_ENV === 'development'
           ? error instanceof Error ? error.message : 'Unknown error'
           : undefined,
@@ -190,7 +256,7 @@ export async function OPTIONS() {
     {},
     {
       headers: {
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       },
     }
