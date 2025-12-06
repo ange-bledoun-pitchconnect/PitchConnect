@@ -47,11 +47,7 @@ export async function GET(_request: NextRequest) {
                 matches: true,
               },
             },
-            standings: {
-              include: {
-                team: true,
-              },
-            },
+            standings: true,
           },
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -97,7 +93,6 @@ export async function GET(_request: NextRequest) {
       })),
       standings: allStandings.map((standing) => ({
         id: standing.id,
-        teamName: standing.team?.name || 'Unknown',
         position: standing.position,
         played: standing.played,
         won: standing.won,
