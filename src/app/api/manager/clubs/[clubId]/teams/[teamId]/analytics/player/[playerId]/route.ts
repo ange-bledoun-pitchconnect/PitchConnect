@@ -1,40 +1,74 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId]/route.ts
+/**
+ * Player Performance Analytics API
+ *
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId]
+ *
+ * Returns: Detailed performance analytics for a specific player
+ * Authorization: Only club owner can access
+ *
+ * Response:
+ * {
+ *   player: { id, name, position, jerseyNumber },
+ *   performance: Array<{
+ *     date: Date,
+ *     goals: number,
+ *     assists: number,
+ *     yellowCards: number,
+ *     redCards: number,
+ *     isStarting: boolean,
+ *     events: Array<{ type, minute, note }>
+ *   }>,
+ *   stats: {
+ *     totalGoals: number,
+ *     totalAssists: number,
+ *     totalYellowCards: number,
+ *     totalRedCards: number,
+ *     appearances: number
+ *   }
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; playerId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId, playerId } = params;
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club ownership
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    // Check authorization - only club owner can access
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get player
+    // Verify team belongs to club
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+    });
+
+    if (!team || team.clubId !== clubId) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+    }
+
+    // Get player and verify they belong to team
     const player = await prisma.player.findUnique({
       where: { id: playerId },
       include: {
@@ -47,16 +81,32 @@ export async function GET(
       },
     });
 
-    if (!player || player.teamId !== teamId) {
+    if (!player) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    // Get all events for this player ordered by date
+    // Verify player belongs to the team
+    const playerTeam = await prisma.playerTeam.findFirst({
+      where: {
+        playerId,
+        teamId,
+      },
+    });
+
+    if (!playerTeam) {
+      return NextResponse.json(
+        { error: 'Player not found in this team' },
+        { status: 404 }
+      );
+    }
+
+    // Get all events for this player
     const events = await prisma.matchEvent.findMany({
       where: { playerId },
       include: {
         match: {
           select: {
+            id: true,
             date: true,
             homeTeam: { select: { name: true } },
             awayTeam: { select: { name: true } },
@@ -80,6 +130,7 @@ export async function GET(
           include: {
             match: {
               select: {
+                id: true,
                 date: true,
               },
             },
@@ -96,15 +147,34 @@ export async function GET(
     });
 
     // Build performance history by match
-    const performanceByMatch = new Map<string, any>();
+    const performanceByMatch = new Map<
+      string,
+      {
+        date: Date;
+        matchId: string;
+        goals: number;
+        assists: number;
+        yellowCards: number;
+        redCards: number;
+        isStarting: boolean;
+        events: Array<{
+          type: string;
+          minute: number;
+          note?: string;
+        }>;
+      }
+    >();
 
+    // First, add lineup appearances
     lineupAppearances.forEach((appearance) => {
       const matchDate = appearance.lineup.match.date;
-      const dateKey = matchDate.toISOString();
+      const matchId = appearance.lineup.match.id;
+      const dateKey = matchId; // Use matchId as unique key
 
       if (!performanceByMatch.has(dateKey)) {
         performanceByMatch.set(dateKey, {
           date: matchDate,
+          matchId,
           goals: 0,
           assists: 0,
           yellowCards: 0,
@@ -112,16 +182,24 @@ export async function GET(
           isStarting: !appearance.isSubstitute,
           events: [],
         });
+      } else {
+        // Update starting status if this is a starting appearance
+        const perf = performanceByMatch.get(dateKey)!;
+        if (!appearance.isSubstitute) {
+          perf.isStarting = true;
+        }
       }
     });
 
+    // Add events
     events.forEach((event) => {
-      const matchDate = event.match.date;
-      const dateKey = matchDate.toISOString();
+      const matchId = event.match.id;
+      const dateKey = matchId;
 
       if (!performanceByMatch.has(dateKey)) {
         performanceByMatch.set(dateKey, {
-          date: matchDate,
+          date: event.match.date,
+          matchId,
           goals: 0,
           assists: 0,
           yellowCards: 0,
@@ -131,26 +209,47 @@ export async function GET(
         });
       }
 
-      const perf = performanceByMatch.get(dateKey);
+      const perf = performanceByMatch.get(dateKey)!;
 
-      if (event.eventType === 'GOAL') {
+      // Use 'type' field instead of 'eventType'
+      if (event.type === 'GOAL') {
         perf.goals++;
-      } else if (event.eventType === 'ASSIST') {
+      } else if (event.type === 'ASSIST') {
         perf.assists++;
-      } else if (event.eventType === 'YELLOW_CARD') {
+      } else if (event.type === 'YELLOW_CARD') {
         perf.yellowCards++;
-      } else if (event.eventType === 'RED_CARD') {
+      } else if (event.type === 'RED_CARD') {
         perf.redCards++;
       }
 
       perf.events.push({
-        type: event.eventType,
+        type: event.type,
         minute: event.minute,
-        note: event.note,
+        note: event.additionalInfo || undefined,
       });
     });
 
-    const performance = Array.from(performanceByMatch.values());
+    const performance = Array.from(performanceByMatch.values()).sort(
+      (a, b) => a.date.getTime() - b.date.getTime()
+    );
+
+    // Calculate aggregate stats
+    const stats = performance.reduce(
+      (acc, perf) => ({
+        totalGoals: acc.totalGoals + perf.goals,
+        totalAssists: acc.totalAssists + perf.assists,
+        totalYellowCards: acc.totalYellowCards + perf.yellowCards,
+        totalRedCards: acc.totalRedCards + perf.redCards,
+        appearances: acc.appearances + 1,
+      }),
+      {
+        totalGoals: 0,
+        totalAssists: 0,
+        totalYellowCards: 0,
+        totalRedCards: 0,
+        appearances: 0,
+      }
+    );
 
     return NextResponse.json({
       player: {
@@ -160,9 +259,13 @@ export async function GET(
         jerseyNumber: player.jerseyNumber,
       },
       performance,
+      stats,
     });
   } catch (error) {
-    console.error('GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId] error:', error);
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId] error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to fetch player performance',
