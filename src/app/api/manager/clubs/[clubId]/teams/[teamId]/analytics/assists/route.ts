@@ -1,60 +1,78 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/analytics/assists/route.ts
+/**
+ * Team Assists Analytics API
+ * 
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/assists
+ * 
+ * Returns: Top assist providers for a team sorted by number of assists
+ * Authorization: Only club owner can access
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId } = params;
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club ownership
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    // Check authorization - only club owner can access
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get top assist providers
+    // Verify team belongs to club
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+    });
+
+    if (!team || team.clubId !== clubId) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+    }
+
+    // Get assist events from matches where team played
+    // Note: Assists are recorded as ASSIST MatchEventType
     const assistEvents = await prisma.matchEvent.findMany({
       where: {
-        eventType: 'ASSIST',
+        type: 'ASSIST', // Changed from eventType to type (correct field name)
         player: {
-          teamId,
+          // Find assists by players in this team
+          teams: {
+            some: {
+              teamId: teamId,
+            },
+          },
         },
       },
       include: {
         player: {
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-              },
-            },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            position: true,
           },
         },
         match: {
           select: {
+            id: true,
             date: true,
           },
         },
@@ -66,33 +84,56 @@ export async function GET(
       },
     });
 
-    // Group by player
-    const playerAssists = new Map<string, any>();
+    // Group assists by player
+    const playerAssistsMap = new Map<
+      string,
+      {
+        playerId: string;
+        playerName: string;
+        position: string;
+        assistCount: number;
+        lastAssistDate: Date;
+      }
+    >();
 
     assistEvents.forEach((event) => {
-      const playerId = event.playerId;
-      if (!playerAssists.has(playerId)) {
-        playerAssists.set(playerId, {
+      const playerId = event.player.id;
+      const playerName = `${event.player.firstName} ${event.player.lastName}`;
+
+      if (!playerAssistsMap.has(playerId)) {
+        playerAssistsMap.set(playerId, {
           playerId,
-          playerName: `${event.player.user.firstName} ${event.player.user.lastName}`,
+          playerName,
           position: event.player.position,
-          assists: 0,
+          assistCount: 0,
           lastAssistDate: event.match.date,
         });
       }
-      const player = playerAssists.get(playerId);
-      player.assists++;
-      player.lastAssistDate = event.match.date;
+
+      const playerData = playerAssistsMap.get(playerId)!;
+      playerData.assistCount++;
+      playerData.lastAssistDate = event.match.date; // Keep most recent
     });
 
-    const assists = Array.from(playerAssists.values()).sort((a, b) => b.assists - a.assists);
+    // Convert to array and sort by assist count (descending)
+    const assists = Array.from(playerAssistsMap.values()).sort(
+      (a, b) => b.assistCount - a.assistCount
+    );
 
-    return NextResponse.json(assists);
+    return NextResponse.json({
+      teamId,
+      clubId,
+      totalAssists: assistEvents.length,
+      topAssistProviders: assists,
+    });
   } catch (error) {
-    console.error('GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/assists error:', error);
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/assists error:',
+      error
+    );
     return NextResponse.json(
       {
-        error: 'Failed to fetch top assists',
+        error: 'Failed to fetch assists analytics',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
