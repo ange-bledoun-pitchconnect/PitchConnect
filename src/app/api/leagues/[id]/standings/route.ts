@@ -4,17 +4,45 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+const ALLOWED_ROLES = ['LEAGUE_ADMIN', 'SUPERADMIN'];
+const RECENT_FORM_MATCHES = 5;
+
+// Auth verification helper
+async function verifyAuth(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized', status: 401 };
+  }
+
+  return { session };
+}
+
+// Auth + role verification helper
+async function verifyAdminAuth(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized', status: 401 };
+  }
+
+  if (!session.user.roles?.some((role: string) => ALLOWED_ROLES.includes(role))) {
+    return { error: 'Forbidden', status: 403 };
+  }
+
+  return { session };
+}
+
 export async function GET(
-  request: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await verifyAuth(req);
+  if ('error' in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const leagueId = params.id;
 
     // Get league info with configuration
@@ -55,6 +83,7 @@ export async function GET(
     if (standings.length === 0) {
       return NextResponse.json({
         league: {
+          id: league.id,
           name: league.name,
           code: league.code,
           season: league.season,
@@ -68,32 +97,21 @@ export async function GET(
     
     const [newTeams, oldTeams] = await Promise.all([
       prisma.team.findMany({
-        where: {
-          id: { in: teamIds },
-        },
-        select: {
-          id: true,
-          name: true,
-        },
+        where: { id: { in: teamIds } },
+        select: { id: true, name: true },
       }),
       prisma.oldTeam.findMany({
-        where: {
-          id: { in: teamIds },
-        },
-        select: {
-          id: true,
-          name: true,
-        },
+        where: { id: { in: teamIds } },
+        select: { id: true, name: true },
       }),
     ]);
 
     // Combine team maps
-    const teamMap = new Map([
-      ...newTeams.map((t) => [t.id, t.name] as [string, string]),
-      ...oldTeams.map((t) => [t.id, t.name] as [string, string]),
-    ]);
+    const teamMap = new Map<string, string>();
+    newTeams.forEach((t) => teamMap.set(t.id, t.name));
+    oldTeams.forEach((t) => teamMap.set(t.id, t.name));
 
-    // Get recent matches for form calculation
+    // Get recent matches for form calculation (matches with FINISHED status)
     const recentMatches = await prisma.match.findMany({
       where: {
         fixtureId: {
@@ -104,7 +122,9 @@ export async function GET(
             })
             .then((fixtures) => fixtures.map((f) => f.id)),
         },
-        status: 'COMPLETED',
+        status: 'FINISHED',
+        homeGoals: { not: null },
+        awayGoals: { not: null },
       },
       orderBy: {
         date: 'desc',
@@ -112,22 +132,22 @@ export async function GET(
       select: {
         homeTeamId: true,
         awayTeamId: true,
-        homeScore: true,
-        awayScore: true,
+        homeGoals: true,
+        awayGoals: true,
         date: true,
       },
     });
 
-    // Calculate form for each team (last 5 matches)
+    // Calculate form for each team (last N matches)
     const calculateForm = (teamId: string): string[] => {
       const teamMatches = recentMatches
         .filter((m) => m.homeTeamId === teamId || m.awayTeamId === teamId)
-        .slice(0, 5);
+        .slice(0, RECENT_FORM_MATCHES);
 
       return teamMatches.map((match) => {
         const isHome = match.homeTeamId === teamId;
-        const teamScore = isHome ? match.homeScore : match.awayScore;
-        const opponentScore = isHome ? match.awayScore : match.homeScore;
+        const teamScore = isHome ? match.homeGoals : match.awayGoals;
+        const opponentScore = isHome ? match.awayGoals : match.homeGoals;
 
         if (teamScore === null || opponentScore === null) return 'N';
         if (teamScore > opponentScore) return 'W';
@@ -156,7 +176,7 @@ export async function GET(
           id: s.id,
           position: newPosition,
           teamId: s.teamId,
-          teamName: teamMap.get(s.teamId) || `Team ${s.teamId.slice(0, 8)}`,
+          teamName: teamMap.get(s.teamId) || 'Unknown Team',
           played: s.played,
           won: s.won,
           drawn: s.drawn,
@@ -172,6 +192,7 @@ export async function GET(
 
     return NextResponse.json({
       league: {
+        id: league.id,
         name: league.name,
         code: league.code,
         season: league.season,
@@ -180,6 +201,7 @@ export async function GET(
         pointsDraw: league.pointsDraw,
         pointsLoss: league.pointsLoss,
       },
+      totalTeams: standingsWithDetails.length,
       standings: standingsWithDetails,
     });
   } catch (error) {
@@ -196,28 +218,32 @@ export async function GET(
 
 // POST - Recalculate all standings for a league
 export async function POST(
-  request: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await verifyAdminAuth(req);
+  if ('error' in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const allowedRoles = ['LEAGUE_ADMIN', 'SUPERADMIN'];
-    if (!session.user.roles?.some((role: string) => allowedRoles.includes(role))) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     const leagueId = params.id;
 
     // Get league configuration
     const league = await prisma.league.findUnique({
       where: { id: leagueId },
-      include: {
-        configuration: true,
+      select: {
+        id: true,
+        name: true,
+        pointsWin: true,
+        pointsDraw: true,
+        pointsLoss: true,
+        configuration: {
+          select: {
+            bonusPointsEnabled: true,
+            bonusPointsForGoals: true,
+          },
+        },
       },
     });
 
@@ -225,20 +251,31 @@ export async function POST(
       return NextResponse.json({ error: 'League not found' }, { status: 404 });
     }
 
-    // Get all completed matches for this league
+    // Get all finished matches for this league with valid scores
     const matches = await prisma.match.findMany({
       where: {
         fixture: {
           leagueId,
         },
-        status: 'COMPLETED',
-        homeScore: { not: null },
-        awayScore: { not: null },
+        status: 'FINISHED',
+        homeGoals: { not: null },
+        awayGoals: { not: null },
       },
-      include: {
-        fixture: true,
+      select: {
+        homeTeamId: true,
+        awayTeamId: true,
+        homeGoals: true,
+        awayGoals: true,
       },
     });
+
+    if (matches.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No completed matches found for standings calculation',
+        teamsUpdated: 0,
+      });
+    }
 
     // Get all teams in the league
     const leagueTeams = await prisma.leagueTeam.findMany({
@@ -252,6 +289,14 @@ export async function POST(
     });
 
     const teamIds = leagueTeams.map((lt) => lt.teamId);
+
+    if (teamIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No teams found in league',
+        teamsUpdated: 0,
+      });
+    }
 
     // Calculate standings for each team
     const standingsData = teamIds.map((teamId) => {
@@ -268,8 +313,8 @@ export async function POST(
 
       teamMatches.forEach((match) => {
         const isHome = match.homeTeamId === teamId;
-        const teamScore = isHome ? match.homeScore! : match.awayScore!;
-        const opponentScore = isHome ? match.awayScore! : match.homeScore!;
+        const teamScore = isHome ? match.homeGoals! : match.awayGoals!;
+        const opponentScore = isHome ? match.awayGoals! : match.homeGoals!;
 
         played++;
         goalsFor += teamScore;
@@ -303,7 +348,7 @@ export async function POST(
       };
     });
 
-    // Sort by points, then goal difference, then goals for
+    // Sort by points, then goal difference, then goals for (tiebreakers)
     standingsData.sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
       if (b.goalDifference !== a.goalDifference)
@@ -354,7 +399,9 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Standings recalculated successfully',
+      leagueId,
       teamsUpdated: standingsData.length,
+      matchesProcessed: matches.length,
     });
   } catch (error) {
     console.error('POST /api/leagues/[id]/standings error:', error);

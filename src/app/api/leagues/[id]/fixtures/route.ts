@@ -4,13 +4,41 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+const ALLOWED_ROLES = ['LEAGUE_ADMIN', 'SUPERADMIN'];
+
+// Auth verification helper
+async function verifyAuth(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized', status: 401 };
+  }
+
+  return { session };
+}
+
+// Auth + role verification helper
+async function verifyAdminAuth(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized', status: 401 };
+  }
+
+  if (!session.user.roles?.some((role: string) => ALLOWED_ROLES.includes(role))) {
+    return { error: 'Forbidden', status: 403 };
+  }
+
+  return { session };
+}
+
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await verifyAuth(_req);
+  if ('error' in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   try {
@@ -36,6 +64,17 @@ export async function GET(
       where: { leagueId },
       include: {
         matches: {
+          select: {
+            id: true,
+            homeTeamId: true,
+            awayTeamId: true,
+            date: true,
+            venue: true,
+            status: true,
+            homeGoals: true,
+            awayGoals: true,
+            createdAt: true,
+          },
           orderBy: {
             date: 'asc',
           },
@@ -46,12 +85,20 @@ export async function GET(
       },
     });
 
+    if (fixtures.length === 0) {
+      return NextResponse.json({
+        league,
+        fixtures: [],
+      });
+    }
+
     // Get team names for all matches
     const allMatches = fixtures.flatMap((f) => f.matches);
     const teamIds = Array.from(
       new Set(allMatches.flatMap((m) => [m.homeTeamId, m.awayTeamId]))
     );
 
+    // Query both team sources in parallel
     const [newTeams, oldTeams] = await Promise.all([
       prisma.team.findMany({
         where: { id: { in: teamIds } },
@@ -63,39 +110,74 @@ export async function GET(
       }),
     ]);
 
-    const teamMap = new Map([
-      ...newTeams.map((t) => [t.id, t.name] as [string, string]),
-      ...oldTeams.map((t) => [t.id, t.name] as [string, string]),
-    ]);
+    // Create unified team map
+    const teamMap = new Map<string, string>();
+    newTeams.forEach((t) => teamMap.set(t.id, t.name));
+    oldTeams.forEach((t) => teamMap.set(t.id, t.name));
 
-    // Format fixtures with team names
-    const formattedFixtures = fixtures.map((fixture) => ({
-      id: fixture.id,
-      matchweek: fixture.matchweek,
-      startDate: fixture.startDate.toISOString(),
-      endDate: fixture.endDate?.toISOString(),
-      matches: fixture.matches.map((match) => ({
-        id: match.id,
-        homeTeamId: match.homeTeamId,
-        awayTeamId: match.awayTeamId,
-        homeTeamName: teamMap.get(match.homeTeamId) || `Team ${match.homeTeamId.slice(0, 8)}`,
-        awayTeamName: teamMap.get(match.awayTeamId) || `Team ${match.awayTeamId.slice(0, 8)}`,
-        date: match.date.toISOString(),
-        time: match.time,
-        venue: match.venue,
-        status: match.status,
-        homeScore: match.homeScore,
-        awayScore: match.awayScore,
-      })),
-    }));
+    // Format fixtures with calculated date ranges
+    const formattedFixtures = fixtures.map((fixture) => {
+      // Calculate date range from matches
+      const matchDates = fixture.matches
+        .map((m) => new Date(m.date).getTime())
+        .sort((a, b) => a - b);
+
+      const startDate = matchDates.length > 0 ? new Date(matchDates[0]) : null;
+      const endDate = matchDates.length > 0 ? new Date(matchDates[matchDates.length - 1]) : null;
+
+      // Calculate fixture status
+      const now = new Date();
+      let fixtureStatus = 'UPCOMING';
+      
+      if (endDate && endDate < now) {
+        fixtureStatus = 'COMPLETED';
+      } else if (startDate && startDate <= now && endDate && endDate >= now) {
+        fixtureStatus = 'ACTIVE';
+      }
+
+      return {
+        id: fixture.id,
+        matchweek: fixture.matchweek,
+        season: fixture.season,
+        status: fixtureStatus,
+        startDate: startDate?.toISOString() || null,
+        endDate: endDate?.toISOString() || null,
+        matchCount: fixture.matches.length,
+        matches: fixture.matches.map((match) => ({
+          id: match.id,
+          homeTeam: {
+            id: match.homeTeamId,
+            name: teamMap.get(match.homeTeamId) || `Unknown Team`,
+          },
+          awayTeam: {
+            id: match.awayTeamId,
+            name: teamMap.get(match.awayTeamId) || `Unknown Team`,
+          },
+          date: match.date.toISOString(),
+          venue: match.venue || 'TBD',
+          status: match.status,
+          result: {
+            homeGoals: match.homeGoals,
+            awayGoals: match.awayGoals,
+          },
+        })),
+      };
+    });
 
     return NextResponse.json({
       league,
+      totalFixtures: formattedFixtures.length,
       fixtures: formattedFixtures,
     });
   } catch (error) {
     console.error('GET /api/leagues/[id]/fixtures error:', error);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Failed to fetch fixtures',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -103,14 +185,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const allowedRoles = ['LEAGUE_ADMIN', 'SUPERADMIN'];
-  if (!session.user.roles?.some((role: string) => allowedRoles.includes(role))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const auth = await verifyAdminAuth(req);
+  if ('error' in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   try {
@@ -119,36 +196,134 @@ export async function POST(
 
     const { matchweek, matches } = body;
 
-    if (!matchweek || !matches || !Array.isArray(matches)) {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    // Validation
+    if (!matchweek || typeof matchweek !== 'number' || matchweek < 1) {
+      return NextResponse.json(
+        { error: 'Invalid matchweek - must be a positive number' },
+        { status: 400 }
+      );
     }
 
-    // Create fixture
+    if (!Array.isArray(matches) || matches.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one match is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate each match
+    for (const match of matches) {
+      if (!match.homeTeamId || !match.awayTeamId || !match.date) {
+        return NextResponse.json(
+          { error: 'Each match must have homeTeamId, awayTeamId, and date' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Verify league exists and get season
+    const league = await prisma.league.findUnique({
+      where: { id: leagueId },
+      select: { id: true, season: true },
+    });
+
+    if (!league) {
+      return NextResponse.json({ error: 'League not found' }, { status: 404 });
+    }
+
+    // Check for duplicate fixture (same matchweek and season)
+    const existingFixture = await prisma.fixture.findFirst({
+      where: {
+        leagueId,
+        matchweek,
+        season: league.season,
+      },
+    });
+
+    if (existingFixture) {
+      return NextResponse.json(
+        { error: `Fixture already exists for matchweek ${matchweek}` },
+        { status: 409 }
+      );
+    }
+
+    // Verify all teams exist
+    const teamIds = Array.from(
+      new Set(matches.flatMap((m) => [m.homeTeamId, m.awayTeamId]))
+    );
+
+    const [newTeamsCount, oldTeamsCount] = await Promise.all([
+      prisma.team.count({ where: { id: { in: teamIds } } }),
+      prisma.oldTeam.count({ where: { id: { in: teamIds } } }),
+    ]);
+
+    if (newTeamsCount + oldTeamsCount < teamIds.length) {
+      return NextResponse.json(
+        { error: 'One or more teams do not exist' },
+        { status: 400 }
+      );
+    }
+
+    // Create fixture with matches
     const fixture = await prisma.fixture.create({
       data: {
         leagueId,
         matchweek,
-        startDate: new Date(body.startDate || Date.now()),
-        endDate: body.endDate ? new Date(body.endDate) : null,
+        season: league.season,
+        status: 'UPCOMING',
         matches: {
           create: matches.map((match: any) => ({
             homeTeamId: match.homeTeamId,
             awayTeamId: match.awayTeamId,
             date: new Date(match.date),
-            time: match.time,
-            venue: match.venue,
+            venue: match.venue || null,
             status: 'SCHEDULED',
           })),
         },
       },
       include: {
-        matches: true,
+        matches: {
+          select: {
+            id: true,
+            homeTeamId: true,
+            awayTeamId: true,
+            date: true,
+            venue: true,
+            status: true,
+          },
+        },
       },
     });
 
-    return NextResponse.json(fixture, { status: 201 });
+    return NextResponse.json(
+      {
+        message: 'Fixture created successfully',
+        fixture: {
+          id: fixture.id,
+          matchweek: fixture.matchweek,
+          season: fixture.season,
+          matchCount: fixture.matches.length,
+          matches: fixture.matches,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('POST /api/leagues/[id]/fixtures error:', error);
-    return NextResponse.json({ error: 'Failed to create fixture' }, { status: 500 });
+
+    if (error instanceof Error && error.message.includes('Foreign key constraint')) {
+      return NextResponse.json(
+        { error: 'Invalid team ID - teams do not exist' },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: 'Failed to create fixture',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
   }
 }
