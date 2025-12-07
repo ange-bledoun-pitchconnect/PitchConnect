@@ -3,7 +3,9 @@
  *
  * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId]
  *
- * Returns: Detailed performance analytics for a specific player
+ * Returns: Detailed performance analytics for a specific player including goals,
+ * assists, cards, and match-by-match breakdown
+ *
  * Authorization: Only club owner can access
  *
  * Response:
@@ -11,6 +13,7 @@
  *   player: { id, name, position, jerseyNumber },
  *   performance: Array<{
  *     date: Date,
+ *     matchId: string,
  *     goals: number,
  *     assists: number,
  *     yellowCards: number,
@@ -23,7 +26,7 @@
  *     totalAssists: number,
  *     totalYellowCards: number,
  *     totalRedCards: number,
- *     appearances: number
+ *     totalAppearances: number
  *   }
  * }
  */
@@ -32,6 +35,21 @@ import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+
+type PerformanceRecord = {
+  date: Date;
+  matchId: string;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  isStarting: boolean;
+  events: Array<{
+    type: string;
+    minute: number;
+    note?: string;
+  }>;
+};
 
 export async function GET(
   _req: NextRequest,
@@ -45,7 +63,7 @@ export async function GET(
   try {
     const { clubId, teamId, playerId } = params;
 
-    // Verify club ownership
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
@@ -54,12 +72,11 @@ export async function GET(
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
 
-    // Check authorization - only club owner can access
     if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team belongs to club
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -68,7 +85,7 @@ export async function GET(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get player and verify they belong to team
+    // Get player with user details
     const player = await prisma.player.findUnique({
       where: { id: playerId },
       include: {
@@ -100,7 +117,7 @@ export async function GET(
       );
     }
 
-    // Get all events for this player
+    // Get all match events for this player
     const events = await prisma.matchEvent.findMany({
       where: { playerId },
       include: {
@@ -122,7 +139,7 @@ export async function GET(
       },
     });
 
-    // Get lineup appearances
+    // Get all lineup appearances for this player
     const lineupAppearances = await prisma.lineupPlayer.findMany({
       where: { playerId },
       include: {
@@ -146,34 +163,16 @@ export async function GET(
       },
     });
 
-    // Build performance history by match
-    const performanceByMatch = new Map<
-      string,
-      {
-        date: Date;
-        matchId: string;
-        goals: number;
-        assists: number;
-        yellowCards: number;
-        redCards: number;
-        isStarting: boolean;
-        events: Array<{
-          type: string;
-          minute: number;
-          note?: string;
-        }>;
-      }
-    >();
+    // Build performance history by match using matchId as key for uniqueness
+    const performanceByMatch = new Map<string, PerformanceRecord>();
 
-    // First, add lineup appearances
+    // First, add lineup appearances to establish match presence
     lineupAppearances.forEach((appearance) => {
-      const matchDate = appearance.lineup.match.date;
       const matchId = appearance.lineup.match.id;
-      const dateKey = matchId; // Use matchId as unique key
 
-      if (!performanceByMatch.has(dateKey)) {
-        performanceByMatch.set(dateKey, {
-          date: matchDate,
+      if (!performanceByMatch.has(matchId)) {
+        performanceByMatch.set(matchId, {
+          date: appearance.lineup.match.date,
           matchId,
           goals: 0,
           assists: 0,
@@ -184,20 +183,19 @@ export async function GET(
         });
       } else {
         // Update starting status if this is a starting appearance
-        const perf = performanceByMatch.get(dateKey)!;
+        const perf = performanceByMatch.get(matchId)!;
         if (!appearance.isSubstitute) {
           perf.isStarting = true;
         }
       }
     });
 
-    // Add events
+    // Add all events to corresponding matches
     events.forEach((event) => {
       const matchId = event.match.id;
-      const dateKey = matchId;
 
-      if (!performanceByMatch.has(dateKey)) {
-        performanceByMatch.set(dateKey, {
+      if (!performanceByMatch.has(matchId)) {
+        performanceByMatch.set(matchId, {
           date: event.match.date,
           matchId,
           goals: 0,
@@ -209,9 +207,9 @@ export async function GET(
         });
       }
 
-      const perf = performanceByMatch.get(dateKey)!;
+      const perf = performanceByMatch.get(matchId)!;
 
-      // Use 'type' field instead of 'eventType'
+      // Count event types using correct schema field name 'type' not 'eventType'
       if (event.type === 'GOAL') {
         perf.goals++;
       } else if (event.type === 'ASSIST') {
@@ -229,25 +227,26 @@ export async function GET(
       });
     });
 
+    // Convert to array and sort by date
     const performance = Array.from(performanceByMatch.values()).sort(
       (a, b) => a.date.getTime() - b.date.getTime()
     );
 
-    // Calculate aggregate stats
+    // Calculate aggregate statistics
     const stats = performance.reduce(
       (acc, perf) => ({
         totalGoals: acc.totalGoals + perf.goals,
         totalAssists: acc.totalAssists + perf.assists,
         totalYellowCards: acc.totalYellowCards + perf.yellowCards,
         totalRedCards: acc.totalRedCards + perf.redCards,
-        appearances: acc.appearances + 1,
+        totalAppearances: acc.totalAppearances + 1,
       }),
       {
         totalGoals: 0,
         totalAssists: 0,
         totalYellowCards: 0,
         totalRedCards: 0,
-        appearances: 0,
+        totalAppearances: 0,
       }
     );
 
