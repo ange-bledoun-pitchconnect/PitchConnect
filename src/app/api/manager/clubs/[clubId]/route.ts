@@ -9,14 +9,14 @@ export async function GET(
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId } = params;
 
-    // Get club with teams and counts
+    // Get club with teams and members
     const club = await prisma.club.findUnique({
       where: { id: clubId },
       include: {
@@ -24,11 +24,23 @@ export async function GET(
           include: {
             _count: {
               select: {
-                members: true,
+                members: true, // Changed from 'players' to 'members'
               },
             },
           },
           orderBy: { createdAt: 'desc' },
+        },
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
         },
         _count: {
           select: {
@@ -66,7 +78,7 @@ export async function PATCH(
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -88,22 +100,50 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Update club with valid fields
+    // Update club with ONLY valid fields from schema
+    // Valid fields: name, city, country, foundedYear, description, stadiumName, logoUrl, primaryColor, secondaryColor, status
     const updatedClub = await prisma.club.update({
       where: { id: clubId },
       data: {
-        name: body.name || undefined,
-        description: body.description !== undefined ? body.description : undefined,
-        country: body.country || undefined,
-        city: body.city !== undefined ? body.city : undefined,
-        foundedYear: body.foundedYear !== undefined ? body.foundedYear : undefined,
-        stadiumName: body.stadiumName !== undefined ? body.stadiumName : undefined,
-        logoUrl: body.logoUrl !== undefined ? body.logoUrl : undefined,
-        primaryColor: body.primaryColor || undefined,
-        secondaryColor: body.secondaryColor || undefined,
-        status: body.status || undefined,
+        ...(body.name && { name: body.name }),
+        ...(body.description !== undefined && { description: body.description }),
+        ...(body.country && { country: body.country }),
+        ...(body.city !== undefined && { city: body.city }),
+        ...(body.foundedYear !== undefined && { foundedYear: body.foundedYear }),
+        ...(body.stadiumName !== undefined && { stadiumName: body.stadiumName }),
+        ...(body.logoUrl !== undefined && { logoUrl: body.logoUrl }),
+        ...(body.primaryColor && { primaryColor: body.primaryColor }),
+        ...(body.secondaryColor && { secondaryColor: body.secondaryColor }),
+        ...(body.status && { status: body.status }),
       },
       include: {
+        teams: {
+          select: {
+            id: true,
+            name: true,
+            ageGroup: true,
+            category: true,
+            status: true,
+            _count: {
+              select: {
+                members: true,
+              },
+            },
+          },
+        },
+        members: {
+          select: {
+            id: true,
+            role: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
         _count: {
           select: {
             teams: true,
@@ -131,14 +171,14 @@ export async function DELETE(
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId } = params;
 
-    // Get club
+    // Get club with teams
     const club = await prisma.club.findUnique({
       where: { id: clubId },
       include: {
