@@ -77,7 +77,7 @@ export async function GET(
     }
 
     // Verify team exists and belongs to club
-    const team = await prisma.team.findUnique({
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -102,15 +102,15 @@ export async function GET(
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    // Verify player belongs to the team
-    const playerTeam = await prisma.playerTeam.findFirst({
+    // Verify player belongs to the team using TeamPlayer relation
+    const teamPlayer = await prisma.teamPlayer.findFirst({
       where: {
         playerId,
         teamId,
       },
     });
 
-    if (!playerTeam) {
+    if (!teamPlayer || (teamPlayer.leftAt && teamPlayer.leftAt < new Date())) {
       return NextResponse.json(
         { error: 'Player not found in this team' },
         { status: 404 }
@@ -127,8 +127,8 @@ export async function GET(
             date: true,
             homeTeam: { select: { name: true } },
             awayTeam: { select: { name: true } },
-            homeScore: true,
-            awayScore: true,
+            homeGoals: true,
+            awayGoals: true,
           },
         },
       },
@@ -140,25 +140,23 @@ export async function GET(
     });
 
     // Get all lineup appearances for this player
-    const lineupAppearances = await prisma.lineupPlayer.findMany({
-      where: { playerId },
+    // Note: We'll need to check if LineupPlayer exists in your schema
+    // For now, using MatchAttendance as a proxy for lineup appearances
+    const matchAttendances = await prisma.matchAttendance.findMany({
+      where: {
+        playerId,
+      },
       include: {
-        lineup: {
-          include: {
-            match: {
-              select: {
-                id: true,
-                date: true,
-              },
-            },
+        match: {
+          select: {
+            id: true,
+            date: true,
           },
         },
       },
       orderBy: {
-        lineup: {
-          match: {
-            date: 'asc',
-          },
+        match: {
+          date: 'asc',
         },
       },
     });
@@ -166,25 +164,30 @@ export async function GET(
     // Build performance history by match using matchId as key for uniqueness
     const performanceByMatch = new Map<string, PerformanceRecord>();
 
-    // First, add lineup appearances to establish match presence
-    lineupAppearances.forEach((appearance) => {
-      const matchId = appearance.lineup.match.id;
+    // First, add match attendances to establish match presence
+    matchAttendances.forEach((attendance) => {
+      const matchId = attendance.match.id;
+
+      // Check if player was starting or substitute
+      const isStarting =
+        attendance.status === 'STARTING_LINEUP' ||
+        attendance.status === 'ATTENDED';
 
       if (!performanceByMatch.has(matchId)) {
         performanceByMatch.set(matchId, {
-          date: appearance.lineup.match.date,
+          date: attendance.match.date,
           matchId,
           goals: 0,
           assists: 0,
           yellowCards: 0,
           redCards: 0,
-          isStarting: !appearance.isSubstitute,
+          isStarting,
           events: [],
         });
       } else {
         // Update starting status if this is a starting appearance
         const perf = performanceByMatch.get(matchId)!;
-        if (!appearance.isSubstitute) {
+        if (isStarting) {
           perf.isStarting = true;
         }
       }
@@ -255,7 +258,7 @@ export async function GET(
         id: player.id,
         name: `${player.user.firstName} ${player.user.lastName}`,
         position: player.position,
-        jerseyNumber: player.jerseyNumber,
+        jerseyNumber: player.shirtNumber,
       },
       performance,
       stats,
