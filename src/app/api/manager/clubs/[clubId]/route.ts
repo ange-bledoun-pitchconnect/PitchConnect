@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
@@ -16,15 +16,6 @@ export async function GET(
   try {
     const { clubId } = params;
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
     // Get club with teams and counts
     const club = await prisma.club.findUnique({
       where: { id: clubId },
@@ -33,8 +24,7 @@ export async function GET(
           include: {
             _count: {
               select: {
-                players: true,
-                coaches: true,
+                members: true,
               },
             },
           },
@@ -43,6 +33,7 @@ export async function GET(
         _count: {
           select: {
             teams: true,
+            members: true,
           },
         },
       },
@@ -52,8 +43,8 @@ export async function GET(
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
 
-    // Check authorization (only manager of this club can view)
-    if (club.managerId !== manager.id) {
+    // Check authorization - only club owner can view
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -83,15 +74,6 @@ export async function PATCH(
     const { clubId } = params;
     const body = await req.json();
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
     // Get club
     const club = await prisma.club.findUnique({
       where: { id: clubId },
@@ -101,12 +83,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
 
-    // Check authorization
-    if (club.managerId !== manager.id) {
+    // Check authorization - only club owner can update
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Update club
+    // Update club with valid fields
     const updatedClub = await prisma.club.update({
       where: { id: clubId },
       data: {
@@ -115,18 +97,17 @@ export async function PATCH(
         country: body.country || undefined,
         city: body.city !== undefined ? body.city : undefined,
         foundedYear: body.foundedYear !== undefined ? body.foundedYear : undefined,
-        homeVenue: body.homeVenue !== undefined ? body.homeVenue : undefined,
+        stadiumName: body.stadiumName !== undefined ? body.stadiumName : undefined,
+        logoUrl: body.logoUrl !== undefined ? body.logoUrl : undefined,
         primaryColor: body.primaryColor || undefined,
         secondaryColor: body.secondaryColor || undefined,
-        website: body.website !== undefined ? body.website : undefined,
-        email: body.email !== undefined ? body.email : undefined,
-        phone: body.phone !== undefined ? body.phone : undefined,
         status: body.status || undefined,
       },
       include: {
         _count: {
           select: {
             teams: true,
+            members: true,
           },
         },
       },
@@ -146,7 +127,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
@@ -156,15 +137,6 @@ export async function DELETE(
 
   try {
     const { clubId } = params;
-
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
 
     // Get club
     const club = await prisma.club.findUnique({
@@ -178,8 +150,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
 
-    // Check authorization
-    if (club.managerId !== manager.id) {
+    // Check authorization - only club owner can delete
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
