@@ -1,10 +1,24 @@
 /**
  * Team Assists Analytics API
- * 
+ *
  * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/assists
- * 
+ *
  * Returns: Top assist providers for a team sorted by number of assists
  * Authorization: Only club owner can access
+ *
+ * Response:
+ * {
+ *   teamId: string,
+ *   clubId: string,
+ *   totalAssists: number,
+ *   topAssistProviders: Array<{
+ *     playerId: string,
+ *     playerName: string,
+ *     position: string,
+ *     assistCount: number,
+ *     lastAssistDate: Date
+ *   }>
+ * }
  */
 
 import { getServerSession } from 'next-auth/next';
@@ -51,7 +65,7 @@ export async function GET(
     // Note: Assists are recorded as ASSIST MatchEventType
     const assistEvents = await prisma.matchEvent.findMany({
       where: {
-        type: 'ASSIST', // Changed from eventType to type (correct field name)
+        type: 'ASSIST', // Correct field name from schema
         player: {
           // Find assists by players in this team
           teams: {
@@ -84,7 +98,7 @@ export async function GET(
       },
     });
 
-    // Group assists by player
+    // Group assists by player with proper typing
     const playerAssistsMap = new Map<
       string,
       {
@@ -97,6 +111,11 @@ export async function GET(
     >();
 
     assistEvents.forEach((event) => {
+      // Filter out events with null player (shouldn't happen with our query, but TypeScript safety)
+      if (!event.player) {
+        return;
+      }
+
       const playerId = event.player.id;
       const playerName = `${event.player.firstName} ${event.player.lastName}`;
 
@@ -116,7 +135,7 @@ export async function GET(
     });
 
     // Convert to array and sort by assist count (descending)
-    const assists = Array.from(playerAssistsMap.values()).sort(
+    const topAssistProviders = Array.from(playerAssistsMap.values()).sort(
       (a, b) => b.assistCount - a.assistCount
     );
 
@@ -124,7 +143,7 @@ export async function GET(
       teamId,
       clubId,
       totalAssists: assistEvents.length,
-      topAssistProviders: assists,
+      topAssistProviders,
     });
   } catch (error) {
     console.error(
