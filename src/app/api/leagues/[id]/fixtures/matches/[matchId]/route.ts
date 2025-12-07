@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string; matchId: string } }
@@ -13,31 +14,36 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+
   const allowedRoles = ['LEAGUE_ADMIN', 'SUPERADMIN'];
   if (!session.user.roles?.some((role: string) => allowedRoles.includes(role))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+
   try {
     const { matchId } = params;
     const body = await req.json();
 
-    const { homeScore, awayScore, status } = body;
+
+    const { homeGoals, awayGoals, status } = body;
+
 
     // Validate scores
-    if (homeScore !== undefined && (homeScore < 0 || !Number.isInteger(homeScore))) {
+    if (homeGoals !== undefined && (homeGoals < 0 || !Number.isInteger(homeGoals))) {
       return NextResponse.json({ error: 'Invalid home score' }, { status: 400 });
     }
-    if (awayScore !== undefined && (awayScore < 0 || !Number.isInteger(awayScore))) {
+    if (awayGoals !== undefined && (awayGoals < 0 || !Number.isInteger(awayGoals))) {
       return NextResponse.json({ error: 'Invalid away score' }, { status: 400 });
     }
+
 
     // Update match
     const match = await prisma.match.update({
       where: { id: matchId },
       data: {
-        homeScore: homeScore !== undefined ? homeScore : undefined,
-        awayScore: awayScore !== undefined ? awayScore : undefined,
+        homeGoals: homeGoals !== undefined ? homeGoals : undefined,
+        awayGoals: awayGoals !== undefined ? awayGoals : undefined,
         status: status || undefined,
       },
       include: {
@@ -45,10 +51,12 @@ export async function PATCH(
       },
     });
 
+
     // If match is completed, recalculate standings
-    if (status === 'COMPLETED' && homeScore !== undefined && awayScore !== undefined) {
+    if (status === 'COMPLETED' && homeGoals !== undefined && awayGoals !== undefined) {
       await recalculateStandings(match.fixture.leagueId);
     }
+
 
     return NextResponse.json(match);
   } catch (error) {
@@ -56,6 +64,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Failed to update match' }, { status: 500 });
   }
 }
+
 
 export async function DELETE(
   req: NextRequest,
@@ -66,17 +75,21 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+
   const allowedRoles = ['LEAGUE_ADMIN', 'SUPERADMIN'];
   if (!session.user.roles?.some((role: string) => allowedRoles.includes(role))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+
   try {
     const { matchId } = params;
+
 
     await prisma.match.delete({
       where: { id: matchId },
     });
+
 
     return NextResponse.json({ success: true, message: 'Match deleted successfully' });
   } catch (error) {
@@ -84,6 +97,7 @@ export async function DELETE(
     return NextResponse.json({ error: 'Failed to delete match' }, { status: 500 });
   }
 }
+
 
 // Helper function to recalculate standings
 async function recalculateStandings(leagueId: string) {
