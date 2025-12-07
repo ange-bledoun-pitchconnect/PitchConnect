@@ -1,37 +1,72 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/announcements/route.ts
+/**
+ * Team Announcements API
+ *
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/announcements
+ * POST /api/manager/clubs/[clubId]/teams/[teamId]/announcements
+ *
+ * GET: Returns list of announcements for the team
+ * POST: Creates a new announcement for the team
+ *
+ * Authorization: Only club owner can access
+ *
+ * Response (GET):
+ * Array<{
+ *   id: string,
+ *   teamId: string,
+ *   createdBy: string,
+ *   title: string,
+ *   content: string,
+ *   priority: string,
+ *   pinned: boolean,
+ *   createdAt: Date,
+ *   updatedAt: Date
+ * }>
+ *
+ * Response (POST):
+ * {
+ *   id: string,
+ *   teamId: string,
+ *   createdBy: string,
+ *   title: string,
+ *   content: string,
+ *   priority: string,
+ *   pinned: boolean,
+ *   createdAt: Date,
+ *   updatedAt: Date
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId } = params;
 
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -40,10 +75,11 @@ export async function GET(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
+    // Get announcements for this team
     const announcements = await prisma.announcement.findMany({
       where: { teamId },
       include: {
-        creator: {
+        user: {
           select: {
             firstName: true,
             lastName: true,
@@ -55,7 +91,10 @@ export async function GET(
 
     return NextResponse.json(announcements);
   } catch (error) {
-    console.error('GET /api/manager/clubs/[clubId]/teams/[teamId]/announcements error:', error);
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/announcements error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to fetch announcements',
@@ -71,7 +110,7 @@ export async function POST(
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -79,22 +118,20 @@ export async function POST(
     const { clubId, teamId } = params;
     const body = await req.json();
 
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -103,23 +140,33 @@ export async function POST(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
+    // Validate input
     if (!body.title?.trim()) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Title is required' },
+        { status: 400 }
+      );
     }
 
     if (!body.content?.trim()) {
-      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Content is required' },
+        { status: 400 }
+      );
     }
 
+    // Create announcement using correct field name 'createdBy'
     const announcement = await prisma.announcement.create({
       data: {
         title: body.title.trim(),
         content: body.content.trim(),
         teamId,
-        creatorId: session.user.id,
+        createdBy: session.user.id,
+        priority: body.priority || 'NORMAL',
+        pinned: body.pinned || false,
       },
       include: {
-        creator: {
+        user: {
           select: {
             firstName: true,
             lastName: true,
@@ -130,7 +177,10 @@ export async function POST(
 
     return NextResponse.json(announcement, { status: 201 });
   } catch (error) {
-    console.error('POST /api/manager/clubs/[clubId]/teams/[teamId]/announcements error:', error);
+    console.error(
+      'POST /api/manager/clubs/[clubId]/teams/[teamId]/announcements error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to create announcement',
