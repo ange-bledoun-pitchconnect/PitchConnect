@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(
   request: NextRequest,
@@ -17,9 +17,15 @@ export async function POST(
     // Get user
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        roles: true,
+      },
     });
 
-    if (!user || user.role !== 'MANAGER') {
+    if (!user || !user.roles.includes('MANAGER')) {
       return NextResponse.json({ error: 'Unauthorized - Manager only' }, { status: 403 });
     }
 
