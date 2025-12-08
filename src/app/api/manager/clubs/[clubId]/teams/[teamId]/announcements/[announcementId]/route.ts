@@ -81,15 +81,6 @@ export async function GET(
     // Get announcement and verify it belongs to this team
     const announcement = await prisma.announcement.findUnique({
       where: { id: announcementId },
-      include: {
-        createdByUser: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
     });
 
     if (!announcement || announcement.teamId !== teamId) {

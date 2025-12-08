@@ -98,22 +98,15 @@ export async function GET(
       new Set(allMatches.flatMap((m) => [m.homeTeamId, m.awayTeamId]))
     );
 
-    // Query both team sources in parallel
-    const [newTeams, oldTeams] = await Promise.all([
-      prisma.team.findMany({
-        where: { id: { in: teamIds } },
-        select: { id: true, name: true },
-      }),
-      prisma.oldTeam.findMany({
-        where: { id: { in: teamIds } },
-        select: { id: true, name: true },
-      }),
-    ]);
+    // Query teams (single source)
+    const teams = await prisma.team.findMany({
+      where: { id: { in: teamIds } },
+      select: { id: true, name: true },
+    });
 
     // Create unified team map
     const teamMap = new Map<string, string>();
-    newTeams.forEach((t) => teamMap.set(t.id, t.name));
-    oldTeams.forEach((t) => teamMap.set(t.id, t.name));
+    teams.forEach((t) => teamMap.set(t.id, t.name));
 
     // Format fixtures with calculated date ranges
     const formattedFixtures = fixtures.map((fixture) => {
@@ -252,12 +245,9 @@ export async function POST(
       new Set(matches.flatMap((m) => [m.homeTeamId, m.awayTeamId]))
     );
 
-    const [newTeamsCount, oldTeamsCount] = await Promise.all([
-      prisma.team.count({ where: { id: { in: teamIds } } }),
-      prisma.oldTeam.count({ where: { id: { in: teamIds } } }),
-    ]);
+    const teamsCount = await prisma.team.count({ where: { id: { in: teamIds } } });
 
-    if (newTeamsCount + oldTeamsCount < teamIds.length) {
+    if (teamsCount < teamIds.length) {
       return NextResponse.json(
         { error: 'One or more teams do not exist' },
         { status: 400 }

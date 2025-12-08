@@ -60,7 +60,7 @@ async function main() {
     console.log('✅ Test Coach created:', testCoach.email);
 
     // ============================================================================
-    // Create Test Club (NO 'code' field)
+    // Create Test Club
     // ============================================================================
     let testClub = await prisma.club.findFirst({
       where: { name: 'Arsenal FC' },
@@ -70,12 +70,15 @@ async function main() {
       testClub = await prisma.club.create({
         data: {
           name: 'Arsenal FC',
+          code: 'AFC',
           city: 'London',
           country: 'United Kingdom',
           foundedYear: 1886,
           ownerId: superAdmin.id,
           primaryColor: '#EF0107',
           secondaryColor: '#FFFFFF',
+          status: 'ACTIVE',
+          type: 'PROFESSIONAL',
         },
       });
       console.log('✅ Test Club created:', testClub.name);
@@ -97,8 +100,10 @@ async function main() {
       testTeam = await prisma.team.create({
         data: {
           name: 'Arsenal - First Team',
+          code: 'AFT',
           clubId: testClub.id,
           category: 'FIRST_TEAM',
+          status: 'ACTIVE',
         },
       });
       console.log('✅ Test Team created:', testTeam.name);
@@ -164,6 +169,7 @@ async function main() {
             pointsWin: 3,
             pointsDraw: 1,
             pointsLoss: 0,
+            status: 'ACTIVE',
           },
         });
         console.log('✅ Test League created:', testLeague.name);

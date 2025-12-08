@@ -74,38 +74,20 @@ export async function GET(
       });
     }
 
-    // Get team details from both Team and OldTeam models
+    // Get team details from Team model
     const teamIds = leagueTeams.map((lt) => lt.teamId);
-    const [newTeams, oldTeams] = await Promise.all([
-      prisma.team.findMany({
-        where: { id: { in: teamIds } },
-        select: {
-          id: true,
-          name: true,
-          club: { select: { id: true, name: true } },
-        },
-      }),
-      prisma.oldTeam.findMany({
-        where: { id: { in: teamIds } },
-        select: {
-          id: true,
-          name: true,
-          club: { select: { id: true, name: true } },
-        },
-      }),
-    ]);
+    const teams_data = await prisma.team.findMany({
+      where: { id: { in: teamIds } },
+      select: {
+        id: true,
+        name: true,
+        club: { select: { id: true, name: true } },
+      },
+    });
 
-    // Create unified team map
+    // Create team map
     const teamMap = new Map();
-    newTeams.forEach((t) =>
-      teamMap.set(t.id, {
-        id: t.id,
-        name: t.name,
-        clubId: t.club?.id,
-        clubName: t.club?.name,
-      })
-    );
-    oldTeams.forEach((t) =>
+    teams_data.forEach((t) =>
       teamMap.set(t.id, {
         id: t.id,
         name: t.name,
@@ -175,19 +157,12 @@ export async function POST(
       return NextResponse.json({ error: 'League not found' }, { status: 404 });
     }
 
-    // Check if team exists (in either Team or OldTeam)
-    const [newTeam, oldTeam] = await Promise.all([
-      prisma.team.findUnique({
-        where: { id: teamId },
-        select: { id: true, name: true },
-      }),
-      prisma.oldTeam.findUnique({
-        where: { id: teamId },
-        select: { id: true, name: true },
-      }),
-    ]);
+    // Check if team exists in Team model
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { id: true, name: true },
+    });
 
-    const team = newTeam || oldTeam;
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }

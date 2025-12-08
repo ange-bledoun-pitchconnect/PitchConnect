@@ -27,28 +27,8 @@ export async function GET(
       return NextResponse.json({ error: 'League not found' }, { status: 404 });
     }
 
-    // Get all active teams from Team model (new structure)
-    const newTeams = await prisma.team.findMany({
-      where: {
-        status: 'ACTIVE',
-      },
-      include: {
-        club: {
-          select: {
-            id: true,
-            name: true,
-            city: true,
-            country: true,
-          },
-        },
-      },
-      orderBy: {
-        name: 'asc',
-      },
-    });
-
-    // Get all active teams from OldTeam model (legacy structure)
-    const oldTeams = await prisma.oldTeam.findMany({
+    // Get all active teams
+    const teams = await prisma.team.findMany({
       where: {
         status: 'ACTIVE',
       },
@@ -93,8 +73,8 @@ export async function GET(
 
     const invitedTeamIds = new Set(pendingInvitations.map((inv) => inv.teamId));
 
-    // Combine and transform teams from new structure
-    const transformedNewTeams = newTeams.map((team) => ({
+    // Transform teams
+    const transformedTeams = teams.map((team) => ({
       id: team.id,
       name: team.name,
       ageGroup: team.ageGroup,
@@ -104,30 +84,11 @@ export async function GET(
       hasInvitation: invitedTeamIds.has(team.id),
     }));
 
-    // Transform teams from old structure
-    const transformedOldTeams = oldTeams.map((team) => ({
-      id: team.id,
-      name: team.name,
-      ageGroup: team.category, // Use category as ageGroup for old teams
-      category: team.category,
-      club: team.club,
-      isInLeague: leagueTeamIds.has(team.id),
-      hasInvitation: invitedTeamIds.has(team.id),
-    }));
-
-    // Combine both team lists
-    const allTeams = [...transformedNewTeams, ...transformedOldTeams];
-
-    // Remove duplicates by ID (in case of data migration overlap)
-    const uniqueTeams = Array.from(
-      new Map(allTeams.map((team) => [team.id, team])).values()
-    );
-
     // Sort by name
-    uniqueTeams.sort((a, b) => a.name.localeCompare(b.name));
+    transformedTeams.sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json({
-      teams: uniqueTeams,
+      teams: transformedTeams,
       league: {
         id: league.id,
         name: league.name,

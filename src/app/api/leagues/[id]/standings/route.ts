@@ -92,24 +92,17 @@ export async function GET(
       });
     }
 
-    // Get team names from both Team and OldTeam models
+    // Get team names from Team model
     const teamIds = standings.map((s) => s.teamId);
     
-    const [newTeams, oldTeams] = await Promise.all([
-      prisma.team.findMany({
-        where: { id: { in: teamIds } },
-        select: { id: true, name: true },
-      }),
-      prisma.oldTeam.findMany({
-        where: { id: { in: teamIds } },
-        select: { id: true, name: true },
-      }),
-    ]);
+    const teams = await prisma.team.findMany({
+      where: { id: { in: teamIds } },
+      select: { id: true, name: true },
+    });
 
-    // Combine team maps
+    // Create team map
     const teamMap = new Map<string, string>();
-    newTeams.forEach((t) => teamMap.set(t.id, t.name));
-    oldTeams.forEach((t) => teamMap.set(t.id, t.name));
+    teams.forEach((t) => teamMap.set(t.id, t.name));
 
     // Get recent matches for form calculation (matches with FINISHED status)
     const recentMatches = await prisma.match.findMany({

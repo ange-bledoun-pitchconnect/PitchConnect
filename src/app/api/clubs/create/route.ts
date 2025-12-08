@@ -3,6 +3,34 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/**
+ * Generate a unique club code from club name
+ * Example: "Arsenal FC" -> "ARS"
+ */
+function generateClubCode(clubName: string): string {
+  const words = clubName.trim().toUpperCase().split(/\s+/);
+  const code = words.map((word) => word[0]).join('').substring(0, 3);
+  return code || 'CLB';
+}
+
+/**
+ * Generate a unique team code from team name
+ * Example: "Arsenal U21" -> "AU21"
+ */
+function generateTeamCode(teamName: string): string {
+  const words = teamName.trim().toUpperCase().split(/\s+/);
+  const code = words.map((word) => word[0]).join('').substring(0, 10);
+  return code || 'TEAM';
+}
+
+// ============================================================================
+// HANDLER
+// ============================================================================
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -25,17 +53,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // 🔧 FIXED: Check permissions properly
+    // Check permissions properly
     const allowedRoles = ['SUPERADMIN', 'LEAGUE_ADMIN', 'CLUB_MANAGER'];
     const userRoleNames = user.userRoles.map((ur) => ur.roleName);
     const hasPermission =
       user.isSuperAdmin || userRoleNames.some((role) => allowedRoles.includes(role));
 
-    console.log('🔍 Club creation permission check:');
-    console.log('   User:', user.email);
-    console.log('   isSuperAdmin:', user.isSuperAdmin);
-    console.log('   User roles:', userRoleNames);
-    console.log('   Has permission:', hasPermission);
+    console.log('Club creation permission check:', {
+      email: user.email,
+      isSuperAdmin: user.isSuperAdmin,
+      roles: userRoleNames,
+      hasPermission,
+    });
 
     if (!hasPermission) {
       return NextResponse.json(
@@ -47,7 +76,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { club, firstTeam } = body;
 
-    console.log('📋 Club data received:', {
+    console.log('Club data received:', {
       clubName: club?.name,
       clubCity: club?.city,
       hasFirstTeam: !!firstTeam,
@@ -67,6 +96,7 @@ export async function POST(request: NextRequest) {
       const newClub = await tx.club.create({
         data: {
           name: club.name,
+          code: generateClubCode(club.name),
           city: club.city,
           country: club.country || 'United Kingdom',
           foundedYear: club.foundedYear ? parseInt(club.foundedYear) : null,
@@ -76,11 +106,12 @@ export async function POST(request: NextRequest) {
           primaryColor: club.colors?.primary || '#FFD700',
           secondaryColor: club.colors?.secondary || '#FF6B35',
           status: 'ACTIVE',
+          type: 'PROFESSIONAL',
           ownerId: user.id,
         },
       });
 
-      console.log('✅ Club created:', newClub.id);
+      console.log('Club created:', newClub.id);
 
       // Create club membership for owner
       await tx.clubMember.create({
@@ -93,7 +124,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      console.log('✅ Club membership created for owner');
+      console.log('Club membership created for owner');
 
       // Create first team if requested
       let newTeam = null;
@@ -101,6 +132,7 @@ export async function POST(request: NextRequest) {
         newTeam = await tx.team.create({
           data: {
             name: firstTeam.name,
+            code: generateTeamCode(firstTeam.name),
             clubId: newClub.id,
             ageGroup: firstTeam.ageGroup || 'SENIOR',
             category: firstTeam.category || 'FIRST_TEAM',
@@ -108,7 +140,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        console.log('✅ First team created:', newTeam.id);
+        console.log('First team created:', newTeam.id);
 
         // Add owner to team
         await tx.teamMember.create({
@@ -121,13 +153,13 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        console.log('✅ Team membership created for owner');
+        console.log('Team membership created for owner');
       }
 
       return { club: newClub, team: newTeam };
     });
 
-    console.log('🎉 Club creation completed successfully');
+    console.log('Club creation completed successfully');
 
     return NextResponse.json({
       success: true,
@@ -136,7 +168,7 @@ export async function POST(request: NextRequest) {
       message: 'Club created successfully',
     });
   } catch (error) {
-    console.error('❌ Club creation error:', error);
+    console.error('Club creation error:', error);
     return NextResponse.json(
       {
         error: 'Failed to create club',

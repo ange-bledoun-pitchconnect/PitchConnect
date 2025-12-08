@@ -3,6 +3,24 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import prisma from '@/lib/prisma';
 
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/**
+ * Generate a unique team code from team name
+ * Example: "Arsenal U21" -> "AU21"
+ */
+function generateTeamCode(teamName: string): string {
+  const words = teamName.trim().toUpperCase().split(/\s+/);
+  const code = words.map((word) => word[0]).join('').substring(0, 10);
+  return code || 'TEAM';
+}
+
+// ============================================================================
+// HANDLER
+// ============================================================================
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { clubId: string } }
@@ -58,6 +76,7 @@ export async function POST(
       const newTeam = await tx.team.create({
         data: {
           name,
+          code: generateTeamCode(name),
           clubId,
           ageGroup: ageGroup || 'SENIOR',
           category: category || 'FIRST_TEAM',
