@@ -3,11 +3,9 @@
  * SUPERADMIN FEED ROUTE - World-Class Implementation
  * ============================================================================
  *
- *
  * @file src/app/api/superadmin/feed/route.ts
  * @description System-wide activity feed with real-time updates and filtering
  * @version 2.0.0 (Production-Ready)
- *
  *
  * FEATURES:
  * ✅ Full TypeScript type safety
@@ -25,8 +23,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 // ============================================================================
@@ -34,29 +30,6 @@ import { prisma } from '@/lib/prisma';
 // ============================================================================
 
 type ActionType =
-  | 'USER_CREATED'
-  | 'USER_UPDATED'
-  | 'USER_DELETED'
-  | 'USER_SUSPENDED'
-  | 'USER_BANNED'
-  | 'USER_UNBANNED'
-  | 'ROLE_UPGRADED'
-  | 'ROLE_DOWNGRADED'
-  | 'SUBSCRIPTION_GRANTED'
-  | 'SUBSCRIPTION_CANCELLED'
-  | 'PAYMENT_REFUNDED'
-  | 'DATA_EXPORTED'
-  | 'USER_IMPERSONATED'
-  | 'IMPERSONATION_ENDED'
-  | 'SECURITY_SETTINGS_UPDATED'
-  | 'TWO_FACTOR_ENABLED'
-  | 'TWO_FACTOR_DISABLED'
-  | 'LOGIN_ATTEMPT'
-  | 'FAILED_LOGIN'
-  | 'API_KEY_GENERATED'
-  | 'API_KEY_REVOKED'
-  | 'BULK_USER_ACTION'
-  | 'SYSTEM_MAINTENANCE';
   | 'USER_CREATED'
   | 'USER_UPDATED'
   | 'USER_DELETED'
@@ -103,19 +76,6 @@ interface ActivityRecord {
   severity: string;
   ipAddress: string | null;
   userAgent: string | null;
-  entityType: string | null;
-  entityId: string | null;
-  targetUser: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-  } | null;
-  changes: Record<string, unknown> | null;
-  details: string | null;
-  severity: string;
-  ipAddress: string | null;
-  userAgent: string | null;
   timestamp: string;
 }
 
@@ -140,14 +100,7 @@ interface FeedResponse {
 interface ParsedQueryParams {
   page: number;
   limit: number;
-interface ParsedQueryParams {
-  page: number;
-  limit: number;
   actionType?: ActionType;
-  entityType?: string;
-  severity?: string;
-  performedById?: string;
-  targetUserId?: string;
   entityType?: string;
   severity?: string;
   performedById?: string;
@@ -164,23 +117,9 @@ interface ErrorResponse {
   details?: string;
 }
 
-interface ErrorResponse {
-  success: boolean;
-  error: string;
-  code: string;
-  details?: string;
-}
-
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
-const ERROR_CODES = {
-  UNAUTHORIZED: 'UNAUTHORIZED',
-  FORBIDDEN: 'FORBIDDEN',
-  INVALID_REQUEST: 'INVALID_REQUEST',
-  INTERNAL_ERROR: 'INTERNAL_ERROR',
-} as const;
 
 const ERROR_CODES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
@@ -207,21 +146,6 @@ const SEVERITY_MAPPING: Record<string, string> = {
   LOGIN_ATTEMPT: 'INFO',
   FAILED_LOGIN: 'WARNING',
   DEFAULT: 'INFO',
-
-const VALID_SEVERITIES = ['INFO', 'WARNING', 'CRITICAL'];
-
-const SEVERITY_MAPPING: Record<string, string> = {
-  USER_DELETED: 'CRITICAL',
-  USER_BANNED: 'CRITICAL',
-  ROLE_UPGRADED: 'WARNING',
-  SUBSCRIPTION_CANCELLED: 'WARNING',
-  PAYMENT_REFUNDED: 'WARNING',
-  USER_IMPERSONATED: 'CRITICAL',
-  SECURITY_SETTINGS_UPDATED: 'WARNING',
-  TWO_FACTOR_ENABLED: 'INFO',
-  LOGIN_ATTEMPT: 'INFO',
-  FAILED_LOGIN: 'WARNING',
-  DEFAULT: 'INFO',
 };
 
 // ============================================================================
@@ -230,26 +154,19 @@ const SEVERITY_MAPPING: Record<string, string> = {
 
 /**
  * Parse and validate query parameters
+ * Ensures all parameters are within acceptable ranges and valid formats
  */
-function parseQueryParams(request: NextRequest): ParsedQueryParams {
 function parseQueryParams(request: NextRequest): ParsedQueryParams {
   const { searchParams } = new URL(request.url);
 
   const page = Math.max(
     parseInt(searchParams.get('page') || String(DEFAULT_PAGE), 10),
-    parseInt(searchParams.get('page') || String(DEFAULT_PAGE), 10),
     1
   );
   const limit = Math.min(
     Math.max(parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10), 1),
-    Math.max(parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10), 1),
     MAX_LIMIT
   );
-  const actionType = searchParams.get('actionType') || undefined;
-  const entityType = searchParams.get('entityType') || undefined;
-  const severity = searchParams.get('severity') || undefined;
-  const performedById = searchParams.get('performedById') || undefined;
-  const targetUserId = searchParams.get('targetUserId') || undefined;
   const actionType = searchParams.get('actionType') || undefined;
   const entityType = searchParams.get('entityType') || undefined;
   const severity = searchParams.get('severity') || undefined;
@@ -262,18 +179,13 @@ function parseQueryParams(request: NextRequest): ParsedQueryParams {
   // Validate severity if provided
   if (severity && !VALID_SEVERITIES.includes(severity)) {
     throw new Error(`Invalid severity. Valid options: ${VALID_SEVERITIES.join(', ')}`);
-  // Validate severity if provided
-  if (severity && !VALID_SEVERITIES.includes(severity)) {
-    throw new Error(`Invalid severity. Valid options: ${VALID_SEVERITIES.join(', ')}`);
   }
 
   // Validate dates
   if (startDate && isNaN(new Date(startDate).getTime())) {
     throw new Error('Invalid startDate format. Use ISO 8601 (YYYY-MM-DD)');
-    throw new Error('Invalid startDate format. Use ISO 8601 (YYYY-MM-DD)');
   }
   if (endDate && isNaN(new Date(endDate).getTime())) {
-    throw new Error('Invalid endDate format. Use ISO 8601 (YYYY-MM-DD)');
     throw new Error('Invalid endDate format. Use ISO 8601 (YYYY-MM-DD)');
   }
 
@@ -281,11 +193,8 @@ function parseQueryParams(request: NextRequest): ParsedQueryParams {
     page,
     limit,
     actionType: actionType as ActionType | undefined,
-    actionType: actionType as ActionType | undefined,
     entityType,
     severity,
-    performedById,
-    targetUserId,
     performedById,
     targetUserId,
     startDate,
@@ -297,8 +206,7 @@ function parseQueryParams(request: NextRequest): ParsedQueryParams {
 /**
  * Build Prisma where clause from query parameters
  */
-function buildWhereClause(params: ParsedQueryParams) {
-function buildWhereClause(params: ParsedQueryParams) {
+function buildWhereClause(params: ParsedQueryParams): Record<string, unknown> {
   const where: Record<string, unknown> = {};
 
   if (params.actionType) {
@@ -319,20 +227,10 @@ function buildWhereClause(params: ParsedQueryParams) {
 
   if (params.targetUserId) {
     where.targetUserId = params.targetUserId;
-  if (params.performedById) {
-    where.performedById = params.performedById;
-  }
-
-  if (params.targetUserId) {
-    where.targetUserId = params.targetUserId;
   }
 
   if (params.search) {
     where.OR = [
-      { details: { contains: params.search, mode: 'insensitive' } },
-      { performedBy: { email: { contains: params.search, mode: 'insensitive' } } },
-      { performedBy: { firstName: { contains: params.search, mode: 'insensitive' } } },
-      { performedBy: { lastName: { contains: params.search, mode: 'insensitive' } } },
       { details: { contains: params.search, mode: 'insensitive' } },
       { performedBy: { email: { contains: params.search, mode: 'insensitive' } } },
       { performedBy: { firstName: { contains: params.search, mode: 'insensitive' } } },
@@ -345,13 +243,9 @@ function buildWhereClause(params: ParsedQueryParams) {
 
     if (params.startDate) {
       (where.createdAt as Record<string, unknown>).gte = new Date(params.startDate);
-      (where.createdAt as Record<string, unknown>).gte = new Date(params.startDate);
     }
 
     if (params.endDate) {
-      const endDate = new Date(params.endDate);
-      endDate.setHours(23, 59, 59, 999);
-      (where.createdAt as Record<string, unknown>).lte = endDate;
       const endDate = new Date(params.endDate);
       endDate.setHours(23, 59, 59, 999);
       (where.createdAt as Record<string, unknown>).lte = endDate;
@@ -363,10 +257,7 @@ function buildWhereClause(params: ParsedQueryParams) {
 
 /**
  * Determine severity level for an action
- * Determine severity level for an action
  */
-function determineSeverity(action: string): string {
-  return SEVERITY_MAPPING[action] || SEVERITY_MAPPING.DEFAULT;
 function determineSeverity(action: string): string {
   return SEVERITY_MAPPING[action] || SEVERITY_MAPPING.DEFAULT;
 }
@@ -382,27 +273,10 @@ function transformAuditLog(auditLog: any): ActivityRecord {
       email: auditLog.performedBy.email,
       firstName: auditLog.performedBy.firstName,
       lastName: auditLog.performedBy.lastName,
-      id: auditLog.performedBy.id,
-      email: auditLog.performedBy.email,
-      firstName: auditLog.performedBy.firstName,
-      lastName: auditLog.performedBy.lastName,
     },
     action: auditLog.action,
     entityType: auditLog.entityType,
-    action: auditLog.action,
-    entityType: auditLog.entityType,
     entityId: auditLog.entityId,
-    targetUser: auditLog.targetUser
-      ? {
-          id: auditLog.targetUser.id,
-          email: auditLog.targetUser.email,
-          firstName: auditLog.targetUser.firstName,
-          lastName: auditLog.targetUser.lastName,
-        }
-      : null,
-    changes: auditLog.changes as Record<string, unknown> | null,
-    details: auditLog.details,
-    severity: determineSeverity(auditLog.action),
     targetUser: auditLog.targetUser
       ? {
           id: auditLog.targetUser.id,
@@ -422,25 +296,19 @@ function transformAuditLog(auditLog: any): ActivityRecord {
 
 /**
  * Get activity statistics
+ * Calculates total activities, active users, and critical events
  */
 async function getActivityStats(
-  where: Record<string, unknown>
   where: Record<string, unknown>
 ): Promise<{ totalActivities: number; activeUsers: number; criticalEvents: number }> {
   const [totalActivities, criticalEvents, uniqueUsers] = await Promise.all([
     prisma.auditLog.count({ where }),
-
-
     prisma.auditLog.count({
       where: {
         ...where,
         severity: 'CRITICAL',
       },
     }),
-
-    prisma.auditLog.groupBy({
-      by: ['performedById'],
-
     prisma.auditLog.groupBy({
       by: ['performedById'],
       where,
@@ -455,18 +323,14 @@ async function getActivityStats(
 }
 
 /**
- * Calculate period description
+ * Calculate period description based on date range
  */
-function getPeriodDescription(startDate?: string, endDate?: string): string {
 function getPeriodDescription(startDate?: string, endDate?: string): string {
   if (!startDate && !endDate) {
     return 'all-time';
   }
 
   if (startDate && endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffMs = end.getTime() - start.getTime();
     const start = new Date(startDate);
     const end = new Date(endDate);
     const diffMs = end.getTime() - start.getTime();
@@ -502,29 +366,12 @@ function getPeriodDescription(startDate?: string, endDate?: string): string {
  * - endDate: ISO 8601 date string
  * - search: string (search in details and user info)
  *
- * @param request NextRequest
- * @returns FeedResponse on success, ErrorResponse on failure
- *
- * Retrieve system activity feed with filtering and pagination (SuperAdmin only)
- *
- * Query parameters:
- * - page: number (default: 1)
- * - limit: number (default: 20, max: 100)
- * - actionType: string (filter by action type)
- * - entityType: string (filter by entity type)
- * - severity: 'INFO' | 'WARNING' | 'CRITICAL'
- * - performedById: string (filter by user who performed action)
- * - targetUserId: string (filter by target user)
- * - startDate: ISO 8601 date string
- * - endDate: ISO 8601 date string
- * - search: string (search in details and user info)
+ * Example:
+ * GET /api/superadmin/feed?page=1&limit=20&severity=CRITICAL&search=user@example.com
  *
  * @param request NextRequest
  * @returns FeedResponse on success, ErrorResponse on failure
  */
-export async function GET(
-  request: NextRequest
-): Promise<NextResponse<FeedResponse | ErrorResponse>> {
 export async function GET(
   request: NextRequest
 ): Promise<NextResponse<FeedResponse | ErrorResponse>> {
@@ -537,17 +384,12 @@ export async function GET(
     // ========================================================================
 
     const session = await getServerSession(authOptions);
-    const session = await getServerSession(authOptions);
 
-    if (!session?.user?.email) {
-      console.warn('Unauthorized superadmin feed access - no session', { requestId });
     if (!session?.user?.email) {
       console.warn('Unauthorized superadmin feed access - no session', { requestId });
       return NextResponse.json(
         {
           success: false,
-          error: 'Authentication required',
-          code: ERROR_CODES.UNAUTHORIZED,
           error: 'Authentication required',
           code: ERROR_CODES.UNAUTHORIZED,
         },
@@ -586,44 +428,12 @@ export async function GET(
 
     // ========================================================================
     // 3. PARSE & VALIDATE PARAMETERS
-    // 2. VALIDATE SUPERADMIN ACCESS
-    // ========================================================================
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        id: true,
-        email: true,
-        isSuperAdmin: true,
-        roles: true,
-      },
-    });
-
-    if (!user || (!user.isSuperAdmin && !user.roles.includes('SUPERADMIN'))) {
-      console.warn('SuperAdmin authorization failed for feed', {
-        requestId,
-        email: session.user.email,
-      });
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'SuperAdmin access required',
-          code: ERROR_CODES.FORBIDDEN,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 3. PARSE & VALIDATE PARAMETERS
     // ========================================================================
 
     const query = parseQueryParams(request);
 
     console.log('Feed request', {
-    console.log('Feed request', {
       requestId,
-      superAdminId: user.id,
       superAdminId: user.id,
       filters: {
         actionType: query.actionType,
@@ -635,14 +445,12 @@ export async function GET(
 
     // ========================================================================
     // 4. BUILD QUERY
-    // 4. BUILD QUERY
     // ========================================================================
 
     const where = buildWhereClause(query);
     const skip = (query.page - 1) * query.limit;
 
     // ========================================================================
-    // 5. FETCH DATA
     // 5. FETCH DATA
     // ========================================================================
 
@@ -662,15 +470,6 @@ export async function GET(
             },
           },
           targetUser: {
-          performedBy: {
-            select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          targetUser: {
             select: {
               id: true,
               email: true,
@@ -680,12 +479,10 @@ export async function GET(
           },
         },
       }),
-
       prisma.auditLog.count({ where }),
     ]);
 
     // ========================================================================
-    // 6. TRANSFORM DATA
     // 6. TRANSFORM DATA
     // ========================================================================
 
@@ -693,14 +490,11 @@ export async function GET(
 
     // ========================================================================
     // 7. GET STATISTICS
-    // 7. GET STATISTICS
     // ========================================================================
 
     const stats = await getActivityStats(where);
-    const stats = await getActivityStats(where);
 
     // ========================================================================
-    // 8. BUILD RESPONSE
     // 8. BUILD RESPONSE
     // ========================================================================
 
@@ -722,21 +516,17 @@ export async function GET(
         activeUsers: stats.activeUsers,
         criticalEvents: stats.criticalEvents,
         period: getPeriodDescription(query.startDate, query.endDate),
-        period: getPeriodDescription(query.startDate, query.endDate),
       },
     };
 
     // ========================================================================
-    // 9. LOG & RESPOND
     // 9. LOG & RESPOND
     // ========================================================================
 
     const duration = performance.now() - startTime;
 
     console.log('Feed retrieved successfully', {
-    console.log('Feed retrieved successfully', {
       requestId,
-      superAdminId: user.id,
       superAdminId: user.id,
       recordCount: transformedActivities.length,
       totalRecords: total,
@@ -744,7 +534,6 @@ export async function GET(
     });
 
     return NextResponse.json(response, {
-      status: 200,
       status: 200,
       headers: {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
@@ -760,7 +549,6 @@ export async function GET(
     // Validation errors
     if (error instanceof Error && error.message.includes('Invalid')) {
       console.warn('Validation error in feed', {
-      console.warn('Validation error in feed', {
         requestId,
         error: error.message,
         duration: `${Math.round(duration)}ms`,
@@ -771,14 +559,11 @@ export async function GET(
           success: false,
           error: error.message,
           code: ERROR_CODES.INVALID_REQUEST,
-          error: error.message,
-          code: ERROR_CODES.INVALID_REQUEST,
         },
         { status: 400, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    console.error('Feed error', {
     console.error('Feed error', {
       requestId,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -789,9 +574,6 @@ export async function GET(
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to retrieve activity feed',
-        code: ERROR_CODES.INTERNAL_ERROR,
-        details: error instanceof Error ? error.message : 'Unknown error occurred',
         error: 'Failed to retrieve activity feed',
         code: ERROR_CODES.INTERNAL_ERROR,
         details: error instanceof Error ? error.message : 'Unknown error occurred',
