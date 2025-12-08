@@ -51,11 +51,28 @@ type PerformanceRecord = {
   }>;
 };
 
+type PerformanceRecord = {
+  date: Date;
+  matchId: string;
+  goals: number;
+  assists: number;
+  yellowCards: number;
+  redCards: number;
+  isStarting: boolean;
+  events: Array<{
+    type: string;
+    minute: number;
+    note?: string;
+  }>;
+};
+
 export async function GET(
+  _req: NextRequest,
   _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; playerId: string } }
 ) {
   const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -64,10 +81,16 @@ export async function GET(
     const { clubId, teamId, playerId } = params;
 
     // Verify club exists and user owns it
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
     if (!club) {
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
@@ -99,6 +122,7 @@ export async function GET(
     });
 
     if (!player) {
+    if (!player) {
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
@@ -124,9 +148,12 @@ export async function GET(
         match: {
           select: {
             id: true,
+            id: true,
             date: true,
             homeTeam: { select: { name: true } },
             awayTeam: { select: { name: true } },
+            homeGoals: true,
+            awayGoals: true,
             homeGoals: true,
             awayGoals: true,
           },
@@ -153,10 +180,14 @@ export async function GET(
       orderBy: {
         match: {
           date: 'asc',
+        match: {
+          date: 'asc',
         },
       },
     });
 
+    // Build performance history by match using matchId as key for uniqueness
+    const performanceByMatch = new Map<string, PerformanceRecord>();
     // Build performance history by match using matchId as key for uniqueness
     const performanceByMatch = new Map<string, PerformanceRecord>();
 
@@ -172,13 +203,24 @@ export async function GET(
         performanceByMatch.set(matchId, {
           date: attendance.match.date,
           matchId,
+      if (!performanceByMatch.has(matchId)) {
+        performanceByMatch.set(matchId, {
+          date: attendance.match.date,
+          matchId,
           goals: 0,
           assists: 0,
           yellowCards: 0,
           redCards: 0,
           isStarting,
+          isStarting,
           events: [],
         });
+      } else {
+        // Update starting status if this is a starting appearance
+        const perf = performanceByMatch.get(matchId)!;
+        if (isStarting) {
+          perf.isStarting = true;
+        }
       } else {
         // Update starting status if this is a starting appearance
         const perf = performanceByMatch.get(matchId)!;
@@ -189,9 +231,15 @@ export async function GET(
     });
 
     // Add all events to corresponding matches
+    // Add all events to corresponding matches
     events.forEach((event) => {
       const matchId = event.match.id;
+      const matchId = event.match.id;
 
+      if (!performanceByMatch.has(matchId)) {
+        performanceByMatch.set(matchId, {
+          date: event.match.date,
+          matchId,
       if (!performanceByMatch.has(matchId)) {
         performanceByMatch.set(matchId, {
           date: event.match.date,
@@ -206,25 +254,53 @@ export async function GET(
       }
 
       const perf = performanceByMatch.get(matchId)!;
+      const perf = performanceByMatch.get(matchId)!;
 
       // Count event types using correct schema field name 'type'
       if (event.type === 'GOAL') {
         perf.goals++;
       } else if (event.type === 'ASSIST') {
+      } else if (event.type === 'ASSIST') {
         perf.assists++;
       } else if (event.type === 'YELLOW_CARD') {
+      } else if (event.type === 'YELLOW_CARD') {
         perf.yellowCards++;
+      } else if (event.type === 'RED_CARD') {
       } else if (event.type === 'RED_CARD') {
         perf.redCards++;
       }
 
       perf.events.push({
         type: event.type,
+        type: event.type,
         minute: event.minute,
+        note: event.additionalInfo || undefined,
         note: event.additionalInfo || undefined,
       });
     });
 
+    // Convert to array and sort by date
+    const performance = Array.from(performanceByMatch.values()).sort(
+      (a, b) => a.date.getTime() - b.date.getTime()
+    );
+
+    // Calculate aggregate statistics
+    const stats = performance.reduce(
+      (acc, perf) => ({
+        totalGoals: acc.totalGoals + perf.goals,
+        totalAssists: acc.totalAssists + perf.assists,
+        totalYellowCards: acc.totalYellowCards + perf.yellowCards,
+        totalRedCards: acc.totalRedCards + perf.redCards,
+        totalAppearances: acc.totalAppearances + 1,
+      }),
+      {
+        totalGoals: 0,
+        totalAssists: 0,
+        totalYellowCards: 0,
+        totalRedCards: 0,
+        totalAppearances: 0,
+      }
+    );
     // Convert to array and sort by date
     const performance = Array.from(performanceByMatch.values()).sort(
       (a, b) => a.date.getTime() - b.date.getTime()
@@ -257,8 +333,13 @@ export async function GET(
       },
       performance,
       stats,
+      stats,
     });
   } catch (error) {
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId] error:',
+      error
+    );
     console.error(
       'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId] error:',
       error

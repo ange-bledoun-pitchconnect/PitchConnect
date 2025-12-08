@@ -21,6 +21,29 @@
  * }
  */
 
+/**
+ * Team Assists Analytics API
+ *
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/assists
+ *
+ * Returns: Top assist providers for a team sorted by number of assists
+ * Authorization: Only club owner can access
+ *
+ * Response:
+ * {
+ *   teamId: string,
+ *   clubId: string,
+ *   totalAssists: number,
+ *   topAssistProviders: Array<{
+ *     playerId: string,
+ *     playerName: string,
+ *     position: string,
+ *     assistCount: number,
+ *     lastAssistDate: Date
+ *   }>
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
@@ -28,9 +51,11 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(
   _req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -39,10 +64,17 @@ export async function GET(
     const { clubId, teamId } = params;
 
     // Verify club ownership
+    // Verify club ownership
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    // Check authorization - only club owner can access
+    if (club.ownerId !== session.user.id) {
     if (!club) {
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
@@ -66,6 +98,7 @@ export async function GET(
     const assistEvents = await prisma.matchEvent.findMany({
       where: {
         type: 'ASSIST', // Correct field name from schema
+        type: 'ASSIST', // Correct field name from schema
         player: {
           // Get assists from players in this team
           teams: {
@@ -82,10 +115,16 @@ export async function GET(
             firstName: true,
             lastName: true,
             position: true,
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            position: true,
           },
         },
         match: {
           select: {
+            id: true,
             id: true,
             date: true,
           },
@@ -98,6 +137,17 @@ export async function GET(
       },
     });
 
+    // Group assists by player with proper typing
+    const playerAssistsMap = new Map<
+      string,
+      {
+        playerId: string;
+        playerName: string;
+        position: string;
+        assistCount: number;
+        lastAssistDate: Date;
+      }
+    >();
     // Group assists by player with proper typing
     const playerAssistsMap = new Map<
       string,
@@ -123,7 +173,9 @@ export async function GET(
         playerAssistsMap.set(playerId, {
           playerId,
           playerName,
+          playerName,
           position: event.player.position,
+          assistCount: 0,
           assistCount: 0,
           lastAssistDate: event.match.date,
         });
@@ -132,8 +184,16 @@ export async function GET(
       const playerData = playerAssistsMap.get(playerId)!;
       playerData.assistCount++;
       playerData.lastAssistDate = event.match.date; // Keep most recent
+
+      const playerData = playerAssistsMap.get(playerId)!;
+      playerData.assistCount++;
+      playerData.lastAssistDate = event.match.date; // Keep most recent
     });
 
+    // Convert to array and sort by assist count (descending)
+    const topAssistProviders = Array.from(playerAssistsMap.values()).sort(
+      (a, b) => b.assistCount - a.assistCount
+    );
     // Convert to array and sort by assist count (descending)
     const topAssistProviders = Array.from(playerAssistsMap.values()).sort(
       (a, b) => b.assistCount - a.assistCount
@@ -145,13 +205,24 @@ export async function GET(
       totalAssists: assistEvents.length,
       topAssistProviders,
     });
+    return NextResponse.json({
+      teamId,
+      clubId,
+      totalAssists: assistEvents.length,
+      topAssistProviders,
+    });
   } catch (error) {
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/assists error:',
+      error
+    );
     console.error(
       'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/assists error:',
       error
     );
     return NextResponse.json(
       {
+        error: 'Failed to fetch assists analytics',
         error: 'Failed to fetch assists analytics',
         details: error instanceof Error ? error.message : 'Unknown error',
       },

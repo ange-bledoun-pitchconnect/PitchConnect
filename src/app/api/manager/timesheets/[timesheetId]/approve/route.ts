@@ -18,6 +18,26 @@
  * ✅ JSDoc documentation
  */
 
+/**
+ * ============================================================================
+ * TIMESHEET APPROVAL ROUTE - World-Class Sports Management Implementation
+ * ============================================================================
+ *
+ * @file src/app/api/manager/timesheets/[timesheetId]/approve/route.ts
+ * @description Manager approval workflow for player timesheets with validation
+ * @version 2.0.0 (Production-Ready)
+ *
+ * FEATURES:
+ * ✅ Full TypeScript type safety
+ * ✅ Schema-aligned role-based access control
+ * ✅ Comprehensive validation & error handling
+ * ✅ Request ID tracking for debugging
+ * ✅ Performance monitoring
+ * ✅ Audit logging
+ * ✅ Transaction safety
+ * ✅ JSDoc documentation
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -168,7 +188,15 @@ export async function POST(
   const requestId = crypto.randomUUID();
   const startTime = performance.now();
 
+): Promise<NextResponse<ApprovalResponse | ErrorResponse>> {
+  const requestId = crypto.randomUUID();
+  const startTime = performance.now();
+
   try {
+    // ========================================================================
+    // 1. AUTHENTICATION
+    // ========================================================================
+
     // ========================================================================
     // 1. AUTHENTICATION
     // ========================================================================
@@ -176,6 +204,15 @@ export async function POST(
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
+      console.warn('Unauthorized approval attempt - no session', { requestId });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication required',
+          code: ERROR_CODES.UNAUTHORIZED,
+        },
+        { status: 401, headers: { 'X-Request-ID': requestId } }
+      );
       console.warn('Unauthorized approval attempt - no session', { requestId });
       return NextResponse.json(
         {
@@ -208,7 +245,32 @@ export async function POST(
         },
         { status: 403, headers: { 'X-Request-ID': requestId } }
       );
+    // ========================================================================
+    // 2. VALIDATE MANAGER AUTHORIZATION
+    // ========================================================================
+
+    const { isValid: isAuthorized, error: authError, user } =
+      await validateManagerAccess(session.user.email);
+
+    if (!isAuthorized || !user) {
+      console.warn('Manager authorization failed', {
+        requestId,
+        email: session.user.email,
+        error: authError,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: authError || 'Manager role required',
+          code: ERROR_CODES.FORBIDDEN,
+        },
+        { status: 403, headers: { 'X-Request-ID': requestId } }
+      );
     }
+
+    // ========================================================================
+    // 3. VALIDATE TIMESHEET STATE
+    // ========================================================================
 
     // ========================================================================
     // 3. VALIDATE TIMESHEET STATE
@@ -218,6 +280,8 @@ export async function POST(
 
     const { isValid: isTimesheetValid, error: timesheetError, timesheet } =
       await validateTimesheetState(timesheetId);
+    const { isValid: isTimesheetValid, error: timesheetError, timesheet } =
+      await validateTimesheetState(timesheetId);
 
     if (!isTimesheetValid || !timesheet) {
       console.warn('Timesheet validation failed', {
@@ -225,7 +289,19 @@ export async function POST(
         timesheetId,
         error: timesheetError,
       });
+    if (!isTimesheetValid || !timesheet) {
+      console.warn('Timesheet validation failed', {
+        requestId,
+        timesheetId,
+        error: timesheetError,
+      });
       return NextResponse.json(
+        {
+          success: false,
+          error: timesheetError || 'Timesheet not found',
+          code: timesheet ? ERROR_CODES.INVALID_STATE : ERROR_CODES.NOT_FOUND,
+        },
+        { status: timesheet ? 400 : 404, headers: { 'X-Request-ID': requestId } }
         {
           success: false,
           error: timesheetError || 'Timesheet not found',
@@ -286,8 +362,28 @@ export async function POST(
         'X-Request-ID': requestId,
         'X-Response-Time': `${Math.round(duration)}ms`,
       },
+      timesheetId: updatedTimesheet.id,
+      approvedBy: approverName,
+      approvedAt: approvedAt.toISOString(),
+    };
+
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'X-Request-ID': requestId,
+        'X-Response-Time': `${Math.round(duration)}ms`,
+      },
     });
   } catch (error) {
+    const duration = performance.now() - startTime;
+
+    console.error('Timesheet approval error', {
+      requestId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      duration: `${Math.round(duration)}ms`,
+    });
+
     const duration = performance.now() - startTime;
 
     console.error('Timesheet approval error', {
@@ -300,11 +396,16 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
+        success: false,
         error: 'Failed to approve timesheet',
         code: ERROR_CODES.INTERNAL_ERROR,
         details:
           error instanceof Error ? error.message : 'Unknown error occurred',
+        code: ERROR_CODES.INTERNAL_ERROR,
+        details:
+          error instanceof Error ? error.message : 'Unknown error occurred',
       },
+      { status: 500, headers: { 'X-Request-ID': requestId } }
       { status: 500, headers: { 'X-Request-ID': requestId } }
     );
   }

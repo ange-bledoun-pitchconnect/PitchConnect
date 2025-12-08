@@ -35,6 +35,43 @@
  * }
  */
 
+/**
+ * Team Analytics API
+ *
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics
+ *
+ * Returns: Comprehensive team statistics including match results, player stats,
+ * goals, assists, clean sheets, and win rate
+ *
+ * Authorization: Only club owner can access
+ *
+ * Response:
+ * {
+ *   teamStats: {
+ *     totalMatches: number,
+ *     totalGoals: number,
+ *     totalAssists: number,
+ *     wins: number,
+ *     draws: number,
+ *     losses: number,
+ *     winRate: number,
+ *     goalsPerGame: number,
+ *     cleanSheets: number,
+ *     avgAppearances: number
+ *   },
+ *   playerStats: Array<{
+ *     playerId: string,
+ *     playerName: string,
+ *     position: string,
+ *     shirtNumber: number,
+ *     goals: number,
+ *     assists: number,
+ *     appearances: number,
+ *     ... (other stats)
+ *   }>
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
@@ -42,9 +79,11 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(
   _req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -52,6 +91,7 @@ export async function GET(
   try {
     const { clubId, teamId } = params;
 
+    // Verify club exists and user owns it
     // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
@@ -62,9 +102,16 @@ export async function GET(
     }
 
     if (club.ownerId !== session.user.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
     // Verify team exists and belongs to club (using oldTeam per schema)
     const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
@@ -78,6 +125,7 @@ export async function GET(
     const matches = await prisma.match.findMany({
       where: {
         OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+        status: 'FINISHED',
         status: 'FINISHED',
       },
       include: {
@@ -98,6 +146,11 @@ export async function GET(
 
     matches.forEach((match) => {
       const isHome = match.homeTeamId === teamId;
+      const teamScore = isHome ? match.homeGoals : match.awayGoals;
+      const opponentScore = isHome ? match.awayGoals : match.homeGoals;
+
+      // Handle null scores (match not completed)
+      if (teamScore === null || opponentScore === null) return;
       const teamScore = isHome ? match.homeGoals : match.awayGoals;
       const opponentScore = isHome ? match.awayGoals : match.homeGoals;
 
@@ -128,6 +181,15 @@ export async function GET(
     // Get all players in this team using TeamPlayer relation
     const teamPlayers = await prisma.teamPlayer.findMany({
       where: { teamId },
+      include: {
+        player: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
       include: {
         player: {
           include: {
@@ -174,11 +236,19 @@ export async function GET(
         const substitutedOn = matchAttendances.filter(
           (ma) => ma.status === 'SUBSTITUTE'
         ).length;
+        const appearances = matchAttendances.length;
+        const matchesInStarting11 = matchAttendances.filter(
+          (ma) => ma.status === 'STARTING_LINEUP'
+        ).length;
+        const substitutedOn = matchAttendances.filter(
+          (ma) => ma.status === 'SUBSTITUTE'
+        ).length;
 
         return {
           playerId: player.id,
           playerName: `${player.user.firstName} ${player.user.lastName}`,
           position: player.position || 'Unknown',
+          shirtNumber: player.shirtNumber,
           shirtNumber: player.shirtNumber,
           goals,
           assists,
@@ -200,6 +270,7 @@ export async function GET(
     );
 
     // Calculate team assists (sum of all player assists)
+    // Calculate team assists (sum of all player assists)
     const totalAssists = playerStats.reduce((sum, p) => sum + p.assists, 0);
     const avgAppearances =
       playerStats.length > 0
@@ -216,14 +287,18 @@ export async function GET(
         wins,
         draws,
         losses,
-        winRate,
-        goalsPerGame,
+        winRate: parseFloat(winRate.toFixed(2)),
+        goalsPerGame: parseFloat(goalsPerGame.toFixed(2)),
         cleanSheets,
-        avgAppearances,
+        avgAppearances: parseFloat(avgAppearances.toFixed(2)),
       },
       playerStats: playerStats.sort((a, b) => b.goals - a.goals),
     });
   } catch (error) {
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics error:',
+      error
+    );
     console.error(
       'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics error:',
       error

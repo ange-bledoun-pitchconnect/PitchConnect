@@ -21,9 +21,11 @@ import { prisma } from '@/lib/prisma';
  */
 export async function GET(
   _req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -31,6 +33,7 @@ export async function GET(
   try {
     const { clubId } = params;
 
+    // Get club with teams and members
     // Get club with teams and members
     const club = await prisma.club.findUnique({
       where: { id: clubId },
@@ -64,6 +67,7 @@ export async function GET(
           select: {
             teams: true,
             members: true,
+            members: true,
           },
         },
       },
@@ -73,6 +77,8 @@ export async function GET(
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
 
+    // Check authorization - only club owner can view
+    if (club.ownerId !== session.user.id) {
     // Check authorization - only club owner can view
     if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -113,6 +119,7 @@ export async function PATCH(
 ) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -131,6 +138,8 @@ export async function PATCH(
 
     // Check authorization - only club owner can update
     if (club.ownerId !== session.user.id) {
+    // Check authorization - only club owner can update
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -138,6 +147,16 @@ export async function PATCH(
     const updatedClub = await prisma.club.update({
       where: { id: clubId },
       data: {
+        ...(body.name && { name: body.name }),
+        ...(body.description !== undefined && { description: body.description }),
+        ...(body.country && { country: body.country }),
+        ...(body.city !== undefined && { city: body.city }),
+        ...(body.foundedYear !== undefined && { foundedYear: body.foundedYear }),
+        ...(body.stadiumName !== undefined && { stadiumName: body.stadiumName }),
+        ...(body.logoUrl !== undefined && { logoUrl: body.logoUrl }),
+        ...(body.primaryColor && { primaryColor: body.primaryColor }),
+        ...(body.secondaryColor && { secondaryColor: body.secondaryColor }),
+        ...(body.status && { status: body.status }),
         ...(body.name && { name: body.name }),
         ...(body.description !== undefined && { description: body.description }),
         ...(body.country && { country: body.country }),
@@ -177,9 +196,37 @@ export async function PATCH(
             },
           },
         },
+        teams: {
+          select: {
+            id: true,
+            name: true,
+            ageGroup: true,
+            category: true,
+            status: true,
+            _count: {
+              select: {
+                members: true,
+              },
+            },
+          },
+        },
+        members: {
+          select: {
+            id: true,
+            role: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
         _count: {
           select: {
             teams: true,
+            members: true,
             members: true,
           },
         },
@@ -209,9 +256,11 @@ export async function PATCH(
  */
 export async function DELETE(
   _req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -219,6 +268,7 @@ export async function DELETE(
   try {
     const { clubId } = params;
 
+    // Get club with teams
     // Get club with teams
     const club = await prisma.club.findUnique({
       where: { id: clubId },
@@ -231,6 +281,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
 
+    // Check authorization - only club owner can delete
+    if (club.ownerId !== session.user.id) {
     // Check authorization - only club owner can delete
     if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

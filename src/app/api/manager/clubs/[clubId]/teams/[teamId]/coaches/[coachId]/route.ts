@@ -22,9 +22,11 @@ import { prisma } from '@/lib/prisma';
 
 export async function DELETE(
   _req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; coachId: string } }
 ) {
   const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -33,10 +35,16 @@ export async function DELETE(
     const { clubId, teamId, coachId } = params;
 
     // Verify club exists and user owns it
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
     if (!club) {
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
@@ -55,6 +63,7 @@ export async function DELETE(
     }
 
     // Verify coach exists and belongs to this team
+    // Verify coach exists and belongs to this team
     const coach = await prisma.coach.findUnique({
       where: { id: coachId },
       include: {
@@ -62,8 +71,18 @@ export async function DELETE(
           where: { id: teamId },
         },
       },
+      include: {
+        oldTeams: {
+          where: { id: teamId },
+        },
+      },
     });
 
+    if (!coach || coach.oldTeams.length === 0) {
+      return NextResponse.json(
+        { error: 'Coach not found in this team' },
+        { status: 404 }
+      );
     if (!coach || coach.oldTeams.length === 0) {
       return NextResponse.json(
         { error: 'Coach not found in this team' },
@@ -93,6 +112,10 @@ export async function DELETE(
       message: 'Coach removed from team successfully',
     });
   } catch (error) {
+    console.error(
+      'DELETE /api/manager/clubs/[clubId]/teams/[teamId]/coaches/[coachId] error:',
+      error
+    );
     console.error(
       'DELETE /api/manager/clubs/[clubId]/teams/[teamId]/coaches/[coachId] error:',
       error

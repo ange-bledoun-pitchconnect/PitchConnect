@@ -50,8 +50,16 @@ export async function GET(_req: NextRequest) {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { joinedAt: 'desc' },
     });
+
+    if (clubMemberships.length > 0) {
+      return NextResponse.json({
+        clubs: clubMemberships.map((m) => m.club),
+        memberships: clubMemberships,
+        role: clubMemberships[0].role,
+      });
+    }
 
     // If user owns clubs, return them
     if (ownedClubs.length > 0) {
@@ -171,6 +179,7 @@ export async function POST(req: NextRequest) {
         primaryColor: primaryColor || '#FFD700',
         secondaryColor: secondaryColor || '#FF6B35',
         status: 'ACTIVE',
+        ownerId: session.user.id,
         ownerId: session.user.id,
       },
       include: {

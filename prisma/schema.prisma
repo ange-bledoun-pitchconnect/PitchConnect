@@ -315,6 +315,7 @@ model User {
   coachProfile          Coach?
   clubManager           ClubManager?
   clubOwner             ClubOwner?
+  clubOwner             ClubOwner?
   leagueAdmin           LeagueAdmin?
   parentProfile         Parent?
   treasurerProfile      Treasurer?
@@ -566,6 +567,7 @@ model ApiKey {
 
 // ============================================================================
 // CLUB & TEAM MODELS (ENHANCED WITH OWNER/MANAGER SEPARATION)
+// CLUB & TEAM MODELS (ENHANCED WITH OWNER/MANAGER SEPARATION)
 // ============================================================================
 
 model Club {
@@ -596,8 +598,16 @@ model Club {
 
 model ClubMember {
   id       String         @id @default(cuid())
+  id       String         @id @default(cuid())
   clubId   String
   userId   String
+  role     ClubMemberRole @default(MANAGER)
+  status   String         @default("ACTIVE")
+  joinedAt DateTime       @default(now())
+  joinedBy String?        // User ID who invited/added them
+  
+  permissions Json?        // JSON object for custom permissions
+  notes       String?      @db.Text
   role     ClubMemberRole @default(MANAGER)
   status   String         @default("ACTIVE")
   joinedAt DateTime       @default(now())
@@ -615,6 +625,7 @@ model ClubMember {
   @@unique([clubId, userId])
   @@index([clubId])
   @@index([userId])
+  @@index([role])
   @@index([role])
   @@map("club_members")
 }
@@ -823,6 +834,7 @@ model Contract {
 }
 
 // ============================================================================
+// COACH & CLUB MANAGER & OWNER MODELS
 // COACH & CLUB MANAGER & OWNER MODELS
 // ============================================================================
 
@@ -1797,6 +1809,7 @@ model Video {
   
   team    Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
   match   Match?  @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  creator User    @relation("videosUploaded", fields: [createdBy], references: [id], onDelete: Cascade)
   creator User    @relation("videosUploaded", fields: [createdBy], references: [id], onDelete: Cascade)
   
   createdAt DateTime @default(now())

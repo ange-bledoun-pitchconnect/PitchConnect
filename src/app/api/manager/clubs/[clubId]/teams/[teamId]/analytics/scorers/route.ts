@@ -31,11 +31,21 @@ type ScorerStats = {
   lastGoalDate: Date;
 };
 
+type ScorerStats = {
+  playerId: string;
+  playerName: string;
+  position: string;
+  goals: number;
+  lastGoalDate: Date;
+};
+
 export async function GET(
+  _req: NextRequest,
   _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -44,10 +54,16 @@ export async function GET(
     const { clubId, teamId } = params;
 
     // Verify club exists and user owns it
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
     if (!club) {
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
@@ -67,10 +83,28 @@ export async function GET(
 
     // Get goal events for players in this team
     // Using correct field name 'type' instead of 'eventType'
+    // Verify team exists and belongs to club
+    const team = await prisma.oldTeam.findUnique({
+      where: { id: teamId },
+    });
+
+    if (!team || team.clubId !== clubId) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+    }
+
+    // Get goal events for players in this team
+    // Using correct field name 'type' instead of 'eventType'
     const goalEvents = await prisma.matchEvent.findMany({
       where: {
         type: 'GOAL',
+        type: 'GOAL',
         player: {
+          // Player must be in this team via TeamPlayer relation
+          teams: {
+            some: {
+              teamId,
+            },
+          },
           // Player must be in this team via TeamPlayer relation
           teams: {
             some: {
@@ -81,6 +115,11 @@ export async function GET(
       },
       include: {
         player: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            position: true,
           select: {
             id: true,
             firstName: true,
@@ -109,8 +148,17 @@ export async function GET(
 
     // Group by player and count goals
     const playerGoals = new Map<string, ScorerStats>();
+    // Group by player and count goals
+    const playerGoals = new Map<string, ScorerStats>();
 
     goalEvents.forEach((event) => {
+      // Null check for player
+      if (!event.player) {
+        return;
+      }
+
+      const playerId = event.player.id;
+
       // Null check for player
       if (!event.player) {
         return;
@@ -123,10 +171,13 @@ export async function GET(
           playerId,
           playerName: `${event.player.user.firstName} ${event.player.user.lastName}`,
           position: event.player.position || 'Unknown',
+          position: event.player.position || 'Unknown',
           goals: 0,
           lastGoalDate: event.match.date,
         });
       }
+
+      const player = playerGoals.get(playerId)!;
 
       const player = playerGoals.get(playerId)!;
       player.goals++;
@@ -137,9 +188,17 @@ export async function GET(
     const scorers = Array.from(playerGoals.values()).sort(
       (a, b) => b.goals - a.goals
     );
+    // Sort by goals (descending)
+    const scorers = Array.from(playerGoals.values()).sort(
+      (a, b) => b.goals - a.goals
+    );
 
     return NextResponse.json(scorers);
   } catch (error) {
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/scorers error:',
+      error
+    );
     console.error(
       'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/scorers error:',
       error
