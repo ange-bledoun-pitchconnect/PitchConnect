@@ -1,8 +1,10 @@
 // ============================================================================
-// PITCHCONNECT DATABASE SCHEMA (Prisma ORM) - ENHANCED PRODUCTION VERSION
+// PITCHCONNECT DATABASE SCHEMA (Prisma ORM) - COMPLETE PRODUCTION VERSION
 // PostgreSQL via Supabase
 // Production-ready with TypeScript strict mode support
 // INCLUDES: Complete League Admin System + SuperAdmin Audit & Security
+// INCLUDES: CLUB_OWNER Role + CLUB_MANAGER + TREASURER + Full Permissions
+// FIXED: Removed circular relation conflict between Club and ClubOwner
 // ============================================================================
 
 generator client {
@@ -26,6 +28,7 @@ enum UserRole {
   PLAYER_PRO
   COACH
   CLUB_MANAGER
+  CLUB_OWNER
   LEAGUE_ADMIN
   PARENT
   TREASURER
@@ -256,6 +259,14 @@ enum ResultApprovalStatus {
   DISPUTED
 }
 
+enum ClubMemberRole {
+  OWNER
+  MANAGER
+  COACH
+  STAFF
+  TREASURER
+}
+
 // ============================================================================
 // USER & AUTHENTICATION MODELS
 // ============================================================================
@@ -303,6 +314,7 @@ model User {
   playerProfile         Player?
   coachProfile          Coach?
   clubManager           ClubManager?
+  clubOwner             ClubOwner?
   leagueAdmin           LeagueAdmin?
   parentProfile         Parent?
   treasurerProfile      Treasurer?
@@ -553,7 +565,7 @@ model ApiKey {
 }
 
 // ============================================================================
-// CLUB & TEAM MODELS
+// CLUB & TEAM MODELS (ENHANCED WITH OWNER/MANAGER SEPARATION)
 // ============================================================================
 
 model Club {
@@ -568,14 +580,14 @@ model Club {
   primaryColor   String  @default("#FFD700")
   secondaryColor String  @default("#FF6B35")
   status         String  @default("ACTIVE")
-  ownerId        String
+  ownerId        String  @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner   User         @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  teams   Team[]
-  members ClubMember[]
+  owner          User           @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  teams          Team[]
+  members        ClubMember[]
 
   @@index([ownerId])
   @@index([status])
@@ -583,12 +595,16 @@ model Club {
 }
 
 model ClubMember {
-  id       String   @id @default(cuid())
+  id       String         @id @default(cuid())
   clubId   String
   userId   String
-  role     String // OWNER, MANAGER, COACH, STAFF
-  status   String   @default("ACTIVE")
-  joinedAt DateTime @default(now())
+  role     ClubMemberRole @default(MANAGER)
+  status   String         @default("ACTIVE")
+  joinedAt DateTime       @default(now())
+  joinedBy String?        // User ID who invited/added them
+  
+  permissions Json?        // JSON object for custom permissions
+  notes       String?      @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -599,6 +615,7 @@ model ClubMember {
   @@unique([clubId, userId])
   @@index([clubId])
   @@index([userId])
+  @@index([role])
   @@map("club_members")
 }
 
@@ -806,7 +823,7 @@ model Contract {
 }
 
 // ============================================================================
-// COACH & CLUB MANAGER MODELS
+// COACH & CLUB MANAGER & OWNER MODELS
 // ============================================================================
 
 model Coach {
@@ -851,11 +868,45 @@ model ClubManager {
   @@map("club_managers")
 }
 
+model ClubOwner {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // Club Management Permissions
+  canManageTeams    Boolean @default(true)
+  canManageTreasury Boolean @default(true)
+  canViewAnalytics  Boolean @default(true)
+  canManageMembers  Boolean @default(true)
+  canManageLeagues  Boolean @default(true)
+  canUpdateProfile  Boolean @default(true)
+  
+  // Extended Owner Permissions
+  canDeleteClub     Boolean @default(false)
+  canTransferOwnership Boolean @default(false)
+  canViewReports    Boolean @default(true)
+  canManageSubscriptions Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "club_owner_user_fk")
+
+  @@index([userId])
+  @@map("club_owners")
+}
+
 model Treasurer {
   id          String  @id @default(cuid())
   userId      String  @unique
   clubId      String?
   permissions Json?
+
+  // Treasury-specific permissions
+  canViewFinancials   Boolean @default(true)
+  canApprovePayments  Boolean @default(true)
+  canManageBudgets    Boolean @default(true)
+  canGenerateReports  Boolean @default(true)
+  canExportData       Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1720,7 +1771,7 @@ model Announcement {
   createdBy String
   title     String
   content   String   @db.Text
-  priority  String   @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  priority  String   @default("NORMAL")
   pinned    Boolean  @default(false)
   
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -1746,7 +1797,7 @@ model Video {
   
   team    Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
   match   Match?  @relation(fields: [matchId], references: [id], onDelete: SetNull)
-  creator User    @relation("videosUploaded", fields: [createdBy], references: [id], onDelete: Cascade) // ✅ ADD THIS
+  creator User    @relation("videosUploaded", fields: [createdBy], references: [id], onDelete: Cascade)
   
   createdAt DateTime @default(now())
   
@@ -1755,4 +1806,3 @@ model Video {
   @@index([createdBy]) 
   @@map("videos")
 }
-

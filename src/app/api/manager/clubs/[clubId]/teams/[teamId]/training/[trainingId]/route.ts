@@ -1,40 +1,49 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]/route.ts
+/**
+ * Get, Update, or Delete Training Session API
+ *
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]
+ * PATCH /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]
+ * DELETE /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]
+ *
+ * GET: Retrieves training session details with attendance records
+ * PATCH: Updates training session information
+ * DELETE: Deletes a training session and associated attendance records
+ *
+ * Authorization: Only club owner can access
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; trainingId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId, trainingId } = params;
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const team = await prisma.team.findUnique({
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -42,34 +51,65 @@ export async function GET(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get training with attendances
-    const training = await prisma.training.findUnique({
+    // Get training session with attendances
+    const trainingSession = await prisma.trainingSession.findUnique({
       where: { id: trainingId },
       include: {
-        attendances: {
+        coach: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
+        attendance: {
           include: {
             player: {
               include: {
                 user: {
                   select: {
+                    id: true,
                     firstName: true,
                     lastName: true,
+                    email: true,
                   },
                 },
               },
             },
           },
+          orderBy: { createdAt: 'asc' },
+        },
+        drills: {
+          include: {
+            drill: true,
+          },
+        },
+        _count: {
+          select: {
+            attendance: true,
+          },
         },
       },
     });
 
-    if (!training || training.teamId !== teamId) {
-      return NextResponse.json({ error: 'Training session not found' }, { status: 404 });
+    if (!trainingSession || trainingSession.teamId !== teamId) {
+      return NextResponse.json(
+        { error: 'Training session not found' },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json(training);
+    return NextResponse.json(trainingSession);
   } catch (error) {
-    console.error('GET /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId] error:', error);
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId] error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to fetch training session',
@@ -85,7 +125,7 @@ export async function PATCH(
   { params }: { params: { clubId: string; teamId: string; trainingId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -93,25 +133,21 @@ export async function PATCH(
     const { clubId, teamId, trainingId } = params;
     const body = await req.json();
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const team = await prisma.team.findUnique({
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -119,41 +155,83 @@ export async function PATCH(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get training
-    const training = await prisma.training.findUnique({
+    // Get training session
+    const trainingSession = await prisma.trainingSession.findUnique({
       where: { id: trainingId },
     });
 
-    if (!training || training.teamId !== teamId) {
-      return NextResponse.json({ error: 'Training session not found' }, { status: 404 });
+    if (!trainingSession || trainingSession.teamId !== teamId) {
+      return NextResponse.json(
+        { error: 'Training session not found' },
+        { status: 404 }
+      );
     }
 
-    // Update training
-    const updatedTraining = await prisma.training.update({
+    // Build update data - only include provided fields
+    const updateData: any = {};
+
+    if (body.date !== undefined) {
+      updateData.date = new Date(body.date);
+    }
+    if (body.duration !== undefined) {
+      updateData.duration = body.duration;
+    }
+    if (body.location !== undefined) {
+      updateData.location = body.location;
+    }
+    if (body.focus !== undefined) {
+      updateData.focus = body.focus;
+    }
+    if (body.notes !== undefined) {
+      updateData.notes = body.notes;
+    }
+
+    // Update training session
+    const updatedTrainingSession = await prisma.trainingSession.update({
       where: { id: trainingId },
-      data: {
-        title: body.title || undefined,
-        description: body.description !== undefined ? body.description : undefined,
-        date: body.date ? new Date(body.date) : undefined,
-        startTime: body.startTime || undefined,
-        endTime: body.endTime || undefined,
-        location: body.location !== undefined ? body.location : undefined,
-        type: body.type || undefined,
-        intensity: body.intensity || undefined,
-        focusAreas: body.focusAreas !== undefined ? body.focusAreas : undefined,
-      },
+      data: updateData,
       include: {
+        coach: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
+        attendance: {
+          include: {
+            player: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         _count: {
           select: {
-            attendances: true,
+            attendance: true,
           },
         },
       },
     });
 
-    return NextResponse.json(updatedTraining);
+    return NextResponse.json(updatedTrainingSession);
   } catch (error) {
-    console.error('PATCH /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId] error:', error);
+    console.error(
+      'PATCH /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId] error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to update training session',
@@ -165,36 +243,32 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; trainingId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId, trainingId } = params;
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const team = await prisma.team.findUnique({
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -202,17 +276,20 @@ export async function DELETE(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get training
-    const training = await prisma.training.findUnique({
+    // Get training session
+    const trainingSession = await prisma.trainingSession.findUnique({
       where: { id: trainingId },
     });
 
-    if (!training || training.teamId !== teamId) {
-      return NextResponse.json({ error: 'Training session not found' }, { status: 404 });
+    if (!trainingSession || trainingSession.teamId !== teamId) {
+      return NextResponse.json(
+        { error: 'Training session not found' },
+        { status: 404 }
+      );
     }
 
-    // Delete training and associated attendances
-    await prisma.training.delete({
+    // Delete training session (cascades to attendance and drills)
+    await prisma.trainingSession.delete({
       where: { id: trainingId },
     });
 
@@ -221,7 +298,10 @@ export async function DELETE(
       message: 'Training session deleted successfully',
     });
   } catch (error) {
-    console.error('DELETE /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId] error:', error);
+    console.error(
+      'DELETE /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId] error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to delete training session',

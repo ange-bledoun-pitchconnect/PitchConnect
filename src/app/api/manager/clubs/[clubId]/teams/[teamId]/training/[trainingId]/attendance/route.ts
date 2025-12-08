@@ -1,59 +1,102 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]/attendance/route.ts
+/**
+ * Get or Update Training Attendance API
+ *
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]/attendance
+ * POST /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]/attendance
+ *
+ * GET: Retrieves all attendance records for a training session
+ * POST: Bulk update attendance records for a training session
+ *
+ * Authorization: Only club owner can access
+ *
+ * Request (POST):
+ * {
+ *   attendances: Array<{
+ *     playerId: string,
+ *     status: 'PRESENT' | 'ABSENT' | 'EXCUSED' | 'LATE',
+ *     performanceRating: number,
+ *     notes: string
+ *   }>
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; trainingId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId, trainingId } = params;
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get attendances
-    const attendances = await prisma.attendance.findMany({
-      where: { training: { id: trainingId, teamId } },
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
+      where: { id: teamId },
+    });
+
+    if (!team || team.clubId !== clubId) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+    }
+
+    // Get training session
+    const trainingSession = await prisma.trainingSession.findUnique({
+      where: { id: trainingId },
+    });
+
+    if (!trainingSession || trainingSession.teamId !== teamId) {
+      return NextResponse.json(
+        { error: 'Training session not found' },
+        { status: 404 }
+      );
+    }
+
+    // Get all attendance records for this training session
+    const attendances = await prisma.trainingAttendance.findMany({
+      where: { trainingSessionId: trainingId },
       include: {
         player: {
           include: {
             user: {
               select: {
+                id: true,
                 firstName: true,
                 lastName: true,
+                email: true,
               },
             },
           },
         },
       },
+      orderBy: { createdAt: 'asc' },
     });
 
     return NextResponse.json(attendances);
   } catch (error) {
-    console.error('GET /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]/attendance error:', error);
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]/attendance error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to fetch attendances',
@@ -69,7 +112,7 @@ export async function POST(
   { params }: { params: { clubId: string; teamId: string; trainingId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -77,25 +120,21 @@ export async function POST(
     const { clubId, teamId, trainingId } = params;
     const body = await req.json();
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const team = await prisma.team.findUnique({
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -103,33 +142,65 @@ export async function POST(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get training
-    const training = await prisma.training.findUnique({
+    // Get training session
+    const trainingSession = await prisma.trainingSession.findUnique({
       where: { id: trainingId },
     });
 
-    if (!training || training.teamId !== teamId) {
-      return NextResponse.json({ error: 'Training session not found' }, { status: 404 });
+    if (!trainingSession || trainingSession.teamId !== teamId) {
+      return NextResponse.json(
+        { error: 'Training session not found' },
+        { status: 404 }
+      );
     }
 
     // Validation
-    if (!Array.isArray(body.attendances)) {
-      return NextResponse.json({ error: 'Attendances array is required' }, { status: 400 });
+    if (!Array.isArray(body.attendances) || body.attendances.length === 0) {
+      return NextResponse.json(
+        { error: 'Attendances array is required and must not be empty' },
+        { status: 400 }
+      );
     }
 
-    // Delete existing attendances for this training
-    await prisma.attendance.deleteMany({
-      where: { trainingId },
+    // Validate each attendance record
+    const validStatuses = ['PRESENT', 'ABSENT', 'EXCUSED', 'LATE'];
+    for (const att of body.attendances) {
+      if (!att.playerId?.trim()) {
+        return NextResponse.json(
+          { error: 'Player ID is required for each attendance record' },
+          { status: 400 }
+        );
+      }
+      if (!att.status) {
+        return NextResponse.json(
+          { error: 'Status is required for each attendance record' },
+          { status: 400 }
+        );
+      }
+      if (!validStatuses.includes(att.status)) {
+        return NextResponse.json(
+          {
+            error: `Invalid status: ${att.status}. Must be one of: ${validStatuses.join(', ')}`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Delete existing attendances for this training session
+    await prisma.trainingAttendance.deleteMany({
+      where: { trainingSessionId: trainingId },
     });
 
-    // Create new attendances
+    // Create new attendance records
     const createdAttendances = await Promise.all(
       body.attendances.map((att: any) =>
-        prisma.attendance.create({
+        prisma.trainingAttendance.create({
           data: {
-            trainingId,
+            trainingSessionId: trainingId,
             playerId: att.playerId,
-            status: att.status || 'PRESENT',
+            status: att.status,
+            performanceRating: att.performanceRating || null,
             notes: att.notes || null,
           },
           include: {
@@ -137,8 +208,10 @@ export async function POST(
               include: {
                 user: {
                   select: {
+                    id: true,
                     firstName: true,
                     lastName: true,
+                    email: true,
                   },
                 },
               },
@@ -150,7 +223,10 @@ export async function POST(
 
     return NextResponse.json(createdAttendances, { status: 201 });
   } catch (error) {
-    console.error('POST /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]/attendance error:', error);
+    console.error(
+      'POST /api/manager/clubs/[clubId]/teams/[teamId]/training/[trainingId]/attendance error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to save attendances',

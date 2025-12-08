@@ -24,18 +24,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { logger } from '@/lib/logger';
-import type { AnalyticsResponse, TrainingAnalytics } from '@/types';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
+type PeriodType = 'week' | 'month' | 'season';
+
 interface AttendanceStats {
   present: number;
   absent: number;
-  injured: number;
   excused: number;
+  late: number;
 }
 
 interface PlayerAttendanceStats {
@@ -44,13 +44,13 @@ interface PlayerAttendanceStats {
   totalSessions: number;
   present: number;
   absent: number;
-  injured: number;
   excused: number;
+  late: number;
   attendanceRate: number;
   trend: 'improving' | 'declining' | 'stable';
 }
 
-interface TrainingAnalyticsData extends TrainingAnalytics {
+interface TrainingAnalyticsData {
   totalSessions: number;
   attendanceStats: AttendanceStats;
   avgAttendanceRate: number;
@@ -61,58 +61,54 @@ interface TrainingAnalyticsData extends TrainingAnalytics {
     totalPlayers: number;
   };
   trends: {
-    attendanceTrend: number; // percentage change
-    sessionFrequency: number; // sessions per week
-    riskPlayers: string[]; // IDs of players with low attendance
+    attendanceTrend: number;
+    sessionFrequency: number;
+    riskPlayers: string[];
   };
 }
 
 interface QueryParams {
-  period?: 'week' | 'month' | 'season';
-  useCache?: boolean;
-  limit?: number;
-  offset?: number;
+  period: PeriodType;
+  useCache: boolean;
+  limit: number;
+  offset: number;
 }
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
 // ============================================================================
 
-const CACHE_TTL = 3600; // 1 hour in seconds
-const DEFAULT_PERIOD = 'month' as const;
-const PERIODS = {
+const CACHE_TTL = 3600;
+const DEFAULT_PERIOD: PeriodType = 'month';
+const PERIODS: Record<PeriodType, number> = {
   week: 7,
   month: 30,
   season: 365,
-} as const;
-const RISK_THRESHOLD = 50; // % - attendance below this = risk player
+};
+const RISK_THRESHOLD = 50;
 
 // ============================================================================
 // HELPERS
 // ============================================================================
 
-/**
- * Parse and validate query parameters
- */
 function parseQueryParams(request: NextRequest): QueryParams {
   const { searchParams } = new URL(request.url);
   
-  const period = (searchParams.get('period') || DEFAULT_PERIOD) as 'week' | 'month' | 'season';
+  const periodParam = searchParams.get('period');
+  const period: PeriodType = (
+    periodParam && ['week', 'month', 'season'].includes(periodParam)
+      ? periodParam
+      : DEFAULT_PERIOD
+  ) as PeriodType;
+  
   const useCache = searchParams.get('useCache') !== 'false';
   const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 500);
   const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0);
 
-  if (!['week', 'month', 'season'].includes(period)) {
-    throw new Error('Invalid period. Must be: week, month, or season');
-  }
-
   return { period, useCache, limit, offset };
 }
 
-/**
- * Calculate date range for period
- */
-function getDateRange(period: 'week' | 'month' | 'season') {
+function getDateRange(period: PeriodType) {
   const endDate = new Date();
   const startDate = new Date();
   startDate.setDate(endDate.getDate() - PERIODS[period]);
@@ -120,29 +116,26 @@ function getDateRange(period: 'week' | 'month' | 'season') {
   return { startDate, endDate };
 }
 
-/**
- * Calculate attendance trend comparing current period to previous
- */
 async function calculateAttendanceTrend(
   teamId: string,
-  period: 'week' | 'month' | 'season'
+  period: PeriodType
 ): Promise<number> {
   const { startDate: currentStart, endDate: currentEnd } = getDateRange(period);
   const previousStart = new Date(currentStart);
   previousStart.setDate(previousStart.getDate() - PERIODS[period]);
 
   const [currentAttendance, previousAttendance] = await Promise.all([
-    prisma.attendance.aggregate({
+    prisma.trainingAttendance.aggregate({
       where: {
-        training: { teamId },
+        trainingSession: { teamId },
         createdAt: { gte: currentStart, lte: currentEnd },
         status: 'PRESENT',
       },
       _count: { id: true },
     }),
-    prisma.attendance.aggregate({
+    prisma.trainingAttendance.aggregate({
       where: {
-        training: { teamId },
+        trainingSession: { teamId },
         createdAt: { gte: previousStart, lte: currentStart },
         status: 'PRESENT',
       },
@@ -159,35 +152,26 @@ async function calculateAttendanceTrend(
   );
 }
 
-/**
- * Calculate session frequency (sessions per week)
- */
-function calculateSessionFrequency(totalSessions: number, period: 'week' | 'month' | 'season'): number {
+function calculateSessionFrequency(totalSessions: number, period: PeriodType): number {
   const weeks = PERIODS[period] / 7;
   return Math.round((totalSessions / weeks) * 10) / 10;
 }
 
-/**
- * Identify risk players (low attendance)
- */
 function identifyRiskPlayers(players: PlayerAttendanceStats[]): string[] {
   return players
     .filter((p) => p.attendanceRate < RISK_THRESHOLD)
     .map((p) => p.playerId);
 }
 
-/**
- * Determine attendance trend for individual player
- */
 async function getPlayerTrend(
   playerId: string,
-  period: 'week' | 'month' | 'season'
+  period: PeriodType
 ): Promise<'improving' | 'declining' | 'stable'> {
   const { startDate: currentStart, endDate: currentEnd } = getDateRange(period);
   const midPoint = new Date((currentStart.getTime() + currentEnd.getTime()) / 2);
 
   const [firstHalf, secondHalf] = await Promise.all([
-    prisma.attendance.aggregate({
+    prisma.trainingAttendance.aggregate({
       where: {
         playerId,
         createdAt: { gte: currentStart, lt: midPoint },
@@ -195,7 +179,7 @@ async function getPlayerTrend(
       },
       _count: { id: true },
     }),
-    prisma.attendance.aggregate({
+    prisma.trainingAttendance.aggregate({
       where: {
         playerId,
         createdAt: { gte: midPoint, lte: currentEnd },
@@ -217,19 +201,10 @@ async function getPlayerTrend(
 // MAIN HANDLER
 // ============================================================================
 
-/**
- * GET /api/manager/clubs/[clubId]/teams/[teamId]/training/analytics
- * 
- * Retrieve comprehensive training analytics for a team
- * 
- * @query period - 'week' | 'month' | 'season' (default: month)
- * @query useCache - boolean (default: true)
- * @returns AnalyticsResponse<TrainingAnalyticsData>
- */
 export async function GET(
   req: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
-): Promise<NextResponse<AnalyticsResponse<TrainingAnalyticsData>>> {
+) {
   const requestId = crypto.randomUUID();
   const startTime = performance.now();
 
@@ -241,7 +216,6 @@ export async function GET(
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
-      logger.warn('Unauthorized access attempt', { requestId, userId: session?.user?.id });
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -252,31 +226,13 @@ export async function GET(
     // 2. ACCESS CONTROL
     // ========================================================================
 
-    // Verify manager exists and owns the club
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      logger.warn('Manager profile not found', { requestId, userId: session.user.id });
-      return NextResponse.json(
-        { success: false, error: 'Manager profile not found' },
-        { status: 404 }
-      );
-    }
-
-    // Verify club ownership
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: params.clubId },
-      select: { managerId: true },
+      select: { ownerId: true },
     });
 
-    if (!club || club.managerId !== manager.id) {
-      logger.warn('Forbidden club access', {
-        requestId,
-        managerId: manager.id,
-        clubId: params.clubId,
-      });
+    if (!club || club.ownerId !== session.user.id) {
       return NextResponse.json(
         { success: false, error: 'Forbidden: No access to this club' },
         { status: 403 }
@@ -284,17 +240,12 @@ export async function GET(
     }
 
     // Verify team exists and belongs to club
-    const team = await prisma.team.findUnique({
+    const team = await prisma.oldTeam.findUnique({
       where: { id: params.teamId },
       select: { clubId: true },
     });
 
     if (!team || team.clubId !== params.clubId) {
-      logger.warn('Team not found in club', {
-        requestId,
-        teamId: params.teamId,
-        clubId: params.clubId,
-      });
       return NextResponse.json(
         { success: false, error: 'Team not found in this club' },
         { status: 404 }
@@ -308,60 +259,40 @@ export async function GET(
     const query = parseQueryParams(req);
     const { startDate, endDate } = getDateRange(query.period);
 
-    logger.info('Analytics request', {
-      requestId,
-      teamId: params.teamId,
-      period: query.period,
-      useCache: query.useCache,
-    });
-
     // ========================================================================
-    // 4. CHECK CACHE
-    // ========================================================================
-
-    // TODO: Implement Redis caching here
-    // const cacheKey = `training:analytics:${params.teamId}:${query.period}`;
-    // if (query.useCache) {
-    //   const cached = await redis.get(cacheKey);
-    //   if (cached) {
-    //     return NextResponse.json({
-    //       success: true,
-    //       data: JSON.parse(cached),
-    //       cached: true,
-    //     });
-    //   }
-    // }
-
-    // ========================================================================
-    // 5. FETCH DATA
+    // 4. FETCH DATA
     // ========================================================================
 
     const [trainingSessions, playerStats, totalPlayerCount] = await Promise.all([
       // Get training sessions within period
-      prisma.training.findMany({
+      prisma.trainingSession.findMany({
         where: {
           teamId: params.teamId,
-          createdAt: { gte: startDate, lte: endDate },
+          date: { gte: startDate, lte: endDate },
         },
         include: {
-          attendances: {
+          attendance: {
             select: {
               playerId: true,
               status: true,
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { date: 'desc' },
       }),
 
       // Get player-level statistics
       prisma.player.findMany({
-        where: { teamId: params.teamId },
+        where: {
+          teams: {
+            some: { teamId: params.teamId },
+          },
+        },
         include: {
-          attendances: {
+          trainingAttendance: {
             where: {
-              training: {
-                createdAt: { gte: startDate, lte: endDate },
+              trainingSession: {
+                date: { gte: startDate, lte: endDate },
               },
             },
             select: {
@@ -379,39 +310,43 @@ export async function GET(
 
       // Get total player count
       prisma.player.count({
-        where: { teamId: params.teamId },
+        where: {
+          teams: {
+            some: { teamId: params.teamId },
+          },
+        },
       }),
     ]);
 
     // ========================================================================
-    // 6. CALCULATE STATISTICS
+    // 5. CALCULATE STATISTICS
     // ========================================================================
 
     // Attendance summary
     const totalAttendanceRecords = trainingSessions.reduce(
-      (sum, t) => sum + t.attendances.length,
+      (sum, t) => sum + t.attendance.length,
       0
     );
 
     const attendanceStats: AttendanceStats = {
       present: trainingSessions.reduce(
         (sum, t) =>
-          sum + t.attendances.filter((a) => a.status === 'PRESENT').length,
+          sum + t.attendance.filter((a) => a.status === 'PRESENT').length,
         0
       ),
       absent: trainingSessions.reduce(
         (sum, t) =>
-          sum + t.attendances.filter((a) => a.status === 'ABSENT').length,
-        0
-      ),
-      injured: trainingSessions.reduce(
-        (sum, t) =>
-          sum + t.attendances.filter((a) => a.status === 'INJURED').length,
+          sum + t.attendance.filter((a) => a.status === 'ABSENT').length,
         0
       ),
       excused: trainingSessions.reduce(
         (sum, t) =>
-          sum + t.attendances.filter((a) => a.status === 'EXCUSED').length,
+          sum + t.attendance.filter((a) => a.status === 'EXCUSED').length,
+        0
+      ),
+      late: trainingSessions.reduce(
+        (sum, t) =>
+          sum + t.attendance.filter((a) => a.status === 'LATE').length,
         0
       ),
     };
@@ -424,7 +359,7 @@ export async function GET(
     // Player-level statistics with trend analysis
     const playerAttendanceStats: PlayerAttendanceStats[] = await Promise.all(
       playerStats.map(async (player) => {
-        const attendances = player.attendances;
+        const attendances = player.trainingAttendance;
         const totalAttended = attendances.length;
         const present = attendances.filter((a) => a.status === 'PRESENT').length;
         const attendanceRate = totalAttended > 0 ? (present / totalAttended) * 100 : 0;
@@ -437,8 +372,8 @@ export async function GET(
           totalSessions: totalAttended,
           present,
           absent: attendances.filter((a) => a.status === 'ABSENT').length,
-          injured: attendances.filter((a) => a.status === 'INJURED').length,
           excused: attendances.filter((a) => a.status === 'EXCUSED').length,
+          late: attendances.filter((a) => a.status === 'LATE').length,
           attendanceRate: Math.round(attendanceRate * 10) / 10,
           trend,
         };
@@ -449,7 +384,7 @@ export async function GET(
     playerAttendanceStats.sort((a, b) => b.attendanceRate - a.attendanceRate);
 
     // ========================================================================
-    // 7. CALCULATE ADVANCED METRICS
+    // 6. CALCULATE ADVANCED METRICS
     // ========================================================================
 
     const [attendanceTrend, sessionFrequency, riskPlayers] = await Promise.all([
@@ -459,7 +394,7 @@ export async function GET(
     ]);
 
     // ========================================================================
-    // 8. BUILD RESPONSE
+    // 7. BUILD RESPONSE
     // ========================================================================
 
     const analyticsData: TrainingAnalyticsData = {
@@ -479,71 +414,22 @@ export async function GET(
       },
     };
 
-    const response: AnalyticsResponse<TrainingAnalyticsData> = {
-      success: true,
-      data: analyticsData,
-      period: {
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-      },
-      generated: new Date().toISOString(),
-    };
-
-    // ========================================================================
-    // 9. CACHE RESULT
-    // ========================================================================
-
-    // TODO: await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(analyticsData));
-
-    // ========================================================================
-    // 10. LOG & RESPOND
-    // ========================================================================
-
     const duration = performance.now() - startTime;
-    logger.info('Analytics retrieved successfully', {
-      requestId,
-      teamId: params.teamId,
-      totalSessions: trainingSessions.length,
-      playerCount: playerAttendanceStats.length,
-      duration: `${Math.round(duration)}ms`,
-    });
 
-    return NextResponse.json(response, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200',
-        'X-Request-ID': requestId,
-        'X-Response-Time': `${Math.round(duration)}ms`,
-      },
-    });
-
-    // ========================================================================
-    // ERROR HANDLING
-    // ========================================================================
+    return NextResponse.json(
+      { success: true, data: analyticsData },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200',
+          'X-Request-ID': requestId,
+          'X-Response-Time': `${Math.round(duration)}ms`,
+        },
+      }
+    );
   } catch (error) {
     const duration = performance.now() - startTime;
 
-    if (error instanceof Error && error.message.includes('Invalid period')) {
-      logger.warn('Validation error', {
-        requestId,
-        error: error.message,
-        duration: `${Math.round(duration)}ms`,
-      });
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Bad Request: ' + error.message,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    logger.error('Analytics error', {
-      requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      duration: `${Math.round(duration)}ms`,
-    });
+    console.error('Analytics error:', error);
 
     return NextResponse.json(
       {

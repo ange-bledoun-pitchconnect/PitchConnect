@@ -1,40 +1,77 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/players/route.ts
+/**
+ * List or Add Player to Team API
+ *
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/players
+ * POST /api/manager/clubs/[clubId]/teams/[teamId]/players
+ *
+ * GET: Retrieves all players in a team
+ * POST: Adds a new player to a team
+ *
+ * Authorization: Only club owner can access
+ *
+ * Response (GET):
+ * Array<{
+ *   id: string,
+ *   userId: string,
+ *   firstName: string,
+ *   lastName: string,
+ *   position: string,
+ *   shirtNumber: number,
+ *   isCaptain: boolean,
+ *   user: {id, firstName, lastName, email}
+ * }>
+ *
+ * Request (POST):
+ * {
+ *   userId: string,
+ *   position: string,
+ *   shirtNumber: number,
+ *   isCaptain: boolean
+ * }
+ *
+ * Response (POST):
+ * {
+ *   id: string,
+ *   userId: string,
+ *   position: string,
+ *   shirtNumber: number,
+ *   isCaptain: boolean,
+ *   user: {id, firstName, lastName, email}
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId } = params;
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const team = await prisma.team.findUnique({
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -42,25 +79,45 @@ export async function GET(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get team players
-    const players = await prisma.player.findMany({
+    // Get team players via TeamPlayer relation
+    const teamPlayers = await prisma.teamPlayer.findMany({
       where: { teamId },
       include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+        player: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { joinedAt: 'desc' },
     });
+
+    // Transform response to include captain status from TeamPlayer
+    const players = teamPlayers.map((tp) => ({
+      id: tp.player.id,
+      userId: tp.player.userId,
+      firstName: tp.player.firstName,
+      lastName: tp.player.lastName,
+      position: tp.player.position,
+      shirtNumber: tp.player.shirtNumber,
+      isCaptain: tp.isCaptain,
+      joinedAt: tp.joinedAt,
+      user: tp.player.user,
+    }));
 
     return NextResponse.json(players);
   } catch (error) {
-    console.error('GET /api/manager/clubs/[clubId]/teams/[teamId]/players error:', error);
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/players error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to fetch players',
@@ -76,7 +133,7 @@ export async function POST(
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -84,25 +141,21 @@ export async function POST(
     const { clubId, teamId } = params;
     const body = await req.json();
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Verify access
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const team = await prisma.team.findUnique({
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -111,8 +164,11 @@ export async function POST(
     }
 
     // Validation
-    if (!body.userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    if (!body.userId?.trim()) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
     }
 
     // Check if user exists
@@ -124,45 +180,81 @@ export async function POST(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Check if player already exists on team
-    const existingPlayer = await prisma.player.findFirst({
-      where: {
-        userId: body.userId,
-        teamId,
-      },
+    // Check if player already exists
+    const existingPlayer = await prisma.player.findUnique({
+      where: { userId: body.userId },
     });
 
+    // Check if already on this team via TeamPlayer
     if (existingPlayer) {
-      return NextResponse.json(
-        { error: 'Player already added to this team' },
-        { status: 400 }
-      );
-    }
-
-    // Add player to team
-    const player = await prisma.player.create({
-      data: {
-        userId: body.userId,
-        teamId,
-        position: body.position || null,
-        jerseyNumber: body.jerseyNumber || null,
-        isCaptain: body.isCaptain || false,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+      const teamPlayer = await prisma.teamPlayer.findUnique({
+        where: {
+          teamId_playerId: {
+            teamId,
+            playerId: existingPlayer.id,
           },
         },
+      });
+
+      if (teamPlayer) {
+        return NextResponse.json(
+          { error: 'Player already added to this team' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Create or get player
+    let player = existingPlayer;
+    if (!player) {
+      player = await prisma.player.create({
+        data: {
+          userId: body.userId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          dateOfBirth: user.dateOfBirth || new Date('1990-01-01'),
+          nationality: user.nationality || 'Unknown',
+          position: body.position || 'MIDFIELDER',
+          preferredFoot: body.preferredFoot || 'RIGHT',
+        },
+      });
+    }
+
+    // Add player to team via TeamPlayer
+    const teamPlayer = await prisma.teamPlayer.create({
+      data: {
+        teamId,
+        playerId: player.id,
+        joinedAt: new Date(),
+        isCaptain: body.isCaptain || false,
       },
     });
 
-    return NextResponse.json(player, { status: 201 });
+    // Return created response
+    return NextResponse.json(
+      {
+        id: player.id,
+        userId: player.userId,
+        firstName: player.firstName,
+        lastName: player.lastName,
+        position: player.position,
+        shirtNumber: player.shirtNumber,
+        isCaptain: teamPlayer.isCaptain,
+        joinedAt: teamPlayer.joinedAt,
+        user: {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
-    console.error('POST /api/manager/clubs/[clubId]/teams/[teamId]/players error:', error);
+    console.error(
+      'POST /api/manager/clubs/[clubId]/teams/[teamId]/players error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to add player',

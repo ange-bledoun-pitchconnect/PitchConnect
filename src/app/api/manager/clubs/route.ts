@@ -1,39 +1,111 @@
-// src/app/api/manager/clubs/route.ts
+/**
+ * List or Create Clubs API
+ *
+ * GET /api/manager/clubs
+ * POST /api/manager/clubs
+ *
+ * GET: Retrieves all clubs owned by the authenticated user
+ * POST: Creates a new club with the user as owner
+ *
+ * Permission Model:
+ * - CLUB_OWNER: Full club ownership and admin permissions
+ * - CLUB_MANAGER: Manages teams, coaches, and players
+ * - TREASURER: Financial operations and payment approvals
+ * - COACH: Manages specific team(s)
+ * - STAFF: Administrative support
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(req: NextRequest) {
+/**
+ * GET /api/manager/clubs
+ * Fetch all clubs owned by the authenticated user
+ *
+ * Returns: Array of clubs with member info
+ */
+export async function GET(_req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Get all clubs for this manager
-    const clubs = await prisma.club.findMany({
-      where: { managerId: manager.id },
+    // Get clubs owned by the authenticated user
+    const ownedClubs = await prisma.club.findMany({
+      where: { ownerId: session.user.id },
       include: {
         _count: {
           select: {
-            teams: true,
+            members: true,
+          },
+        },
+        members: {
+          select: {
+            userId: true,
+            role: true,
+            status: true,
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(clubs);
+    // If user owns clubs, return them
+    if (ownedClubs.length > 0) {
+      // Get owner profile for permissions
+      const ownerProfile = await prisma.clubOwner.findUnique({
+        where: { userId: session.user.id },
+      });
+
+      return NextResponse.json({
+        clubs: ownedClubs,
+        role: 'OWNER',
+        permissions: ownerProfile
+          ? {
+              canManageTeams: ownerProfile.canManageTeams,
+              canManageTreasury: ownerProfile.canManageTreasury,
+              canViewAnalytics: ownerProfile.canViewAnalytics,
+              canManageMembers: ownerProfile.canManageMembers,
+              canManageLeagues: ownerProfile.canManageLeagues,
+              canUpdateProfile: ownerProfile.canUpdateProfile,
+            }
+          : null,
+      });
+    }
+
+    // Check if user is a club member (manager/treasurer/coach/staff)
+    const clubMemberships = await prisma.clubMember.findMany({
+      where: { userId: session.user.id },
+      include: {
+        club: {
+          include: {
+            _count: {
+              select: {
+                members: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { joinedAt: 'desc' },
+    });
+
+    if (clubMemberships.length > 0) {
+      return NextResponse.json({
+        clubs: clubMemberships.map((m) => m.club),
+        memberships: clubMemberships,
+        role: clubMemberships[0].role,
+      });
+    }
+
+    // User has no clubs
+    return NextResponse.json({
+      clubs: [],
+      message: 'No clubs found. Create a new club or ask to join one.',
+    });
   } catch (error) {
     console.error('GET /api/manager/clubs error:', error);
     return NextResponse.json(
@@ -46,107 +118,121 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * POST /api/manager/clubs
+ * Create a new club. The authenticated user becomes the club owner.
+ *
+ * Request body: JSON with club details
+ * - name (required): Club name
+ * - description: Club description
+ * - country: Country (default: United Kingdom)
+ * - city: City
+ * - foundedYear: Year founded
+ * - stadiumName: Home stadium
+ * - primaryColor: Primary brand color (default: #FFD700)
+ * - secondaryColor: Secondary brand color (default: #FF6B35)
+ *
+ * Returns: Created club object with owner profile and membership
+ */
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    // Get manager profile
-    let manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
+    const body = await req.json();
 
-    // Auto-create manager profile if doesn't exist
-    if (!manager) {
-      manager = await prisma.manager.create({
-        data: { userId: session.user.id },
-      });
-    }
-
-    // Parse form data
-    const formData = await req.formData();
-
-    const name = formData.get('name') as string;
-    const code = formData.get('code') as string;
-    const description = formData.get('description') as string;
-    const country = formData.get('country') as string;
-    const city = formData.get('city') as string;
-    const foundedYear = parseInt(formData.get('foundedYear') as string);
-    const homeVenue = formData.get('homeVenue') as string;
-    const primaryColor = formData.get('primaryColor') as string;
-    const secondaryColor = formData.get('secondaryColor') as string;
-    const website = formData.get('website') as string;
-    const email = formData.get('email') as string;
-    const phone = formData.get('phone') as string;
-    const logoFile = formData.get('logo') as File | null;
+    const {
+      name,
+      description,
+      country = 'United Kingdom',
+      city,
+      foundedYear,
+      stadiumName,
+      primaryColor = '#FFD700',
+      secondaryColor = '#FF6B35',
+    } = body;
 
     // Validation
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Club name is required' }, { status: 400 });
     }
 
-    if (!code?.trim()) {
-      return NextResponse.json({ error: 'Club code is required' }, { status: 400 });
-    }
-
-    // Check if club code already exists for this manager
-    const existingClub = await prisma.club.findFirst({
-      where: {
-        code: code.toUpperCase(),
-        managerId: manager.id,
-      },
-    });
-
-    if (existingClub) {
-      return NextResponse.json(
-        { error: 'A club with this code already exists' },
-        { status: 400 }
-      );
-    }
-
-    // Handle logo upload (if needed, you can integrate with cloud storage)
-    const logoUrl: string | null = null;
-    if (logoFile && logoFile.size > 0) {
-      // TODO: Implement cloud storage (e.g., AWS S3, Cloudinary, Supabase Storage)
-      // For now, we'll store as base64 or implement later
-      console.log('Logo upload not yet implemented. File:', logoFile.name);
-    }
-
-    // Create club
+    // Create club with owner as the authenticated user
     const club = await prisma.club.create({
       data: {
         name: name.trim(),
-        code: code.toUpperCase(),
-        description: description || null,
-        country: country || 'United Kingdom',
-        city: city || null,
-        foundedYear: foundedYear || null,
-        homeVenue: homeVenue || null,
-        primaryColor: primaryColor || '#1f2937',
-        secondaryColor: secondaryColor || '#f59e0b',
-        logo: logoUrl,
-        website: website || null,
-        email: email || null,
-        phone: phone || null,
-        managerId: manager.id,
+        city: city?.trim() || 'Unknown',
+        country: country?.trim() || 'United Kingdom',
+        description: description?.trim() || null,
+        foundedYear: foundedYear ? parseInt(foundedYear) : null,
+        stadiumName: stadiumName?.trim() || null,
+        primaryColor: primaryColor || '#FFD700',
+        secondaryColor: secondaryColor || '#FF6B35',
         status: 'ACTIVE',
+        ownerId: session.user.id,
       },
       include: {
         _count: {
           select: {
-            teams: true,
+            members: true,
           },
         },
       },
     });
 
-    return NextResponse.json(club, { status: 201 });
+    // Auto-create ClubOwner profile if it doesn't exist
+    const ownerProfile = await prisma.clubOwner.upsert({
+      where: { userId: session.user.id },
+      update: {}, // No updates if already exists
+      create: {
+        userId: session.user.id,
+        canManageTeams: true,
+        canManageTreasury: true,
+        canViewAnalytics: true,
+        canManageMembers: true,
+        canManageLeagues: true,
+        canUpdateProfile: true,
+        canDeleteClub: false,
+        canTransferOwnership: false,
+        canViewReports: true,
+        canManageSubscriptions: true,
+      },
+    });
+
+    // Add owner as a club member with OWNER role
+    const ownerMember = await prisma.clubMember.upsert({
+      where: {
+        clubId_userId: {
+          clubId: club.id,
+          userId: session.user.id,
+        },
+      },
+      update: { role: 'OWNER' },
+      create: {
+        clubId: club.id,
+        userId: session.user.id,
+        role: 'OWNER',
+        status: 'ACTIVE',
+      },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        club,
+        ownerProfile,
+        ownerMember,
+        message: 'Club created successfully. You are now the club owner.',
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('POST /api/manager/clubs error:', error);
     return NextResponse.json(
       {
+        success: false,
         error: 'Failed to create club',
         details: error instanceof Error ? error.message : 'Unknown error',
       },

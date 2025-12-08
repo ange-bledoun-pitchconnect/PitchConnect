@@ -1,31 +1,33 @@
-// src/app/api/manager/clubs/[clubId]/teams/route.ts
+/**
+ * List or Create Teams API
+ *
+ * GET /api/manager/clubs/[clubId]/teams
+ * POST /api/manager/clubs/[clubId]/teams
+ *
+ * GET: Retrieves all teams for a club
+ * POST: Creates a new team for a club
+ *
+ * Authorization: Only club owner can access
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId } = params;
 
-    // Get manager profile
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
-    // Check if manager owns this club
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
@@ -34,28 +36,28 @@ export async function GET(
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
 
-    if (club.managerId !== manager.id) {
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get all teams for this club
-    const teams = await prisma.team.findMany({
+    // Get all teams for this club (using oldTeam per schema)
+    const teams = await prisma.oldTeam.findMany({
       where: { clubId },
       include: {
-        _count: {
-          select: {
-            players: true,
-            coaches: true,
-          },
-        },
-        coaches: {
+        coach: {
           include: {
             user: {
               select: {
+                id: true,
                 firstName: true,
                 lastName: true,
               },
             },
+          },
+        },
+        _count: {
+          select: {
+            players: true,
           },
         },
       },
@@ -80,7 +82,7 @@ export async function POST(
   { params }: { params: { clubId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -88,18 +90,7 @@ export async function POST(
     const { clubId } = params;
     const body = await req.json();
 
-    // Get manager profile
-    let manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      manager = await prisma.manager.create({
-        data: { userId: session.user.id },
-      });
-    }
-
-    // Check if manager owns this club
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
@@ -108,8 +99,21 @@ export async function POST(
       return NextResponse.json({ error: 'Club not found' }, { status: 404 });
     }
 
-    if (club.managerId !== manager.id) {
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Verify coach exists
+    if (!body.coachId?.trim()) {
+      return NextResponse.json({ error: 'Coach ID is required' }, { status: 400 });
+    }
+
+    const coach = await prisma.coach.findUnique({
+      where: { id: body.coachId },
+    });
+
+    if (!coach) {
+      return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
     }
 
     // Validation
@@ -117,42 +121,39 @@ export async function POST(
       return NextResponse.json({ error: 'Team name is required' }, { status: 400 });
     }
 
-    if (!body.code?.trim()) {
-      return NextResponse.json({ error: 'Team code is required' }, { status: 400 });
+    if (!body.category?.trim()) {
+      return NextResponse.json({ error: 'Category is required' }, { status: 400 });
     }
 
-    // Check if team code already exists in this club
-    const existingTeam = await prisma.team.findFirst({
-      where: {
-        code: body.code.toUpperCase(),
-        clubId,
-      },
-    });
-
-    if (existingTeam) {
-      return NextResponse.json(
-        { error: 'A team with this code already exists in this club' },
-        { status: 400 }
-      );
+    if (!body.season) {
+      return NextResponse.json({ error: 'Season is required' }, { status: 400 });
     }
 
-    // Create team
-    const team = await prisma.team.create({
+    // Create team (using oldTeam per schema)
+    const team = await prisma.oldTeam.create({
       data: {
-        name: body.name.trim(),
-        code: body.code.toUpperCase(),
-        description: body.description || null,
         clubId,
-        homeVenue: body.homeVenue || null,
-        primaryColor: body.primaryColor || '#1f2937',
-        secondaryColor: body.secondaryColor || '#f59e0b',
+        coachId: body.coachId,
+        name: body.name.trim(),
+        category: body.category.trim(),
+        season: body.season,
         status: 'ACTIVE',
       },
       include: {
+        coach: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
         _count: {
           select: {
             players: true,
-            coaches: true,
           },
         },
       },

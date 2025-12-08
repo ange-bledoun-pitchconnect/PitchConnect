@@ -1,36 +1,71 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/route.ts
+/**
+ * Get Match Details API
+ *
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]
+ *
+ * Retrieves full details of a match including teams, events, and lineup.
+ *
+ * Authorization: Only club owner can access
+ *
+ * Response:
+ * {
+ *   id: string,
+ *   homeTeamId: string,
+ *   awayTeamId: string,
+ *   homeGoals: number,
+ *   awayGoals: number,
+ *   status: string,
+ *   date: Date,
+ *   homeTeam: {
+ *     id: string,
+ *     name: string
+ *   },
+ *   awayTeam: {
+ *     id: string,
+ *     name: string
+ *   },
+ *   events: Array<{...}>,
+ *   playerAttendances: Array<{...}>
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; matchId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId, matchId } = params;
 
-    // Verify access
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
+      where: { id: teamId },
+    });
+
+    if (!team || team.clubId !== clubId) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
     // Get match with full details
@@ -41,50 +76,38 @@ export async function GET(
           select: {
             id: true,
             name: true,
-            primaryColor: true,
-            secondaryColor: true,
           },
         },
         awayTeam: {
           select: {
             id: true,
             name: true,
-            primaryColor: true,
-            secondaryColor: true,
           },
         },
         events: {
           include: {
             player: {
-              include: {
-                user: {
-                  select: {
-                    firstName: true,
-                    lastName: true,
-                  },
-                },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
               },
             },
           },
           orderBy: { minute: 'asc' },
         },
-        lineup: {
+        playerAttendances: {
           include: {
-            players: {
-              include: {
-                player: {
-                  include: {
-                    user: {
-                      select: {
-                        firstName: true,
-                        lastName: true,
-                      },
-                    },
-                  },
-                },
+            player: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                position: true,
               },
             },
           },
+          orderBy: { player: { firstName: 'asc' } },
         },
       },
     });
@@ -98,9 +121,26 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return NextResponse.json(match);
+    // Transform response to include separated starting lineup and substitutes
+    const startingLineup = match.playerAttendances.filter(
+      (a) => a.status === 'STARTING_LINEUP'
+    );
+    const substitutes = match.playerAttendances.filter(
+      (a) => a.status === 'SUBSTITUTE'
+    );
+
+    return NextResponse.json({
+      ...match,
+      lineup: {
+        starting: startingLineup,
+        substitutes,
+      },
+    });
   } catch (error) {
-    console.error('GET /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId] error:', error);
+    console.error(
+      'GET /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId] error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to fetch match',

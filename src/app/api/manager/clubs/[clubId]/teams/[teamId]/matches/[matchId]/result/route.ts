@@ -1,4 +1,31 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/result/route.ts
+/**
+ * Record Match Result API
+ *
+ * POST /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/result
+ *
+ * Records the final result of a match (score and winner).
+ * Updates match status to FINISHED and updates league standings if applicable.
+ *
+ * Authorization: Only club owner can access
+ *
+ * Request Body:
+ * {
+ *   homeGoals: number,
+ *   awayGoals: number
+ * }
+ *
+ * Response:
+ * {
+ *   id: string,
+ *   homeTeamId: string,
+ *   awayTeamId: string,
+ *   homeGoals: number,
+ *   awayGoals: number,
+ *   status: string,
+ *   date: Date
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
@@ -9,7 +36,7 @@ export async function POST(
   { params }: { params: { clubId: string; teamId: string; matchId: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -17,24 +44,21 @@ export async function POST(
     const { clubId, teamId, matchId } = params;
     const body = await req.json();
 
-    // Verify access
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const team = await prisma.team.findUnique({
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -42,21 +66,41 @@ export async function POST(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Validation
-    if (body.homeScore === undefined || body.homeScore === null) {
-      return NextResponse.json({ error: 'Home score is required' }, { status: 400 });
+    // Validate input
+    if (body.homeGoals === undefined || body.homeGoals === null) {
+      return NextResponse.json(
+        { error: 'Home goals is required' },
+        { status: 400 }
+      );
     }
 
-    if (body.awayScore === undefined || body.awayScore === null) {
-      return NextResponse.json({ error: 'Away score is required' }, { status: 400 });
+    if (body.awayGoals === undefined || body.awayGoals === null) {
+      return NextResponse.json(
+        { error: 'Away goals is required' },
+        { status: 400 }
+      );
     }
 
-    // Get match
+    // Validate scores are non-negative
+    if (body.homeGoals < 0 || body.awayGoals < 0) {
+      return NextResponse.json(
+        { error: 'Goals cannot be negative' },
+        { status: 400 }
+      );
+    }
+
+    // Get match with fixture details
     const match = await prisma.match.findUnique({
       where: { id: matchId },
       include: {
         homeTeam: true,
         awayTeam: true,
+        fixture: {
+          select: {
+            id: true,
+            leagueId: true,
+          },
+        },
       },
     });
 
@@ -66,91 +110,142 @@ export async function POST(
 
     // Verify team is part of match
     if (match.homeTeamId !== teamId && match.awayTeamId !== teamId) {
-      return NextResponse.json({ error: 'Team not part of this match' }, { status: 403 });
+      return NextResponse.json(
+        { error: 'Team not part of this match' },
+        { status: 403 }
+      );
     }
 
-    // Update match with result
+    // Check match hasn't already been completed
+    if (match.status === 'FINISHED') {
+      return NextResponse.json(
+        { error: 'Match result already recorded' },
+        { status: 400 }
+      );
+    }
+
+    // Update match with result using correct field names
     const updatedMatch = await prisma.match.update({
       where: { id: matchId },
       data: {
-        homeScore: body.homeScore,
-        awayScore: body.awayScore,
-        status: 'COMPLETED',
-        result: body.homeScore > body.awayScore ? 'HOME_WIN' : body.awayScore > body.homeScore ? 'AWAY_WIN' : 'DRAW',
+        homeGoals: body.homeGoals,
+        awayGoals: body.awayGoals,
+        status: 'FINISHED',
       },
     });
 
-    // Update standings if part of fixture
-    if (match.fixtureId) {
-      const homePoints = 
-        body.homeScore > body.awayScore ? 3 : body.homeScore === body.awayScore ? 1 : 0;
-      const awayPoints = 
-        body.awayScore > body.homeScore ? 3 : body.awayScore === body.homeScore ? 1 : 0;
+    // Update standings if part of league fixture
+    if (match.fixture && match.fixture.leagueId) {
+      const homePoints =
+        body.homeGoals > body.awayGoals
+          ? 3
+          : body.homeGoals === body.awayGoals
+            ? 1
+            : 0;
+      const awayPoints =
+        body.awayGoals > body.homeGoals
+          ? 3
+          : body.awayGoals === body.homeGoals
+            ? 1
+            : 0;
 
-      // Update or create standings
-      await Promise.all([
-        prisma.standing.upsert({
-          where: {
-            fixtureId_teamId: {
-              fixtureId: match.fixtureId,
-              teamId: match.homeTeamId,
-            },
-          },
-          update: {
-            points: { increment: homePoints },
-            goalsFor: { increment: body.homeScore },
-            goalsAgainst: { increment: body.awayScore },
-            matches: { increment: 1 },
-            wins: homePoints === 3 ? { increment: 1 } : undefined,
-            draws: homePoints === 1 ? { increment: 1 } : undefined,
-            losses: homePoints === 0 ? { increment: 1 } : undefined,
-          },
-          create: {
-            fixtureId: match.fixtureId,
+      const leagueId = match.fixture.leagueId;
+
+      // Update or create standings for home team
+      await prisma.standings.upsert({
+        where: {
+          leagueId_teamId: {
+            leagueId,
             teamId: match.homeTeamId,
-            points: homePoints,
-            matches: 1,
-            wins: homePoints === 3 ? 1 : 0,
-            draws: homePoints === 1 ? 1 : 0,
-            losses: homePoints === 0 ? 1 : 0,
-            goalsFor: body.homeScore,
-            goalsAgainst: body.awayScore,
           },
-        }),
-        prisma.standing.upsert({
-          where: {
-            fixtureId_teamId: {
-              fixtureId: match.fixtureId,
-              teamId: match.awayTeamId,
-            },
+        },
+        update: {
+          played: { increment: 1 },
+          won:
+            homePoints === 3
+              ? { increment: 1 }
+              : undefined,
+          drawn:
+            homePoints === 1
+              ? { increment: 1 }
+              : undefined,
+          lost:
+            homePoints === 0
+              ? { increment: 1 }
+              : undefined,
+          goalsFor: { increment: body.homeGoals },
+          goalsAgainst: { increment: body.awayGoals },
+          goalDifference: {
+            increment: body.homeGoals - body.awayGoals,
           },
-          update: {
-            points: { increment: awayPoints },
-            goalsFor: { increment: body.awayScore },
-            goalsAgainst: { increment: body.homeScore },
-            matches: { increment: 1 },
-            wins: awayPoints === 3 ? { increment: 1 } : undefined,
-            draws: awayPoints === 1 ? { increment: 1 } : undefined,
-            losses: awayPoints === 0 ? { increment: 1 } : undefined,
-          },
-          create: {
-            fixtureId: match.fixtureId,
+          points: { increment: homePoints },
+        },
+        create: {
+          leagueId,
+          teamId: match.homeTeamId,
+          position: 0,
+          played: 1,
+          won: homePoints === 3 ? 1 : 0,
+          drawn: homePoints === 1 ? 1 : 0,
+          lost: homePoints === 0 ? 1 : 0,
+          goalsFor: body.homeGoals,
+          goalsAgainst: body.awayGoals,
+          goalDifference: body.homeGoals - body.awayGoals,
+          points: homePoints,
+        },
+      });
+
+      // Update or create standings for away team
+      await prisma.standings.upsert({
+        where: {
+          leagueId_teamId: {
+            leagueId,
             teamId: match.awayTeamId,
-            points: awayPoints,
-            matches: 1,
-            wins: awayPoints === 3 ? 1 : 0,
-            draws: awayPoints === 1 ? 1 : 0,
-            losses: awayPoints === 0 ? 1 : 0,
-            goalsFor: body.awayScore,
-            goalsAgainst: body.homeScore,
           },
-        }),
-      ]);
+        },
+        update: {
+          played: { increment: 1 },
+          won:
+            awayPoints === 3
+              ? { increment: 1 }
+              : undefined,
+          drawn:
+            awayPoints === 1
+              ? { increment: 1 }
+              : undefined,
+          lost:
+            awayPoints === 0
+              ? { increment: 1 }
+              : undefined,
+          goalsFor: { increment: body.awayGoals },
+          goalsAgainst: { increment: body.homeGoals },
+          goalDifference: {
+            increment: body.awayGoals - body.homeGoals,
+          },
+          points: { increment: awayPoints },
+        },
+        create: {
+          leagueId,
+          teamId: match.awayTeamId,
+          position: 0,
+          played: 1,
+          won: awayPoints === 3 ? 1 : 0,
+          drawn: awayPoints === 1 ? 1 : 0,
+          lost: awayPoints === 0 ? 1 : 0,
+          goalsFor: body.awayGoals,
+          goalsAgainst: body.homeGoals,
+          goalDifference: body.awayGoals - body.homeGoals,
+          points: awayPoints,
+        },
+      });
     }
 
-    return NextResponse.json(updatedMatch);
+    return NextResponse.json(updatedMatch, { status: 200 });
   } catch (error) {
-    console.error('POST /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/result error:', error);
+    console.error(
+      'POST /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/result error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to record result',

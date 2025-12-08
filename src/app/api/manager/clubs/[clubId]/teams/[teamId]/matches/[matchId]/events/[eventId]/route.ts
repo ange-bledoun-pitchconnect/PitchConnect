@@ -1,39 +1,61 @@
-// src/app/api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/events/[eventId]/route.ts
+/**
+ * Delete Match Event API
+ *
+ * DELETE /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/events/[eventId]
+ *
+ * Deletes a match event (goal, card, substitution, etc.) from a match.
+ * Only the club owner can delete events.
+ *
+ * Authorization: Only club owner can access
+ *
+ * Response:
+ * {
+ *   success: boolean,
+ *   message: string
+ * }
+ */
+
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { clubId: string; teamId: string; matchId: string; eventId: string } }
+  _req: NextRequest,
+  {
+    params,
+  }: {
+    params: {
+      clubId: string;
+      teamId: string;
+      matchId: string;
+      eventId: string;
+    };
+  }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const { clubId, teamId, matchId, eventId } = params;
 
-    // Verify access
-    const manager = await prisma.manager.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    if (!manager) {
-      return NextResponse.json({ error: 'Manager profile not found' }, { status: 404 });
-    }
-
+    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
     });
 
-    if (!club || club.managerId !== manager.id) {
+    if (!club) {
+      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    }
+
+    if (club.ownerId !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const team = await prisma.team.findUnique({
+    // Verify team exists and belongs to club (using oldTeam per schema)
+    const team = await prisma.oldTeam.findUnique({
       where: { id: teamId },
     });
 
@@ -41,7 +63,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get event
+    // Verify match exists and belongs to one of the team's matches
+    const match = await prisma.match.findUnique({
+      where: { id: matchId },
+    });
+
+    if (
+      !match ||
+      (match.homeTeamId !== teamId && match.awayTeamId !== teamId)
+    ) {
+      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+    }
+
+    // Get and verify event exists and belongs to this match
     const event = await prisma.matchEvent.findUnique({
       where: { id: eventId },
     });
@@ -50,7 +84,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    // Delete event
+    // Delete the event
     await prisma.matchEvent.delete({
       where: { id: eventId },
     });
@@ -60,7 +94,10 @@ export async function DELETE(
       message: 'Event deleted successfully',
     });
   } catch (error) {
-    console.error('DELETE /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/events/[eventId] error:', error);
+    console.error(
+      'DELETE /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/events/[eventId] error:',
+      error
+    );
     return NextResponse.json(
       {
         error: 'Failed to delete event',
