@@ -3,72 +3,52 @@
  *
  * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics
  *
- * Returns: Comprehensive team statistics including match results, player stats,
- * goals, assists, clean sheets, and win rate
+ * Returns: Comprehensive team statistics including:
+ * - Match results and performance metrics
+ * - Player statistics (goals, assists, appearances)
+ * - Win rate, goal differential, clean sheets
+ * - Individual player performance breakdown
  *
- * Authorization: Only club owner can access
- *
- * Response:
- * {
- *   teamStats: {
- *     totalMatches: number,
- *     totalGoals: number,
- *     totalAssists: number,
- *     wins: number,
- *     draws: number,
- *     losses: number,
- *     winRate: number,
- *     goalsPerGame: number,
- *     cleanSheets: number,
- *     avgAppearances: number
- *   },
- *   playerStats: Array<{
- *     playerId: string,
- *     playerName: string,
- *     position: string,
- *     shirtNumber: number,
- *     goals: number,
- *     assists: number,
- *     appearances: number,
- *     ... (other stats)
- *   }>
- * }
- */
-
-/**
- * Team Analytics API
- *
- * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics
- *
- * Returns: Comprehensive team statistics including match results, player stats,
- * goals, assists, clean sheets, and win rate
- *
- * Authorization: Only club owner can access
+ * Authorization: Only club owner can access their club's analytics
  *
  * Response:
  * {
- *   teamStats: {
- *     totalMatches: number,
- *     totalGoals: number,
- *     totalAssists: number,
- *     wins: number,
- *     draws: number,
- *     losses: number,
- *     winRate: number,
- *     goalsPerGame: number,
- *     cleanSheets: number,
- *     avgAppearances: number
- *   },
- *   playerStats: Array<{
- *     playerId: string,
- *     playerName: string,
- *     position: string,
- *     shirtNumber: number,
- *     goals: number,
- *     assists: number,
- *     appearances: number,
- *     ... (other stats)
- *   }>
+ *   success: boolean,
+ *   data: {
+ *     teamStats: {
+ *       totalMatches: number,
+ *       wins: number,
+ *       draws: number,
+ *       losses: number,
+ *       totalGoalsFor: number,
+ *       totalGoalsAgainst: number,
+ *       goalDifference: number,
+ *       winRate: number (%),
+ *       drawRate: number (%),
+ *       lossRate: number (%),
+ *       goalsPerGame: number,
+ *       goalsAgainstPerGame: number,
+ *       cleanSheets: number,
+ *       avgAppearances: number
+ *     },
+ *     playerStats: Array<{
+ *       playerId: string,
+ *       playerName: string,
+ *       position: string,
+ *       shirtNumber: number | null,
+ *       goals: number,
+ *       assists: number,
+ *       appearances: number,
+ *       minutesPlayed: number,
+ *       goalsPerGame: number,
+ *       assistsPerGame: number,
+ *       startingAppearances: number,
+ *       substitutedOn: number,
+ *       yellowCards: number,
+ *       redCards: number,
+ *       avgPerformanceRating: number
+ *     }>
+ *   }
  * }
  */
 
@@ -79,63 +59,93 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(
   _req: NextRequest,
-  _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
 ) {
   const session = await getServerSession(authOptions);
+
   if (!session?.user?.id) {
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    );
   }
 
   try {
     const { clubId, teamId } = params;
 
     // Verify club exists and user owns it
-    // Verify club exists and user owns it
     const club = await prisma.club.findUnique({
       where: { id: clubId },
+      select: {
+        id: true,
+        ownerId: true,
+      },
     });
 
     if (!club) {
-      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Club not found' },
+        { status: 404 }
+      );
     }
 
     if (club.ownerId !== session.user.id) {
-    if (!club) {
-      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Forbidden - You are not the club owner' },
+        { status: 403 }
+      );
     }
 
-    if (club.ownerId !== session.user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
-    // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    // Verify team exists and belongs to club (using Team model from new schema)
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
+      select: {
+        id: true,
+        name: true,
+        clubId: true,
+      },
     });
 
     if (!team || team.clubId !== clubId) {
-      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Team not found or does not belong to this club' },
+        { status: 404 }
+      );
     }
 
     // Get all finished matches for this team
     const matches = await prisma.match.findMany({
       where: {
-        OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
-        status: 'FINISHED',
+        OR: [
+          { homeTeamId: teamId },
+          { awayTeamId: teamId },
+        ],
         status: 'FINISHED',
       },
       include: {
-        events: true,
-        homeTeam: true,
-        awayTeam: true,
+        events: {
+          include: {
+            player: true,
+          },
+        },
+        stats: true,
+        homeTeam: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        awayTeam: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
+      orderBy: { date: 'desc' },
     });
 
-    // Calculate team stats
+    // Calculate comprehensive team statistics
     const totalMatches = matches.length;
     let wins = 0;
     let draws = 0;
@@ -149,12 +159,7 @@ export async function GET(
       const teamScore = isHome ? match.homeGoals : match.awayGoals;
       const opponentScore = isHome ? match.awayGoals : match.homeGoals;
 
-      // Handle null scores (match not completed)
-      if (teamScore === null || opponentScore === null) return;
-      const teamScore = isHome ? match.homeGoals : match.awayGoals;
-      const opponentScore = isHome ? match.awayGoals : match.homeGoals;
-
-      // Handle null scores (match not completed)
+      // Skip matches without final scores
       if (teamScore === null || opponentScore === null) return;
 
       totalGoalsFor += teamScore;
@@ -168,144 +173,192 @@ export async function GET(
         losses++;
       }
 
+      // Track clean sheets (no goals conceded)
       if (opponentScore === 0) {
         cleanSheets++;
       }
     });
 
-    const goalsPerGame =
-      totalMatches > 0 ? parseFloat((totalGoalsFor / totalMatches).toFixed(2)) : 0;
-    const winRate =
-      totalMatches > 0 ? parseFloat(((wins / totalMatches) * 100).toFixed(2)) : 0;
+    // Calculate performance metrics
+    const completedMatches = wins + draws + losses;
+    const winRate = completedMatches > 0
+      ? parseFloat(((wins / completedMatches) * 100).toFixed(2))
+      : 0;
+    const drawRate = completedMatches > 0
+      ? parseFloat(((draws / completedMatches) * 100).toFixed(2))
+      : 0;
+    const lossRate = completedMatches > 0
+      ? parseFloat(((losses / completedMatches) * 100).toFixed(2))
+      : 0;
+    const goalsPerGame = completedMatches > 0
+      ? parseFloat((totalGoalsFor / completedMatches).toFixed(2))
+      : 0;
+    const goalsAgainstPerGame = completedMatches > 0
+      ? parseFloat((totalGoalsAgainst / completedMatches).toFixed(2))
+      : 0;
 
-    // Get all players in this team using TeamPlayer relation
-    const teamPlayers = await prisma.teamPlayer.findMany({
-      where: { teamId },
+    // Get all players in this team
+    const teamMembers = await prisma.teamMember.findMany({
+      where: {
+        teamId,
+        status: 'ACTIVE',
+      },
       include: {
-        player: {
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-              },
-            },
-      include: {
-        player: {
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-              },
-            },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
           },
         },
       },
     });
 
-    const playerStats = await Promise.all(
-      teamPlayers.map(async (tp) => {
-        const player = tp.player;
+    // Get player profiles and statistics
+    const playerStatsPromises = teamMembers.map(async (member) => {
+      const playerProfile = await prisma.player.findUnique({
+        where: { userId: member.userId },
+        select: {
+          id: true,
+          position: true,
+          shirtNumber: true,
+        },
+      });
 
-        // Get all events for this player using correct field name 'type'
-        const playerEvents = await prisma.matchEvent.findMany({
-          where: {
-            playerId: player.id,
+      if (!playerProfile) {
+        return null;
+      }
+
+      // Get all match events (goals, assists, cards) for this player
+      const playerEvents = await prisma.matchEvent.findMany({
+        where: {
+          playerId: playerProfile.id,
+          match: {
+            status: 'FINISHED',
           },
-          include: {
-            match: true,
+        },
+        include: {
+          match: true,
+        },
+      });
+
+      // Count event types
+      const goals = playerEvents.filter((e) => e.type === 'GOAL').length;
+      const assists = playerEvents.filter((e) => e.type === 'ASSIST').length;
+      const yellowCards = playerEvents.filter((e) => e.type === 'YELLOW_CARD').length;
+      const redCards = playerEvents.filter((e) => e.type === 'RED_CARD').length;
+
+      // Get match attendance records for this player
+      const matchAttendances = await prisma.matchAttendance.findMany({
+        where: {
+          playerId: playerProfile.id,
+          match: {
+            status: 'FINISHED',
           },
-        });
+        },
+        include: {
+          match: true,
+        },
+      });
 
-        // Count events using 'type' field
-        const goals = playerEvents.filter((e) => e.type === 'GOAL').length;
-        const assists = playerEvents.filter((e) => e.type === 'ASSIST').length;
-        const yellowCards = playerEvents.filter((e) => e.type === 'YELLOW_CARD').length;
-        const redCards = playerEvents.filter((e) => e.type === 'RED_CARD').length;
+      // Calculate appearance statistics
+      const totalAppearances = matchAttendances.length;
+      const startingAppearances = matchAttendances.filter(
+        (ma) => ma.status === 'STARTING_LINEUP'
+      ).length;
+      const substitutedOn = matchAttendances.filter(
+        (ma) => ma.status === 'SUBSTITUTE'
+      ).length;
+      const totalMinutesPlayed = matchAttendances.reduce(
+        (sum, ma) => sum + (ma.minutesPlayed || 0),
+        0
+      );
 
-        // Get match attendances for this player (replaces lineupPlayer)
-        const matchAttendances = await prisma.matchAttendance.findMany({
-          where: { playerId: player.id },
-        });
-
-        const appearances = matchAttendances.length;
-        const matchesInStarting11 = matchAttendances.filter(
-          (ma) => ma.status === 'STARTING_LINEUP'
-        ).length;
-        const substitutedOn = matchAttendances.filter(
-          (ma) => ma.status === 'SUBSTITUTE'
-        ).length;
-        const appearances = matchAttendances.length;
-        const matchesInStarting11 = matchAttendances.filter(
-          (ma) => ma.status === 'STARTING_LINEUP'
-        ).length;
-        const substitutedOn = matchAttendances.filter(
-          (ma) => ma.status === 'SUBSTITUTE'
-        ).length;
-
-        return {
-          playerId: player.id,
-          playerName: `${player.user.firstName} ${player.user.lastName}`,
-          position: player.position || 'Unknown',
-          shirtNumber: player.shirtNumber,
-          shirtNumber: player.shirtNumber,
-          goals,
-          assists,
-          appearances,
-          goalsPerGame:
-            appearances > 0
-              ? parseFloat((goals / appearances).toFixed(2))
-              : 0,
-          assistsPerGame:
-            appearances > 0
-              ? parseFloat((assists / appearances).toFixed(2))
-              : 0,
-          matchesInStarting11,
-          substitutedOn,
-          yellowCards,
-          redCards,
-        };
-      })
-    );
-
-    // Calculate team assists (sum of all player assists)
-    // Calculate team assists (sum of all player assists)
-    const totalAssists = playerStats.reduce((sum, p) => sum + p.assists, 0);
-    const avgAppearances =
-      playerStats.length > 0
-        ? parseFloat(
-            (playerStats.reduce((sum, p) => sum + p.appearances, 0) / playerStats.length).toFixed(2)
-          )
+      // Calculate performance ratings average
+      const performanceRatings = matchAttendances
+        .filter((ma) => ma.performanceRating !== null)
+        .map((ma) => ma.performanceRating as number);
+      const avgPerformanceRating = performanceRatings.length > 0
+        ? parseFloat((
+            performanceRatings.reduce((a, b) => a + b, 0) / performanceRatings.length
+          ).toFixed(2))
         : 0;
 
+      // Calculate per-game averages
+      const goalsPerGame = totalAppearances > 0
+        ? parseFloat((goals / totalAppearances).toFixed(2))
+        : 0;
+      const assistsPerGame = totalAppearances > 0
+        ? parseFloat((assists / totalAppearances).toFixed(2))
+        : 0;
+
+      return {
+        playerId: playerProfile.id,
+        userId: member.userId,
+        playerName: `${member.user.firstName} ${member.user.lastName}`,
+        position: playerProfile.position || 'Unknown',
+        shirtNumber: playerProfile.shirtNumber,
+        goals,
+        assists,
+        appearances: totalAppearances,
+        minutesPlayed: totalMinutesPlayed,
+        goalsPerGame,
+        assistsPerGame,
+        startingAppearances,
+        substitutedOn,
+        yellowCards,
+        redCards,
+        avgPerformanceRating,
+      };
+    });
+
+    const playerStats = (await Promise.all(playerStatsPromises))
+      .filter((p) => p !== null)
+      .sort((a, b) => (b?.goals || 0) - (a?.goals || 0));
+
+    // Calculate team-wide player statistics
+    const totalAssists = playerStats.reduce((sum, p) => sum + (p?.assists || 0), 0);
+    const avgAppearances = playerStats.length > 0
+      ? parseFloat(
+          (playerStats.reduce((sum, p) => sum + (p?.appearances || 0), 0) / playerStats.length)
+            .toFixed(2)
+        )
+      : 0;
+
     return NextResponse.json({
-      teamStats: {
-        totalMatches,
-        totalGoals: totalGoalsFor,
-        totalAssists,
-        wins,
-        draws,
-        losses,
-        winRate: parseFloat(winRate.toFixed(2)),
-        goalsPerGame: parseFloat(goalsPerGame.toFixed(2)),
-        cleanSheets,
-        avgAppearances: parseFloat(avgAppearances.toFixed(2)),
+      success: true,
+      data: {
+        team: {
+          id: team.id,
+          name: team.name,
+        },
+        teamStats: {
+          totalMatches: completedMatches,
+          wins,
+          draws,
+          losses,
+          totalGoalsFor,
+          totalGoalsAgainst,
+          goalDifference: totalGoalsFor - totalGoalsAgainst,
+          winRate,
+          drawRate,
+          lossRate,
+          goalsPerGame,
+          goalsAgainstPerGame,
+          cleanSheets,
+          avgAppearances,
+        },
+        playerStats,
       },
-      playerStats: playerStats.sort((a, b) => b.goals - a.goals),
     });
   } catch (error) {
     console.error(
       'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics error:',
       error
     );
-    console.error(
-      'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics error:',
-      error
-    );
     return NextResponse.json(
       {
-        error: 'Failed to fetch analytics',
+        error: 'Failed to fetch team analytics',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
