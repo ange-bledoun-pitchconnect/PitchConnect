@@ -40,31 +40,26 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get all teams for this club (using oldTeam per schema)
+    // Get all teams for this club
     const teams = await prisma.team.findMany({
       where: { clubId },
-      include: {
-        coach: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            players: true,
-          },
-        },
-      },
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(teams);
+    // Get player count for each team via raw SQL
+    const teamsWithCounts = await Promise.all(
+      teams.map(async (team) => {
+        const playerCount: any = await prisma.$queryRaw`
+          SELECT COUNT(*) as count FROM "TeamMember" WHERE "teamId" = ${team.id}
+        `;
+        return {
+          ...team,
+          playerCount: playerCount[0]?.count || 0,
+        };
+      })
+    );
+
+    return NextResponse.json(teamsWithCounts);
   } catch (error) {
     console.error('GET /api/manager/clubs/[clubId]/teams error:', error);
     return NextResponse.json(
@@ -103,19 +98,6 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify coach exists
-    if (!body.coachId?.trim()) {
-      return NextResponse.json({ error: 'Coach ID is required' }, { status: 400 });
-    }
-
-    const coach = await prisma.coach.findUnique({
-      where: { id: body.coachId },
-    });
-
-    if (!coach) {
-      return NextResponse.json({ error: 'Coach not found' }, { status: 404 });
-    }
-
     // Validation
     if (!body.name?.trim()) {
       return NextResponse.json({ error: 'Team name is required' }, { status: 400 });
@@ -125,41 +107,31 @@ export async function POST(
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
     }
 
-    if (!body.season) {
-      return NextResponse.json({ error: 'Season is required' }, { status: 400 });
-    }
-
-    // Create team (using oldTeam per schema)
+    // Create team (no coachId - coaches are assigned to TrainingSession, not Team)
     const team = await prisma.team.create({
       data: {
         clubId,
-        coachId: body.coachId,
         name: body.name.trim(),
+        code: body.code?.trim() || body.name.trim().toUpperCase().substring(0, 3),
         category: body.category.trim(),
-        season: body.season,
+        ageGroup: body.ageGroup?.trim() || 'SENIOR',
         status: 'ACTIVE',
-      },
-      include: {
-        coach: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            players: true,
-          },
-        },
+        description: body.description?.trim() || null,
       },
     });
 
-    return NextResponse.json(team, { status: 201 });
+    // Get player count via raw SQL
+    const playerCount: any = await prisma.$queryRaw`
+      SELECT COUNT(*) as count FROM "TeamMember" WHERE "teamId" = ${team.id}
+    `;
+
+    return NextResponse.json(
+      {
+        ...team,
+        playerCount: playerCount[0]?.count || 0,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error('POST /api/manager/clubs/[clubId]/teams error:', error);
     return NextResponse.json(

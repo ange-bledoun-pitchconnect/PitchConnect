@@ -42,52 +42,48 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get team with full details (using oldTeam per schema)
+    // Get team
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      include: {
-        players: {
-          include: {
-            player: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                    email: true,
-                  },
-                },
-              },
-            },
-          },
-          orderBy: { joinedAt: 'desc' },
-        },
-        coach: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            players: true,
-          },
-        },
-      },
     });
 
     if (!team || team.clubId !== clubId) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    return NextResponse.json(team);
+    // Get player count via raw SQL
+    const playerCount: any = await prisma.$queryRaw`
+      SELECT COUNT(*) as count FROM "PlayerTeam" WHERE "teamId" = ${teamId}
+    `;
+
+    // Get team players via raw SQL
+    const teamPlayerIds: any[] = await prisma.$queryRaw`
+      SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${teamId}
+    `;
+
+    let players: any[] = [];
+    if (teamPlayerIds && teamPlayerIds.length > 0) {
+      const playerIds = teamPlayerIds.map((tp) => tp.playerId);
+      players = await prisma.player.findMany({
+        where: { id: { in: playerIds } },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+        },
+      });
+    }
+
+    return NextResponse.json({
+      ...team,
+      playerCount: playerCount[0]?.count || 0,
+      players,
+    });
   } catch (error) {
     console.error(
       'GET /api/manager/clubs/[clubId]/teams/[teamId] error:',
@@ -129,7 +125,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get team (using oldTeam per schema)
+    // Get team
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -158,42 +154,17 @@ export async function PATCH(
     const updatedTeam = await prisma.team.update({
       where: { id: teamId },
       data: updateData,
-      include: {
-        players: {
-          include: {
-            player: {
-              include: {
-                user: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        coach: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            players: true,
-          },
-        },
-      },
     });
 
-    return NextResponse.json(updatedTeam);
+    // Get player count via raw SQL
+    const playerCount: any = await prisma.$queryRaw`
+      SELECT COUNT(*) as count FROM "PlayerTeam" WHERE "teamId" = ${teamId}
+    `;
+
+    return NextResponse.json({
+      ...updatedTeam,
+      playerCount: playerCount[0]?.count || 0,
+    });
   } catch (error) {
     console.error(
       'PATCH /api/manager/clubs/[clubId]/teams/[teamId] error:',
@@ -234,28 +205,26 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Get team with player count (using oldTeam per schema)
+    // Get team
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      include: {
-        _count: {
-          select: {
-            players: true,
-          },
-        },
-      },
     });
 
     if (!team || team.clubId !== clubId) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
+    // Get player count via raw SQL
+    const playerCount: any = await prisma.$queryRaw`
+      SELECT COUNT(*) as count FROM "PlayerTeam" WHERE "teamId" = ${teamId}
+    `;
+
     // Check if team has players
-    if (team._count.players > 0) {
+    if (playerCount[0]?.count > 0) {
       return NextResponse.json(
         {
           error: 'Cannot delete team with existing players. Remove all players first.',
-          playerCount: team._count.players,
+          playerCount: playerCount[0]?.count,
         },
         { status: 400 }
       );

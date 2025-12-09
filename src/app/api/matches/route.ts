@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { MatchStatus, Prisma } from '@prisma/client';
 
 /**
@@ -94,8 +94,6 @@ export async function GET(req: NextRequest) {
             player: {
               select: {
                 id: true,
-                firstName: true,
-                lastName: true,
               },
             },
           },
@@ -106,12 +104,6 @@ export async function GET(req: NextRequest) {
         playerAttendances: {
           select: {
             status: true,
-          },
-        },
-        _count: {
-          select: {
-            events: true,
-            playerAttendances: true,
           },
         },
       },
@@ -170,15 +162,13 @@ export async function GET(req: NextRequest) {
           id: event.id,
           type: event.type,
           minute: event.minute,
-          player: event.player
-            ? `${event.player.firstName} ${event.player.lastName}`
-            : null,
+          player: event.player ? event.player.id : null,
           additionalInfo: event.additionalInfo,
         })),
         playerAttendance: attendance,
         counts: {
-          events: match._count.events,
-          playersTracked: match._count.playerAttendances,
+          events: match.events.length,
+          playersTracked: match.playerAttendances.length,
         },
       };
     });
@@ -276,18 +266,19 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Create attendance records for all players in both teams
-    const [homePlayers, awayPlayers] = await Promise.all([
-      prisma.teamPlayer.findMany({
-        where: { teamId: homeTeamId },
-        select: { playerId: true },
-      }),
-      prisma.teamPlayer.findMany({
-        where: { teamId: awayTeamId },
-        select: { playerId: true },
-      }),
+    // Get players from both teams via raw SQL (PlayerTeam table)
+    const [homePlayerIds, awayPlayerIds] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${homeTeamId}
+      `,
+      prisma.$queryRaw`
+        SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${awayTeamId}
+      `,
     ]);
 
+    // Flatten player IDs from query results
+    const homePlayers = (homePlayerIds as any[]).map((p) => ({ playerId: p.playerId }));
+    const awayPlayers = (awayPlayerIds as any[]).map((p) => ({ playerId: p.playerId }));
     const allPlayers = [...homePlayers, ...awayPlayers];
 
     if (allPlayers.length > 0) {

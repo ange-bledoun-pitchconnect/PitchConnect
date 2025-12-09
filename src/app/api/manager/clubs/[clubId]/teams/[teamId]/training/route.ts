@@ -64,11 +64,6 @@ export async function GET(
             },
           },
         },
-        _count: {
-          select: {
-            attendance: true,
-          },
-        },
       },
       orderBy: { date: 'desc' },
     });
@@ -142,15 +137,39 @@ export async function POST(
       return NextResponse.json({ error: 'Date is required' }, { status: 400 });
     }
 
-    if (!body.duration || body.duration <= 0) {
-      return NextResponse.json(
-        { error: 'Duration (in minutes) is required and must be positive' },
-        { status: 400 }
-      );
+    if (!body.startTime) {
+      return NextResponse.json({ error: 'Start time is required (HH:mm format)' }, { status: 400 });
+    }
+
+    if (!body.endTime) {
+      return NextResponse.json({ error: 'End time is required (HH:mm format)' }, { status: 400 });
     }
 
     if (!body.focus?.trim()) {
       return NextResponse.json({ error: 'Focus area is required' }, { status: 400 });
+    }
+
+    // Parse date and times
+    const sessionDate = new Date(body.date);
+    const startTime = new Date(`${body.date}T${body.startTime}:00`);
+    const endTime = new Date(`${body.date}T${body.endTime}:00`);
+
+    // Validate times
+    if (endTime <= startTime) {
+      return NextResponse.json(
+        { error: 'End time must be after start time' },
+        { status: 400 }
+      );
+    }
+
+    // Calculate duration in minutes
+    const duration = Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
+
+    if (duration <= 0) {
+      return NextResponse.json(
+        { error: 'Session duration must be positive' },
+        { status: 400 }
+      );
     }
 
     // Create training session
@@ -158,8 +177,10 @@ export async function POST(
       data: {
         teamId,
         coachId: body.coachId,
-        date: new Date(body.date),
-        duration: body.duration,
+        date: sessionDate,
+        startTime,
+        endTime,
+        duration,
         location: body.location?.trim() || null,
         focus: body.focus.trim(),
         notes: body.notes?.trim() || null,
@@ -174,11 +195,6 @@ export async function POST(
                 lastName: true,
               },
             },
-          },
-        },
-        _count: {
-          select: {
-            attendance: true,
           },
         },
       },

@@ -1,6 +1,7 @@
 import { verifySuperAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
+import { UpgradeRequestStatus } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,14 +14,22 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status') || 'PENDING';
+    const statusParam = searchParams.get('status') || 'PENDING';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
+
+    // Validate status enum
+    const validStatuses: UpgradeRequestStatus[] = ['PENDING', 'APPROVED', 'REJECTED'];
+    let status: UpgradeRequestStatus = 'PENDING';
+    
+    if (validStatuses.includes(statusParam as UpgradeRequestStatus)) {
+      status = statusParam as UpgradeRequestStatus;
+    }
 
     const skip = (page - 1) * limit;
 
     const [requests, total] = await Promise.all([
-      prisma.roleUpgradeRequest.findMany({
+      prisma.upgradeRequest.findMany({
         where: { status },
         skip,
         take: limit,
@@ -31,7 +40,7 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.roleUpgradeRequest.count({ where: { status } }),
+      prisma.upgradeRequest.count({ where: { status } }),
     ]);
 
     return NextResponse.json({
@@ -73,7 +82,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const upgradeRequest = await prisma.roleUpgradeRequest.findUnique({
+    const upgradeRequest = await prisma.upgradeRequest.findUnique({
       where: { id: requestId },
       include: { user: true },
     });
@@ -95,7 +104,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Update request status
-      await prisma.roleUpgradeRequest.update({
+      await prisma.upgradeRequest.update({
         where: { id: requestId },
         data: { status: 'APPROVED', reviewedAt: new Date(), reviewedBy: session.user.id },
       });
@@ -103,7 +112,7 @@ export async function POST(request: NextRequest) {
       console.log(`✅ Approved role upgrade for ${upgradeRequest.user.email}`);
     } else {
       // Just reject
-      await prisma.roleUpgradeRequest.update({
+      await prisma.upgradeRequest.update({
         where: { id: requestId },
         data: { status: 'REJECTED', reviewedAt: new Date(), reviewedBy: session.user.id },
       });

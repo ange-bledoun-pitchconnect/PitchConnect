@@ -42,7 +42,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -51,17 +51,12 @@ export async function GET(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Verify player exists and is in team (via TeamPlayer relation)
-    const teamPlayer = await prisma.teamPlayer.findUnique({
-      where: {
-        teamId_playerId: {
-          teamId,
-          playerId,
-        },
-      },
-    });
+    // Verify player exists and is in team (via PlayerTeam relation)
+    const playerTeam = await prisma.$queryRaw`
+      SELECT * FROM "PlayerTeam" WHERE "playerId" = ${playerId} AND "teamId" = ${teamId}
+    `;
 
-    if (!teamPlayer) {
+    if (!playerTeam || (Array.isArray(playerTeam) && playerTeam.length === 0)) {
       return NextResponse.json(
         { error: 'Player not found in team' },
         { status: 404 }
@@ -86,9 +81,6 @@ export async function GET(
           where: { season: new Date().getFullYear() },
         },
         achievements: true,
-        teams: {
-          where: { teamId },
-        },
       },
     });
 
@@ -96,10 +88,7 @@ export async function GET(
       return NextResponse.json({ error: 'Player not found' }, { status: 404 });
     }
 
-    return NextResponse.json({
-      ...player,
-      isCaptain: teamPlayer.isCaptain,
-    });
+    return NextResponse.json(player);
   } catch (error) {
     console.error(
       'GET /api/manager/clubs/[clubId]/teams/[teamId]/players/[playerId] error:',
@@ -141,7 +130,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -150,17 +139,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Verify player exists and is in team (via TeamPlayer relation)
-    const teamPlayer = await prisma.teamPlayer.findUnique({
-      where: {
-        teamId_playerId: {
-          teamId,
-          playerId,
-        },
-      },
-    });
+    // Verify player exists and is in team (via PlayerTeam relation)
+    const playerTeam = await prisma.$queryRaw`
+      SELECT * FROM "PlayerTeam" WHERE "playerId" = ${playerId} AND "teamId" = ${teamId}
+    `;
 
-    if (!teamPlayer) {
+    if (!playerTeam || (Array.isArray(playerTeam) && playerTeam.length === 0)) {
       return NextResponse.json(
         { error: 'Player not found in team' },
         { status: 404 }
@@ -173,55 +157,11 @@ export async function PATCH(
     if (body.position !== undefined) {
       updateData.position = body.position;
     }
-    if (body.shirtNumber !== undefined) {
-      updateData.shirtNumber = body.shirtNumber;
-    }
     if (body.developmentNotes !== undefined) {
       updateData.developmentNotes = body.developmentNotes;
     }
     if (body.status !== undefined) {
       updateData.status = body.status;
-    }
-
-    // Handle captain assignment (only one captain per team)
-    if (body.isCaptain === true) {
-      // Remove captain status from all other players in team
-      await prisma.teamPlayer.updateMany({
-        where: {
-          teamId,
-          playerId: { not: playerId },
-          isCaptain: true,
-        },
-        data: {
-          isCaptain: false,
-        },
-      });
-
-      // Set this player as captain
-      await prisma.teamPlayer.update({
-        where: {
-          teamId_playerId: {
-            teamId,
-            playerId,
-          },
-        },
-        data: {
-          isCaptain: true,
-        },
-      });
-    } else if (body.isCaptain === false) {
-      // Remove captain status from this player
-      await prisma.teamPlayer.update({
-        where: {
-          teamId_playerId: {
-            teamId,
-            playerId,
-          },
-        },
-        data: {
-          isCaptain: false,
-        },
-      });
     }
 
     // Update player details
@@ -241,26 +181,11 @@ export async function PATCH(
         stats: {
           where: { season: new Date().getFullYear() },
         },
-        teams: {
-          where: { teamId },
-        },
+        achievements: true,
       },
     });
 
-    // Get updated TeamPlayer for captain status
-    const updatedTeamPlayer = await prisma.teamPlayer.findUnique({
-      where: {
-        teamId_playerId: {
-          teamId,
-          playerId,
-        },
-      },
-    });
-
-    return NextResponse.json({
-      ...updatedPlayer,
-      isCaptain: updatedTeamPlayer?.isCaptain,
-    });
+    return NextResponse.json(updatedPlayer);
   } catch (error) {
     console.error(
       'PATCH /api/manager/clubs/[clubId]/teams/[teamId]/players/[playerId] error:',
@@ -301,7 +226,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -310,32 +235,22 @@ export async function DELETE(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Verify player exists and is in team (via TeamPlayer relation)
-    const teamPlayer = await prisma.teamPlayer.findUnique({
-      where: {
-        teamId_playerId: {
-          teamId,
-          playerId,
-        },
-      },
-    });
+    // Verify player exists and is in team (via PlayerTeam relation)
+    const playerTeam = await prisma.$queryRaw`
+      SELECT * FROM "PlayerTeam" WHERE "playerId" = ${playerId} AND "teamId" = ${teamId}
+    `;
 
-    if (!teamPlayer) {
+    if (!playerTeam || (Array.isArray(playerTeam) && playerTeam.length === 0)) {
       return NextResponse.json(
         { error: 'Player not found in team' },
         { status: 404 }
       );
     }
 
-    // Remove player from team (delete TeamPlayer relation, not the player)
-    await prisma.teamPlayer.delete({
-      where: {
-        teamId_playerId: {
-          teamId,
-          playerId,
-        },
-      },
-    });
+    // Remove player from team (delete PlayerTeam relation, not the player)
+    await prisma.$executeRaw`
+      DELETE FROM "PlayerTeam" WHERE "playerId" = ${playerId} AND "teamId" = ${teamId}
+    `;
 
     return NextResponse.json({
       success: true,

@@ -501,12 +501,12 @@ export async function GET(req: NextRequest): Promise<NextResponse<LogsResponse |
         _count: true,
       }),
 
-      // Top performers
+      // Top performers (FIXED: use empty string instead of null)
       prisma.auditLog.groupBy({
         by: ['performedById'],
         where: {
           ...where,
-          performedById: { not: null },
+          performedById: { not: '' },
         },
         _count: true,
         orderBy: {
@@ -521,7 +521,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<LogsResponse |
     // Enrich top performers with user details
     const topPerformersWithDetails = await Promise.all(
       topPerformers
-        .filter((p) => p.performedById !== null)
+        .filter((p) => p.performedById !== null && p.performedById !== '')
         .map(async (item) => {
           const performerUser = await prisma.user.findUnique({
             where: { id: item.performedById! },

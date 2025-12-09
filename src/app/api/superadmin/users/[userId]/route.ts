@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 import {
   checkSuperAdminSession,
   getUserDetails,
@@ -69,8 +69,8 @@ export async function GET(
             id: log.id,
             action: log.action,
             details: JSON.parse(log.details || '{}'),
-            performedBy: log.performedBy,
-            timestamp: log.timestamp,
+            performedById: log.performedById,
+            timestamp: log.createdAt,
           })),
         },
         timestamp: new Date(),

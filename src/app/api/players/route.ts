@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { db } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 import { Prisma, Position, PreferredFoot } from '@prisma/client';
 
 // ========================================
@@ -59,13 +59,26 @@ export async function GET(req: NextRequest) {
     const teamId = searchParams.get('teamId');
     const position = searchParams.get('position');
 
+    // Build player list based on teamId filter
+    let playerIds: string[] = [];
+
+    if (teamId) {
+      // Get player IDs from PlayerTeam table via raw SQL
+      const teamPlayers: any[] = await prisma.$queryRaw`
+        SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${teamId}
+      `;
+      playerIds = teamPlayers.map((tp) => tp.playerId);
+
+      if (playerIds.length === 0) {
+        return NextResponse.json([], { status: 200 });
+      }
+    }
+
     // Build Prisma where clause with proper typing
     const where: Prisma.PlayerWhereInput = {};
 
-    if (teamId) {
-      where.teams = {
-        some: { teamId },
-      };
+    if (playerIds.length > 0) {
+      where.id = { in: playerIds };
     }
 
     if (position) {
@@ -83,7 +96,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const players = await db.player.findMany({
+    const players = await prisma.player.findMany({
       where,
       include: {
         user: {
@@ -92,9 +105,6 @@ export async function GET(req: NextRequest) {
             firstName: true,
             lastName: true,
           },
-        },
-        teams: {
-          include: { team: true },
         },
         stats: true,
       },
@@ -190,7 +200,7 @@ export async function POST(req: NextRequest) {
     };
 
     // Create player
-    const player = await db.player.create({
+    const player = await prisma.player.create({
       data: playerData,
     });
 

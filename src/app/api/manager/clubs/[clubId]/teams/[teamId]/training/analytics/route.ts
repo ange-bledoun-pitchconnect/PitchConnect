@@ -260,7 +260,17 @@ export async function GET(
     const { startDate, endDate } = getDateRange(query.period);
 
     // ========================================================================
-    // 4. FETCH DATA
+    // 4. GET TEAM PLAYER IDS VIA RAW SQL
+    // ========================================================================
+
+    const teamPlayerIds: any[] = await prisma.$queryRaw`
+      SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${params.teamId}
+    `;
+
+    const playerIds = teamPlayerIds.map((tp) => tp.playerId);
+
+    // ========================================================================
+    // 5. FETCH DATA
     // ========================================================================
 
     const [trainingSessions, playerStats, totalPlayerCount] = await Promise.all([
@@ -282,11 +292,9 @@ export async function GET(
       }),
 
       // Get player-level statistics
-      prisma.player.findMany({
+      playerIds.length > 0 ? prisma.player.findMany({
         where: {
-          teams: {
-            some: { teamId: params.teamId },
-          },
+          id: { in: playerIds },
         },
         include: {
           trainingAttendance: {
@@ -306,20 +314,14 @@ export async function GET(
             },
           },
         },
-      }),
+      }) : Promise.resolve([]),
 
       // Get total player count
-      prisma.player.count({
-        where: {
-          teams: {
-            some: { teamId: params.teamId },
-          },
-        },
-      }),
+      playerIds.length,
     ]);
 
     // ========================================================================
-    // 5. CALCULATE STATISTICS
+    // 6. CALCULATE STATISTICS
     // ========================================================================
 
     // Attendance summary
@@ -384,7 +386,7 @@ export async function GET(
     playerAttendanceStats.sort((a, b) => b.attendanceRate - a.attendanceRate);
 
     // ========================================================================
-    // 6. CALCULATE ADVANCED METRICS
+    // 7. CALCULATE ADVANCED METRICS
     // ========================================================================
 
     const [attendanceTrend, sessionFrequency, riskPlayers] = await Promise.all([
@@ -394,7 +396,7 @@ export async function GET(
     ]);
 
     // ========================================================================
-    // 7. BUILD RESPONSE
+    // 8. BUILD RESPONSE
     // ========================================================================
 
     const analyticsData: TrainingAnalyticsData = {

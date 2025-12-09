@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         homeTeamId,
         awayTeamId,
         date: new Date(date),
-        venue,
+        venue: venue || null,
         attendanceDeadline: attendanceDeadline ? new Date(attendanceDeadline) : null,
         status: 'SCHEDULED',
       },
@@ -70,18 +70,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Create attendance records for all players in both teams
-    const [homePlayers, awayPlayers] = await Promise.all([
-      prisma.teamPlayer.findMany({
-        where: { teamId: homeTeamId },
-        select: { playerId: true },
-      }),
-      prisma.teamPlayer.findMany({
-        where: { teamId: awayTeamId },
-        select: { playerId: true },
-      }),
+    // Get players from both teams via raw SQL (PlayerTeam table)
+    const [homePlayerIds, awayPlayerIds] = await Promise.all([
+      prisma.$queryRaw`
+        SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${homeTeamId}
+      `,
+      prisma.$queryRaw`
+        SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${awayTeamId}
+      `,
     ]);
 
+    // Flatten player IDs from query results
+    const homePlayers = (homePlayerIds as any[]).map((p) => ({ playerId: p.playerId }));
+    const awayPlayers = (awayPlayerIds as any[]).map((p) => ({ playerId: p.playerId }));
     const allPlayers = [...homePlayers, ...awayPlayers];
 
     if (allPlayers.length > 0) {
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
           playerId: player.playerId,
           status: 'AVAILABLE',
         })),
+        skipDuplicates: true,
       });
     }
 

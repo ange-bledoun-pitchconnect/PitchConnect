@@ -42,24 +42,9 @@ export async function GET(_req: NextRequest) {
             members: true,
           },
         },
-        members: {
-          select: {
-            userId: true,
-            role: true,
-            status: true,
-          },
-        },
       },
-      orderBy: { joinedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
     });
-
-    if (clubMemberships.length > 0) {
-      return NextResponse.json({
-        clubs: clubMemberships.map((m) => m.club),
-        memberships: clubMemberships,
-        role: clubMemberships[0].role,
-      });
-    }
 
     // If user owns clubs, return them
     if (ownedClubs.length > 0) {
@@ -171,6 +156,7 @@ export async function POST(req: NextRequest) {
     const club = await prisma.club.create({
       data: {
         name: name.trim(),
+        code: body.code?.trim() || name.trim().toUpperCase().substring(0, 3),
         city: city?.trim() || 'Unknown',
         country: country?.trim() || 'United Kingdom',
         description: description?.trim() || null,
@@ -180,12 +166,12 @@ export async function POST(req: NextRequest) {
         secondaryColor: secondaryColor || '#FF6B35',
         status: 'ACTIVE',
         ownerId: session.user.id,
-        ownerId: session.user.id,
       },
       include: {
         _count: {
           select: {
             members: true,
+            teams: true,
           },
         },
       },

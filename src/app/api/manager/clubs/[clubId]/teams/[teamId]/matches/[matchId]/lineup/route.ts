@@ -62,7 +62,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -88,15 +88,17 @@ export async function GET(
       where: { matchId },
       include: {
         player: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            position: true,
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         },
       },
-      orderBy: { player: { firstName: 'asc' } },
+      orderBy: { player: { user: { firstName: 'asc' } } },
     });
 
     // Separate starting lineup and substitutes
@@ -104,8 +106,9 @@ export async function GET(
       .filter((a) => a.status === 'STARTING_LINEUP')
       .map((a) => ({
         playerId: a.player.id,
-        playerName: `${a.player.firstName} ${a.player.lastName}`,
-        position: a.player.position,
+        playerName: `${a.player.user.firstName} ${a.player.user.lastName}`,
+        position: a.position,
+        shirtNumber: a.shirtNumber,
         status: a.status,
       }));
 
@@ -113,7 +116,7 @@ export async function GET(
       .filter((a) => a.status === 'SUBSTITUTE')
       .map((a) => ({
         playerId: a.player.id,
-        playerName: `${a.player.firstName} ${a.player.lastName}`,
+        playerName: `${a.player.user.firstName} ${a.player.user.lastName}`,
       }));
 
     return NextResponse.json({
@@ -161,7 +164,7 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -200,18 +203,21 @@ export async function POST(
     // Verify all players exist and are in team
     const playerIds = body.players.map((p: any) => p.playerId);
     const substitutes = Array.isArray(body.substitutes) ? body.substitutes : [];
+    const allPlayerIds = [...playerIds, ...substitutes];
 
-    const players = await prisma.player.findMany({
-      where: {
-        id: { in: [...playerIds, ...substitutes] },
-        teams: {
-          some: { teamId },
-        },
-      },
-      select: { id: true },
-    });
+    // Use raw query to check if players belong to team
+    const playersInTeam = await prisma.$queryRaw`
+      SELECT DISTINCT p.id
+      FROM players p
+      WHERE p.id = ANY(${allPlayerIds}::text[])
+      AND EXISTS (
+        SELECT 1 FROM "PlayerTeam" pt 
+        WHERE pt."playerId" = p.id 
+        AND pt."teamId" = ${teamId}
+      )
+    `;
 
-    if (players.length !== playerIds.length + substitutes.length) {
+    if (!Array.isArray(playersInTeam) || playersInTeam.length !== allPlayerIds.length) {
       return NextResponse.json(
         { error: 'Some players not found in team' },
         { status: 404 }
@@ -229,6 +235,8 @@ export async function POST(
         matchId,
         playerId: player.playerId,
         status: 'STARTING_LINEUP',
+        position: player.position || null,
+        shirtNumber: player.shirtNumber || null,
       })),
     });
 

@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
           status: true,
           isSuperAdmin: true,
           createdAt: true,
-          lastLogin: true,
+          lastLoginAt: true,
         },
         orderBy: { createdAt: 'desc' },
       }),

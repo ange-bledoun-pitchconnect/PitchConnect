@@ -16,17 +16,13 @@
  *   firstName: string,
  *   lastName: string,
  *   position: string,
- *   shirtNumber: number,
- *   isCaptain: boolean,
  *   user: {id, firstName, lastName, email}
  * }>
  *
  * Request (POST):
  * {
  *   userId: string,
- *   position: string,
- *   shirtNumber: number,
- *   isCaptain: boolean
+ *   position: string
  * }
  *
  * Response (POST):
@@ -34,8 +30,6 @@
  *   id: string,
  *   userId: string,
  *   position: string,
- *   shirtNumber: number,
- *   isCaptain: boolean,
  *   user: {id, firstName, lastName, email}
  * }
  */
@@ -70,7 +64,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -79,40 +73,46 @@ export async function GET(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get team players via TeamPlayer relation
-    const teamPlayers = await prisma.teamPlayer.findMany({
-      where: { teamId },
+    // Get team players via PlayerTeam relation (raw SQL)
+    const teamPlayerIds: any[] = await prisma.$queryRaw`
+      SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${teamId}
+    `;
+
+    if (!teamPlayerIds || teamPlayerIds.length === 0) {
+      return NextResponse.json([]);
+    }
+
+    const playerIds = teamPlayerIds.map((tp) => tp.playerId);
+
+    // Get player details
+    const players = await prisma.player.findMany({
+      where: {
+        id: { in: playerIds },
+      },
       include: {
-        player: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
           },
         },
       },
-      orderBy: { joinedAt: 'desc' },
+      orderBy: { user: { firstName: 'asc' } },
     });
 
-    // Transform response to include captain status from TeamPlayer
-    const players = teamPlayers.map((tp) => ({
-      id: tp.player.id,
-      userId: tp.player.userId,
-      firstName: tp.player.firstName,
-      lastName: tp.player.lastName,
-      position: tp.player.position,
-      shirtNumber: tp.player.shirtNumber,
-      isCaptain: tp.isCaptain,
-      joinedAt: tp.joinedAt,
-      user: tp.player.user,
+    // Transform response
+    const response = players.map((player) => ({
+      id: player.id,
+      userId: player.userId,
+      firstName: player.user.firstName,
+      lastName: player.user.lastName,
+      position: player.position,
+      user: player.user,
     }));
 
-    return NextResponse.json(players);
+    return NextResponse.json(response);
   } catch (error) {
     console.error(
       'GET /api/manager/clubs/[clubId]/teams/[teamId]/players error:',
@@ -154,7 +154,7 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
+    // Verify team exists and belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
@@ -185,18 +185,13 @@ export async function POST(
       where: { userId: body.userId },
     });
 
-    // Check if already on this team via TeamPlayer
+    // Check if already on this team via PlayerTeam (raw SQL)
     if (existingPlayer) {
-      const teamPlayer = await prisma.teamPlayer.findUnique({
-        where: {
-          teamId_playerId: {
-            teamId,
-            playerId: existingPlayer.id,
-          },
-        },
-      });
+      const teamPlayer = await prisma.$queryRaw`
+        SELECT * FROM "PlayerTeam" WHERE "playerId" = ${existingPlayer.id} AND "teamId" = ${teamId}
+      `;
 
-      if (teamPlayer) {
+      if (teamPlayer && Array.isArray(teamPlayer) && teamPlayer.length > 0) {
         return NextResponse.json(
           { error: 'Player already added to this team' },
           { status: 400 }
@@ -210,37 +205,32 @@ export async function POST(
       player = await prisma.player.create({
         data: {
           userId: body.userId,
-          firstName: user.firstName,
-          lastName: user.lastName,
+          firstName: user.firstName || 'Unknown',
+          lastName: user.lastName || 'Unknown',
           dateOfBirth: user.dateOfBirth || new Date('1990-01-01'),
           nationality: user.nationality || 'Unknown',
           position: body.position || 'MIDFIELDER',
           preferredFoot: body.preferredFoot || 'RIGHT',
+          status: 'ACTIVE',
         },
       });
     }
 
-    // Add player to team via TeamPlayer
-    const teamPlayer = await prisma.teamPlayer.create({
-      data: {
-        teamId,
-        playerId: player.id,
-        joinedAt: new Date(),
-        isCaptain: body.isCaptain || false,
-      },
-    });
+    // Add player to team via PlayerTeam (raw SQL insert)
+    await prisma.$executeRaw`
+      INSERT INTO "PlayerTeam" ("playerId", "teamId", "joinedAt")
+      VALUES (${player.id}, ${teamId}, NOW())
+      ON CONFLICT DO NOTHING
+    `;
 
     // Return created response
     return NextResponse.json(
       {
         id: player.id,
         userId: player.userId,
-        firstName: player.firstName,
-        lastName: player.lastName,
+        firstName: user.firstName,
+        lastName: user.lastName,
         position: player.position,
-        shirtNumber: player.shirtNumber,
-        isCaptain: teamPlayer.isCaptain,
-        joinedAt: teamPlayer.joinedAt,
         user: {
           id: user.id,
           firstName: user.firstName,

@@ -13,7 +13,7 @@ import {
   findInactiveUsers,
   createAuditLog,
 } from '@/lib/superadmin-helpers';
-import prisma from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -256,7 +256,7 @@ async function getRetentionMetrics() {
   const retainedUsers = await prisma.user.count({
     where: {
       createdAt: { lte: thirtyDaysAgo },
-      lastLogin: { gte: thirtyDaysAgo },
+      lastLoginAt: { gte: thirtyDaysAgo },
     },
   });
 
