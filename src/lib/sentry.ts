@@ -5,7 +5,7 @@
  * Core Features:
  * - Sentry error tracking and reporting
  * - Exception capture and logging
- * - Performance monitoring with transactions
+ * - Performance monitoring with breadcrumbs
  * - Release tracking and version management
  * - User context management with role-based tagging
  * - Error aggregation and analysis
@@ -14,7 +14,7 @@
  * 
  * Schema Aligned: Tracks PitchConnect errors with user roles, sports entities, payments
  * Production Ready: Full error handling, type safety, comprehensive logging
- * Enterprise Grade: Performance monitoring, transaction tracking, custom contexts
+ * Enterprise Grade: Performance monitoring, breadcrumb tracking, custom contexts
  * 
  * Business Logic:
  * - Initialize Sentry for production error tracking
@@ -156,12 +156,17 @@ export function initializeSentry(): void {
       beforeSend: (event, hint) => {
         // Filter out browser extension errors
         if (event.exception) {
-          const error = hint.originalException;
+          const error = hint.originalException as any;
+          
+          // Type-safe error message checking
+          const errorMessage = typeof error === 'object' && error !== null && 'message' in error 
+            ? String(error.message) 
+            : String(error);
           
           if (
-            error?.message?.includes('chrome-extension://') ||
-            error?.message?.includes('moz-extension://') ||
-            error?.message?.includes('top.GLOBALS')
+            errorMessage?.includes('chrome-extension://') ||
+            errorMessage?.includes('moz-extension://') ||
+            errorMessage?.includes('top.GLOBALS')
           ) {
             return null;
           }
@@ -330,9 +335,13 @@ export function captureMessage(
   }
 
   try {
-    Sentry.captureMessage(message, level, {
-      extra: context,
-    });
+    // Sentry.captureMessage takes message and level only
+    Sentry.captureMessage(message, level);
+
+    // If additional context needed, add as breadcrumb
+    if (context) {
+      addBreadcrumb(message, BREADCRUMB_CATEGORIES.SYSTEM, level, context);
+    }
 
     console.log(`✅ Message captured [${level}]:`, message);
   } catch (error) {
@@ -554,61 +563,15 @@ export function reportPaymentError(
 }
 
 // ============================================================================
-// TRANSACTION & PERFORMANCE MONITORING
+// PERFORMANCE TRACKING
 // ============================================================================
 
 /**
- * Start performance transaction
- * Use to track operation duration and success rate
- * 
- * @param name - Transaction name
- * @param operation - Operation type (db, http, etc.)
- * @returns Transaction object for finishing
- */
-export function startTransaction(
-  name: string,
-  operation: string
-): ReturnType<typeof Sentry.startTransaction> | null {
-  if (!isInitialized) return null;
-
-  try {
-    const transaction = Sentry.startTransaction({
-      name,
-      op: operation,
-      tags: {
-        operation,
-      },
-    });
-
-    console.log('✅ Transaction started:', name);
-    return transaction;
-  } catch (error) {
-    console.error('❌ Failed to start transaction:', error);
-    return null;
-  }
-}
-
-/**
- * Finish transaction
- * Must be called to complete transaction tracking
- */
-export function finishTransaction(transaction: any): void {
-  if (!transaction) return;
-
-  try {
-    transaction.finish();
-    console.log('✅ Transaction finished');
-  } catch (error) {
-    console.error('❌ Failed to finish transaction:', error);
-  }
-}
-
-/**
  * Measure async operation performance
- * Automatically creates and finishes transaction
+ * Tracks operation execution time via breadcrumbs
  * 
  * @param name - Operation name
- * @param operation - Operation type
+ * @param operation - Operation type (db, http, api, etc.)
  * @param fn - Async function to measure
  * @returns Function result
  */
@@ -617,20 +580,105 @@ export async function measureOperation<T>(
   operation: string,
   fn: () => Promise<T>
 ): Promise<T> {
-  const transaction = startTransaction(name, operation);
+  const startTime = performance.now();
 
   try {
     const result = await fn();
-    finishTransaction(transaction);
+    const duration = performance.now() - startTime;
+
+    // Add breadcrumb for successful operation
+    addBreadcrumb(
+      `${name} completed`,
+      BREADCRUMB_CATEGORIES.SYSTEM,
+      'info',
+      {
+        operation,
+        duration_ms: Math.round(duration),
+        status: 'success',
+      }
+    );
+
     return result;
   } catch (error) {
-    if (transaction) {
-      transaction.setStatus('error');
-    }
+    const duration = performance.now() - startTime;
+
+    // Add breadcrumb for failed operation
+    addBreadcrumb(
+      `${name} failed`,
+      BREADCRUMB_CATEGORIES.SYSTEM,
+      'error',
+      {
+        operation,
+        duration_ms: Math.round(duration),
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      }
+    );
+
     captureException(error as Error, {
       operation,
-      transaction_name: name,
+      operation_name: name,
+      duration_ms: Math.round(duration),
     });
+
+    throw error;
+  }
+}
+
+/**
+ * Measure synchronous operation performance
+ * 
+ * @param name - Operation name
+ * @param operation - Operation type
+ * @param fn - Function to measure
+ * @returns Function result
+ */
+export function measureSync<T>(
+  name: string,
+  operation: string,
+  fn: () => T
+): T {
+  const startTime = performance.now();
+
+  try {
+    const result = fn();
+    const duration = performance.now() - startTime;
+
+    // Add breadcrumb for successful operation
+    addBreadcrumb(
+      `${name} completed`,
+      BREADCRUMB_CATEGORIES.SYSTEM,
+      'info',
+      {
+        operation,
+        duration_ms: Math.round(duration),
+        status: 'success',
+      }
+    );
+
+    return result;
+  } catch (error) {
+    const duration = performance.now() - startTime;
+
+    // Add breadcrumb for failed operation
+    addBreadcrumb(
+      `${name} failed`,
+      BREADCRUMB_CATEGORIES.SYSTEM,
+      'error',
+      {
+        operation,
+        duration_ms: Math.round(duration),
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      }
+    );
+
+    captureException(error as Error, {
+      operation,
+      operation_name: name,
+      duration_ms: Math.round(duration),
+    });
+
     throw error;
   }
 }
@@ -715,8 +763,24 @@ export function addActionBreadcrumb(
   );
 }
 
+/**
+ * Add database operation breadcrumb
+ */
+export function addDatabaseBreadcrumb(
+  operation: string,
+  table: string,
+  duration?: number
+): void {
+  addBreadcrumb(
+    `Database ${operation} on ${table}`,
+    BREADCRUMB_CATEGORIES.DATABASE,
+    'info',
+    { operation, table, duration_ms: duration }
+  );
+}
+
 // ============================================================================
-// TAGS & FINGERPRINTS
+// TAGS & CONTEXT
 // ============================================================================
 
 /**
