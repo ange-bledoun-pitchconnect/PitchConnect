@@ -1,17 +1,154 @@
 'use client';
 
+/**
+ * Dashboard Header Component
+ * Path: /components/layout/DashboardHeader.tsx
+ * 
+ * Core Features:
+ * - Role switcher for multi-role users
+ * - Team filter dropdown
+ * - Dynamic create button based on user role
+ * - Notifications dropdown
+ * - Settings quick access
+ * - Profile menu with sign out
+ * 
+ * Schema Aligned: Uses roles array from session
+ * Role-based Logic: SuperAdmin, League Admin, Club Manager, Player, Coach
+ * Components: TeamFilterDropdown with onChange prop
+ * 
+ * Business Logic:
+ * - SuperAdmin, League Admin, Club Manager → Create Club button
+ * - Other users → Add Team button
+ * - Multi-role users can switch between dashboards
+ * - Click-outside detection for dropdowns
+ * - Dark mode support
+ */
+
 import { useTeamFilter } from '@/lib/dashboard/team-context';
 import { TeamFilterDropdown } from '@/components/common/TeamFilterDropdown';
 import { Button } from '@/components/ui/button';
 import { Plus, Bell, Settings, LogOut, User, ChevronDown } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 interface DashboardHeaderProps {
   teams?: Array<{ id: string; name: string }>;
   onAddTeam?: () => void;
 }
+
+type UserRole = 'SUPERADMIN' | 'LEAGUE_ADMIN' | 'CLUB_MANAGER' | 'PLAYER' | 'COACH' | 'MANAGER' | 'PARENT' | 'REFEREE' | 'SCOUT' | 'ANALYST' | 'TREASURER';
+
+interface RoleConfig {
+  id: string;
+  path: string;
+  emoji: string;
+  label: string;
+  color: string;
+}
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const ROLE_CONFIGS: Record<string, RoleConfig> = {
+  overview: {
+    id: 'overview',
+    path: 'overview',
+    emoji: '📊',
+    label: 'Dashboard Overview',
+    color: 'gold',
+  },
+  superadmin: {
+    id: 'superadmin',
+    path: 'superadmin',
+    emoji: '🛠️',
+    label: 'Super Admin',
+    color: 'blue',
+  },
+  LEAGUE_ADMIN: {
+    id: 'league-admin',
+    path: 'league-admin',
+    emoji: '⚽',
+    label: 'League Admin',
+    color: 'green',
+  },
+  PLAYER: {
+    id: 'player',
+    path: 'player',
+    emoji: '👤',
+    label: 'Player',
+    color: 'purple',
+  },
+  COACH: {
+    id: 'coach',
+    path: 'coach',
+    emoji: '📋',
+    label: 'Coach',
+    color: 'orange',
+  },
+  CLUB_MANAGER: {
+    id: 'manager',
+    path: 'manager',
+    emoji: '👔',
+    label: 'Team Manager',
+    color: 'pink',
+  },
+  MANAGER: {
+    id: 'manager',
+    path: 'manager',
+    emoji: '👔',
+    label: 'Team Manager',
+    color: 'pink',
+  },
+};
+
+const COLOR_MAP: Record<string, { bg: string; text: string; hover: string; dark: { bg: string; text: string; hover: string } }> = {
+  gold: {
+    bg: 'bg-gold-50',
+    text: 'text-gold-700',
+    hover: 'hover:bg-gold-100',
+    dark: { bg: 'dark:bg-gold-900/20', text: 'dark:text-gold-400', hover: 'dark:hover:bg-gold-900/40' },
+  },
+  blue: {
+    bg: 'bg-blue-50',
+    text: 'text-blue-700',
+    hover: 'hover:bg-blue-100',
+    dark: { bg: 'dark:bg-blue-900/20', text: 'dark:text-blue-400', hover: 'dark:hover:bg-blue-900/40' },
+  },
+  green: {
+    bg: 'bg-green-50',
+    text: 'text-green-700',
+    hover: 'hover:bg-green-100',
+    dark: { bg: 'dark:bg-green-900/20', text: 'dark:text-green-400', hover: 'dark:hover:bg-green-900/40' },
+  },
+  purple: {
+    bg: 'bg-purple-50',
+    text: 'text-purple-700',
+    hover: 'hover:bg-purple-100',
+    dark: { bg: 'dark:bg-purple-900/20', text: 'dark:text-purple-400', hover: 'dark:hover:bg-purple-900/40' },
+  },
+  orange: {
+    bg: 'bg-orange-50',
+    text: 'text-orange-700',
+    hover: 'hover:bg-orange-100',
+    dark: { bg: 'dark:bg-orange-900/20', text: 'dark:text-orange-400', hover: 'dark:hover:bg-orange-900/40' },
+  },
+  pink: {
+    bg: 'bg-pink-50',
+    text: 'text-pink-700',
+    hover: 'hover:bg-pink-100',
+    dark: { bg: 'dark:bg-pink-900/20', text: 'dark:text-pink-400', hover: 'dark:hover:bg-pink-900/40' },
+  },
+};
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
 export function DashboardHeader({
   teams = [],
@@ -30,7 +167,105 @@ export function DashboardHeader({
   const notificationsRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdowns when clicking outside
+  // ============================================================================
+  // HELPERS
+  // ============================================================================
+
+  /**
+   * Get current role from pathname
+   */
+  const getCurrentRole = useCallback((): string | null => {
+    if (pathname.startsWith('/dashboard/superadmin')) return 'superadmin';
+    if (pathname.startsWith('/dashboard/league-admin')) return 'league-admin';
+    if (pathname.startsWith('/dashboard/player')) return 'player';
+    if (pathname.startsWith('/dashboard/coach')) return 'coach';
+    if (pathname.startsWith('/dashboard/manager')) return 'manager';
+    if (pathname.startsWith('/dashboard/overview')) return 'overview';
+    return null;
+  }, [pathname]);
+
+  /**
+   * Check if user has a specific role
+   */
+  const hasRole = useCallback(
+    (role: UserRole): boolean => {
+      if (role === 'SUPERADMIN') {
+        return session?.user?.isSuperAdmin || false;
+      }
+      const userRoles = (session?.user?.roles as string[]) || [];
+      return userRoles.includes(role);
+    },
+    [session]
+  );
+
+  /**
+   * Get available roles for user
+   */
+  const getAvailableRoles = useCallback((): Array<{ role: string; config: RoleConfig }> => {
+    const available: Array<{ role: string; config: RoleConfig }> = [];
+
+    // Always add overview
+    available.push({ role: 'overview', config: ROLE_CONFIGS.overview });
+
+    // Add SuperAdmin if applicable
+    if (session?.user?.isSuperAdmin) {
+      available.push({ role: 'superadmin', config: ROLE_CONFIGS.superadmin });
+    }
+
+    // Add other roles based on roles array
+    const userRoles = (session?.user?.roles as string[]) || [];
+    if (userRoles.includes('LEAGUE_ADMIN')) {
+      available.push({ role: 'LEAGUE_ADMIN', config: ROLE_CONFIGS.LEAGUE_ADMIN });
+    }
+    if (userRoles.includes('PLAYER')) {
+      available.push({ role: 'PLAYER', config: ROLE_CONFIGS.PLAYER });
+    }
+    if (userRoles.includes('COACH')) {
+      available.push({ role: 'COACH', config: ROLE_CONFIGS.COACH });
+    }
+    if (userRoles.includes('CLUB_MANAGER') || userRoles.includes('MANAGER')) {
+      available.push({ role: 'CLUB_MANAGER', config: ROLE_CONFIGS.CLUB_MANAGER });
+    }
+
+    return available;
+  }, [session]);
+
+  /**
+   * Determine if user has multiple roles
+   */
+  const hasMultipleRoles = useCallback((): boolean => {
+    return getAvailableRoles().length > 1;
+  }, [getAvailableRoles]);
+
+  /**
+   * Determine button config based on user role
+   */
+  const getCreateButtonConfig = useCallback(() => {
+    const userRoles = (session?.user?.roles as string[]) || [];
+    const isSuperAdmin = session?.user?.isSuperAdmin || false;
+
+    // SuperAdmin, League Admin, and Club Managers can create clubs
+    if (isSuperAdmin || userRoles.includes('LEAGUE_ADMIN') || userRoles.includes('CLUB_MANAGER')) {
+      return {
+        text: 'Create Club',
+        action: () => router.push('/dashboard/clubs/create'),
+      };
+    }
+
+    // Other users see "Add Team"
+    return {
+      text: 'Add Team',
+      action: onAddTeam || (() => router.push('/dashboard/teams/join')),
+    };
+  }, [session, router, onAddTeam]);
+
+  // ============================================================================
+  // EVENT HANDLERS
+  // ============================================================================
+
+  /**
+   * Close all dropdowns when clicking outside
+   */
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (roleSwitcherRef.current && !roleSwitcherRef.current.contains(event.target as Node)) {
@@ -48,99 +283,72 @@ export function DashboardHeader({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Detect current dashboard context from URL
-  const getCurrentRole = () => {
-    if (pathname.startsWith('/dashboard/superadmin')) return 'superadmin';
-    if (pathname.startsWith('/dashboard/league-admin')) return 'league-admin';
-    if (pathname.startsWith('/dashboard/player')) return 'player';
-    if (pathname.startsWith('/dashboard/coach')) return 'coach';
-    if (pathname.startsWith('/dashboard/manager')) return 'manager';
-    if (pathname.startsWith('/dashboard/overview')) return 'overview';
-    return null;
-  };
+  /**
+   * Handle role switching
+   */
+  const handleRoleSwitch = useCallback(
+    (role: string) => {
+      setShowRoleSwitcher(false);
+      const config = ROLE_CONFIGS[role];
+      if (config) {
+        router.push(`/dashboard/${config.path}`);
+      }
+    },
+    [router]
+  );
 
-  const currentRole = getCurrentRole();
-  const user = session?.user;
-  const roles = (user?.roles as string[]) || [];
-
-  // Get role display name with emoji
-  const getRoleDisplay = (role: string) => {
-    const displays: Record<string, string> = {
-      overview: '📊 Overview',
-      superadmin: '🛠️ Super Admin',
-      'league-admin': '⚽ League Admin',
-      player: '👤 Player',
-      coach: '📋 Coach',
-      manager: '👔 Manager',
-    };
-    return displays[role] || 'Dashboard';
-  };
-
-  // Handle role switching
-  const handleRoleSwitch = (role: string) => {
-    setShowRoleSwitcher(false);
-    router.push(`/dashboard/${role}`);
-  };
-
-  // Check if user has multiple roles (including SuperAdmin)
-  const hasMultipleRoles = () => {
-    let availableRoles = 0;
-    
-    // Always count overview
-    availableRoles++;
-    
-    if (user?.isSuperAdmin) availableRoles++;
-    if (roles.includes('LEAGUE_ADMIN')) availableRoles++;
-    if (roles.includes('PLAYER')) availableRoles++;
-    if (roles.includes('COACH')) availableRoles++;
-    if (roles.includes('MANAGER') || roles.includes('CLUB_MANAGER')) availableRoles++;
-    
-    return availableRoles > 1;
-  };
-
-  // Determine button text and action based on user role
-  const getCreateButtonConfig = () => {
-    const userType = session?.user?.userType || 'PLAYER';
-
-    // SuperAdmin, League Admin, and Managers can create clubs
-    if (['SUPERADMIN', 'LEAGUE_ADMIN', 'CLUB_MANAGER'].includes(userType)) {
-      return {
-        text: 'Create Club',
-        action: () => router.push('/dashboard/clubs/create'),
-      };
-    }
-
-    // Other users see "Add Team" (for joining teams)
-    return {
-      text: 'Add Team',
-      action: onAddTeam || (() => router.push('/dashboard/teams/join')),
-    };
-  };
-
-  const buttonConfig = getCreateButtonConfig();
-
-  const handleNotificationClick = (): void => {
-    setShowNotifications(!showNotifications);
+  /**
+   * Handle notification button click
+   */
+  const handleNotificationClick = useCallback(() => {
+    setShowNotifications((prev) => !prev);
     setShowProfileMenu(false);
     setShowRoleSwitcher(false);
-  };
+  }, []);
 
-  const handleSettingsClick = (): void => {
+  /**
+   * Handle settings click
+   */
+  const handleSettingsClick = useCallback(() => {
     router.push('/dashboard/settings');
     setShowProfileMenu(false);
-  };
+  }, [router]);
 
-  const handleProfileMenuToggle = () => {
-    setShowProfileMenu(!showProfileMenu);
+  /**
+   * Handle profile menu toggle
+   */
+  const handleProfileMenuToggle = useCallback(() => {
+    setShowProfileMenu((prev) => !prev);
     setShowNotifications(false);
     setShowRoleSwitcher(false);
-  };
+  }, []);
 
-  const handleRoleSwitcherToggle = () => {
-    setShowRoleSwitcher(!showRoleSwitcher);
+  /**
+   * Handle role switcher toggle
+   */
+  const handleRoleSwitcherToggle = useCallback(() => {
+    setShowRoleSwitcher((prev) => !prev);
     setShowNotifications(false);
     setShowProfileMenu(false);
-  };
+  }, []);
+
+  /**
+   * Handle team selection change
+   */
+  const handleTeamChange = useCallback(
+    (teamIds: string[]) => {
+      setSelectedTeams(teamIds);
+    },
+    [setSelectedTeams]
+  );
+
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+
+  const currentRole = getCurrentRole();
+  const buttonConfig = getCreateButtonConfig();
+  const availableRoles = getAvailableRoles();
 
   return (
     <div className="flex items-center justify-between gap-4">
@@ -151,96 +359,46 @@ export function DashboardHeader({
           <div className="relative" ref={roleSwitcherRef}>
             <button
               onClick={handleRoleSwitcherToggle}
-              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-charcoal-800 border border-neutral-200 dark:border-charcoal-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-charcoal-800 border border-neutral-200 dark:border-charcoal-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors font-semibold"
+              aria-expanded={showRoleSwitcher}
+              aria-label="Switch role"
             >
-              <span className="font-semibold text-sm text-charcoal-900 dark:text-white">
-                {getRoleDisplay(currentRole)}
+              <span className="text-sm text-charcoal-900 dark:text-white">
+                {ROLE_CONFIGS[currentRole]?.emoji} {ROLE_CONFIGS[currentRole]?.label || 'Dashboard'}
               </span>
-              <ChevronDown className={`w-4 h-4 text-charcoal-600 dark:text-charcoal-400 transition-transform ${showRoleSwitcher ? 'rotate-180' : ''}`} />
+              <ChevronDown
+                className={`w-4 h-4 text-charcoal-600 dark:text-charcoal-400 transition-transform ${
+                  showRoleSwitcher ? 'rotate-180' : ''
+                }`}
+              />
             </button>
 
+            {/* Role Switcher Dropdown */}
             {showRoleSwitcher && (
-              <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50">
+              <div className="absolute left-0 top-full mt-2 w-64 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 animate-in fade-in">
                 <div className="p-2">
                   <div className="px-3 py-2 text-xs font-semibold text-charcoal-500 dark:text-charcoal-400 uppercase tracking-wide">
                     Switch Role
                   </div>
-                  
-                  <button
-                    onClick={() => handleRoleSwitch('overview')}
-                    className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
-                      currentRole === 'overview'
-                        ? 'bg-gold-50 dark:bg-gold-900/20 text-gold-700 dark:text-gold-400 font-semibold'
-                        : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700'
-                    }`}
-                  >
-                    📊 Dashboard Overview
-                  </button>
 
-                  {user?.isSuperAdmin && (
-                    <button
-                      onClick={() => handleRoleSwitch('superadmin')}
-                      className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
-                        currentRole === 'superadmin'
-                          ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-semibold'
-                          : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700'
-                      }`}
-                    >
-                      🛠️ Super Admin
-                    </button>
-                  )}
+                  {availableRoles.map(({ role, config }) => {
+                    const colors = COLOR_MAP[config.color];
+                    const isActive = currentRole === config.id || currentRole === config.path;
 
-                  {roles.includes('LEAGUE_ADMIN') && (
-                    <button
-                      onClick={() => handleRoleSwitch('league-admin')}
-                      className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
-                        currentRole === 'league-admin'
-                          ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-semibold'
-                          : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700'
-                      }`}
-                    >
-                      ⚽ League Admin
-                    </button>
-                  )}
-
-                  {roles.includes('PLAYER') && (
-                    <button
-                      onClick={() => handleRoleSwitch('player')}
-                      className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
-                        currentRole === 'player'
-                          ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 font-semibold'
-                          : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700'
-                      }`}
-                    >
-                      👤 Player
-                    </button>
-                  )}
-
-                  {roles.includes('COACH') && (
-                    <button
-                      onClick={() => handleRoleSwitch('coach')}
-                      className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
-                        currentRole === 'coach'
-                          ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 font-semibold'
-                          : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700'
-                      }`}
-                    >
-                      📋 Coach
-                    </button>
-                  )}
-
-                  {(roles.includes('MANAGER') || roles.includes('CLUB_MANAGER')) && (
-                    <button
-                      onClick={() => handleRoleSwitch('manager')}
-                      className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
-                        currentRole === 'manager'
-                          ? 'bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-400 font-semibold'
-                          : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700'
-                      }`}
-                    >
-                      👔 Team Manager
-                    </button>
-                  )}
+                    return (
+                      <button
+                        key={role}
+                        onClick={() => handleRoleSwitch(role)}
+                        className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
+                          isActive
+                            ? `${colors.bg} ${colors.text} ${colors.dark.bg} ${colors.dark.text} font-semibold`
+                            : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700'
+                        }`}
+                      >
+                        {config.emoji} {config.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -248,11 +406,13 @@ export function DashboardHeader({
         )}
 
         {/* Team Filter */}
-        <TeamFilterDropdown
-          teams={teams}
-          selectedTeams={selectedTeams}
-          onTeamsChange={setSelectedTeams}
-        />
+        {teams.length > 0 && (
+          <TeamFilterDropdown
+            teams={teams}
+            selectedTeams={selectedTeams}
+            onChange={handleTeamChange}
+          />
+        )}
       </div>
 
       {/* Right: Actions */}
@@ -261,7 +421,8 @@ export function DashboardHeader({
         <Button
           onClick={buttonConfig.action}
           size="sm"
-          className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-semibold"
+          className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-semibold transition-all hover:shadow-lg"
+          aria-label={buttonConfig.text}
         >
           <Plus className="w-4 h-4 mr-2" />
           {buttonConfig.text}
@@ -273,17 +434,19 @@ export function DashboardHeader({
             variant="ghost"
             size="sm"
             onClick={handleNotificationClick}
-            className="relative hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+            className="relative hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-colors"
+            aria-expanded={showNotifications}
+            aria-label="Notifications"
           >
             <Bell className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
             {/* Notification Badge */}
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
           </Button>
 
           {/* Notifications Dropdown */}
           {showNotifications && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 max-h-96 overflow-y-auto transition-colors duration-200">
-              <div className="p-4 border-b border-neutral-200 dark:border-charcoal-700">
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 max-h-96 overflow-y-auto transition-colors duration-200 animate-in fade-in">
+              <div className="p-4 border-b border-neutral-200 dark:border-charcoal-700 sticky top-0 bg-white dark:bg-charcoal-800">
                 <h3 className="font-bold text-charcoal-900 dark:text-white">Notifications</h3>
               </div>
               <div className="p-2">
@@ -313,7 +476,8 @@ export function DashboardHeader({
           variant="ghost"
           size="sm"
           onClick={handleSettingsClick}
-          className="hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+          className="hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-colors"
+          aria-label="Settings"
         >
           <Settings className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
         </Button>
@@ -324,24 +488,27 @@ export function DashboardHeader({
             variant="ghost"
             size="sm"
             onClick={handleProfileMenuToggle}
-            className="hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+            className="hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-colors"
+            aria-expanded={showProfileMenu}
+            aria-label="Profile menu"
           >
             <User className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
           </Button>
 
+          {/* Profile Menu Dropdown */}
           {showProfileMenu && (
-            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 transition-colors duration-200">
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 transition-colors duration-200 animate-in fade-in">
               <div className="p-2">
                 <button
                   onClick={handleSettingsClick}
-                  className="w-full text-left px-4 py-2 text-sm text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700 rounded-lg flex items-center gap-2 transition-colors"
+                  className="w-full text-left px-4 py-2 text-sm text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700 rounded-lg flex items-center gap-2 transition-colors font-medium"
                 >
                   <Settings className="w-4 h-4" />
                   Settings
                 </button>
                 <button
                   onClick={() => signOut({ callbackUrl: '/auth/login' })}
-                  className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg flex items-center gap-2 transition-colors"
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg flex items-center gap-2 transition-colors font-medium"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -354,3 +521,9 @@ export function DashboardHeader({
     </div>
   );
 }
+
+// ============================================================================
+// DISPLAY NAME
+// ============================================================================
+
+DashboardHeader.displayName = 'DashboardHeader';

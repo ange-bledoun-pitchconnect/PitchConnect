@@ -1,5 +1,29 @@
-// src/app/dashboard/superadmin/page.tsx
 'use client';
+
+/**
+ * SuperAdmin Dashboard
+ * Path: /dashboard/superadmin
+ * 
+ * Core Features:
+ * - Real-time system metrics and analytics
+ * - User growth and subscription metrics
+ * - Platform usage statistics
+ * - System health monitoring
+ * - Revenue tracking and conversion rates
+ * - Recent activity log
+ * - Quick action buttons for admin tasks
+ * 
+ * Schema Aligned: User, Subscription, League, Club, Team, Match, Player models
+ * Permissions: SUPERADMIN role only
+ * 
+ * Business Logic:
+ * - Display comprehensive KPIs
+ * - Track user growth metrics
+ * - Monitor subscription and revenue data
+ * - Show platform health indicators
+ * - List recent administrative activities
+ * - Provide quick access to admin tools
+ */
 
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -23,6 +47,12 @@ import {
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
+
+interface TrendData {
+  direction: 'up' | 'down' | 'stable';
+  percentage: number;
+  label?: string;
+}
 
 interface StatsData {
   stats: {
@@ -75,10 +105,55 @@ interface StatsData {
 
 interface GrowthMetrics {
   mrrGrowth: number;
+  userGrowthTrend: TrendData;
   revenueGrowth: number;
-  userGrowth: number;
   newSignupsThisPeriod: number;
 }
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const TREND_THRESHOLDS = {
+  positive: 0,
+  negative: 0,
+};
+
+const ERROR_MESSAGES = {
+  fetchFailed: 'Failed to fetch analytics data',
+  accessDenied: 'You do not have permission to access this page. Only SuperAdmins can view this dashboard.',
+};
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/**
+ * Convert numeric growth value to TrendData object
+ */
+const createTrendData = (value: number, label?: string): TrendData => {
+  if (value > TREND_THRESHOLDS.positive) {
+    return { direction: 'up', percentage: Math.abs(value), label };
+  } else if (value < TREND_THRESHOLDS.negative) {
+    return { direction: 'down', percentage: Math.abs(value), label };
+  }
+  return { direction: 'stable', percentage: 0, label };
+};
+
+/**
+ * Format currency for display
+ */
+const formatCurrency = (amount: number, currency: string = '£'): string => {
+  return `${currency}${amount.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
+};
+
+/**
+ * Calculate percentage
+ */
+const calculatePercentage = (value: number, total: number): string => {
+  if (total === 0) return '0';
+  return ((value / total) * 100).toFixed(1);
+};
 
 // ============================================================================
 // MAIN COMPONENT - SuperAdmin Dashboard
@@ -107,37 +182,40 @@ export default function SuperAdminDashboard() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: Failed to fetch stats`);
+        throw new Error(`HTTP ${response.status}: ${ERROR_MESSAGES.fetchFailed}`);
       }
 
       const statsData: StatsData = await response.json();
       setData(statsData);
 
-      // Calculate growth metrics
+      // Calculate growth metrics with proper TrendData format
       const growthData: GrowthMetrics = {
         mrrGrowth: statsData.stats.mrrGrowth || 0,
+        userGrowthTrend: createTrendData(statsData.stats.userGrowth || 0, 'User Growth'),
         revenueGrowth:
           statsData.stats.monthlyRevenue > 0
             ? ((statsData.stats.annualRevenue - statsData.stats.monthlyRevenue) /
                 statsData.stats.monthlyRevenue) *
               100
             : 0,
-        userGrowth: statsData.stats.userGrowth || 0,
         newSignupsThisPeriod: statsData.stats.recentSignups || 0,
       };
       setGrowth(growthData);
+
       toast.success('Analytics updated successfully', {
         position: 'bottom-right',
         duration: 2000,
       });
+
+      console.log('✅ Analytics loaded successfully');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      const errorMessage = err instanceof Error ? err.message : ERROR_MESSAGES.fetchFailed;
       setError(errorMessage);
       toast.error(`Error: ${errorMessage}`, {
         position: 'bottom-right',
         duration: 3000,
       });
-      console.error('Error fetching analytics:', err);
+      console.error('❌ Error fetching analytics:', err);
     } finally {
       setIsRefreshing(false);
     }
@@ -199,7 +277,7 @@ export default function SuperAdminDashboard() {
               Access Denied
             </h1>
             <p className="text-charcoal-600 dark:text-charcoal-400">
-              You do not have permission to access this page. Only SuperAdmins can view this dashboard.
+              {ERROR_MESSAGES.accessDenied}
             </p>
           </div>
         </div>
@@ -256,7 +334,7 @@ export default function SuperAdminDashboard() {
           </div>
         )}
 
-        {data && (
+        {data && growth && (
           <>
             {/* ========== KEY METRICS GRID (TOP 4) ========== */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -265,45 +343,39 @@ export default function SuperAdminDashboard() {
                 value={data.stats.totalUsers.toLocaleString()}
                 icon={<Users className="w-8 h-8 text-blue-600 dark:text-blue-400" />}
                 subtitle={`${data.stats.activeUsers.toLocaleString()} active`}
-                trend={{
-                  value: data.stats.userGrowth,
-                  isPositive: data.stats.userGrowth >= 0,
-                }}
+                trend={growth.userGrowthTrend}
+                color="blue"
               />
               <StatCard
                 title="Active Subscriptions"
                 value={data.stats.activeSubscriptions.toLocaleString()}
                 icon={<CreditCard className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />}
                 subtitle={`${data.stats.totalSubscriptions.toLocaleString()} total`}
+                color="green"
               />
               <StatCard
                 title="Monthly Revenue (MRR)"
-                value={`£${data.stats.monthlyRevenue.toLocaleString('en-GB', {
-                  maximumFractionDigits: 0,
-                })}`}
+                value={formatCurrency(data.stats.monthlyRevenue)}
                 icon={<TrendingUp className="w-8 h-8 text-gold-600 dark:text-gold-400" />}
                 subtitle={`${data.stats.mrrGrowth > 0 ? '↑' : '↓'} ${Math.abs(
                   data.stats.mrrGrowth
                 ).toFixed(1)}% ${data.stats.mrrGrowth > 0 ? 'growth' : 'decline'}`}
-                trend={{
-                  value: data.stats.mrrGrowth,
-                  isPositive: data.stats.mrrGrowth >= 0,
-                }}
+                trend={createTrendData(data.stats.mrrGrowth, 'MRR Growth')}
+                color="gold"
               />
               <StatCard
                 title="Annual Revenue"
-                value={`£${(data.stats.annualRevenue / 100).toLocaleString('en-GB', {
-                  maximumFractionDigits: 0,
-                })}`}
+                value={formatCurrency(data.stats.annualRevenue / 100)}
                 icon="💰"
                 subtitle="Lifetime total"
+                color="orange"
               />
             </div>
 
             {/* ========== SECONDARY METRICS GRID ========== */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Conversion Rate */}
-              <div className="bg-white dark:bg-charcoal-800 rounded-lg p-6 shadow-sm border border-neutral-200 dark:border-charcoal-700 hover:shadow-md transition">
+              <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm hover:shadow-md transition">
                 <h3 className="text-sm font-semibold text-charcoal-600 dark:text-charcoal-400 mb-4">
                   Conversion Rate (FREE → PAID)
                 </h3>
@@ -321,10 +393,10 @@ export default function SuperAdminDashboard() {
                     style={{ width: `${Math.min(data.stats.conversionRate, 100)}%` }}
                   />
                 </div>
-              </div>
+              </Card>
 
               {/* Churn Rate */}
-              <div className="bg-white dark:bg-charcoal-800 rounded-lg p-6 shadow-sm border border-neutral-200 dark:border-charcoal-700 hover:shadow-md transition">
+              <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm hover:shadow-md transition">
                 <h3 className="text-sm font-semibold text-charcoal-600 dark:text-charcoal-400 mb-4">
                   Churn Rate (30 days)
                 </h3>
@@ -346,10 +418,10 @@ export default function SuperAdminDashboard() {
                     style={{ width: `${Math.min(data.stats.churnRate, 100)}%` }}
                   />
                 </div>
-              </div>
+              </Card>
 
               {/* New Signups */}
-              <div className="bg-white dark:bg-charcoal-800 rounded-lg p-6 shadow-sm border border-neutral-200 dark:border-charcoal-700 hover:shadow-md transition">
+              <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm hover:shadow-md transition">
                 <h3 className="text-sm font-semibold text-charcoal-600 dark:text-charcoal-400 mb-4">
                   New Signups This Month
                 </h3>
@@ -359,7 +431,7 @@ export default function SuperAdminDashboard() {
                 <p className="text-xs text-charcoal-500 dark:text-charcoal-400">
                   ⏱️ Avg per day: {(data.stats.recentSignups / 30).toFixed(1)}
                 </p>
-              </div>
+              </Card>
             </div>
 
             {/* ========== PLATFORM METRICS ========== */}
@@ -369,29 +441,33 @@ export default function SuperAdminDashboard() {
                 value={data.stats.totalLeagues.toLocaleString()}
                 icon="🏆"
                 subtitle={`${data.stats.activeLeagues.toLocaleString()} active`}
+                color="green"
               />
               <StatCard
                 title="Clubs & Teams"
                 value={`${data.stats.totalClubs.toLocaleString()} / ${data.stats.totalTeams.toLocaleString()}`}
                 icon="⚽"
                 subtitle="Clubs / Teams"
+                color="blue"
               />
               <StatCard
                 title="Matches"
                 value={data.stats.totalMatches.toLocaleString()}
                 icon="📅"
                 subtitle={`${data.stats.matchesThisMonth.toLocaleString()} this month`}
+                color="purple"
               />
               <StatCard
                 title="Players"
                 value={data.stats.totalPlayers.toLocaleString()}
                 icon="🎯"
                 subtitle="Active players"
+                color="gold"
               />
             </div>
 
             {/* ========== USER BREAKDOWN ========== */}
-            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
               <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-6">
                 User Status Breakdown
               </h2>
@@ -405,7 +481,7 @@ export default function SuperAdminDashboard() {
                     {data.stats.activeUsers.toLocaleString()}
                   </p>
                   <p className="text-xs text-green-700 dark:text-green-400 mt-2">
-                    {((data.stats.activeUsers / (data.stats.totalUsers || 1)) * 100).toFixed(1)}% of total
+                    {calculatePercentage(data.stats.activeUsers, data.stats.totalUsers)}% of total
                   </p>
                 </div>
 
@@ -416,7 +492,7 @@ export default function SuperAdminDashboard() {
                     {data.stats.inactiveUsers.toLocaleString()}
                   </p>
                   <p className="text-xs text-gray-700 dark:text-gray-400 mt-2">
-                    {((data.stats.inactiveUsers / (data.stats.totalUsers || 1)) * 100).toFixed(1)}% of total
+                    {calculatePercentage(data.stats.inactiveUsers, data.stats.totalUsers)}% of total
                   </p>
                 </div>
 
@@ -429,7 +505,7 @@ export default function SuperAdminDashboard() {
                     {data.stats.suspendedUsers.toLocaleString()}
                   </p>
                   <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-2">
-                    {((data.stats.suspendedUsers / (data.stats.totalUsers || 1)) * 100).toFixed(1)}% of total
+                    {calculatePercentage(data.stats.suspendedUsers, data.stats.totalUsers)}% of total
                   </p>
                 </div>
 
@@ -445,7 +521,7 @@ export default function SuperAdminDashboard() {
             </Card>
 
             {/* ========== SYSTEM HEALTH ========== */}
-            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
               <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-6">System Health</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Overall Health */}
@@ -505,7 +581,7 @@ export default function SuperAdminDashboard() {
             </Card>
 
             {/* ========== RECENT ACTIVITIES ========== */}
-            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
               <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-6">Recent Activities</h2>
               {data.recentActivities.length > 0 ? (
                 <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-charcoal-700">
@@ -569,12 +645,11 @@ export default function SuperAdminDashboard() {
               )}
             </Card>
 
-            {/* ========== QUICK ACTIONS (FIXED) ========== */}
-            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+            {/* ========== QUICK ACTIONS ========== */}
+            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
               <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-6">Quick Actions</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button
-                  // ⚠️ FIXED: Points to /dashboard/superadmin/users
                   onClick={() => router.push('/dashboard/superadmin/users')}
                   className="p-4 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg text-left transition border border-blue-200 dark:border-blue-700 hover:shadow-md group"
                 >
@@ -584,7 +659,6 @@ export default function SuperAdminDashboard() {
                   <p className="text-sm text-blue-700 dark:text-blue-400">View and manage all users</p>
                 </button>
                 <button
-                  // ⚠️ FIXED: Points to /dashboard/superadmin/system
                   onClick={() => router.push('/dashboard/superadmin/system')}
                   className="p-4 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-lg text-left transition border border-green-200 dark:border-green-700 hover:shadow-md group"
                 >
@@ -594,7 +668,6 @@ export default function SuperAdminDashboard() {
                   <p className="text-sm text-green-700 dark:text-green-400">Configure system settings</p>
                 </button>
                 <button
-                  // ⚠️ This was already correct, but confirmed
                   onClick={() => router.push('/dashboard/superadmin/audit-logs')}
                   className="p-4 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-lg text-left transition border border-purple-200 dark:border-purple-700 hover:shadow-md group"
                 >
@@ -626,3 +699,9 @@ export default function SuperAdminDashboard() {
     </PageContainer>
   );
 }
+
+// ============================================================================
+// DISPLAY NAME
+// ============================================================================
+
+SuperAdminDashboard.displayName = 'SuperAdminDashboard';
