@@ -71,7 +71,7 @@ export async function GET(
     }
 
     // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
 
@@ -155,7 +155,7 @@ export async function POST(
     }
 
     // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
 

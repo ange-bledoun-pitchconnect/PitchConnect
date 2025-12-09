@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify team exists
-    const team = await prisma.oldTeam.findUnique({
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
       include: {
         players: {

@@ -1,128 +1,17 @@
 /**
  * Match Events API
  *
- * GET /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/events
  * POST /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/events
  *
- * GET: Returns list of events for a match (goals, cards, substitutions, etc.)
- * POST: Creates a new event in a match
+ * Creates a new event record for a match (goal, card, substitution, etc.)
  *
  * Authorization: Only club owner can access
- *
- * Response (GET):
- * Array<{
- *   id: string,
- *   matchId: string,
- *   playerId: string,
- *   type: string,
- *   minute: number,
- *   additionalInfo: string | null,
- *   player: {
- *     firstName: string,
- *     lastName: string
- *   }
- * }>
- *
- * Response (POST):
- * {
- *   id: string,
- *   matchId: string,
- *   playerId: string,
- *   type: string,
- *   minute: number,
- *   additionalInfo: string | null,
- *   player: {
- *     firstName: string,
- *     lastName: string
- *   }
- * }
  */
 
 import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { clubId: string; teamId: string; matchId: string } }
-) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  try {
-    const { clubId, teamId, matchId } = params;
-
-    // Verify club exists and user owns it
-    const club = await prisma.club.findUnique({
-      where: { id: clubId },
-    });
-
-    if (!club) {
-      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
-    }
-
-    if (club.ownerId !== session.user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
-      where: { id: teamId },
-    });
-
-    if (!team || team.clubId !== clubId) {
-      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
-    }
-
-    // Verify match belongs to team
-    const match = await prisma.match.findUnique({
-      where: { id: matchId },
-    });
-
-    if (
-      !match ||
-      (match.homeTeamId !== teamId && match.awayTeamId !== teamId)
-    ) {
-      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
-    }
-
-    // Get match events
-    const events = await prisma.matchEvent.findMany({
-      where: { matchId },
-      include: {
-        player: {
-          select: {
-            id: true,
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { minute: 'asc' },
-    });
-
-    return NextResponse.json(events);
-  } catch (error) {
-    console.error(
-      'GET /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/events error:',
-      error
-    );
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch events',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
-  }
-}
 
 export async function POST(
   req: NextRequest,
@@ -150,8 +39,8 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    // Verify team exists and belongs to club
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
 
@@ -159,7 +48,7 @@ export async function POST(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Verify match belongs to team
+    // Verify match exists and either homeTeamId or awayTeamId matches the team
     const match = await prisma.match.findUnique({
       where: { id: matchId },
     });
@@ -171,58 +60,63 @@ export async function POST(
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
 
-    // Validate input
-    if (!body.type?.trim()) {
-      return NextResponse.json(
-        { error: 'Event type is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!body.playerId?.trim()) {
-      return NextResponse.json(
-        { error: 'Player ID is required' },
-        { status: 400 }
-      );
-    }
-
-    if (body.minute === undefined || body.minute === null) {
-      return NextResponse.json(
-        { error: 'Minute is required' },
-        { status: 400 }
-      );
-    }
-
-    // Verify player exists and is in team
+    // Verify player exists
     const player = await prisma.player.findUnique({
       where: { id: body.playerId },
-      include: {
-        teams: {
-          where: { teamId },
-        },
-      },
     });
 
-    if (!player || player.teams.length === 0) {
+    if (!player) {
+      return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+    }
+
+    // Verify player belongs to team using a direct query on the join table
+    const playerInTeam = await prisma.$queryRaw`
+      SELECT * FROM "PlayerTeam" WHERE "playerId" = ${body.playerId} AND "teamId" = ${teamId}
+    `;
+
+    if (!playerInTeam || (Array.isArray(playerInTeam) && playerInTeam.length === 0)) {
       return NextResponse.json(
         { error: 'Player not found in team' },
         { status: 404 }
       );
     }
 
-    // Create event using correct field names
+    // Verify assist player if provided
+    if (body.assistedBy) {
+      const assistPlayer = await prisma.player.findUnique({
+        where: { id: body.assistedBy },
+      });
+
+      if (!assistPlayer) {
+        return NextResponse.json({ error: 'Assist player not found' }, { status: 404 });
+      }
+
+      const assistPlayerInTeam = await prisma.$queryRaw`
+        SELECT * FROM "PlayerTeam" WHERE "playerId" = ${body.assistedBy} AND "teamId" = ${teamId}
+      `;
+
+      if (!assistPlayerInTeam || (Array.isArray(assistPlayerInTeam) && assistPlayerInTeam.length === 0)) {
+        return NextResponse.json(
+          { error: 'Assist player not found in team' },
+          { status: 404 }
+        );
+      }
+    }
+
+    // Create the event
     const event = await prisma.matchEvent.create({
       data: {
-        matchId,
+        type: body.type,
+        minute: body.minute,
         playerId: body.playerId,
-        type: body.type.trim(), // GOAL, ASSIST, YELLOW_CARD, RED_CARD, SUBSTITUTION, etc.
-        minute: parseInt(body.minute, 10),
+        matchId: matchId,
+        assistedBy: body.assistedBy || null,
+        isExtraTime: body.isExtraTime || false,
         additionalInfo: body.additionalInfo || null,
       },
       include: {
         player: {
-          select: {
-            id: true,
+          include: {
             user: {
               select: {
                 firstName: true,
@@ -234,17 +128,23 @@ export async function POST(
       },
     });
 
-    return NextResponse.json(event, { status: 201 });
-  } catch (error) {
-    console.error(
-      'POST /api/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/events error:',
-      error
-    );
-    return NextResponse.json(
-      {
-        error: 'Failed to create event',
-        details: error instanceof Error ? error.message : 'Unknown error',
+    return NextResponse.json({
+      id: event.id,
+      type: event.type,
+      minute: event.minute,
+      isExtraTime: event.isExtraTime,
+      player: {
+        firstName: event.player?.user.firstName || null,
+        lastName: event.player?.user.lastName || null,
       },
+      assistedBy: event.assistedBy,
+      additionalInfo: event.additionalInfo,
+      createdAt: event.createdAt,
+    });
+  } catch (error) {
+    console.error('Error creating match event:', error);
+    return NextResponse.json(
+      { error: 'Failed to create match event' },
       { status: 500 }
     );
   }

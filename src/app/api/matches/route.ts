@@ -232,8 +232,8 @@ export async function POST(req: NextRequest) {
 
     // Verify teams exist
     const [homeTeam, awayTeam] = await Promise.all([
-      prisma.oldTeam.findUnique({ where: { id: homeTeamId } }),
-      prisma.oldTeam.findUnique({ where: { id: awayTeamId } }),
+      prisma.team.findUnique({ where: { id: homeTeamId } }),
+      prisma.team.findUnique({ where: { id: awayTeamId } }),
     ]);
 
     if (!homeTeam || !awayTeam) {

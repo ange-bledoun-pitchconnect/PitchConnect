@@ -41,7 +41,7 @@ export async function GET(
     }
 
     // Get all teams for this club (using oldTeam per schema)
-    const teams = await prisma.oldTeam.findMany({
+    const teams = await prisma.team.findMany({
       where: { clubId },
       include: {
         coach: {
@@ -130,7 +130,7 @@ export async function POST(
     }
 
     // Create team (using oldTeam per schema)
-    const team = await prisma.oldTeam.create({
+    const team = await prisma.team.create({
       data: {
         clubId,
         coachId: body.coachId,

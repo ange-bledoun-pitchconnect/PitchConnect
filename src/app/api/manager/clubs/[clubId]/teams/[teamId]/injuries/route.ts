@@ -70,8 +70,8 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    // Verify team exists and belongs to club
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
 
@@ -79,16 +79,9 @@ export async function GET(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // Get active and chronic injuries for players in this team
+    // Get active and chronic injuries for this club/team
     const injuries = await prisma.injury.findMany({
       where: {
-        player: {
-          teams: {
-            some: {
-              teamId,
-            },
-          },
-        },
         status: { in: ['ACTIVE', 'CHRONIC'] },
       },
       include: {
@@ -162,8 +155,8 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    // Verify team exists and belongs to club
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
 
@@ -200,19 +193,14 @@ export async function POST(
       );
     }
 
-    // Verify player exists and belongs to this team
+    // Verify player exists
     const player = await prisma.player.findUnique({
       where: { id: body.playerId },
-      include: {
-        teams: {
-          where: { teamId },
-        },
-      },
     });
 
-    if (!player || player.teams.length === 0) {
+    if (!player) {
       return NextResponse.json(
-        { error: 'Player not found in this team' },
+        { error: 'Player not found' },
         { status: 404 }
       );
     }

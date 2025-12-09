@@ -43,7 +43,7 @@ export async function GET(
     }
 
     // Get team with full details (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
       include: {
         players: {
@@ -130,7 +130,7 @@ export async function PATCH(
     }
 
     // Get team (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
     });
 
@@ -155,7 +155,7 @@ export async function PATCH(
     }
 
     // Update team
-    const updatedTeam = await prisma.oldTeam.update({
+    const updatedTeam = await prisma.team.update({
       where: { id: teamId },
       data: updateData,
       include: {
@@ -235,7 +235,7 @@ export async function DELETE(
     }
 
     // Get team with player count (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
+    const team = await prisma.team.findUnique({
       where: { id: teamId },
       include: {
         _count: {
@@ -262,7 +262,7 @@ export async function DELETE(
     }
 
     // Delete team
-    await prisma.oldTeam.delete({
+    await prisma.team.delete({
       where: { id: teamId },
     });
 

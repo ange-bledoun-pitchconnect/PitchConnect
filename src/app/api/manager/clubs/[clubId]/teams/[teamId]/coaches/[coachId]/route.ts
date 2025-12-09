@@ -1,106 +1,183 @@
 /**
- * Team Coach API
+ * ============================================================================
+ * GET COACH BY ID - Club Team Coach Details Route
+ * ============================================================================
  *
- * GET: Fetch a specific coach assigned to the team
- * DELETE: Remove a coach from a team
- *
- * Authorization: Only club owner can manage coaches
- *
- * Response:
- * {
- *   success: boolean,
- *   data?: { ... },
- *   message?: string
- * }
+ * @file src/app/api/manager/clubs/[clubId]/teams/[teamId]/coaches/[coachId]/route.ts
+ * @description Retrieve coach details for a specific team
+ * @version 1.0.0 (Production-Ready)
  */
 
-import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-/**
- * GET /api/manager/clubs/[clubId]/teams/[teamId]/coaches/[coachId]
- * Fetch a specific coach assigned to the team
- */
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { clubId: string; teamId: string; coachId: string } }
-) {
-  const session = await getServerSession(authOptions);
+interface CoachDetailsResponse {
+  success: boolean;
+  coach: {
+    id: string;
+    userId: string;
+    name: string;
+    email: string;
+    coachType: string;
+    bio: string | null;
+    yearsExperience: number | null;
+    qualifications: string[];
+    specializations: string[];
+    certifications: string[];
+    hourlyRate: number | null;
+    currency: string;
+    trainingSessions: number;
+    timesheets: {
+      total: number;
+      approved: number;
+      pending: number;
+    };
+  };
+}
 
-  if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
+interface ErrorResponse {
+  success: boolean;
+  error: string;
+  code: string;
+}
+
+const ERROR_CODES = {
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+} as const;
+
+const MANAGER_ROLES = ['CLUB_MANAGER', 'CLUB_OWNER', 'TREASURER'] as const;
+
+/**
+ * Validate manager access to club
+ */
+async function validateClubAccess(email: string, clubId: string) {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      roles: true,
+    },
+  });
+
+  if (!user) {
+    return { isValid: false, error: 'User not found', user: null };
   }
 
+  const hasManagerRole = user.roles.some((role) =>
+    MANAGER_ROLES.includes(role as typeof MANAGER_ROLES[number])
+  );
+
+  if (!hasManagerRole) {
+    return { isValid: false, error: 'Manager role required', user: null };
+  }
+
+  // Optional: Verify user is actually part of the club
+  const clubMember = await prisma.clubMember.findUnique({
+    where: {
+      clubId_userId: {
+        clubId,
+        userId: user.id,
+      },
+    },
+  });
+
+  if (!clubMember) {
+    return {
+      isValid: false,
+      error: 'Not a member of this club',
+      user: null,
+    };
+  }
+
+  return { isValid: true, error: null, user };
+}
+
+/**
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/coaches/[coachId]
+ *
+ * Retrieve coach details (Manager only)
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { clubId: string; teamId: string; coachId: string } }
+): Promise<NextResponse<CoachDetailsResponse | ErrorResponse>> {
+  const requestId = crypto.randomUUID();
+  const startTime = performance.now();
+
   try {
-    const { clubId, teamId, coachId } = params;
-
-    // Verify club exists and user owns it
-    const club = await prisma.club.findUnique({
-      where: { id: clubId },
-      select: {
-        id: true,
-        ownerId: true,
-      },
-    });
-
-    if (!club) {
+    // ========================================================================
+    // 1. AUTHENTICATION
+    // ========================================================================
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
       return NextResponse.json(
-        { error: 'Club not found' },
-        { status: 404 }
-      );
-    }
-
-    if (club.ownerId !== session.user.id) {
-      return NextResponse.json(
-        { error: 'Forbidden - You are not the club owner' },
-        { status: 403 }
-      );
-    }
-
-    // Verify team exists and belongs to club
-    const team = await prisma.team.findUnique({
-      where: { id: teamId },
-      select: {
-        id: true,
-        clubId: true,
-      },
-    });
-
-    if (!team || team.clubId !== clubId) {
-      return NextResponse.json(
-        { error: 'Team not found or does not belong to this club' },
-        { status: 404 }
-      );
-    }
-
-    // Get coach and verify belongs to this team
-    const coach = await prisma.coach.findFirst({
-      where: {
-        id: coachId,
-        teams: {
-          some: {
-            id: teamId,
-          },
+        {
+          success: false,
+          error: 'Authentication required',
+          code: ERROR_CODES.UNAUTHORIZED,
         },
-      },
+        { status: 401, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    // ========================================================================
+    // 2. VALIDATE MANAGER AUTHORIZATION
+    // ========================================================================
+    const { isValid: isAuthorized, error: authError } = await validateClubAccess(
+      session.user.email,
+      params.clubId
+    );
+
+    if (!isAuthorized) {
+      console.warn('Manager authorization failed', {
+        requestId,
+        email: session.user.email,
+        clubId: params.clubId,
+        error: authError,
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: authError || 'Unauthorized',
+          code: ERROR_CODES.FORBIDDEN,
+        },
+        { status: 403, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    const { coachId, teamId } = params;
+
+    // ========================================================================
+    // 3. VERIFY COACH EXISTS AND GET DETAILS
+    // ========================================================================
+    const coach = await prisma.coach.findUnique({
+      where: { id: coachId },
       include: {
         user: {
           select: {
-            id: true,
             firstName: true,
             lastName: true,
             email: true,
           },
         },
-        teams: {
+        trainingSessions: {
+          where: {
+            teamId,
+          },
           select: {
             id: true,
-            name: true,
+          },
+        },
+        timesheets: {
+          select: {
+            id: true,
+            status: true,
           },
         },
       },
@@ -108,144 +185,104 @@ export async function GET(
 
     if (!coach) {
       return NextResponse.json(
-        { error: 'Coach not found in this team' },
-        { status: 404 }
+        {
+          success: false,
+          error: 'Coach not found',
+          code: ERROR_CODES.NOT_FOUND,
+        },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      data: coach,
-    });
-  } catch (error) {
-    console.error(
-      'GET /api/manager/clubs/[clubId]/teams/[teamId]/coaches/[coachId] error:',
-      error
-    );
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch coach',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * DELETE /api/manager/clubs/[clubId]/teams/[teamId]/coaches/[coachId]
- * Remove a coach from a team
- *
- * Authorization: Only club owner can remove coaches
- */
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { clubId: string; teamId: string; coachId: string } }
-) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
-  }
-
-  try {
-    const { clubId, teamId, coachId } = params;
-
-    // Verify club exists and user owns it
-    const club = await prisma.club.findUnique({
-      where: { id: clubId },
-      select: {
-        id: true,
-        ownerId: true,
-      },
-    });
-
-    if (!club) {
-      return NextResponse.json(
-        { error: 'Club not found' },
-        { status: 404 }
-      );
-    }
-
-    if (club.ownerId !== session.user.id) {
-      return NextResponse.json(
-        { error: 'Forbidden - You are not the club owner' },
-        { status: 403 }
-      );
-    }
-
-    // Verify team exists and belongs to club
+    // ========================================================================
+    // 4. VERIFY TEAM EXISTS AND BELONGS TO CLUB
+    // ========================================================================
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      select: {
-        id: true,
-        clubId: true,
-      },
+      select: { clubId: true },
     });
 
-    if (!team || team.clubId !== clubId) {
+    if (!team || team.clubId !== params.clubId) {
       return NextResponse.json(
-        { error: 'Team not found or does not belong to this club' },
-        { status: 404 }
+        {
+          success: false,
+          error: 'Team not found or does not belong to this club',
+          code: ERROR_CODES.NOT_FOUND,
+        },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // Verify coach exists and belongs to this team
-    const coach = await prisma.coach.findFirst({
-      where: {
-        id: coachId,
-        teams: {
-          some: {
-            id: teamId,
-          },
-        },
-      },
-      include: {
-        teams: {
-          where: { id: teamId },
-        },
-      },
-    });
+    // ========================================================================
+    // 5. CALCULATE STATS
+    // ========================================================================
+    const approvedTimesheets = coach.timesheets.filter(
+      (t) => t.status === 'APPROVED'
+    ).length;
+    const pendingTimesheets = coach.timesheets.filter(
+      (t) => t.status === 'SUBMITTED'
+    ).length;
 
-    if (!coach || coach.teams.length === 0) {
-      return NextResponse.json(
-        { error: 'Coach not found in this team' },
-        { status: 404 }
-      );
-    }
+    // ========================================================================
+    // 6. RETURN RESPONSE
+    // ========================================================================
+    const duration = performance.now() - startTime;
+    const coachName = `${coach.user?.firstName || ''} ${coach.user?.lastName || ''}`.trim();
 
-    // Remove coach from team (disconnect relation)
-    await prisma.coach.update({
-      where: { id: coachId },
-      data: {
-        teams: {
-          disconnect: {
-            id: teamId,
-          },
-        },
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Coach removed from team successfully',
+    console.log('Coach details retrieved', {
+      requestId,
       coachId,
       teamId,
+      clubId: params.clubId,
+      duration: `${Math.round(duration)}ms`,
+    });
+
+    const response: CoachDetailsResponse = {
+      success: true,
+      coach: {
+        id: coach.id,
+        userId: coach.userId,
+        name: coachName,
+        email: coach.user?.email || '',
+        coachType: coach.coachType,
+        bio: coach.bio,
+        yearsExperience: coach.yearsExperience,
+        qualifications: coach.qualifications,
+        specializations: coach.specializations,
+        certifications: coach.certifications,
+        hourlyRate: coach.hourlyRate,
+        currency: coach.currency,
+        trainingSessions: coach.trainingSessions.length,
+        timesheets: {
+          total: coach.timesheets.length,
+          approved: approvedTimesheets,
+          pending: pendingTimesheets,
+        },
+      },
+    };
+
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'X-Request-ID': requestId,
+        'X-Response-Time': `${Math.round(duration)}ms`,
+      },
     });
   } catch (error) {
-    console.error(
-      'DELETE /api/manager/clubs/[clubId]/teams/[teamId]/coaches/[coachId] error:',
-      error
-    );
+    const duration = performance.now() - startTime;
+    console.error('Coach details error', {
+      requestId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      duration: `${Math.round(duration)}ms`,
+    });
+
     return NextResponse.json(
       {
-        error: 'Failed to remove coach from team',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        success: false,
+        error: 'Failed to retrieve coach details',
+        code: ERROR_CODES.INTERNAL_ERROR,
       },
-      { status: 500 }
+      { status: 500, headers: { 'X-Request-ID': requestId } }
     );
   }
 }

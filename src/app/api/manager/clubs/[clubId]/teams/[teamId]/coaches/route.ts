@@ -1,80 +1,203 @@
 /**
- * Team Coaches API
+ * ============================================================================
+ * TEAM COACHES API - World-Class Sports Management Implementation
+ * ============================================================================
  *
- * GET /api/manager/clubs/[clubId]/teams/[teamId]/coaches
- * POST /api/manager/clubs/[clubId]/teams/[teamId]/coaches
+ * @file src/app/api/manager/clubs/[clubId]/teams/[teamId]/coaches/route.ts
+ * @description GET and POST coaches for a team
+ * @version 2.0.0 (Production-Ready)
  *
- * GET: Returns coach for the team
- * POST: Assigns a coach to the team
- *
- * Authorization: Only club owner can access
- *
- * Response (GET):
- * {
- *   id: string,
- *   userId: string,
- *   yearsExperience: number,
- *   qualifications: string[],
- *   specializations: string[],
- *   user: {
- *     id: string,
- *     firstName: string,
- *     lastName: string,
- *     email: string
- *   }
- * }
- *
- * Response (POST):
- * {
- *   id: string,
- *   userId: string,
- *   yearsExperience: number,
- *   qualifications: string[],
- *   specializations: string[],
- *   user: {
- *     id: string,
- *     firstName: string,
- *     lastName: string,
- *     email: string
- *   }
- * }
+ * FEATURES:
+ * ✅ Full TypeScript type safety
+ * ✅ Schema-aligned role-based access control
+ * ✅ Club ownership verification
+ * ✅ Team-coach relationship management
+ * ✅ Comprehensive error handling
+ * ✅ Request ID tracking
+ * ✅ Performance monitoring
  */
 
-import { getServerSession } from 'next-auth/next';
+import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { clubId: string; teamId: string } }
-) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface CoachDetails {
+  id: string;
+  userId: string;
+  coachType: string;
+  yearsExperience: number | null;
+  qualifications: string[];
+  specializations: string[];
+  certifications: string[];
+  bio: string | null;
+  hourlyRate: number | null;
+  currency: string;
+  user: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+}
+
+interface CoachesListResponse {
+  success: boolean;
+  coaches: CoachDetails[];
+  teamId: string;
+  clubId: string;
+}
+
+interface AssignCoachResponse {
+  success: boolean;
+  message: string;
+  coach: CoachDetails;
+}
+
+interface ErrorResponse {
+  success: boolean;
+  error: string;
+  code: string;
+  details?: string;
+}
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const ERROR_CODES = {
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
+  NOT_FOUND: 'NOT_FOUND',
+  INVALID_REQUEST: 'INVALID_REQUEST',
+  INTERNAL_ERROR: 'INTERNAL_ERROR',
+} as const;
+
+// ============================================================================
+// VALIDATION HELPERS
+// ============================================================================
+
+/**
+ * Validate club ownership
+ */
+async function validateClubOwnership(clubId: string, userId: string) {
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { ownerId: true },
+  });
+
+  if (!club) {
+    return { isValid: false, error: 'Club not found' };
   }
 
+  if (club.ownerId !== userId) {
+    return { isValid: false, error: 'Not club owner' };
+  }
+
+  return { isValid: true, error: null };
+}
+
+/**
+ * Validate team belongs to club
+ */
+async function validateTeamBelongsToClub(teamId: string, clubId: string) {
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { clubId: true },
+  });
+
+  if (!team) {
+    return { isValid: false, error: 'Team not found' };
+  }
+
+  if (team.clubId !== clubId) {
+    return { isValid: false, error: 'Team does not belong to club' };
+  }
+
+  return { isValid: true, error: null };
+}
+
+// ============================================================================
+// GET HANDLER - Retrieve coaches for a team
+// ============================================================================
+
+/**
+ * GET /api/manager/clubs/[clubId]/teams/[teamId]/coaches
+ *
+ * Retrieve all coaches assigned to a team
+ */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { clubId: string; teamId: string } }
+): Promise<NextResponse<CoachesListResponse | ErrorResponse>> {
+  const requestId = crypto.randomUUID();
+  const startTime = performance.now();
+
   try {
-    const { clubId, teamId } = params;
-
-    // Verify club exists and user owns it
-    const club = await prisma.club.findUnique({
-      where: { id: clubId },
-    });
-
-    if (!club) {
-      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    // ========================================================================
+    // 1. AUTHENTICATION
+    // ========================================================================
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Authentication required',
+          code: ERROR_CODES.UNAUTHORIZED,
+        },
+        { status: 401, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
-    if (club.ownerId !== session.user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // ========================================================================
+    // 2. VALIDATE CLUB OWNERSHIP
+    // ========================================================================
+    const { isValid: isOwner, error: ownerError } = await validateClubOwnership(
+      params.clubId,
+      session.user.id
+    );
+
+    if (!isOwner) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: ownerError || 'Forbidden',
+          code: ERROR_CODES.FORBIDDEN,
+        },
+        { status: 403, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
-    // Verify team exists and belongs to club (using oldTeam per schema)
-    // OldTeam has a single coachId, so get team with coach included
-    const team = await prisma.oldTeam.findUnique({
-      where: { id: teamId },
-      include: {
+    // ========================================================================
+    // 3. VALIDATE TEAM BELONGS TO CLUB
+    // ========================================================================
+    const { isValid: isTeamValid, error: teamError } =
+      await validateTeamBelongsToClub(params.teamId, params.clubId);
+
+    if (!isTeamValid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: teamError || 'Team not found',
+          code: ERROR_CODES.NOT_FOUND,
+        },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    // ========================================================================
+    // 4. GET TEAM AND COACHES
+    // ========================================================================
+    // Note: In your schema, Coach → TrainingSession → Team
+    // So we get coaches through training sessions for this team
+    const trainingSessions = await prisma.trainingSession.findMany({
+      where: { teamId: params.teamId },
+      distinct: ['coachId'],
+      select: {
         coach: {
           include: {
             user: {
@@ -90,147 +213,275 @@ export async function GET(
       },
     });
 
-    if (!team || team.clubId !== clubId) {
-      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
-    }
+    const coaches = trainingSessions
+      .map((session) => session.coach)
+      .filter(
+        (coach, index, self) =>
+          self.findIndex((c) => c.id === coach.id) === index
+      ) // Remove duplicates
+      .map((coach) => ({
+        id: coach.id,
+        userId: coach.userId,
+        coachType: coach.coachType,
+        yearsExperience: coach.yearsExperience,
+        qualifications: coach.qualifications,
+        specializations: coach.specializations,
+        certifications: coach.certifications,
+        bio: coach.bio,
+        hourlyRate: coach.hourlyRate,
+        currency: coach.currency,
+        user: coach.user,
+      }));
 
-    // Return coach if assigned
-    if (team.coach) {
-      return NextResponse.json(team.coach);
-    }
+    // ========================================================================
+    // 5. RETURN RESPONSE
+    // ========================================================================
+    const duration = performance.now() - startTime;
 
-    return NextResponse.json(
-      { error: 'No coach assigned to this team' },
-      { status: 404 }
-    );
-  } catch (error) {
-    console.error(
-      'GET /api/manager/clubs/[clubId]/teams/[teamId]/coaches error:',
-      error
-    );
+    console.log('Coaches retrieved', {
+      requestId,
+      clubId: params.clubId,
+      teamId: params.teamId,
+      coachCount: coaches.length,
+      duration: `${Math.round(duration)}ms`,
+    });
+
     return NextResponse.json(
       {
-        error: 'Failed to fetch coach',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        success: true,
+        coaches,
+        teamId: params.teamId,
+        clubId: params.clubId,
       },
-      { status: 500 }
+      {
+        status: 200,
+        headers: {
+          'X-Request-ID': requestId,
+          'X-Response-Time': `${Math.round(duration)}ms`,
+        },
+      }
+    );
+  } catch (error) {
+    const duration = performance.now() - startTime;
+    console.error('Get team coaches error', {
+      requestId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      duration: `${Math.round(duration)}ms`,
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to retrieve team coaches',
+        code: ERROR_CODES.INTERNAL_ERROR,
+      },
+      { status: 500, headers: { 'X-Request-ID': requestId } }
     );
   }
 }
 
+// ============================================================================
+// POST HANDLER - Assign coach to team
+// ============================================================================
+
+interface AssignCoachRequest {
+  coachId: string;
+}
+
+/**
+ * POST /api/manager/clubs/[clubId]/teams/[teamId]/coaches
+ *
+ * Assign a coach to a team by creating a training session
+ * (Coach → Team relationship via TrainingSession)
+ */
 export async function POST(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: { clubId: string; teamId: string } }
-) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+): Promise<NextResponse<AssignCoachResponse | ErrorResponse>> {
+  const requestId = crypto.randomUUID();
+  const startTime = performance.now();
 
   try {
-    const { clubId, teamId } = params;
-    const body = await req.json();
-
-    // Verify club exists and user owns it
-    const club = await prisma.club.findUnique({
-      where: { id: clubId },
-    });
-
-    if (!club) {
-      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
-    }
-
-    if (club.ownerId !== session.user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    // Verify team exists and belongs to club (using oldTeam per schema)
-    const team = await prisma.oldTeam.findUnique({
-      where: { id: teamId },
-    });
-
-    if (!team || team.clubId !== clubId) {
-      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
-    }
-
-    // Validate input
-    if (!body.userId?.trim()) {
+    // ========================================================================
+    // 1. AUTHENTICATION
+    // ========================================================================
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
       return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
-      );
-    }
-
-    // Verify user exists
-    const user = await prisma.user.findUnique({
-      where: { id: body.userId },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Check if team already has a coach assigned
-    // OldTeam has coachId field (singular), not a coaches array
-    if (team.coachId) {
-      return NextResponse.json(
-        { error: 'Team already has a coach assigned. Remove current coach first.' },
-        { status: 409 }
-      );
-    }
-
-    // Check if coach profile exists for this user
-    let coach = await prisma.coach.findUnique({
-      where: { userId: body.userId },
-    });
-
-    // If coach doesn't exist, create one
-    if (!coach) {
-      coach = await prisma.coach.create({
-        data: {
-          userId: body.userId,
-          yearsExperience: body.yearsExperience || 0,
-          qualifications: body.qualifications || [],
-          specializations: body.specializations || [],
-          bio: body.bio || null,
+        {
+          success: false,
+          error: 'Authentication required',
+          code: ERROR_CODES.UNAUTHORIZED,
         },
-      });
+        { status: 401, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
-    // Assign coach to team using coachId field
-    const updatedTeam = await prisma.oldTeam.update({
-      where: { id: teamId },
-      data: {
-        coachId: coach.id,
-      },
+    // ========================================================================
+    // 2. VALIDATE CLUB OWNERSHIP
+    // ========================================================================
+    const { isValid: isOwner, error: ownerError } = await validateClubOwnership(
+      params.clubId,
+      session.user.id
+    );
+
+    if (!isOwner) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: ownerError || 'Forbidden',
+          code: ERROR_CODES.FORBIDDEN,
+        },
+        { status: 403, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    // ========================================================================
+    // 3. VALIDATE TEAM BELONGS TO CLUB
+    // ========================================================================
+    const { isValid: isTeamValid, error: teamError } =
+      await validateTeamBelongsToClub(params.teamId, params.clubId);
+
+    if (!isTeamValid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: teamError || 'Team not found',
+          code: ERROR_CODES.NOT_FOUND,
+        },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    // ========================================================================
+    // 4. PARSE & VALIDATE REQUEST
+    // ========================================================================
+    let body: AssignCoachRequest;
+
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid JSON in request body',
+          code: ERROR_CODES.INVALID_REQUEST,
+        },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    if (!body.coachId || typeof body.coachId !== 'string') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Coach ID is required',
+          code: ERROR_CODES.INVALID_REQUEST,
+        },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    // ========================================================================
+    // 5. VERIFY COACH EXISTS
+    // ========================================================================
+    const coach = await prisma.coach.findUnique({
+      where: { id: body.coachId },
       include: {
-        coach: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
           },
         },
       },
     });
 
-    return NextResponse.json(updatedTeam.coach, { status: 201 });
+    if (!coach) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Coach not found',
+          code: ERROR_CODES.NOT_FOUND,
+        },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    // ========================================================================
+    // 6. CREATE TRAINING SESSION (Coach-Team link)
+    // ========================================================================
+    // In your schema, Coach connects to Team via TrainingSession
+    // Create an initial training session to assign the coach
+    await prisma.trainingSession.create({
+      data: {
+        teamId: params.teamId,
+        coachId: body.coachId,
+        date: new Date(),
+        startTime: new Date(),
+        endTime: new Date(Date.now() + 3600000), // 1 hour session
+        duration: 60,
+        focus: 'TEAM_SETUP',
+        sessionType: 'TEAM',
+      },
+    });
+
+    // ========================================================================
+    // 7. RETURN RESPONSE
+    // ========================================================================
+    const duration = performance.now() - startTime;
+
+    console.log('Coach assigned to team', {
+      requestId,
+      clubId: params.clubId,
+      teamId: params.teamId,
+      coachId: body.coachId,
+      duration: `${Math.round(duration)}ms`,
+    });
+
+    const response: AssignCoachResponse = {
+      success: true,
+      message: 'Coach successfully assigned to team',
+      coach: {
+        id: coach.id,
+        userId: coach.userId,
+        coachType: coach.coachType,
+        yearsExperience: coach.yearsExperience,
+        qualifications: coach.qualifications,
+        specializations: coach.specializations,
+        certifications: coach.certifications,
+        bio: coach.bio,
+        hourlyRate: coach.hourlyRate,
+        currency: coach.currency,
+        user: coach.user,
+      },
+    };
+
+    return NextResponse.json(response, {
+      status: 201,
+      headers: {
+        'X-Request-ID': requestId,
+        'X-Response-Time': `${Math.round(duration)}ms`,
+      },
+    });
   } catch (error) {
-    console.error(
-      'POST /api/manager/clubs/[clubId]/teams/[teamId]/coaches error:',
-      error
-    );
+    const duration = performance.now() - startTime;
+    console.error('Assign coach error', {
+      requestId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      duration: `${Math.round(duration)}ms`,
+    });
+
     return NextResponse.json(
       {
-        error: 'Failed to add coach',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        success: false,
+        error: 'Failed to assign coach',
+        code: ERROR_CODES.INTERNAL_ERROR,
+        details: error instanceof Error ? error.message : undefined,
       },
-      { status: 500 }
+      { status: 500, headers: { 'X-Request-ID': requestId } }
     );
   }
 }

@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
         oldTeamWhere.clubId = clubId;
       }
 
-      oldTeams = await prisma.oldTeam.findMany({
+      oldTeams = await prisma.team.findMany({
         where: oldTeamWhere,
         include: {
           club: {
