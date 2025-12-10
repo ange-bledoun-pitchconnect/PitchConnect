@@ -1,7 +1,7 @@
 // ============================================================================
 // PITCHCONNECT DATABASE SCHEMA (Prisma ORM) - ENHANCED PRODUCTION VERSION
 // PostgreSQL via Supabase | TypeScript Strict Mode | Global Scale Ready
-// FIXED: Enum defaults, removed fulltext indexes, fixed all relations
+// ENHANCED: Multi-sport support for Football, Netball, Rugby, Cricket, American Football, Basketball
 // ============================================================================
 
 generator client {
@@ -52,11 +52,71 @@ enum TeamType {
   ACADEMY
 }
 
+// ============================================================================
+// MULTI-SPORT ENUMS
+// ============================================================================
+
+enum Sport {
+  FOOTBALL
+  NETBALL
+  RUGBY
+  CRICKET
+  AMERICAN_FOOTBALL
+  BASKETBALL
+}
+
 enum Position {
+  // Football
   GOALKEEPER
   DEFENDER
   MIDFIELDER
   FORWARD
+
+  // Netball
+  GOALKEEPER_NETBALL
+  GOAL_ATTACK
+  WING_ATTACK
+  CENTER
+  WING_DEFENSE
+  GOAL_DEFENSE
+  GOAL_SHOOTER
+
+  // Rugby
+  PROP
+  HOOKER
+  LOCK
+  FLANKER
+  NUMBER_8
+  SCRUM_HALF
+  FLY_HALF
+  INSIDE_CENTER
+  OUTSIDE_CENTER
+  WINGER
+  FULLBACK
+
+  // American Football
+  QUARTERBACK
+  RUNNING_BACK
+  WIDE_RECEIVER
+  TACKLE
+  GUARD
+  CENTER_POSITION
+  LINEBACKER
+  SAFETY
+  CORNERBACK
+
+  // Basketball
+  POINT_GUARD
+  SHOOTING_GUARD
+  SMALL_FORWARD
+  POWER_FORWARD
+  CENTER_BASKETBALL
+
+  // Cricket
+  BATSMAN
+  BOWLER
+  FIELDER
+  WICKET_KEEPER
 }
 
 enum PreferredFoot {
@@ -108,6 +168,37 @@ enum MatchEventType {
   PENALTY
   OWN_GOAL
   VAR_REVIEW
+  // Netball specific
+  INTERCEPT
+  REBOUND
+  CENTER_PASS
+  // Rugby specific
+  TRY
+  CONVERSION
+  PENALTY_GOAL
+  DROP_GOAL
+  SCRUM
+  LINEOUT
+  MAUL
+  RUCK
+  // Cricket specific
+  WICKET
+  BOUNDARY
+  MAIDEN_OVER
+  WIDE
+  NO_BALL
+  // Basketball specific
+  THREE_POINTER
+  FAST_BREAK
+  TURNOVER
+  OFFENSIVE_FOUL
+  // American Football specific
+  TOUCHDOWN
+  FIELD_GOAL
+  SAFETY
+  INTERCEPTION
+  FUMBLE
+  SACK
 }
 
 enum Formation {
@@ -240,6 +331,7 @@ enum AuditActionType {
   MATCH_RESULT_UPDATED
   SQUAD_CHANGED
   TACTICAL_CHANGE
+  SPORT_CONFIGURED
 }
 
 enum TimesheetStatus {
@@ -648,7 +740,7 @@ model ApiKey {
 }
 
 // ============================================================================
-// CLUB & TEAM MODELS - ENHANCED
+// CLUB & TEAM MODELS - ENHANCED WITH MULTI-SPORT
 // ============================================================================
 
 model Club {
@@ -718,6 +810,13 @@ model Team {
   name            String
   code            String
   clubId          String
+  
+  // MULTI-SPORT FIELDS
+  sport           Sport   @default(FOOTBALL)
+  positionSystem  String  @default("FOOTBALL") // FOOTBALL, NETBALL, RUGBY, CRICKET, AMERICAN_FOOTBALL, BASKETBALL
+  maxPlayersOnCourt Int   @default(11)         // 11 for Football, 7 for Netball, 15 for Rugby, etc.
+  totalSquadSize  Int     @default(23)         // Typical squad size
+  
   ageGroup        String  @default("SENIOR")
   category        String  @default("FIRST_TEAM")
   status          String  @default("ACTIVE")
@@ -745,6 +844,7 @@ model Team {
   @@unique([clubId, code])
   @@index([clubId])
   @@index([status])
+  @@index([sport])
   @@map("teams")
 }
 
@@ -1139,14 +1239,17 @@ model Parent {
 }
 
 // ============================================================================
-// LEAGUE & FIXTURES MODELS - ENHANCED
+// LEAGUE & FIXTURES MODELS - ENHANCED WITH MULTI-SPORT
 // ============================================================================
 
 model League {
   id              String  @id @default(cuid())
   name            String
   code            String  @unique
-  sport           String  @default("Football")
+  
+  // MULTI-SPORT SUPPORT
+  sport           Sport   @default(FOOTBALL)
+  
   logo            String?
   country         String
   season          Int
@@ -1178,6 +1281,7 @@ model League {
   @@index([adminId])
   @@index([season])
   @@index([status])
+  @@index([sport])
   @@map("leagues")
 }
 
@@ -1338,7 +1442,7 @@ model Standings {
 }
 
 // ============================================================================
-// MATCH & EVENT MODELS - ENHANCED
+// MATCH & EVENT MODELS - ENHANCED WITH MULTI-SPORT
 // ============================================================================
 
 model Match {
@@ -1347,6 +1451,9 @@ model Match {
   homeTeamId      String
   awayTeamId      String
   refereeId       String?
+  
+  // MULTI-SPORT SUPPORT
+  sport           Sport       @default(FOOTBALL)
   
   date            DateTime
   kickOffTime     DateTime?
@@ -1388,6 +1495,7 @@ model Match {
   @@index([refereeId])
   @@index([date])
   @@index([status])
+  @@index([sport])
   @@map("matches")
 }
 
