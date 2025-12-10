@@ -1,5 +1,5 @@
 // ============================================================================
-// src/app/(dashboard)/players/page.tsx
+// src/app/dashboard/players/page.tsx
 // Player Management Dashboard - Squad Management & Statistics
 // ============================================================================
 

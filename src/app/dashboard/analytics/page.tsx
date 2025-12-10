@@ -1,5 +1,5 @@
 // ============================================================================
-// src/app/(dashboard)/analytics/page.tsx
+// src/app/dashboard/analytics/page.tsx
 // Analytics Dashboard - Real-Time Statistics & Insights
 // ============================================================================
 

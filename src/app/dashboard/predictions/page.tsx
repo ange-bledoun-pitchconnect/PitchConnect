@@ -1,5 +1,5 @@
 // ============================================================================
-// src/app/(dashboard)/predictions/page.tsx
+// src/app/dashboard/predictions/page.tsx
 // AI Predictions Dashboard - Real-Time AI Insights
 // ============================================================================
 
