@@ -1,79 +1,84 @@
-/**
- * usePagination Hook
- * Pagination logic and state management
- */
+// ============================================================================
+// PHASE 9: src/hooks/usePagination.ts
+// Custom Hook for Pagination State Management
+//
+// Features:
+// - Manage page state
+// - Handle page size changes
+// - Calculate total pages
+// - Reset to first page
+//
+// Usage:
+// const { page, pageSize, setPage, setPageSize, totalPages } = usePagination(100, 25)
+// ============================================================================
 
-import { useState, useMemo, useCallback } from 'react';
+'use client';
 
-export interface PaginationOptions {
-  initialPage?: number;
+import { useState, useCallback } from 'react';
+
+interface UsePaginationOptions {
   initialPageSize?: number;
 }
 
-export function usePagination<T>(
-  data: T[],
-  options: PaginationOptions = {}
+/**
+ * Manage pagination state
+ */
+export function usePagination(
+  totalItems: number,
+  options: UsePaginationOptions = {}
 ) {
-  const { initialPage = 1, initialPageSize = 10 } = options;
+  const { initialPageSize = 25 } = options;
 
-  const [currentPage, setCurrentPage] = useState(initialPage);
+  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
 
-  const totalPages = useMemo(
-    () => Math.ceil(data.length / pageSize),
-    [data.length, pageSize]
-  );
+  // Calculate total pages
+  const totalPages = Math.ceil(totalItems / pageSize);
 
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    return data.slice(startIndex, endIndex);
-  }, [data, currentPage, pageSize]);
+  // Validate and set page
+  const goToPage = useCallback((newPage: number) => {
+    const validPage = Math.max(1, Math.min(newPage, totalPages));
+    setPage(validPage);
+  }, [totalPages]);
 
-  const goToPage = useCallback(
-    (page: number) => {
-      const validPage = Math.max(1, Math.min(page, totalPages));
-      setCurrentPage(validPage);
-    },
-    [totalPages]
-  );
-
+  // Go to next page
   const nextPage = useCallback(() => {
-    if (currentPage < totalPages) {
-      setCurrentPage((prev) => prev + 1);
-    }
-  }, [currentPage, totalPages]);
+    goToPage(page + 1);
+  }, [page, goToPage]);
 
-  const previousPage = useCallback(() => {
-    if (currentPage > 1) {
-      setCurrentPage((prev) => prev - 1);
-    }
-  }, [currentPage]);
+  // Go to previous page
+  const prevPage = useCallback(() => {
+    goToPage(page - 1);
+  }, [page, goToPage]);
 
-  const changePageSize = useCallback((size: number) => {
-    setPageSize(size);
-    setCurrentPage(1); // Reset to first page
+  // Reset to first page
+  const resetPage = useCallback(() => {
+    setPage(1);
   }, []);
 
-  const reset = useCallback(() => {
-    setCurrentPage(initialPage);
-    setPageSize(initialPageSize);
-  }, [initialPage, initialPageSize]);
+  // Change page size
+  const changePageSize = useCallback((newSize: number) => {
+    setPageSize(newSize);
+    setPage(1); // Reset to first page when size changes
+  }, []);
+
+  // Calculate start and end indices
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
 
   return {
-    currentPage,
+    page,
     pageSize,
     totalPages,
-    paginatedData,
+    totalItems,
+    startIndex,
+    endIndex,
     goToPage,
     nextPage,
-    previousPage,
-    changePageSize,
-    reset,
-    hasNextPage: currentPage < totalPages,
-    hasPreviousPage: currentPage > 1,
-    startIndex: (currentPage - 1) * pageSize + 1,
-    endIndex: Math.min(currentPage * pageSize, data.length),
-    totalItems: data.length,
+    prevPage,
+    resetPage,
+    setPageSize: changePageSize,
   };
 }
+
+export default usePagination;
