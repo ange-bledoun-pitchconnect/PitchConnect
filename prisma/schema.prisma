@@ -2088,3 +2088,603 @@ model Video {
   @@index([type])
   @@map("videos")
 }
+// ============================================================================
+// VIDEO STREAMING ENUMS (Add to existing enums section)
+// ============================================================================
+
+enum VideoQuality {
+  Q_480P
+  Q_720P
+  Q_1080P
+  Q_4K
+}
+
+enum TranscodingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum VideoProcessingProvider {
+  MUX
+  AWS_MEDIACONVERT
+  BUNNY_CDN
+  CLOUDINARY
+  INTERNAL
+}
+
+// ============================================================================
+// VIDEO STREAMING MODELS (Add to schema after existing Video model)
+// ============================================================================
+
+model VideoStream {
+  id                    String                @id @default(cuid())
+  videoId               String                @unique
+  
+  // Provider Configuration
+  provider              VideoProcessingProvider @default(MUX)
+  providerAssetId       String?               @unique
+  providerPlaybackId    String?               @unique
+  hlsPlaylistUrl        String?
+  dashManifestUrl       String?
+  
+  // Quality Variants (Mux generates these automatically)
+  transcodeStatus       TranscodingStatus     @default(PENDING)
+  transcodeProgress     Int                   @default(0)
+  
+  // Streaming URLs by Quality
+  url480p               String?
+  url720p               String?
+  url1080p              String?
+  url4k                 String?
+  
+  // Metadata
+  duration              Int?                  @default(0)
+  width                 Int?
+  height                Int?
+  aspectRatio           String?               @default("16:9")
+  fps                   Int?                  @default(30)
+  bitrate               String?
+  codecs                String?
+  
+  // Analytics
+  views                 Int                   @default(0)
+  totalPlayTimeMinutes  Int                   @default(0)
+  averageViewDuration  Float?
+  completionRate        Float?
+  droppedFramePercent   Float?
+  
+  // Thumbnail
+  thumbnailUrl          String?
+  thumbnailSmall        String?               // For preview cards
+  posterUrl             String?               // For player backdrop
+  
+  // Subtitles/Captions
+  hasCaptions           Boolean               @default(false)
+  captionTracks         Json?                 // { language: [{ url, type }] }
+  
+  // DRM & Security
+  isLive                Boolean               @default(false)
+  isPublic              Boolean               @default(true)
+  requiresAuth          Boolean               @default(false)
+  expiresAt             DateTime?             // For temporary links
+  
+  // Timestamps & Status
+  startedAt             DateTime?
+  completedAt           DateTime?
+  failureReason         String?
+  lastAccessedAt        DateTime?
+  
+  video                 Video                 @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  accessLogs            VideoAccessLog[]
+  chapters              VideoChapter[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([videoId])
+  @@index([provider])
+  @@index([transcodeStatus])
+  @@index([providerAssetId])
+  @@map("video_streams")
+}
+
+model VideoChapter {
+  id                    String                @id @default(cuid())
+  videoStreamId         String
+  
+  title                 String
+  description           String?               @db.Text
+  startTime             Int                   // In seconds
+  endTime               Int
+  thumbnailUrl          String?
+  
+  videoStream           VideoStream           @relation(fields: [videoStreamId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([videoStreamId])
+  @@index([startTime])
+  @@map("video_chapters")
+}
+
+model VideoAccessLog {
+  id                    String                @id @default(cuid())
+  videoStreamId         String
+  userId                String?
+  
+  // Access Info
+  ipAddress             String?
+  userAgent             String?
+  countryCode           String?
+  
+  // Playback Stats
+  playbackDuration      Int                   @default(0)      // Seconds played
+  startedAt             DateTime?
+  endedAt               DateTime?
+  pauseCount            Int                   @default(0)
+  seekCount             Int                   @default(0)
+  
+  // Quality Info
+  initialQuality        VideoQuality?
+  maxQualityReached     VideoQuality?
+  bitrateSwitches       Int                   @default(0)
+  
+  // Device Info
+  deviceType            String?               // mobile, tablet, desktop
+  osName                String?               // iOS, Android, Windows, etc.
+  browserName           String?
+  
+  // Network Info
+  networkType           String?               // wifi, mobile_3g, mobile_4g, etc.
+  bandwidth             Float?                // Mbps
+  
+  videoStream           VideoStream           @relation(fields: [videoStreamId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([videoStreamId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([countryCode])
+  @@map("video_access_logs")
+}
+
+model VideoInteraction {
+  id                    String                @id @default(cuid())
+  videoId               String
+  userId                String?
+  
+  // Interaction Types
+  type                  String                @default("PLAY") // PLAY, PAUSE, SEEK, QUALITY_CHANGE, FULLSCREEN, etc.
+  timestamp             Int?                  // Video timestamp in seconds
+  metadata              Json?                 // Additional data for the interaction
+  
+  // Engagement
+  likedAt               DateTime?
+  bookmarkedAt          DateTime?
+  sharedAt              DateTime?
+  
+  createdAt DateTime @default(now())
+  
+  @@index([videoId])
+  @@index([userId])
+  @@index([type])
+  @@map("video_interactions")
+}
+
+model VideoComment {
+  id                    String                @id @default(cuid())
+  videoId               String
+  userId                String
+  
+  timestamp             Int?                  // Video timestamp in seconds
+  text                  String                @db.Text
+  parentCommentId       String?               // For nested comments
+  
+  likes                 Int                   @default(0)
+  views                 Int                   @default(0)
+  
+  isSpotlighted         Boolean               @default(false)
+  isPinned              Boolean               @default(false)
+  isDeleted             Boolean               @default(false)
+  
+  parentComment         VideoComment?         @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies               VideoComment[]        @relation("CommentReplies")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([videoId])
+  @@index([userId])
+  @@index([timestamp])
+  @@index([parentCommentId])
+  @@map("video_comments")
+}
+// ============================================================================
+// PREDICTIVE ANALYTICS ENUMS (Add to existing enums section)
+// ============================================================================
+
+enum PredictionType {
+  INJURY_RISK
+  PERFORMANCE_DECLINE
+  OPTIMAL_FORMATION
+  PLAYER_POTENTIAL
+  MARKET_VALUE
+  FATIGUE_LEVEL
+  CAREER_TRAJECTORY
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PredictionAccuracy {
+  VERY_HIGH
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ============================================================================
+// PREDICTIVE ANALYTICS MODELS
+// ============================================================================
+
+model InjuryPrediction {
+  id                    String          @id @default(cuid())
+  playerId              String
+  
+  // Risk Assessment
+  riskLevel             RiskLevel       @default(MEDIUM)
+  riskPercentage        Float           @default(0)
+  confidence            Float           @default(0)
+  
+  // Contributing Factors
+  playtimeMinutesLastWeek Int?
+  trainingLoadLastWeek  Int?            // Cumulative training minutes
+  previousInjuries      Int?            // Count of past injuries
+  ageInYears            Int?
+  bmi                   Float?
+  sprackAcceleration    Float?          // Recent acceleration in sprints
+  
+  // Vulnerability Factors
+  vulnerabilityFactors  Json?           // { factor: { score, weight } }
+  muscleGroupsAtRisk    String[]        @default([])
+  
+  // Timeline
+  predictedRiskWindow   String?         // "NEXT_2_WEEKS", "NEXT_MONTH", etc.
+  highestRiskDate       DateTime?
+  estimatedRecoveryDays Int?
+  
+  // Recommendations
+  recommendations       String[]
+  recommendedRestDays   Int?
+  suggestedCrossTraining String[]
+  
+  // Accuracy Metrics
+  accuracy              PredictionAccuracy @default(MEDIUM)
+  model                 String          @default("ensemble")
+  modelVersion          String?
+  
+  // Tracking
+  occurrenceOfPredicted Boolean?        // Did injury actually occur?
+  actualInjuryDate      DateTime?
+  wasAccurate           Boolean?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([playerId])
+  @@index([riskLevel])
+  @@index([createdAt])
+  @@map("injury_predictions")
+}
+
+model PerformancePrediction {
+  id                    String                @id @default(cuid())
+  playerId              String
+  
+  // Current Performance Metrics
+  recentFormRating      Float                 // 0-10 scale
+  averageRatingLastMatches Float?
+  consistencyScore      Float?                // How consistent recent performance
+  
+  // Predicted Metrics (Next Match/Week/Month)
+  predictedPerformanceRating Float            // 0-10
+  predictedGoals        Float?                // Expected goal contribution
+  predictedAssists      Float?
+  predictedPassAccuracy Float?
+  predictedTackles      Int?
+  
+  // Trend Analysis
+  performanceTrend      String    @default("STABLE") // IMPROVING, DECLINING, STABLE
+  trendStrength         Float     @default(0)        // 0-1
+  cyclePhase            String?                      // PEAK, POST_PEAK, VALLEY, etc.
+  
+  // Influencing Factors
+  recentFormFactors     Json?     // Factors affecting current form
+  recoveryStatus        String?   // FULL, PARTIAL, POOR
+  mentalState           String?   // Estimated from recent performances
+  teamDynamics          String?   // How team performance affects player
+  oppositionRating      Float?    // Strength of upcoming opponent
+  
+  // Recommendations
+  playingTimeRecommendation String?  // FULL, REDUCED, BENCH, REST
+  positionRecommendation String?     // Optimal position for recovery/performance
+  supportStrategies     String[]
+  focusAreas            String[]
+  
+  // Accuracy
+  accuracy              PredictionAccuracy @default(MEDIUM)
+  
+  timeHorizon           String    @default("NEXT_MATCH") // NEXT_MATCH, NEXT_WEEK, NEXT_MONTH
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([playerId])
+  @@index([performanceTrend])
+  @@index([createdAt])
+  @@map("performance_predictions")
+}
+
+model FormationOptimization {
+  id                    String    @id @default(cuid())
+  teamId                String
+  leagueId              String?
+  
+  // Analysis Context
+  opponentStrengths     String[]
+  opponentWeaknesses    String[]
+  teamAvailablePlayers  String[]
+  banedOrInjuredPlayers String[]
+  
+  // Recommended Formation
+  recommendedFormation  String    @default("4-3-3")
+  matchupRating         Float     // How good is this formation against opponent
+  
+  // Alternative Formations (Backup options)
+  alternativeFormations Json?     // { formation: { rating, reasoning } }
+  
+  // Player Positioning (Optimal lineup)
+  recommendedLineup     Json?     // { position: playerId }
+  substitutionSuggestions Json?   // { minute: [ { playerOut, playerIn, reason } ] }
+  
+  // Tactical Notes
+  pressStrategy         String?   // HIGH, MID, LOW_BLOCK
+  defensiveShape        String?   // COMPACT, BALANCED, AGGRESSIVE
+  playStyle             String?   // POSSESSION, COUNTER, BALANCED
+  keyTacticalFocuses    String[]
+  
+  // Set Piece Strategy
+  cornerKickStrategy    String?
+  freeKickStrategy      String?
+  penaltyTaker          String?
+  
+  // Match Prediction
+  expectedOutcome       String?   // WIN, DRAW, LOSS probability
+  winProbability        Float?    // 0-1
+  drawProbability       Float?
+  lossProbability       Float?
+  expectedGoalsFor      Float?
+  expectedGoalsAgainst  Float?
+  
+  // Confidence
+  confidence            Float     @default(0)
+  accuracy              PredictionAccuracy @default(MEDIUM)
+  
+  // Metadata
+  matchDate             DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([teamId])
+  @@index([leagueId])
+  @@index([createdAt])
+  @@map("formation_optimizations")
+}
+
+model PlayerPotential {
+  id                    String    @id @default(cuid())
+  playerId              String    @unique
+  
+  // Current Assessment
+  currentAbilityRating  Float     // 0-100
+  peakAbilityRating     Float     // 0-100 (potential ceiling)
+  developmentStage      String    // DEVELOPING, RISING, PEAK, DECLINING
+  
+  // Growth Trajectory
+  yearsToReachPeak      Int?      // Estimated years
+  peakAgeRange          String?   // e.g., "28-31"
+  estimatedPeakValue    Float?    // Market value at peak
+  
+  // Growth Areas (Top development opportunities)
+  growthAreas           Json?     // { skill: { currentLevel, targetLevel, priority } }
+  strengthAreas         String[]  // Already strong
+  developmentPriorities String[]
+  
+  // Player Profile
+  playerType            String?   // TECHNICAL, PHYSICAL, MENTAL, BALANCED
+  uniqueAttributes      String[]  // What makes them special
+  improvementPotential  String    // HIGH, MEDIUM, LOW
+  
+  // Comparable Players (Similar players at same age)
+  comparablePlayers     String[]  // Player IDs of similar trajectory
+  benchmarkStats        Json?     // Stats to compare against
+  
+  // Career Projection
+  projectedCareerValue  Json?     // { year: estimatedValue }
+  retirementAgeEstimate Int?      // Estimated career end
+  internationalization Probability Float? // Chance of national team
+  transferMarketValue   Float?    // Current estimated market value
+  
+  // Training Recommendations
+  recommendedFocusAreas String[]
+  trainingFocus         String?
+  playingTimeNeed       String?   // HIGH, MEDIUM, LOW
+  leagueRecommendation  String?   // Recommended competition level
+  
+  // Timeline
+  lastUpdated           DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  
+  @@index([playerId])
+  @@index([developmentStage])
+  @@index([peakAbilityRating])
+  @@map("player_potentials")
+}
+
+model LeagueAnalytics {
+  id                    String    @id @default(cuid())
+  leagueId              String    @unique
+  
+  // League Overview
+  totalMatches          Int       @default(0)
+  goalsPerMatch         Float?    @default(2.8)
+  averagePossession     Float?
+  averagePassAccuracy   Float?
+  
+  // Performance Distribution
+  topScorerGoals        Int?
+  topAssisterAssists    Int?
+  averageAttendance     Int?
+  
+  // Team Rankings
+  offensiveRanking      Json?     // { teamId: { goals, rating } }
+  defensiveRanking      Json?     // { teamId: { goalsConceded, rating } }
+  
+  // Player Rankings
+  topScorers            Json?     // [{ playerId, goals, team }]
+  topAssisters          Json?     // [{ playerId, assists, team }]
+  mostValuablePlayers   Json?     // [{ playerId, team, rating }]
+  
+  // Competitive Balance
+  leagueParity          Float?    // How competitive (0-1)
+  titleContenders       String[]
+  relegationRisks       String[]
+  
+  // Trend Analysis
+  scoringTrend          String?   // INCREASING, DECREASING, STABLE
+  competitivenessTrend  String?   // Teams getting closer or spreading out
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([leagueId])
+  @@map("league_analytics")
+}
+
+model PlayerComparison {
+  id                    String    @id @default(cuid())
+  playerId1             String
+  playerId2             String
+  
+  // Comparison Context
+  position              String
+  age1                  Int?
+  age2                  Int?
+  
+  // Direct Comparisons
+  comparativeStrengths  Json?     // { metric: { player1Rating, player2Rating } }
+  comparativeWeaknesses Json?
+  
+  // Statistical Comparison
+  stats                 Json?     // { metric: { player1Value, player2Value, difference } }
+  
+  // Verdict
+  betterOverallPlayer   String    // playerId1 or playerId2
+  betterForRole         String?   // Which player fits team needs better
+  betterTransferValue   String?
+  
+  // Development Outlook
+  playerWithBetterTrajectory String?
+  
+  // Summary
+  summary               String    @db.Text
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([playerId1, playerId2])
+  @@index([position])
+  @@map("player_comparisons")
+}
+
+model MarketValueAnalysis {
+  id                    String    @id @default(cuid())
+  playerId              String    @unique
+  
+  // Value Assessment
+  currentMarketValue    Float
+  currency              String    @default("GBP")
+  confidence            Float     @default(0)
+  
+  // Value Components
+  ageComponent          Float     // Value impact from age
+  performanceComponent  Float     // Value from current form
+  potentialComponent    Float     // Value from development upside
+  marketDemandComponent Float     // Impact of supply/demand
+  
+  // Value Trends
+  valueChange6Months    Float?
+  valueChange12Months   Float?
+  valueTrend            String?   // RISING, STABLE, DECLINING
+  
+  // Comparable Transfers
+  recentSimilarTransfers Json?    // Similar player transfers
+  transferMarketMean    Float?    // Average value of similar players
+  
+  // Transfer Risk
+  transferRisk          RiskLevel
+  injuryRiskFactoringInValue Boolean @default(true)
+  
+  // Recommendations
+  buyRecommendation     String?   // BUY, HOLD, SELL
+  fairValueRange        Json?     // { min, max }
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([playerId])
+  @@index([valueTrend])
+  @@map("market_value_analyses")
+}
+
+model FatigueAnalysis {
+  id                    String    @id @default(cuid())
+  playerId              String
+  
+  // Fatigue Assessment
+  fatigueLevel          Float     // 0-100 scale
+  riskLevel             RiskLevel
+  
+  // Contributing Factors
+  playtimeLastDays      Json?     // { day: minutes }
+  trainingIntensity     Float?    // Last week average
+  matchIntensity        Float?    // From match tracking
+  recoveryQuality       String?   // EXCELLENT, GOOD, POOR
+  
+  // Physical Indicators
+  sprintSpeed           Float?    // Compared to baseline
+  acceleration          Float?    // Change from baseline
+  jumpHeight            Float?    // If available from tracking
+  
+  // Recommended Actions
+  recommendRestDays     Int?
+  suggestedActivities   String[]
+  trainingModification  String?   // LIGHT, NORMAL, INTENSE
+  
+  // Timeline
+  predictedRecoveryDate DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([playerId])
+  @@index([riskLevel])
+  @@map("fatigue_analyses")
+}

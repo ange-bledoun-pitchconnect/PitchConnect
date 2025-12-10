@@ -1,684 +1,425 @@
 'use client';
 
-import { useState } from 'react';
+/**
+ * Settings Page - PitchConnect
+ * - User preferences
+ * - Theme toggle (Light/Dark)
+ * - Account management
+ * - Notification settings
+ * - Privacy controls
+ */
+
+import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
-import { useTheme } from '@/components/theme-provider';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import {
-  User,
-  Bell,
-  Shield,
-  Palette,
-  Globe,
-  CreditCard,
-  Smartphone,
-  Lock,
-  Mail,
-  Download,
-  Trash2,
-  CheckCircle,
-  AlertCircle,
-  Save,
-  ChevronRight,
-  RefreshCw,
-  Plus,
-  Sun,
-  Moon,
-  Monitor,
-} from 'lucide-react';
+import { Bell, Moon, Sun, Lock, User, Globe, LogOut } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+interface UserSettings {
+  theme: 'light' | 'dark' | 'system';
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  matchReminders: boolean;
+  weeklyDigest: boolean;
+  twoFactorEnabled: boolean;
+}
 
 export default function SettingsPage() {
   const { data: session } = useSession();
-  const router = useRouter();
-  const { theme, setTheme, resolvedTheme } = useTheme();
-  const [activeSection, setActiveSection] = useState('profile');
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
-  // Settings state
-  const [settings, setSettings] = useState({
-    // Profile
-    firstName: session?.user?.name?.split(' ')[0] || '',
-    lastName: session?.user?.name?.split(' ')[1] || '',
-    email: session?.user?.email || '',
-    phone: '',
-    bio: '',
-    
-    // Notifications
+  const [settings, setSettings] = useState<UserSettings>({
+    theme: 'light',
     emailNotifications: true,
     pushNotifications: true,
-    smsNotifications: false,
     matchReminders: true,
-    trainingReminders: true,
-    teamUpdates: true,
-    statsUpdates: true,
-    achievementAlerts: true,
-    
-    // Privacy
-    profileVisibility: 'team',
-    showStats: true,
-    showActivity: true,
-    allowMessages: true,
-    
-    // Regional
-    language: 'en-GB',
-    timezone: 'Europe/London',
-    dateFormat: 'DD/MM/YYYY',
-    
-    // Performance
-    dataQuality: 'high',
-    autoSyncData: true,
-    offlineMode: false,
+    weeklyDigest: true,
+    twoFactorEnabled: false
   });
+  const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'appearance' | 'notifications' | 'security' | 'account'>('appearance');
 
-  const handleSave = async () => {
+  // Load settings from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('pitchconnect-settings');
+    if (saved) {
+      setSettings(JSON.parse(saved));
+    }
+    // Load theme
+    const theme = localStorage.getItem('pitchconnect-theme') as 'light' | 'dark' | 'system' || 'light';
+    setSettings(prev => ({ ...prev, theme }));
+  }, []);
+
+  // Save settings
+  const saveSettings = async () => {
     setIsSaving(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      localStorage.setItem('pitchconnect-settings', JSON.stringify(settings));
+      localStorage.setItem('pitchconnect-theme', settings.theme);
+      
+      // Apply theme
+      if (settings.theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+
+      toast.success('Settings saved successfully!');
     } catch (error) {
-      console.error('Save error:', error);
+      toast.error('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const sections = [
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'privacy', label: 'Privacy & Security', icon: Shield },
-    { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'regional', label: 'Regional', icon: Globe },
-    { id: 'billing', label: 'Billing', icon: CreditCard },
-    { id: 'devices', label: 'Devices', icon: Smartphone },
-    { id: 'data', label: 'Data & Storage', icon: Download },
-  ];
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+    setSettings(prev => ({ ...prev, theme: newTheme }));
+  };
 
-  const themeOptions = [
-    {
-      value: 'light',
-      label: 'Light',
-      icon: Sun,
-      description: 'Clean and bright',
-      preview: 'bg-white border-2',
-    },
-    {
-      value: 'dark',
-      label: 'Dark',
-      icon: Moon,
-      description: 'Easy on the eyes',
-      preview: 'bg-charcoal-900 border-2',
-    },
-    {
-      value: 'system',
-      label: 'Auto',
-      icon: Monitor,
-      description: 'Match system',
-      preview: 'bg-gradient-to-r from-white to-charcoal-900 border-2',
-    },
-  ];
+  const handleToggle = (key: keyof UserSettings) => {
+    setSettings(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 p-4 sm:p-6 lg:p-8 transition-colors">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-charcoal-900 dark:text-white mb-2">Settings</h1>
-          <p className="text-charcoal-600 dark:text-charcoal-400">Manage your account preferences and app settings</p>
+    <div className="space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold text-charcoal-900 dark:text-white">
+          Settings
+        </h1>
+        <p className="mt-2 text-charcoal-600 dark:text-charcoal-400">
+          Manage your account preferences and settings
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-neutral-200 dark:border-charcoal-700">
+        <div className="flex gap-8">
+          <button
+            onClick={() => setActiveTab('appearance')}
+            className={`px-4 py-4 font-medium transition-colors border-b-2 ${
+              activeTab === 'appearance'
+                ? 'border-gold-500 text-gold-600 dark:text-gold-400'
+                : 'border-transparent text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Sun className="h-5 w-5" />
+              Appearance
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('notifications')}
+            className={`px-4 py-4 font-medium transition-colors border-b-2 ${
+              activeTab === 'notifications'
+                ? 'border-gold-500 text-gold-600 dark:text-gold-400'
+                : 'border-transparent text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              Notifications
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('security')}
+            className={`px-4 py-4 font-medium transition-colors border-b-2 ${
+              activeTab === 'security'
+                ? 'border-gold-500 text-gold-600 dark:text-gold-400'
+                : 'border-transparent text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Lock className="h-5 w-5" />
+              Security
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('account')}
+            className={`px-4 py-4 font-medium transition-colors border-b-2 ${
+              activeTab === 'account'
+                ? 'border-gold-500 text-gold-600 dark:text-gold-400'
+                : 'border-transparent text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-white'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Account
+            </span>
+          </button>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar Navigation */}
-          <div className="lg:col-span-1">
-            <Card className="sticky top-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-              <CardContent className="p-4">
-                <nav className="space-y-1">
-                  {sections.map((section) => {
-                    const Icon = section.icon;
-                    return (
-                      <button
-                        key={section.id}
-                        onClick={() => setActiveSection(section.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                          activeSection === section.id
-                            ? 'bg-gradient-to-r from-gold-500 to-orange-400 text-white shadow-md'
-                            : 'text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700'
-                        }`}
-                      >
-                        <Icon className="w-5 h-5" />
-                        <span className="flex-1 text-left">{section.label}</span>
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    );
-                  })}
-                </nav>
-              </CardContent>
-            </Card>
-          </div>
+      {/* APPEARANCE TAB */}
+      {activeTab === 'appearance' && (
+        <div className="space-y-6">
+          {/* Theme Section */}
+          <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
+            <h2 className="mb-6 text-xl font-bold text-charcoal-900 dark:text-white">
+              Theme Preference
+            </h2>
 
-          {/* Main Content */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Save Success Banner */}
-            {saveSuccess && (
-              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl p-4 flex items-center gap-3 animate-slide-down">
-                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
-                <p className="text-sm font-medium text-green-800 dark:text-green-200">Settings saved successfully!</p>
-              </div>
-            )}
+            <div className="space-y-4">
+              {/* Light Mode */}
+              <label className="flex cursor-pointer items-start gap-4 rounded-lg p-4 transition-all hover:bg-neutral-50 dark:hover:bg-charcoal-700">
+                <input
+                  type="radio"
+                  name="theme"
+                  value="light"
+                  checked={settings.theme === 'light'}
+                  onChange={() => handleThemeChange('light')}
+                  className="mt-1 h-5 w-5 text-gold-500"
+                />
+                <div className="flex-1">
+                  <p className="font-semibold text-charcoal-900 dark:text-white">
+                    Light Mode
+                  </p>
+                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                    Use light colors for the interface
+                  </p>
+                </div>
+                <Sun className="h-6 w-6 text-yellow-500" />
+              </label>
 
-            {/* Profile Section */}
-            {activeSection === 'profile' && (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                    <User className="w-5 h-5 text-gold-500" />
-                    Profile Information
-                  </CardTitle>
-                  <CardDescription className="dark:text-charcoal-400">Update your personal information and profile details</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="firstName" className="dark:text-white">First Name</Label>
-                      <Input
-                        id="firstName"
-                        value={settings.firstName}
-                        onChange={(e) => setSettings({ ...settings, firstName: e.target.value })}
-                        placeholder="John"
-                        className="dark:bg-charcoal-900 dark:border-charcoal-600 dark:text-white"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lastName" className="dark:text-white">Last Name</Label>
-                      <Input
-                        id="lastName"
-                        value={settings.lastName}
-                        onChange={(e) => setSettings({ ...settings, lastName: e.target.value })}
-                        placeholder="Doe"
-                        className="dark:bg-charcoal-900 dark:border-charcoal-600 dark:text-white"
-                      />
-                    </div>
-                  </div>
+              {/* Dark Mode */}
+              <label className="flex cursor-pointer items-start gap-4 rounded-lg p-4 transition-all hover:bg-neutral-50 dark:hover:bg-charcoal-700">
+                <input
+                  type="radio"
+                  name="theme"
+                  value="dark"
+                  checked={settings.theme === 'dark'}
+                  onChange={() => handleThemeChange('dark')}
+                  className="mt-1 h-5 w-5 text-gold-500"
+                />
+                <div className="flex-1">
+                  <p className="font-semibold text-charcoal-900 dark:text-white">
+                    Dark Mode
+                  </p>
+                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                    Use dark colors to reduce eye strain
+                  </p>
+                </div>
+                <Moon className="h-6 w-6 text-indigo-500" />
+              </label>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="email" className="dark:text-white">Email Address</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={settings.email}
-                      onChange={(e) => setSettings({ ...settings, email: e.target.value })}
-                      placeholder="your@email.com"
-                      className="dark:bg-charcoal-900 dark:border-charcoal-600 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phone" className="dark:text-white">Phone Number (Optional)</Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      value={settings.phone}
-                      onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
-                      placeholder="+44 7700 900000"
-                      className="dark:bg-charcoal-900 dark:border-charcoal-600 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="bio" className="dark:text-white">Bio</Label>
-                    <textarea
-                      id="bio"
-                      value={settings.bio}
-                      onChange={(e) => setSettings({ ...settings, bio: e.target.value })}
-                      placeholder="Tell us about yourself..."
-                      className="w-full min-h-[100px] px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 text-charcoal-900 dark:text-white dark:bg-charcoal-900"
-                    />
-                    <p className="text-xs text-charcoal-500 dark:text-charcoal-400">Maximum 500 characters</p>
-                  </div>
-
-                  <Button
-                    onClick={() => router.push('/dashboard/settings/profile')}
-                    variant="outline"
-                    className="w-full md:w-auto dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700"
-                  >
-                    Edit Full Profile
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Notifications Section */}
-            {activeSection === 'notifications' && (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                    <Bell className="w-5 h-5 text-gold-500" />
-                    Notification Preferences
-                  </CardTitle>
-                  <CardDescription className="dark:text-charcoal-400">Choose how you want to be notified about activity</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Notification Channels */}
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Notification Channels</h3>
-                    
-                    <div className="flex items-center justify-between py-3 border-b dark:border-charcoal-700">
-                      <div className="flex items-center gap-3">
-                        <Mail className="w-5 h-5 text-charcoal-500 dark:text-charcoal-400" />
-                        <div>
-                          <p className="font-medium text-charcoal-900 dark:text-white">Email Notifications</p>
-                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Receive updates via email</p>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={settings.emailNotifications}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, emailNotifications: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-3 border-b dark:border-charcoal-700">
-                      <div className="flex items-center gap-3">
-                        <Bell className="w-5 h-5 text-charcoal-500 dark:text-charcoal-400" />
-                        <div>
-                          <p className="font-medium text-charcoal-900 dark:text-white">Push Notifications</p>
-                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Get alerts on your device</p>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={settings.pushNotifications}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, pushNotifications: checked })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-3 border-b dark:border-charcoal-700">
-                      <div className="flex items-center gap-3">
-                        <Smartphone className="w-5 h-5 text-charcoal-500 dark:text-charcoal-400" />
-                        <div>
-                          <p className="font-medium text-charcoal-900 dark:text-white">SMS Notifications</p>
-                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Receive text messages</p>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={settings.smsNotifications}
-                        onCheckedChange={(checked) =>
-                          setSettings({ ...settings, smsNotifications: checked })
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Notification Types */}
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900 dark:text-white">What to Notify</h3>
-                    
-                    {[
-                      { key: 'matchReminders', label: 'Match Reminders', desc: 'Get notified before matches' },
-                      { key: 'trainingReminders', label: 'Training Reminders', desc: 'Training session alerts' },
-                      { key: 'teamUpdates', label: 'Team Updates', desc: 'News and announcements' },
-                      { key: 'statsUpdates', label: 'Stats Updates', desc: 'Performance statistics' },
-                      { key: 'achievementAlerts', label: 'Achievement Alerts', desc: 'When you unlock achievements' },
-                    ].map((item) => (
-                      <div key={item.key} className="flex items-center justify-between py-3">
-                        <div>
-                          <p className="font-medium text-charcoal-900 dark:text-white">{item.label}</p>
-                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{item.desc}</p>
-                        </div>
-                        <Switch
-                          checked={settings[item.key as keyof typeof settings] as boolean}
-                          onCheckedChange={(checked) =>
-                            setSettings({ ...settings, [item.key]: checked })
-                          }
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Privacy & Security Section */}
-            {activeSection === 'privacy' && (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                    <Shield className="w-5 h-5 text-gold-500" />
-                    Privacy & Security
-                  </CardTitle>
-                  <CardDescription className="dark:text-charcoal-400">Control your privacy and security settings</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Profile Visibility</h3>
-                    
-                    <div className="space-y-3">
-                      {[
-                        { value: 'public', label: 'Public', desc: 'Anyone can see your profile' },
-                        { value: 'team', label: 'Team Only', desc: 'Only your teammates can see' },
-                        { value: 'private', label: 'Private', desc: 'Only you can see your profile' },
-                      ].map((option) => (
-                        <label key={option.value} className="flex items-center gap-3 p-3 border dark:border-charcoal-700 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-charcoal-700">
-                          <input
-                            type="radio"
-                            name="visibility"
-                            value={option.value}
-                            checked={settings.profileVisibility === option.value}
-                            onChange={(e) =>
-                              setSettings({ ...settings, profileVisibility: e.target.value })
-                            }
-                            className="w-4 h-4 text-gold-500"
-                          />
-                          <div>
-                            <p className="font-medium text-charcoal-900 dark:text-white">{option.label}</p>
-                            <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{option.desc}</p>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Data Sharing</h3>
-                    
-                    {[
-                      { key: 'showStats', label: 'Show Statistics', desc: 'Display your performance stats' },
-                      { key: 'showActivity', label: 'Show Activity', desc: 'Display your recent activity' },
-                      { key: 'allowMessages', label: 'Allow Messages', desc: 'Let others message you' },
-                    ].map((item) => (
-                      <div key={item.key} className="flex items-center justify-between py-3">
-                        <div>
-                          <p className="font-medium text-charcoal-900 dark:text-white">{item.label}</p>
-                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{item.desc}</p>
-                        </div>
-                        <Switch
-                          checked={settings[item.key as keyof typeof settings] as boolean}
-                          onCheckedChange={(checked) =>
-                            setSettings({ ...settings, [item.key]: checked })
-                          }
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="space-y-3 pt-4 border-t dark:border-charcoal-700">
-                    <Button variant="outline" className="w-full justify-start text-left dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700">
-                      <Lock className="w-4 h-4 mr-2" />
-                      Change Password
-                    </Button>
-                    <Button variant="outline" className="w-full justify-start text-left dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700">
-                      <Shield className="w-4 h-4 mr-2" />
-                      Two-Factor Authentication
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Appearance Section - WITH WORKING THEME TOGGLE */}
-            {activeSection === 'appearance' && (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                    <Palette className="w-5 h-5 text-gold-500" />
-                    Appearance
-                  </CardTitle>
-                  <CardDescription className="dark:text-charcoal-400">Customize how the app looks</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-charcoal-900 dark:text-white">Theme</h3>
-                      <Badge className="bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-300 border-gold-200 dark:border-gold-700">
-                        {theme === 'system' ? `Auto (${resolvedTheme})` : theme.charAt(0).toUpperCase() + theme.slice(1)}
-                      </Badge>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {themeOptions.map((option) => {
-                        const Icon = option.icon;
-                        const isSelected = theme === option.value;
-                        
-                        return (
-                          <button
-                            key={option.value}
-                            onClick={() => setTheme(option.value as 'light' | 'dark' | 'system')}
-                            className={`relative p-4 rounded-xl border-2 transition-all duration-200 ${
-                              isSelected
-                                ? 'border-gold-500 bg-gold-50 dark:bg-gold-900/20 shadow-lg scale-105'
-                                : 'border-neutral-200 dark:border-charcoal-600 hover:border-gold-300 dark:hover:border-gold-600 hover:shadow-md'
-                            }`}
-                          >
-                            {/* Preview Box */}
-                            <div className={`w-full h-24 rounded-lg mb-4 flex items-center justify-center ${option.preview}`}>
-                              <Icon className={`w-8 h-8 ${
-                                isSelected ? 'text-gold-600 dark:text-gold-400' : 'text-charcoal-400 dark:text-charcoal-500'
-                              }`} />
-                            </div>
-                            
-                            {/* Label */}
-                            <div className="text-center space-y-1">
-                              <p className={`font-semibold ${
-                                isSelected ? 'text-gold-700 dark:text-gold-300' : 'text-charcoal-900 dark:text-white'
-                              }`}>
-                                {option.label}
-                              </p>
-                              <p className={`text-xs ${
-                                isSelected ? 'text-gold-600 dark:text-gold-400' : 'text-charcoal-500 dark:text-charcoal-400'
-                              }`}>
-                                {option.description}
-                              </p>
-                            </div>
-                            
-                            {/* Selected Indicator */}
-                            {isSelected && (
-                              <div className="absolute top-2 right-2">
-                                <CheckCircle className="w-5 h-5 text-gold-600 dark:text-gold-400 fill-gold-100 dark:fill-gold-900" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    
-                    {/* Theme Info */}
-                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
-                      <div className="flex gap-3">
-                        <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm">
-                          <p className="font-medium text-blue-900 dark:text-blue-200 mb-1">
-                            Theme preference saved
-                          </p>
-                          <p className="text-blue-700 dark:text-blue-300">
-                            Your theme selection is saved and will persist across sessions. 
-                            {theme === 'system' && ' Auto mode will automatically switch based on your system preferences.'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Regional Section */}
-            {activeSection === 'regional' && (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                    <Globe className="w-5 h-5 text-gold-500" />
-                    Regional Settings
-                  </CardTitle>
-                  <CardDescription className="dark:text-charcoal-400">Language, timezone, and regional preferences</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="language" className="dark:text-white">Language</Label>
-                    <select
-                      id="language"
-                      value={settings.language}
-                      onChange={(e) => setSettings({ ...settings, language: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 dark:bg-charcoal-900 dark:text-white"
-                    >
-                      <option value="en-GB">English (UK)</option>
-                      <option value="en-US">English (US)</option>
-                      <option value="es">Español</option>
-                      <option value="fr">Français</option>
-                      <option value="de">Deutsch</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="timezone" className="dark:text-white">Timezone</Label>
-                    <select
-                      id="timezone"
-                      value={settings.timezone}
-                      onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 dark:bg-charcoal-900 dark:text-white"
-                    >
-                      <option value="Europe/London">London (GMT)</option>
-                      <option value="Europe/Paris">Paris (CET)</option>
-                      <option value="America/New_York">New York (EST)</option>
-                      <option value="America/Los_Angeles">Los Angeles (PST)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="dateFormat" className="dark:text-white">Date Format</Label>
-                    <select
-                      id="dateFormat"
-                      value={settings.dateFormat}
-                      onChange={(e) => setSettings({ ...settings, dateFormat: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 dark:bg-charcoal-900 dark:text-white"
-                    >
-                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                    </select>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Billing Section */}
-            {activeSection === 'billing' && (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                    <CreditCard className="w-5 h-5 text-gold-500" />
-                    Billing & Subscription
-                  </CardTitle>
-                  <CardDescription className="dark:text-charcoal-400">Manage your subscription and payment methods</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="p-4 bg-gradient-to-r from-gold-50 to-orange-50 dark:from-gold-900/20 dark:to-orange-900/20 rounded-xl border border-gold-200 dark:border-gold-700">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="font-bold text-charcoal-900 dark:text-white text-lg">Player (Free)</h3>
-                        <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Basic features included</p>
-                      </div>
-                      <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700">Active</Badge>
-                    </div>
-                    <Button className="w-full bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
-                      Upgrade to Pro
-                    </Button>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Payment Methods</h3>
-                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400">No payment methods added</p>
-                    <Button variant="outline" className="w-full dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Payment Method
-                    </Button>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Billing History</h3>
-                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400">No billing history</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Data & Storage Section */}
-            {activeSection === 'data' && (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                    <Download className="w-5 h-5 text-gold-500" />
-                    Data & Storage
-                  </CardTitle>
-                  <CardDescription className="dark:text-charcoal-400">Manage your data and storage preferences</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="font-medium text-charcoal-900 dark:text-white">Auto-Sync Data</p>
-                      <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Automatically sync your data</p>
-                    </div>
-                    <Switch
-                      checked={settings.autoSyncData}
-                      onCheckedChange={(checked) =>
-                        setSettings({ ...settings, autoSyncData: checked })
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-3 pt-4 border-t dark:border-charcoal-700">
-                    <h3 className="font-semibold text-charcoal-900 dark:text-white">Export Your Data</h3>
-                    <Button variant="outline" className="w-full justify-start dark:border-charcoal-600 dark:text-white dark:hover:bg-charcoal-700">
-                      <Download className="w-4 h-4 mr-2" />
-                      Download All Data
-                    </Button>
-                  </div>
-
-                  <div className="space-y-3 pt-4 border-t dark:border-charcoal-700">
-                    <h3 className="font-semibold text-red-600 dark:text-red-400">Danger Zone</h3>
-                    <Button variant="destructive" className="w-full justify-start">
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete Account
-                    </Button>
-                    <p className="text-xs text-charcoal-500 dark:text-charcoal-400">
-                      This action cannot be undone. All your data will be permanently deleted.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Save Button */}
-            <div className="flex justify-end gap-3 sticky bottom-6">
-              <Button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-bold px-8 shadow-lg"
-              >
-                {isSaving ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
+              {/* System */}
+              <label className="flex cursor-pointer items-start gap-4 rounded-lg p-4 transition-all hover:bg-neutral-50 dark:hover:bg-charcoal-700">
+                <input
+                  type="radio"
+                  name="theme"
+                  value="system"
+                  checked={settings.theme === 'system'}
+                  onChange={() => handleThemeChange('system')}
+                  className="mt-1 h-5 w-5 text-gold-500"
+                />
+                <div className="flex-1">
+                  <p className="font-semibold text-charcoal-900 dark:text-white">
+                    System
+                  </p>
+                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                    Follow your device settings
+                  </p>
+                </div>
+                <Globe className="h-6 w-6 text-blue-500" />
+              </label>
             </div>
           </div>
         </div>
+      )}
+
+      {/* NOTIFICATIONS TAB */}
+      {activeTab === 'notifications' && (
+        <div className="space-y-6">
+          <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
+            <h2 className="mb-6 text-xl font-bold text-charcoal-900 dark:text-white">
+              Notification Settings
+            </h2>
+
+            <div className="space-y-4">
+              {[
+                {
+                  key: 'emailNotifications',
+                  label: 'Email Notifications',
+                  description: 'Receive updates via email'
+                },
+                {
+                  key: 'pushNotifications',
+                  label: 'Push Notifications',
+                  description: 'Receive browser push notifications'
+                },
+                {
+                  key: 'matchReminders',
+                  label: 'Match Reminders',
+                  description: 'Get reminded before matches'
+                },
+                {
+                  key: 'weeklyDigest',
+                  label: 'Weekly Digest',
+                  description: 'Receive a weekly summary email'
+                }
+              ].map(setting => (
+                <div key={setting.key} className="flex items-center justify-between rounded-lg p-4 hover:bg-neutral-50 dark:hover:bg-charcoal-700">
+                  <div>
+                    <p className="font-semibold text-charcoal-900 dark:text-white">
+                      {setting.label}
+                    </p>
+                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                      {setting.description}
+                    </p>
+                  </div>
+                  <label className="relative flex h-8 w-14 cursor-pointer items-center rounded-full bg-neutral-300 transition-colors dark:bg-charcoal-700"
+                    style={{
+                      backgroundColor: settings[setting.key as keyof UserSettings] ? '#FFD700' : undefined
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings[setting.key as keyof UserSettings] as boolean}
+                      onChange={() => handleToggle(setting.key as keyof UserSettings)}
+                      className="sr-only"
+                    />
+                    <span
+                      className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${
+                        settings[setting.key as keyof UserSettings] ? 'translate-x-7' : 'translate-x-1'
+                      }`}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECURITY TAB */}
+      {activeTab === 'security' && (
+        <div className="space-y-6">
+          <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
+            <h2 className="mb-6 text-xl font-bold text-charcoal-900 dark:text-white">
+              Security Settings
+            </h2>
+
+            <div className="space-y-4">
+              {/* Two Factor Auth */}
+              <div className="flex items-center justify-between rounded-lg p-4 hover:bg-neutral-50 dark:hover:bg-charcoal-700">
+                <div>
+                  <p className="font-semibold text-charcoal-900 dark:text-white">
+                    Two-Factor Authentication
+                  </p>
+                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                    Add an extra layer of security
+                  </p>
+                </div>
+                <button className="rounded-lg bg-gold-500 px-4 py-2 font-semibold text-white transition-all hover:bg-gold-600">
+                  {settings.twoFactorEnabled ? 'Disable' : 'Enable'}
+                </button>
+              </div>
+
+              {/* Password */}
+              <div className="flex items-center justify-between rounded-lg p-4 hover:bg-neutral-50 dark:hover:bg-charcoal-700">
+                <div>
+                  <p className="font-semibold text-charcoal-900 dark:text-white">
+                    Password
+                  </p>
+                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                    Change your password
+                  </p>
+                </div>
+                <button className="rounded-lg border-2 border-neutral-300 px-4 py-2 font-semibold text-charcoal-900 transition-all hover:border-gold-400 dark:border-charcoal-600 dark:text-white">
+                  Change
+                </button>
+              </div>
+
+              {/* Sessions */}
+              <div className="flex items-center justify-between rounded-lg p-4 hover:bg-neutral-50 dark:hover:bg-charcoal-700">
+                <div>
+                  <p className="font-semibold text-charcoal-900 dark:text-white">
+                    Active Sessions
+                  </p>
+                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                    Manage your login sessions
+                  </p>
+                </div>
+                <button className="rounded-lg border-2 border-neutral-300 px-4 py-2 font-semibold text-charcoal-900 transition-all hover:border-gold-400 dark:border-charcoal-600 dark:text-white">
+                  View
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ACCOUNT TAB */}
+      {activeTab === 'account' && (
+        <div className="space-y-6">
+          {/* Profile Info */}
+          <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
+            <h2 className="mb-6 text-xl font-bold text-charcoal-900 dark:text-white">
+              Account Information
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  defaultValue={session?.user?.name || ''}
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2 text-charcoal-900 dark:border-charcoal-700 dark:bg-charcoal-900 dark:text-white"
+                  disabled
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  defaultValue={session?.user?.email || ''}
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2 text-charcoal-900 dark:border-charcoal-700 dark:bg-charcoal-900 dark:text-white"
+                  disabled
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="rounded-lg border-2 border-red-200 bg-red-50 p-6 dark:border-red-900/50 dark:bg-red-900/20">
+            <h2 className="mb-4 text-xl font-bold text-red-900 dark:text-red-400">
+              Danger Zone
+            </h2>
+
+            <div className="space-y-4">
+              <button className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 font-semibold text-white transition-all hover:bg-red-700">
+                <LogOut className="h-5 w-5" />
+                Sign Out of All Devices
+              </button>
+
+              <button className="flex items-center gap-2 rounded-lg border-2 border-red-600 px-4 py-2 font-semibold text-red-600 transition-all hover:bg-red-50 dark:hover:bg-red-900/20">
+                Delete Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Button */}
+      <div className="flex justify-end gap-4">
+        <button
+          onClick={() => window.history.back()}
+          className="rounded-lg border-2 border-neutral-300 px-6 py-2 font-semibold text-charcoal-900 transition-all hover:border-neutral-400 dark:border-charcoal-600 dark:text-white dark:hover:border-charcoal-500"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={saveSettings}
+          disabled={isSaving}
+          className="rounded-lg bg-gradient-to-r from-gold-500 to-orange-400 px-6 py-2 font-semibold text-white shadow-lg transition-all hover:from-gold-600 hover:to-orange-500 hover:shadow-xl disabled:opacity-50"
+        >
+          {isSaving ? 'Saving...' : 'Save Changes'}
+        </button>
       </div>
     </div>
   );

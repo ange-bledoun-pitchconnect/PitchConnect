@@ -1,278 +1,303 @@
-// src/app/auth/login/page.tsx
 'use client';
 
-import Link from 'next/link';
+/**
+ * Login Page - PitchConnect
+ * - Secure authentication
+ * - Remember me functionality
+ * - Password reset link
+ * - Sign up navigation
+ * - Mobile responsive
+ * - Dark mode support
+ */
+
 import { useState } from 'react';
-import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, Mail, Lock, Loader2, Trophy, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { signIn } from 'next-auth/react';
+import Link from 'next/link';
+import { AlertCircle, Eye, EyeOff, Loader, Trophy } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setIsLoading(true);
-    setError(null);
 
     try {
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setError('Invalid email or password. Please try again.');
+      // Validate inputs
+      if (!email || !password) {
+        setError('Please fill in all fields');
         setIsLoading(false);
         return;
       }
 
-      if (result?.ok) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      // Attempt sign in
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false
+      });
+
+      if (result?.error) {
+        setError(result.error || 'Invalid email or password');
+        toast.error('Login failed. Please check your credentials.');
+      } else if (result?.ok) {
+        toast.success('Login successful!');
         router.push('/dashboard');
-        router.refresh();
       }
-    } catch (error) {
-      console.error('Login error:', error);
-      setError('An error occurred. Please try again.');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
       setIsLoading(false);
     }
-  }
-
-  const fillDemoCredentials = () => {
-    setEmail('ange@getpitchconnect.com');
-    setPassword('your-actual-password'); // Update with actual demo password
   };
 
-  const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      await signIn('google', { callbackUrl: '/dashboard' });
+    } catch (err) {
+      toast.error('Google sign-in failed');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-blue-50/10 to-purple-50/10 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Animated Background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-gold-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob" />
-        <div className="absolute top-40 right-10 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000" />
-        <div className="absolute bottom-20 left-1/2 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000" />
+    <div className="flex min-h-screen bg-gradient-to-br from-white via-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800">
+      {/* LEFT SIDE - BRANDING (Hidden on mobile) */}
+      <div className="hidden flex-1 bg-gradient-to-br from-gold-500 via-gold-400 to-orange-400 p-12 text-white lg:flex lg:flex-col lg:justify-between">
+        <div>
+          <div className="mb-8 flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-lg">
+              <Trophy className="h-7 w-7 text-gold-500" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">PitchConnect</h1>
+              <p className="text-sm text-white/80">Sports Management</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-8">
+          <div>
+            <h2 className="mb-2 text-3xl font-bold">Welcome Back</h2>
+            <p className="text-lg text-white/90">
+              Manage your sports club with the world's most powerful platform.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white/20">
+                <span className="text-sm font-bold">✓</span>
+              </div>
+              <div>
+                <p className="font-semibold">Complete team management</p>
+                <p className="text-sm text-white/80">Organize players, teams, and schedules</p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white/20">
+                <span className="text-sm font-bold">✓</span>
+              </div>
+              <div>
+                <p className="font-semibold">Real-time analytics</p>
+                <p className="text-sm text-white/80">Track performance and player stats</p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-white/20">
+                <span className="text-sm font-bold">✓</span>
+              </div>
+              <div>
+                <p className="font-semibold">Secure & reliable</p>
+                <p className="text-sm text-white/80">Enterprise-grade security for your data</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p className="text-sm text-white/60">
+          © {new Date().getFullYear()} PitchConnect. All rights reserved.
+        </p>
       </div>
 
-      <div className="w-full max-w-md relative z-10">
-        {/* Logo */}
-        <Link href="/" className="flex items-center justify-center gap-3 mb-8 group">
-          <div className="w-12 h-12 bg-gradient-to-br from-gold-500 to-orange-400 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-            <Trophy className="w-7 h-7 text-white" />
+      {/* RIGHT SIDE - LOGIN FORM */}
+      <div className="flex flex-1 flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div className="w-full max-w-sm">
+          {/* Logo (Mobile only) */}
+          <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-gold-500 to-orange-400 shadow-lg">
+              <Trophy className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-charcoal-900 dark:text-white">
+                PitchConnect
+              </h1>
+              <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
+                Sports Management
+              </p>
+            </div>
           </div>
-          <span className="text-3xl font-bold bg-gradient-to-r from-gold-600 to-orange-500 bg-clip-text text-transparent">
-            PitchConnect
-          </span>
-        </Link>
 
-        <Card className="bg-white border-0 shadow-2xl rounded-2xl overflow-hidden">
-          <div className="h-1.5 bg-gradient-to-r from-gold-500 via-orange-400 to-purple-500" />
+          {/* Heading */}
+          <div className="mb-8 text-center">
+            <h2 className="mb-2 text-3xl font-bold text-charcoal-900 dark:text-white">
+              Sign In
+            </h2>
+            <p className="text-charcoal-600 dark:text-charcoal-300">
+              Access your PitchConnect account
+            </p>
+          </div>
 
-          <CardHeader className="text-center pt-10 pb-6 px-8">
-            <CardTitle className="text-4xl font-bold text-charcoal-900 mb-3">
-              Welcome Back
-            </CardTitle>
-            <CardDescription className="text-base text-charcoal-600 leading-relaxed">
-              Sign in to your PitchConnect account to continue
-            </CardDescription>
-          </CardHeader>
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 flex gap-3 rounded-lg bg-red-50 p-4 text-red-800 dark:bg-red-900/20 dark:text-red-400">
+              <AlertCircle className="h-5 w-5 flex-shrink-0" />
+              <p className="text-sm font-medium">{error}</p>
+            </div>
+          )}
 
-          <CardContent className="pt-0 pb-8 px-8">
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 animate-slide-down">
-                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm font-medium text-red-800">{error}</p>
-              </div>
-            )}
+          {/* Login Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Email Input */}
+            <div>
+              <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 transition-all duration-200 focus:border-gold-500 focus:outline-none focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-white dark:placeholder-charcoal-500"
+                disabled={isLoading}
+              />
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Email Field */}
-              <div className="space-y-2.5" suppressHydrationWarning>
-                <Label
-                  htmlFor="email"
-                  className="flex items-center gap-2 text-charcoal-900 font-semibold text-sm"
-                >
-                  <Mail className="w-4 h-4 text-gold-500" />
-                  Email Address
-                </Label>
-                <div suppressHydrationWarning>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    disabled={isLoading}
-                    required
-                    autoComplete="email"
-                    className="bg-neutral-50 border border-neutral-300 text-charcoal-900 placeholder:text-charcoal-400 focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 transition-all h-12 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              {/* Password Field */}
-              <div className="space-y-2.5" suppressHydrationWarning>
-                <div className="flex items-center justify-between">
-                  <Label
-                    htmlFor="password"
-                    className="flex items-center gap-2 text-charcoal-900 font-semibold text-sm"
-                  >
-                    <Lock className="w-4 h-4 text-gold-500" />
-                    Password
-                  </Label>
-                  <button
-                    type="button"
-                    onClick={togglePasswordVisibility}
-                    className="text-xs font-medium text-gold-500 hover:text-gold-600 transition-colors flex items-center gap-1"
-                  >
-                    {showPassword ? (
-                      <>
-                        <EyeOff className="w-3.5 h-3.5" />
-                        Hide
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="w-3.5 h-3.5" />
-                        Show
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div suppressHydrationWarning>
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={isLoading}
-                    required
-                    autoComplete="current-password"
-                    className="bg-neutral-50 border border-neutral-300 text-charcoal-900 placeholder:text-charcoal-400 focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 transition-all h-12 rounded-lg"
-                  />
-                </div>
-              </div>
-
-              {/* Remember Me & Forgot Password */}
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 rounded border-neutral-300 text-gold-500 focus:ring-gold-500"
-                  />
-                  <span className="text-sm text-charcoal-600 font-medium">Remember me</span>
+            {/* Password Input */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300">
+                  Password
                 </label>
                 <Link
                   href="/auth/forgot-password"
-                  className="text-sm font-semibold text-gold-600 hover:text-gold-700 transition-colors"
+                  className="text-sm font-medium text-gold-600 transition-colors hover:text-gold-700 dark:text-gold-400 dark:hover:text-gold-300"
                 >
-                  Forgot password?
+                  Forgot?
                 </Link>
               </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 transition-all duration-200 focus:border-gold-500 focus:outline-none focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-white dark:placeholder-charcoal-500"
+                  disabled={isLoading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-charcoal-500 hover:text-charcoal-700 dark:text-charcoal-400 dark:hover:text-charcoal-300"
+                  disabled={isLoading}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+            </div>
 
-              {/* Sign In Button */}
-              <Button
-                type="submit"
+            {/* Remember Me */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="remember"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-neutral-300 text-gold-500 focus:ring-gold-500"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-bold py-6 h-14 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  <>
-                    Sign In
-                    <ArrowRight className="w-5 h-5 ml-2" />
-                  </>
-                )}
-              </Button>
-
-              {/* Demo Credentials Button */}
-              <button
-                type="button"
-                onClick={fillDemoCredentials}
-                className="w-full text-center text-sm font-medium text-charcoal-600 hover:text-purple-600 transition-colors py-3 hover:bg-purple-50 rounded-lg"
-              >
-                Fill demo credentials (SuperAdmin)
-              </button>
-            </form>
-
-            {/* Divider */}
-            <div className="relative my-8">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-neutral-200" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-white text-charcoal-600">
-                  Don&apos;t have an account?
-                </span>
-              </div>
+              />
+              <label htmlFor="remember" className="text-sm text-charcoal-700 dark:text-charcoal-300">
+                Remember me
+              </label>
             </div>
 
-            {/* Sign Up Link */}
-            <Link href="/auth/signup">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full border-2 border-neutral-300 text-charcoal-700 hover:bg-neutral-50 font-bold py-6 h-14 rounded-xl transition-all"
-              >
-                Create Account
-              </Button>
+            {/* Sign In Button */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full rounded-lg bg-gradient-to-r from-gold-500 to-orange-400 px-4 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:from-gold-600 hover:to-orange-500 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading && <Loader className="h-5 w-5 animate-spin" />}
+              {isLoading ? 'Signing In...' : 'Sign In'}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="my-6 flex items-center gap-4">
+            <div className="flex-1 border-t border-neutral-200 dark:border-charcoal-700"></div>
+            <span className="text-sm text-charcoal-600 dark:text-charcoal-400">Or continue with</span>
+            <div className="flex-1 border-t border-neutral-200 dark:border-charcoal-700"></div>
+          </div>
+
+          {/* Google Sign In */}
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 font-semibold text-charcoal-900 transition-all duration-200 hover:bg-neutral-50 disabled:opacity-50 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-white dark:hover:bg-charcoal-700"
+          >
+            <span className="flex items-center justify-center gap-2">
+              <svg className="h-5 w-5" viewBox="0 0 24 24">
+                <path
+                  fill="currentColor"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                />
+              </svg>
+              Google
+            </span>
+          </button>
+
+          {/* Sign Up Link */}
+          <p className="mt-6 text-center text-sm text-charcoal-600 dark:text-charcoal-400">
+            Don't have an account?{' '}
+            <Link
+              href="/auth/signup"
+              className="font-semibold text-gold-600 transition-colors hover:text-gold-700 dark:text-gold-400 dark:hover:text-gold-300"
+            >
+              Sign up
             </Link>
-
-            {/* Trust Indicators */}
-            <div className="flex justify-center gap-8 mt-8 pt-6 border-t border-neutral-100">
-              <div className="text-center">
-                <div className="text-2xl mb-1">🔒</div>
-                <div className="text-xs font-semibold text-charcoal-600">Secure</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl mb-1">⚡</div>
-                <div className="text-xs font-semibold text-charcoal-600">Fast</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl mb-1">✓</div>
-                <div className="text-xs font-semibold text-charcoal-600">Trusted</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Back to Home */}
-        <div className="text-center mt-6">
-          <Link href="/" className="text-sm text-charcoal-600 hover:text-gold-600 font-medium">
-            ← Back to Home
-          </Link>
+          </p>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="absolute bottom-0 left-0 right-0 text-center py-6 text-charcoal-500 text-xs">
-        <p>
-          © 2024 PitchConnect. All rights reserved. |{' '}
-          <Link href="/privacy" className="hover:text-gold-600 transition">
-            Privacy
-          </Link>{' '}
-          |{' '}
-          <Link href="/terms" className="hover:text-gold-600 transition">
-            Terms
-          </Link>
-        </p>
       </div>
     </div>
   );
