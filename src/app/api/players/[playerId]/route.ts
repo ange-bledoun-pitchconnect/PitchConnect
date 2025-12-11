@@ -1,38 +1,31 @@
 // ============================================================================
-// src/app/api/players/[playerId]/route.ts
-// GET - Get specific player | PATCH - Update player
+// ENHANCED: /src/app/api/players/[playerId]/route.ts - Player Details
+// Get, update, and delete individual player profiles
 // ============================================================================
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, requireRole } from '@/lib/api/middleware';
-import {
-  validatePosition,
-  validateRequired,
-  parseJsonBody,
-} from '@/lib/api/validation';
-import { success, errorResponse } from '@/lib/api/responses';
-import { NotFoundError, BadRequestError } from '@/lib/api/errors';
-import { logResourceUpdated, logAuditAction } from '@/lib/api/audit';
+import { requireAuth, requireAnyRole, requireActivePlayer } from '@/lib/api/middleware/auth';
+import { success, errorResponse, noContent } from '@/lib/api/responses';
+import { BadRequestError, NotFoundError, ForbiddenError } from '@/lib/api/errors';
+import { logAuditAction } from '@/lib/api/audit';
+import { logger } from '@/lib/api/logger';
 
-// GET /api/players/[playerId] - Get specific player with full details
+// ============================================================================
+// GET /api/players/[playerId] - Get Player Details
+// ============================================================================
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { playerId: string } }
 ) {
   try {
-    const user = await requireAuth(request);
-    requireRole(user, [
-      'COACH',
-      'CLUB_MANAGER',
-      'CLUB_OWNER',
-      'LEAGUE_ADMIN',
-      'SCOUT',
-      'ANALYST',
-      'SUPERADMIN',
-    ]);
+    await requireAuth();
 
-    const player = await prisma.player.findUnique({
+    const player = await requireActivePlayer(params.playerId);
+
+    // Fetch comprehensive player data
+    const playerData = await prisma.player.findUnique({
       where: { id: params.playerId },
       include: {
         user: {
@@ -45,210 +38,188 @@ export async function GET(
             phoneNumber: true,
             dateOfBirth: true,
             nationality: true,
-            address: true,
-            city: true,
-            country: true,
-            postalCode: true,
-            roles: true,
-            status: true,
-            emailVerified: true,
-            createdAt: true,
-            updatedAt: true,
           },
         },
         stats: {
           orderBy: { season: 'desc' },
-          take: 10,
-        },
-        injuries: {
-          orderBy: { createdAt: 'desc' },
           take: 5,
         },
-        achievements: {
-          orderBy: { earnedAt: 'desc' },
-          take: 10,
-        },
         contracts: {
-          where: { status: 'ACTIVE' },
+          orderBy: { startDate: 'desc' },
+        },
+        injuries: {
+          orderBy: { dateFrom: 'desc' },
+        },
+        matchAttendance: {
+          where: { match: { date: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) } } },
           include: {
-            team: {
+            match: {
               select: {
                 id: true,
-                name: true,
-                sport: true,
-                club: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
+                date: true,
+                homeTeam: { select: { name: true } },
+                awayTeam: { select: { name: true } },
+                status: true,
               },
             },
           },
+          take: 10,
+        },
+        achievements: {
+          include: { achievement: true },
+          take: 10,
         },
       },
     });
 
-    if (!player) {
-      throw new NotFoundError('Player not found');
-    }
+    logger.info(`Retrieved player: ${params.playerId}`);
 
-    return success(player);
+    return success(playerData);
   } catch (error) {
     return errorResponse(error as Error);
   }
 }
 
-// PATCH /api/players/[playerId] - Update player details
-export async function PATCH(
+// ============================================================================
+// PUT /api/players/[playerId] - Update Player
+// ============================================================================
+
+export async function PUT(
   request: NextRequest,
   { params }: { params: { playerId: string } }
 ) {
   try {
-    const user = await requireAuth(request);
-    requireRole(user, ['COACH', 'CLUB_MANAGER', 'CLUB_OWNER', 'SUPERADMIN']);
+    const user = await requireAuth();
+    const body = await request.json();
 
-    const body = await parseJsonBody(request);
-
-    // Verify player exists
-    const existingPlayer = await prisma.player.findUnique({
+    const player = await prisma.player.findUnique({
       where: { id: params.playerId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        position: true,
-        secondaryPosition: true,
-        preferredFoot: true,
-        height: true,
-        weight: true,
-        status: true,
-      },
+      include: { user: true },
     });
 
-    if (!existingPlayer) {
-      throw new NotFoundError('Player not found');
+    if (!player) {
+      throw new NotFoundError('Player', params.playerId);
     }
 
-    const updates: Record<string, any> = {};
-    const trackChanges: Record<string, any> = {};
+    // Authorization: Only the player themselves, club staff, or admins can update
+    const isOwnProfile = player.userId === user.id;
+    const hasPermission = user.roles.includes('SUPERADMIN') ||
+      user.roles.includes('CLUB_MANAGER') ||
+      user.roles.includes('COACH');
 
-    // Validate and collect updates
-    if (body.firstName !== undefined) {
-      if (body.firstName.trim().length === 0) {
-        throw new BadRequestError('First name cannot be empty');
+    if (!isOwnProfile && !hasPermission) {
+      throw new ForbiddenError('You can only update your own player profile');
+    }
+
+    // Prepare update data
+    const updateData: any = {};
+    const trackedChanges: any = {};
+
+    const allowedFields = [
+      'firstName',
+      'lastName',
+      'nationality',
+      'position',
+      'preferredFoot',
+      'secondaryPosition',
+      'height',
+      'weight',
+      'shirtNumber',
+      'photo',
+      'status',
+      'dateOfBirth',
+    ];
+
+    for (const field of allowedFields) {
+      if (field in body && body[field] !== undefined) {
+        const oldValue = (player as any)[field];
+        const newValue = field === 'dateOfBirth' ? new Date(body[field]) : body[field];
+
+        if (field === 'height' || field === 'weight') {
+          updateData[field] = parseFloat(body[field]);
+        } else if (field === 'shirtNumber') {
+          updateData[field] = body[field] ? parseInt(body[field]) : null;
+        } else {
+          updateData[field] = newValue;
+        }
+
+        if (oldValue !== updateData[field]) {
+          trackedChanges[field] = { from: oldValue, to: updateData[field] };
+        }
       }
-      updates.firstName = body.firstName;
-      trackChanges.firstName = {
-        from: existingPlayer.firstName,
-        to: body.firstName,
-      };
     }
 
-    if (body.lastName !== undefined) {
-      if (body.lastName.trim().length === 0) {
-        throw new BadRequestError('Last name cannot be empty');
-      }
-      updates.lastName = body.lastName;
-      trackChanges.lastName = {
-        from: existingPlayer.lastName,
-        to: body.lastName,
-      };
-    }
-
-    if (body.position !== undefined) {
-      validatePosition(body.position);
-      updates.position = body.position;
-      trackChanges.position = {
-        from: existingPlayer.position,
-        to: body.position,
-      };
-    }
-
-    if (body.secondaryPosition !== undefined) {
-      if (body.secondaryPosition !== null) {
-        validatePosition(body.secondaryPosition);
-      }
-      updates.secondaryPosition = body.secondaryPosition;
-      trackChanges.secondaryPosition = body.secondaryPosition;
-    }
-
-    if (body.preferredFoot !== undefined) {
-      if (!['LEFT', 'RIGHT', 'BOTH'].includes(body.preferredFoot)) {
-        throw new BadRequestError('Invalid preferredFoot. Must be LEFT, RIGHT, or BOTH');
-      }
-      updates.preferredFoot = body.preferredFoot;
-      trackChanges.preferredFoot = {
-        from: existingPlayer.preferredFoot,
-        to: body.preferredFoot,
-      };
-    }
-
-    if (body.height !== undefined) {
-      updates.height = body.height ? parseFloat(body.height) : null;
-      trackChanges.height = {
-        from: existingPlayer.height,
-        to: body.height ? parseFloat(body.height) : null,
-      };
-    }
-
-    if (body.weight !== undefined) {
-      updates.weight = body.weight ? parseFloat(body.weight) : null;
-      trackChanges.weight = {
-        from: existingPlayer.weight,
-        to: body.weight ? parseFloat(body.weight) : null,
-      };
-    }
-
-    if (body.status !== undefined) {
-      const validStatuses = ['ACTIVE', 'INJURED', 'SUSPENDED', 'INACTIVE'];
-      if (!validStatuses.includes(body.status)) {
-        throw new BadRequestError(
-          'Invalid status. Must be ACTIVE, INJURED, SUSPENDED, or INACTIVE'
-        );
-      }
-      updates.status = body.status;
-      trackChanges.status = {
-        from: existingPlayer.status,
-        to: body.status,
-      };
-    }
-
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(updateData).length === 0) {
       throw new BadRequestError('No valid updates provided');
     }
 
     // Update player
     const updated = await prisma.player.update({
       where: { id: params.playerId },
-      data: updates,
+      data: updateData,
       include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            avatar: true,
-          },
-        },
-        contracts: {
-          where: { status: 'ACTIVE' },
-        },
+        user: { select: { email: true, firstName: true, lastName: true } },
       },
     });
 
     // Log audit
-    await logResourceUpdated(
-      user.id,
-      'Player',
-      params.playerId,
-      `${updated.firstName} ${updated.lastName}`,
-      trackChanges,
-      `Updated player profile: ${Object.keys(trackChanges).join(', ')}`
-    );
+    await logAuditAction({
+      performedById: user.id,
+      targetUserId: player.userId,
+      action: 'USER_UPDATED',
+      entityType: 'Player',
+      entityId: params.playerId,
+      changes: trackedChanges,
+      details: `Updated player profile: ${Object.keys(trackedChanges).join(', ')}`,
+    });
+
+    logger.info(`Player updated: ${params.playerId}`);
 
     return success(updated);
+  } catch (error) {
+    return errorResponse(error as Error);
+  }
+}
+
+// ============================================================================
+// DELETE /api/players/[playerId] - Delete Player
+// ============================================================================
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { playerId: string } }
+) {
+  try {
+    const user = await requireAuth();
+    requireAnyRole(user, ['SUPERADMIN', 'CLUB_MANAGER']);
+
+    const player = await prisma.player.findUnique({
+      where: { id: params.playerId },
+    });
+
+    if (!player) {
+      throw new NotFoundError('Player', params.playerId);
+    }
+
+    // Soft delete by setting status to ARCHIVED
+    await prisma.player.update({
+      where: { id: params.playerId },
+      data: { status: 'ARCHIVED' },
+    });
+
+    // Log audit
+    await logAuditAction({
+      performedById: user.id,
+      targetUserId: player.userId,
+      action: 'USER_DELETED',
+      entityType: 'Player',
+      entityId: params.playerId,
+      details: `Archived player profile`,
+    });
+
+    logger.info(`Player deleted: ${params.playerId}`);
+
+    return noContent();
   } catch (error) {
     return errorResponse(error as Error);
   }

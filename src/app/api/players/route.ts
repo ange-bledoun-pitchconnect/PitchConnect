@@ -1,203 +1,234 @@
 // ============================================================================
-// src/app/api/profile/route.ts - GET (user profile), PATCH (update profile)
+// ENHANCED: /src/app/api/players/route.ts - Player Management (List & Create)
+// Comprehensive player management with filtering, pagination, and validation
 // ============================================================================
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/api/middleware';
-import {
-  validateEmail,
-  validateStringLength,
-  parseJsonBody,
-} from '@/lib/api/validation';
-import { success, errorResponse } from '@/lib/api/responses';
-import { NotFoundError, BadRequestError, ConflictError } from '@/lib/api/errors';
+import { requireAuth, requireAnyRole, requirePlayerProfile } from '@/lib/api/middleware/auth';
+import { success, paginated, created, errorResponse } from '@/lib/api/responses';
+import { BadRequestError, NotFoundError, ConflictError } from '@/lib/api/errors';
 import { logAuditAction } from '@/lib/api/audit';
+import { logger } from '@/lib/api/logger';
 
-// GET /api/profile - Get current user profile
+// ============================================================================
+// GET /api/players - List Players with Filters
+// ============================================================================
+
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireAuth(request);
+    const user = await requireAuth();
 
-    const profile = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        avatar: true,
-        phoneNumber: true,
-        dateOfBirth: true,
-        nationality: true,
-        address: true,
-        city: true,
-        country: true,
-        postalCode: true,
-        roles: true,
-        status: true,
-        emailVerified: true,
-        twoFactorEnabled: true,
-        createdAt: true,
-        updatedAt: true,
-        // Include profile based on roles
-        player: {
-          select: {
-            id: true,
-            position: true,
-            preferredFoot: true,
-            height: true,
-            weight: true,
-            status: true,
-          },
-        },
-        coach: {
-          select: {
-            id: true,
-            specialization: true,
-            experience: true,
-            status: true,
-          },
-        },
-        clubOwner: {
-          select: {
-            id: true,
-            status: true,
-          },
-        },
-        clubManager: {
-          select: {
-            id: true,
-            clubId: true,
-            status: true,
-          },
-        },
-      },
-    });
+    // Parse query parameters
+    const url = new URL(request.url);
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+    const limit = Math.min(100, parseInt(url.searchParams.get('limit') || '25'));
+    const skip = (page - 1) * limit;
 
-    if (!profile) {
-      throw new NotFoundError('User profile not found');
+    // Filter parameters
+    const search = url.searchParams.get('search')?.trim();
+    const position = url.searchParams.get('position');
+    const preferredFoot = url.searchParams.get('preferredFoot');
+    const status = url.searchParams.get('status') || 'ACTIVE';
+    const teamId = url.searchParams.get('teamId');
+    const clubId = url.searchParams.get('clubId');
+    const minHeight = url.searchParams.get('minHeight')
+      ? parseFloat(url.searchParams.get('minHeight')!)
+      : undefined;
+    const maxHeight = url.searchParams.get('maxHeight')
+      ? parseFloat(url.searchParams.get('maxHeight')!)
+      : undefined;
+
+    // Build where clause
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
     }
 
-    return success(profile);
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { user: { email: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
+    if (position) {
+      where.position = position;
+    }
+
+    if (preferredFoot) {
+      where.preferredFoot = preferredFoot;
+    }
+
+    if (minHeight || maxHeight) {
+      where.height = {};
+      if (minHeight) where.height.gte = minHeight;
+      if (maxHeight) where.height.lte = maxHeight;
+    }
+
+    if (teamId) {
+      where.teamMemberships = {
+        some: {
+          teamId,
+          status: 'ACTIVE',
+        },
+      };
+    }
+
+    // Get total count
+    const total = await prisma.player.count({ where });
+
+    // Fetch players with relationships
+    const players = await prisma.player.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        },
+        stats: {
+          where: { season: new Date().getFullYear() },
+          take: 1,
+        },
+        contracts: {
+          where: { status: 'ACTIVE' },
+        },
+        injuries: {
+          where: { status: 'ACTIVE' },
+          take: 1,
+        },
+        matchAttendance: {
+          where: { match: { date: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+          include: { match: true },
+          take: 5,
+        },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      skip,
+      take: limit,
+    });
+
+    logger.info(`Retrieved ${players.length} players (page ${page})`);
+
+    return paginated(players, { page, limit, total });
   } catch (error) {
     return errorResponse(error as Error);
   }
 }
 
-// PATCH /api/profile - Update user profile
-export async function PATCH(request: NextRequest) {
+// ============================================================================
+// POST /api/players - Create Player
+// ============================================================================
+
+export async function POST(request: NextRequest) {
   try {
-    const user = await requireAuth(request);
-    const body = await parseJsonBody(request);
+    const user = await requireAuth();
+    requireAnyRole(user, ['SUPERADMIN', 'CLUB_MANAGER', 'CLUB_OWNER', 'COACH']);
 
-    const updates: Record<string, any> = {};
-    const trackedChanges: Record<string, any> = {};
+    const body = await request.json();
 
-    // Validate and collect updates
-    if (body.email !== undefined) {
-      if (body.email !== user.email) {
-        validateEmail(body.email);
-        // Check if email is already taken
-        const existingUser = await prisma.user.findUnique({
-          where: { email: body.email },
-        });
-        if (existingUser && existingUser.id !== user.id) {
-          throw new ConflictError('Email already in use');
-        }
-      }
-      updates.email = body.email;
-      trackedChanges.email = { from: user.email, to: body.email };
+    // Validate required fields
+    if (!body.userId) {
+      throw new BadRequestError('userId is required');
     }
 
-    if (body.firstName !== undefined) {
-      validateStringLength(body.firstName, 1, 50, 'First name');
-      updates.firstName = body.firstName;
-      trackedChanges.firstName = body.firstName;
+    if (!body.firstName || !body.lastName) {
+      throw new BadRequestError('firstName and lastName are required');
     }
 
-    if (body.lastName !== undefined) {
-      validateStringLength(body.lastName, 1, 50, 'Last name');
-      updates.lastName = body.lastName;
-      trackedChanges.lastName = body.lastName;
+    if (!body.position) {
+      throw new BadRequestError('position is required');
     }
 
-    if (body.phoneNumber !== undefined) {
-      updates.phoneNumber = body.phoneNumber;
-      trackedChanges.phoneNumber = body.phoneNumber;
+    if (!body.preferredFoot) {
+      throw new BadRequestError('preferredFoot is required');
     }
 
-    if (body.avatar !== undefined) {
-      updates.avatar = body.avatar;
-      trackedChanges.avatar = body.avatar;
+    if (!body.dateOfBirth) {
+      throw new BadRequestError('dateOfBirth is required');
     }
 
-    if (body.address !== undefined) {
-      updates.address = body.address;
-      trackedChanges.address = body.address;
+    // Check if user exists
+    const targetUser = await prisma.user.findUnique({
+      where: { id: body.userId },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundError('User', body.userId);
     }
 
-    if (body.city !== undefined) {
-      updates.city = body.city;
-      trackedChanges.city = body.city;
+    // Check if player already exists for this user
+    const existingPlayer = await prisma.player.findUnique({
+      where: { userId: body.userId },
+    });
+
+    if (existingPlayer) {
+      throw new ConflictError(`Player profile already exists for user ${body.userId}`);
     }
 
-    if (body.country !== undefined) {
-      updates.country = body.country;
-      trackedChanges.country = body.country;
+    // Ensure user has PLAYER role
+    if (!targetUser.roles.includes('PLAYER')) {
+      await prisma.user.update({
+        where: { id: body.userId },
+        data: {
+          roles: [...targetUser.roles, 'PLAYER'],
+        },
+      });
     }
 
-    if (body.postalCode !== undefined) {
-      updates.postalCode = body.postalCode;
-      trackedChanges.postalCode = body.postalCode;
-    }
-
-    if (body.dateOfBirth !== undefined) {
-      updates.dateOfBirth = new Date(body.dateOfBirth);
-      trackedChanges.dateOfBirth = body.dateOfBirth;
-    }
-
-    if (body.nationality !== undefined) {
-      updates.nationality = body.nationality;
-      trackedChanges.nationality = body.nationality;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      throw new BadRequestError('No updates provided');
-    }
-
-    // Update user
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data: updates,
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        avatar: true,
-        phoneNumber: true,
-        dateOfBirth: true,
-        nationality: true,
-        address: true,
-        city: true,
-        country: true,
-        postalCode: true,
-        updatedAt: true,
+    // Create player
+    const player = await prisma.player.create({
+      data: {
+        userId: body.userId,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        dateOfBirth: new Date(body.dateOfBirth),
+        nationality: body.nationality || 'Unknown',
+        position: body.position,
+        preferredFoot: body.preferredFoot,
+        secondaryPosition: body.secondaryPosition,
+        height: body.height ? parseFloat(body.height) : undefined,
+        weight: body.weight ? parseFloat(body.weight) : undefined,
+        shirtNumber: body.shirtNumber ? parseInt(body.shirtNumber) : undefined,
+        photo: body.photo,
+        status: body.status || 'ACTIVE',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
       },
     });
 
     // Log audit
     await logAuditAction({
       performedById: user.id,
-      action: 'USER_PROFILE_UPDATED',
-      changes: trackedChanges,
-      entityType: 'User',
-      entityId: user.id,
-      details: `Updated profile fields: ${Object.keys(trackedChanges).join(', ')}`,
+      action: 'USER_CREATED',
+      entityType: 'Player',
+      entityId: player.id,
+      changes: {
+        firstName: player.firstName,
+        lastName: player.lastName,
+        position: player.position,
+      },
+      details: `Created player profile for user ${body.userId}`,
     });
 
-    return success(updated);
+    logger.info(`Player created: ${player.id}`);
+
+    return created(player);
   } catch (error) {
     return errorResponse(error as Error);
   }

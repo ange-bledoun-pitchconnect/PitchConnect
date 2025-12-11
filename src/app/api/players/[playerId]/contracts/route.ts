@@ -1,175 +1,102 @@
 // ============================================================================
-// src/app/api/players/[playerId]/contracts/route.ts
-// GET - Retrieve player contracts and team assignments
+// ENHANCED: /src/app/api/players/[playerId]/contracts/route.ts - Contract Management
+// Manage player contracts with salary and duration tracking
 // ============================================================================
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, requireRole } from '@/lib/api/middleware';
-import { parsePaginationParams } from '@/lib/api/validation';
-import { paginated, errorResponse } from '@/lib/api/responses';
-import { NotFoundError } from '@/lib/api/errors';
+import { requireAuth, requireAnyRole, requireActivePlayer } from '@/lib/api/middleware/auth';
+import { success, created, errorResponse } from '@/lib/api/responses';
+import { BadRequestError, NotFoundError } from '@/lib/api/errors';
+import { logAuditAction } from '@/lib/api/audit';
+import { logger } from '@/lib/api/logger';
 
-/**
- * GET /api/players/[playerId]/contracts
- * Retrieve all player contracts including active, expired, and pending
- * Shows team assignments, contract terms, and financial details
- * 
- * Query Parameters:
- *   - page (default: 1)
- *   - limit (default: 25, max: 100)
- *   - status (optional: ACTIVE, EXPIRED, PENDING, TERMINATED)
- * 
- * Response includes:
- *   - Contract ID and status
- *   - Team and club information
- *   - Contract dates (start, end)
- *   - Salary information
- *   - Jersey number and position
- *   - Contract terms and conditions
- * 
- * Requires: Authentication + RBAC
- * Roles: COACH, CLUB_MANAGER, CLUB_OWNER, LEAGUE_ADMIN, SUPERADMIN
- * 
- * Note: Salary information is only shown to authorized users
- * (CLUB_MANAGER, CLUB_OWNER, SUPERADMIN) with proper access
- * 
- * Use Cases:
- *   - View all player team assignments
- *   - Check contract expiration dates
- *   - Monitor contract status
- *   - Review financial commitments
- *   - Track player career history
- */
+// ============================================================================
+// GET /api/players/[playerId]/contracts - Get Player Contracts
+// ============================================================================
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { playerId: string } }
 ) {
   try {
-    const user = await requireAuth(request);
-    requireRole(user, [
-      'COACH',
-      'CLUB_MANAGER',
-      'CLUB_OWNER',
-      'LEAGUE_ADMIN',
-      'SUPERADMIN',
-    ]);
+    await requireAuth();
 
-    const { searchParams } = new URL(request.url);
-    const { page, limit } = parsePaginationParams(searchParams);
-    const status = searchParams.get('status');
+    await requireActivePlayer(params.playerId);
 
-    // Verify player exists
-    const player = await prisma.player.findUnique({
-      where: { id: params.playerId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        position: true,
-        preferredFoot: true,
+    const contracts = await prisma.contract.findMany({
+      where: { playerId: params.playerId },
+      orderBy: { startDate: 'desc' },
+    });
+
+    logger.info(`Retrieved ${contracts.length} contracts for player ${params.playerId}`);
+
+    return success(contracts);
+  } catch (error) {
+    return errorResponse(error as Error);
+  }
+}
+
+// ============================================================================
+// POST /api/players/[playerId]/contracts - Create Contract
+// ============================================================================
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { playerId: string } }
+) {
+  try {
+    const user = await requireAuth();
+    requireAnyRole(user, ['SUPERADMIN', 'CLUB_MANAGER', 'CLUB_OWNER']);
+
+    await requireActivePlayer(params.playerId);
+
+    const body = await request.json();
+
+    // Validate required fields
+    if (!body.position) {
+      throw new BadRequestError('position is required');
+    }
+
+    if (!body.startDate) {
+      throw new BadRequestError('startDate is required');
+    }
+
+    // Create contract
+    const contract = await prisma.contract.create({
+      data: {
+        playerId: params.playerId,
+        position: body.position,
+        salary: body.salary ? parseFloat(body.salary) : undefined,
+        currency: body.currency || 'GBP',
+        startDate: new Date(body.startDate),
+        endDate: body.endDate ? new Date(body.endDate) : undefined,
+        contractType: body.contractType || 'PROFESSIONAL',
+        status: body.status || 'ACTIVE',
+        documentUrl: body.documentUrl,
+        extensionOption: body.extensionOption || false,
+        extensionDate: body.extensionDate ? new Date(body.extensionDate) : undefined,
       },
     });
 
-    if (!player) {
-      throw new NotFoundError('Player not found');
-    }
-
-    // Build where clause for filtering
-    const where: any = { playerId: params.playerId };
-    if (status) {
-      where.status = status;
-    }
-
-    // Determine if user can see salary info
-    const canViewSalary = user.roles.includes('CLUB_MANAGER') ||
-      user.roles.includes('CLUB_OWNER') ||
-      user.roles.includes('SUPERADMIN');
-
-    // Query contracts with pagination
-    const [total, contracts] = await Promise.all([
-      prisma.playerContract.count({ where }),
-      prisma.playerContract.findMany({
-        where,
-        include: {
-          team: {
-            select: {
-              id: true,
-              name: true,
-              sport: true,
-              maxPlayersOnCourt: true,
-              club: {
-                select: {
-                  id: true,
-                  name: true,
-                  country: true,
-                  foundedYear: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { startDate: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-    ]);
-
-    // Format contracts with conditional salary visibility
-    const formattedContracts = contracts.map((contract) => ({
-      id: contract.id,
-      team: contract.team,
-      status: contract.status,
-      startDate: contract.startDate,
-      endDate: contract.endDate,
-      jerseyNumber: contract.jerseyNumber,
-      positionInTeam: contract.positionInTeam,
-      contract_type: contract.contractType,
-      // Only include salary if user has permission
-      ...(canViewSalary && {
+    // Log audit
+    await logAuditAction({
+      performedById: user.id,
+      action: 'USER_CREATED',
+      entityType: 'Contract',
+      entityId: contract.id,
+      changes: {
+        position: contract.position,
+        startDate: contract.startDate,
+        endDate: contract.endDate,
         salary: contract.salary,
-        salary_currency: contract.salaryCurrency,
-        salary_period: contract.salaryPeriod,
-      }),
-      terms: contract.terms,
-      createdAt: contract.createdAt,
-      updatedAt: contract.updatedAt,
-    }));
-
-    // Calculate contract statistics
-    const contractStats = {
-      total,
-      byStatus: contracts.reduce(
-        (acc, c) => {
-          acc[c.status] = (acc[c.status] || 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>
-      ),
-      active: contracts.filter((c) => c.status === 'ACTIVE').length,
-      expired: contracts.filter((c) => c.status === 'EXPIRED').length,
-      pending: contracts.filter((c) => c.status === 'PENDING').length,
-      expiringWithin90Days: contracts.filter((c) => {
-        if (c.status !== 'ACTIVE') return false;
-        const daysUntilExpiry = Math.floor(
-          (c.endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-        );
-        return daysUntilExpiry > 0 && daysUntilExpiry <= 90;
-      }).length,
-    };
-
-    const response = {
-      player: {
-        id: player.id,
-        name: `${player.firstName} ${player.lastName}`,
-        position: player.position,
-        preferredFoot: player.preferredFoot,
       },
-      contracts: formattedContracts,
-      statistics: contractStats,
-    };
+      details: `Created contract for player ${params.playerId}`,
+    });
 
-    return paginated(response, { page, limit, total });
+    logger.info(`Contract created for player ${params.playerId}`);
+
+    return created(contract);
   } catch (error) {
     return errorResponse(error as Error);
   }

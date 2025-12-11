@@ -1,59 +1,44 @@
 // ============================================================================
-// ENHANCED: src/app/api/matches/route.ts
-// GET - List matches | POST - Create new match
-// ALIGNED WITH: Your Prisma schema (Match, Fixture, MatchAttendance, MatchEvent)
+// ENHANCED: /src/app/api/matches/route.ts - Match Management (List & Create)
+// Comprehensive match management with fixtures and leagues
 // ============================================================================
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { MatchStatus, Prisma } from '@prisma/client';
+import { requireAuth, requireAnyRole } from '@/lib/api/middleware/auth';
+import { success, paginated, created, errorResponse } from '@/lib/api/responses';
+import { BadRequestError, NotFoundError } from '@/lib/api/errors';
+import { logAuditAction } from '@/lib/api/audit';
+import { logger } from '@/lib/api/logger';
 
-/**
- * GET /api/matches
- * Get matches with advanced filtering, pagination, and detailed information
- * 
- * Query Parameters:
- *   - page: number (default: 1)
- *   - limit: number (default: 25, max: 100)
- *   - teamId: string (filter by team involvement - home or away)
- *   - leagueId: string (filter by league)
- *   - status: enum (SCHEDULED, IN_PROGRESS, COMPLETED, POSTPONED)
- *   - dateFrom: ISO date string (filter matches from this date)
- *   - dateTo: ISO date string (filter matches until this date)
- *   - sortBy: enum (date, status, default: date)
- *   - sortOrder: enum (asc, desc, default: asc)
- * 
- * Response: Paginated list with full match details including:
- *   - Team information with club details
- *   - League/fixture information
- *   - Match stats (possession, shots, etc)
- *   - Event timeline (goals, cards, etc)
- *   - Player attendance summary
- */
-export async function GET(req: NextRequest) {
+// ============================================================================
+// GET /api/matches - List Matches
+// ============================================================================
+
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const user = await requireAuth();
 
-    const { searchParams } = new URL(req.url);
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '25')));
-    const teamId = searchParams.get('teamId');
-    const leagueId = searchParams.get('leagueId');
-    const status = searchParams.get('status');
-    const dateFrom = searchParams.get('dateFrom');
-    const dateTo = searchParams.get('dateTo');
-    const sortBy = searchParams.get('sortBy') || 'date';
-    const sortOrder = searchParams.get('sortOrder') === 'desc' ? 'desc' : 'asc';
+    // Parse query parameters
+    const url = new URL(request.url);
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+    const limit = Math.min(100, parseInt(url.searchParams.get('limit') || '25'));
+    const skip = (page - 1) * limit;
+
+    // Filters
+    const status = url.searchParams.get('status');
+    const teamId = url.searchParams.get('teamId');
+    const leagueId = url.searchParams.get('leagueId');
+    const dateFrom = url.searchParams.get('dateFrom');
+    const dateTo = url.searchParams.get('dateTo');
 
     // Build where clause
-    const where: Prisma.MatchWhereInput = {};
+    const where: any = {};
 
-    // Team filter (home or away)
+    if (status) {
+      where.status = status;
+    }
+
     if (teamId) {
       where.OR = [
         { homeTeamId: teamId },
@@ -61,488 +46,117 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    // League filter
     if (leagueId) {
-      where.fixture = {
-        leagueId,
-      };
+      where.fixture = { leagueId };
     }
 
-    // Status filter
-    if (status && Object.values(MatchStatus).includes(status as MatchStatus)) {
-      where.status = status as MatchStatus;
-    }
-
-    // Date range filter
     if (dateFrom || dateTo) {
       where.date = {};
-      if (dateFrom) {
-        where.date.gte = new Date(dateFrom);
-      }
-      if (dateTo) {
-        where.date.lte = new Date(dateTo);
-      }
+      if (dateFrom) where.date.gte = new Date(dateFrom);
+      if (dateTo) where.date.lte = new Date(dateTo);
     }
 
-    // Get total count for pagination
+    // Get total
     const total = await prisma.match.count({ where });
-    const totalPages = Math.ceil(total / limit);
 
-    // Define sort order
-    const orderBy: Prisma.MatchOrderByWithRelationInput = {};
-    if (sortBy === 'status') {
-      orderBy.status = sortOrder;
-    } else {
-      orderBy.date = sortOrder;
-    }
-
-    // Fetch matches with comprehensive relationships
+    // Fetch matches
     const matches = await prisma.match.findMany({
       where,
       include: {
-        homeTeam: {
-          select: {
-            id: true,
-            name: true,
-            shortCode: true,
-            logo: true,
-            club: {
-              select: {
-                id: true,
-                name: true,
-                city: true,
-                country: true,
-                logo: true,
-              },
-            },
-          },
-        },
-        awayTeam: {
-          select: {
-            id: true,
-            name: true,
-            shortCode: true,
-            logo: true,
-            club: {
-              select: {
-                id: true,
-                name: true,
-                city: true,
-                country: true,
-                logo: true,
-              },
-            },
-          },
-        },
-        fixture: {
-          include: {
-            league: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
-                season: true,
-                sport: true,
-              },
-            },
-          },
-        },
-        stats: {
-          select: {
-            homePossession: true,
-            awayPossession: true,
-            homeShots: true,
-            awayShots: true,
-            homeShotsOnTarget: true,
-            awayShotsOnTarget: true,
-            homeCorners: true,
-            awayCorners: true,
-            homeYellowCards: true,
-            awayYellowCards: true,
-            homeRedCards: true,
-            awayRedCards: true,
-          },
-        },
-        events: {
-          select: {
-            id: true,
-            type: true,
-            minute: true,
-            additionalInfo: true,
-            player: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                jerseyNumber: true,
-              },
-            },
-          },
-          orderBy: { minute: 'asc' },
-        },
-        playerAttendances: {
-          select: {
-            id: true,
-            status: true,
-            player: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
-        },
+        homeTeam: { select: { id: true, name: true, logoUrl: true } },
+        awayTeam: { select: { id: true, name: true, logoUrl: true } },
+        referee: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
+        fixture: { select: { id: true, matchweek: true } },
       },
-      orderBy,
-      skip: (page - 1) * limit,
+      orderBy: { date: 'desc' },
+      skip,
       take: limit,
     });
 
-    // Transform matches for response
-    const transformedMatches = matches.map((match) => {
-      // Calculate attendance statistics
-      const attendanceStats = {
-        total: match.playerAttendances.length,
-        confirmed: match.playerAttendances.filter((a) =>
-          ['CONFIRMED', 'STARTING_LINEUP', 'SUBSTITUTE'].includes(a.status)
-        ).length,
-        available: match.playerAttendances.filter((a) =>
-          a.status === 'AVAILABLE'
-        ).length,
-        unavailable: match.playerAttendances.filter((a) =>
-          ['UNAVAILABLE', 'INJURED', 'ILL', 'SUSPENDED'].includes(a.status)
-        ).length,
-        pending: match.playerAttendances.filter((a) =>
-          ['MAYBE', 'NOT_SELECTED'].includes(a.status) || !a.status
-        ).length,
-      };
+    logger.info(`Retrieved ${matches.length} matches (page ${page})`);
 
-      // Calculate match result
-      let result: 'HOME_WIN' | 'AWAY_WIN' | 'DRAW' | null = null;
-      if (match.status === MatchStatus.COMPLETED && match.homeGoals !== null && match.awayGoals !== null) {
-        if (match.homeGoals > match.awayGoals) result = 'HOME_WIN';
-        else if (match.awayGoals > match.homeGoals) result = 'AWAY_WIN';
-        else result = 'DRAW';
-      }
-
-      return {
-        id: match.id,
-        date: match.date.toISOString(),
-        venue: match.venue,
-        status: match.status,
-        result,
-        score: {
-          home: match.homeGoals,
-          away: match.awayGoals,
-        },
-        attendance: match.attendance,
-        attendanceDeadline: match.attendanceDeadline?.toISOString() || null,
-        homeTeam: {
-          id: match.homeTeam.id,
-          name: match.homeTeam.name,
-          shortCode: match.homeTeam.shortCode,
-          logo: match.homeTeam.logo,
-          club: match.homeTeam.club,
-        },
-        awayTeam: {
-          id: match.awayTeam.id,
-          name: match.awayTeam.name,
-          shortCode: match.awayTeam.shortCode,
-          logo: match.awayTeam.logo,
-          club: match.awayTeam.club,
-        },
-        league: match.fixture?.league || null,
-        stats: match.stats
-          ? {
-              possession: {
-                home: match.stats.homePossession || 0,
-                away: match.stats.awayPossession || 0,
-              },
-              shots: {
-                home: match.stats.homeShots || 0,
-                away: match.stats.awayShots || 0,
-              },
-              shotsOnTarget: {
-                home: match.stats.homeShotsOnTarget || 0,
-                away: match.stats.awayShotsOnTarget || 0,
-              },
-              corners: {
-                home: match.stats.homeCorners || 0,
-                away: match.stats.awayCorners || 0,
-              },
-              cards: {
-                home: {
-                  yellow: match.stats.homeYellowCards || 0,
-                  red: match.stats.homeRedCards || 0,
-                },
-                away: {
-                  yellow: match.stats.awayYellowCards || 0,
-                  red: match.stats.awayRedCards || 0,
-                },
-              },
-            }
-          : null,
-        events: match.events.map((event) => ({
-          id: event.id,
-          type: event.type,
-          minute: event.minute,
-          player: event.player
-            ? {
-                id: event.player.id,
-                name: `${event.player.firstName} ${event.player.lastName}`,
-                jerseyNumber: event.player.jerseyNumber,
-              }
-            : null,
-          additionalInfo: event.additionalInfo,
-        })),
-        playerAttendance: attendanceStats,
-        counts: {
-          events: match.events.length,
-          playersTracked: match.playerAttendances.length,
-        },
-      };
-    });
-
-    return NextResponse.json(
-      {
-        matches: transformedMatches,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages,
-          hasNextPage: page < totalPages,
-          hasPreviousPage: page > 1,
-        },
-      },
-      { status: 200 }
-    );
+    return paginated(matches, { page, limit, total });
   } catch (error) {
-    console.error('[GET /api/matches] Error:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch matches',
-        details: process.env.NODE_ENV === 'development' ? String(error) : undefined,
-      },
-      { status: 500 }
-    );
+    return errorResponse(error as Error);
   }
 }
 
-/**
- * POST /api/matches
- * Create a new match with automatic player attendance tracking
- * 
- * Request Body:
- *   Required:
- *     - homeTeamId: string (team ID)
- *     - awayTeamId: string (team ID)
- *     - date: ISO date string
- *   
- *   Optional:
- *     - venue: string
- *     - fixtureId: string
- *     - attendanceDeadline: ISO date string
- * 
- * Response: 201 Created with match details
- * 
- * Features:
- *   ✅ Team validation
- *   ✅ Duplicate prevention
- *   ✅ Automatic player attendance creation
- *   ✅ Audit logging
- */
-export async function POST(req: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+// ============================================================================
+// POST /api/matches - Create Match
+// ============================================================================
 
-    const body = await req.json();
-    const { homeTeamId, awayTeamId, date, venue, fixtureId, attendanceDeadline } = body;
+export async function POST(request: NextRequest) {
+  try {
+    const user = await requireAuth();
+    requireAnyRole(user, ['SUPERADMIN', 'LEAGUE_ADMIN', 'COACH', 'CLUB_MANAGER']);
+
+    const body = await request.json();
 
     // Validate required fields
-    if (!homeTeamId || !awayTeamId || !date) {
-      return NextResponse.json(
-        {
-          error: 'Validation Error',
-          message: 'Home team, away team, and date are required',
-        },
-        { status: 400 }
-      );
+    if (!body.homeTeamId || !body.awayTeamId) {
+      throw new BadRequestError('homeTeamId and awayTeamId are required');
     }
 
-    // Validate teams are different
-    if (homeTeamId === awayTeamId) {
-      return NextResponse.json(
-        {
-          error: 'Validation Error',
-          message: 'Home and away teams must be different',
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate date is in future
-    const matchDate = new Date(date);
-    if (matchDate < new Date()) {
-      return NextResponse.json(
-        {
-          error: 'Validation Error',
-          message: 'Match date cannot be in the past',
-        },
-        { status: 400 }
-      );
+    if (!body.date) {
+      throw new BadRequestError('date is required');
     }
 
     // Verify teams exist
-    const [homeTeam, awayTeam] = await Promise.all([
-      prisma.team.findUnique({
-        where: { id: homeTeamId },
-        select: { id: true, name: true },
-      }),
-      prisma.team.findUnique({
-        where: { id: awayTeamId },
-        select: { id: true, name: true },
-      }),
-    ]);
+    const homeTeam = await prisma.team.findUnique({
+      where: { id: body.homeTeamId },
+    });
+
+    const awayTeam = await prisma.team.findUnique({
+      where: { id: body.awayTeamId },
+    });
 
     if (!homeTeam || !awayTeam) {
-      return NextResponse.json(
-        { error: 'Not Found', message: 'One or both teams not found' },
-        { status: 404 }
-      );
+      throw new NotFoundError('Team');
     }
 
-    // Check for duplicate match
-    const existingMatch = await prisma.match.findFirst({
-      where: {
-        OR: [
-          {
-            homeTeamId,
-            awayTeamId,
-            date: matchDate,
-          },
-          {
-            homeTeamId: awayTeamId,
-            awayTeamId: homeTeamId,
-            date: matchDate,
-          },
-        ],
+    if (homeTeam.id === awayTeam.id) {
+      throw new BadRequestError('A team cannot play against itself');
+    }
+
+    // Create match
+    const match = await prisma.match.create({
+      data: {
+        homeTeamId: body.homeTeamId,
+        awayTeamId: body.awayTeamId,
+        fixtureId: body.fixtureId,
+        refereeId: body.refereeId,
+        date: new Date(body.date),
+        kickOffTime: body.kickOffTime ? new Date(body.kickOffTime) : undefined,
+        venue: body.venue,
+        venueCity: body.venueCity,
+        status: 'SCHEDULED',
+        notes: body.notes,
+        sport: body.sport || 'FOOTBALL',
+      },
+      include: {
+        homeTeam: { select: { name: true } },
+        awayTeam: { select: { name: true } },
       },
     });
 
-    if (existingMatch) {
-      return NextResponse.json(
-        {
-          error: 'Conflict',
-          message: 'A match between these teams on this date already exists',
-        },
-        { status: 409 }
-      );
-    }
-
-    // Create match within transaction
-    const match = await prisma.$transaction(async (tx) => {
-      // Create match
-      const newMatch = await tx.match.create({
-        data: {
-          homeTeamId,
-          awayTeamId,
-          date: matchDate,
-          venue: venue || null,
-          fixtureId: fixtureId || undefined,
-          attendanceDeadline: attendanceDeadline ? new Date(attendanceDeadline) : null,
-          status: MatchStatus.SCHEDULED,
-        },
-        include: {
-          homeTeam: {
-            select: {
-              id: true,
-              name: true,
-              club: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          awayTeam: {
-            select: {
-              id: true,
-              name: true,
-              club: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      // Get players from both teams
-      const [homePlayerIds, awayPlayerIds] = await Promise.all([
-        tx.$queryRaw<Array<{ playerId: string }>>`
-          SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${homeTeamId}
-        `,
-        tx.$queryRaw<Array<{ playerId: string }>>`
-          SELECT DISTINCT "playerId" FROM "PlayerTeam" WHERE "teamId" = ${awayTeamId}
-        `,
-      ]);
-
-      const allPlayerIds = [
-        ...homePlayerIds.map((p) => p.playerId),
-        ...awayPlayerIds.map((p) => p.playerId),
-      ];
-
-      // Create attendance records for all players
-      if (allPlayerIds.length > 0) {
-        await tx.matchAttendance.createMany({
-          data: allPlayerIds.map((playerId) => ({
-            matchId: newMatch.id,
-            playerId,
-            status: 'AVAILABLE',
-          })),
-          skipDuplicates: true,
-        });
-      }
-
-      return newMatch;
+    // Log audit
+    await logAuditAction({
+      performedById: user.id,
+      action: 'USER_CREATED',
+      entityType: 'Match',
+      entityId: match.id,
+      changes: {
+        homeTeam: match.homeTeam.name,
+        awayTeam: match.awayTeam.name,
+        date: match.date,
+      },
+      details: `Created match between ${match.homeTeam.name} and ${match.awayTeam.name}`,
     });
 
-    return NextResponse.json(
-      {
-        id: match.id,
-        homeTeam: {
-          id: match.homeTeam.id,
-          name: match.homeTeam.name,
-          club: match.homeTeam.club,
-        },
-        awayTeam: {
-          id: match.awayTeam.id,
-          name: match.awayTeam.name,
-          club: match.awayTeam.club,
-        },
-        date: match.date.toISOString(),
-        venue: match.venue,
-        status: match.status,
-        message: `Match created successfully: ${match.homeTeam.name} vs ${match.awayTeam.name}`,
-      },
-      { status: 201 }
-    );
+    logger.info(`Match created: ${match.id}`);
+
+    return created(match);
   } catch (error) {
-    console.error('[POST /api/matches] Error:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to create match',
-        details: process.env.NODE_ENV === 'development' ? String(error) : undefined,
-      },
-      { status: 500 }
-    );
+    return errorResponse(error as Error);
   }
 }
