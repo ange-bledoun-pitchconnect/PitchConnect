@@ -12,6 +12,7 @@
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
+import { DashboardNav } from '@/components/dashboard/nav';
 import Link from 'next/link';
 import { 
   Home, Users, Trophy, Calendar, BarChart3, Settings, 
