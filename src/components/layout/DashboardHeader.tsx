@@ -1,20 +1,30 @@
 'use client';
 
 /**
- * Dashboard Header Component
+ * Enhanced Dashboard Header Component
  * Path: /components/layout/DashboardHeader.tsx
+ * 
+ * ENHANCEMENTS:
+ * - Integrated GlobalSearch component
+ * - Improved search bar styling
+ * - Better responsive design
+ * - Enhanced keyboard shortcuts
+ * - Notification count badge
+ * - Theme toggle support
+ * - Accessibility improvements
  * 
  * Core Features:
  * - Role switcher for multi-role users
  * - Team filter dropdown
+ * - Global search integration
  * - Dynamic create button based on user role
- * - Notifications dropdown
+ * - Notifications dropdown with count
  * - Settings quick access
  * - Profile menu with sign out
  * 
  * Schema Aligned: Uses roles array from session
  * Role-based Logic: SuperAdmin, League Admin, Club Manager, Player, Coach
- * Components: TeamFilterDropdown with onChange prop
+ * Components: TeamFilterDropdown, GlobalSearch
  * 
  * Business Logic:
  * - SuperAdmin, League Admin, Club Manager → Create Club button
@@ -22,12 +32,24 @@
  * - Multi-role users can switch between dashboards
  * - Click-outside detection for dropdowns
  * - Dark mode support
+ * - Keyboard shortcut support (⌘/Ctrl + K for search)
  */
 
 import { useTeamFilter } from '@/lib/dashboard/team-context';
 import { TeamFilterDropdown } from '@/components/common/TeamFilterDropdown';
+import { GlobalSearch } from '@/components/search/global-search';
 import { Button } from '@/components/ui/button';
-import { Plus, Bell, Settings, LogOut, User, ChevronDown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Plus, 
+  Bell, 
+  Settings, 
+  LogOut, 
+  User, 
+  ChevronDown,
+  Search,
+  Zap,
+} from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -39,6 +61,8 @@ import { useRouter, usePathname } from 'next/navigation';
 interface DashboardHeaderProps {
   teams?: Array<{ id: string; name: string }>;
   onAddTeam?: () => void;
+  notificationCount?: number;
+  onNotificationClick?: () => void;
 }
 
 type UserRole = 'SUPERADMIN' | 'LEAGUE_ADMIN' | 'CLUB_MANAGER' | 'PLAYER' | 'COACH' | 'MANAGER' | 'PARENT' | 'REFEREE' | 'SCOUT' | 'ANALYST' | 'TREASURER';
@@ -153,12 +177,15 @@ const COLOR_MAP: Record<string, { bg: string; text: string; hover: string; dark:
 export function DashboardHeader({
   teams = [],
   onAddTeam,
+  notificationCount = 0,
+  onNotificationClick,
 }: DashboardHeaderProps) {
   const { data: session } = useSession();
   const { selectedTeams, setSelectedTeams } = useTeamFilter();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
+  const [showSearchMobile, setShowSearchMobile] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -284,6 +311,26 @@ export function DashboardHeader({
   }, []);
 
   /**
+   * Handle keyboard shortcuts
+   */
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      // ⌘K or Ctrl+K for search
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        setShowSearchMobile(true);
+      }
+      // Escape to close search
+      if (event.key === 'Escape') {
+        setShowSearchMobile(false);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  /**
    * Handle role switching
    */
   const handleRoleSwitch = useCallback(
@@ -304,7 +351,8 @@ export function DashboardHeader({
     setShowNotifications((prev) => !prev);
     setShowProfileMenu(false);
     setShowRoleSwitcher(false);
-  }, []);
+    onNotificationClick?.();
+  }, [onNotificationClick]);
 
   /**
    * Handle settings click
@@ -352,22 +400,25 @@ export function DashboardHeader({
 
   return (
     <div className="flex items-center justify-between gap-4">
-      {/* Left: Role Switcher + Team Filter */}
-      <div className="flex items-center gap-3">
+      {/* Left: Role Switcher + Team Filter + Search */}
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         {/* Role Switcher - only show if user has multiple roles and on a role dashboard */}
         {hasMultipleRoles() && currentRole && (
-          <div className="relative" ref={roleSwitcherRef}>
+          <div className="relative flex-shrink-0" ref={roleSwitcherRef}>
             <button
               onClick={handleRoleSwitcherToggle}
-              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-charcoal-800 border border-neutral-200 dark:border-charcoal-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors font-semibold"
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-charcoal-800 border border-neutral-200 dark:border-charcoal-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors font-semibold whitespace-nowrap"
               aria-expanded={showRoleSwitcher}
               aria-label="Switch role"
             >
-              <span className="text-sm text-charcoal-900 dark:text-white">
+              <span className="text-sm text-charcoal-900 dark:text-white hidden sm:inline">
                 {ROLE_CONFIGS[currentRole]?.emoji} {ROLE_CONFIGS[currentRole]?.label || 'Dashboard'}
               </span>
+              <span className="text-sm text-charcoal-900 dark:text-white sm:hidden">
+                {ROLE_CONFIGS[currentRole]?.emoji}
+              </span>
               <ChevronDown
-                className={`w-4 h-4 text-charcoal-600 dark:text-charcoal-400 transition-transform ${
+                className={`w-4 h-4 text-charcoal-600 dark:text-charcoal-400 transition-transform flex-shrink-0 ${
                   showRoleSwitcher ? 'rotate-180' : ''
                 }`}
               />
@@ -407,25 +458,71 @@ export function DashboardHeader({
 
         {/* Team Filter */}
         {teams.length > 0 && (
-          <TeamFilterDropdown
-            teams={teams}
-            selectedTeams={selectedTeams}
-            onChange={handleTeamChange}
+          <div className="flex-shrink-0 hidden sm:block">
+            <TeamFilterDropdown
+              teams={teams}
+              selectedTeams={selectedTeams}
+              onChange={handleTeamChange}
+            />
+          </div>
+        )}
+
+        {/* Global Search - Desktop */}
+        <div className="hidden lg:block flex-1 max-w-lg">
+          <GlobalSearch 
+            placeholder="Search players, clubs, leagues..."
+            className="w-full"
           />
+        </div>
+
+        {/* Search Mobile Icon */}
+        <button
+          onClick={() => setShowSearchMobile(true)}
+          className="lg:hidden flex-shrink-0 p-2 hover:bg-neutral-100 dark:hover:bg-charcoal-700 rounded-lg transition-colors"
+          title="Search (⌘K)"
+        >
+          <Search className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
+        </button>
+
+        {/* Mobile Search Modal */}
+        {showSearchMobile && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={() => setShowSearchMobile(false)}
+            />
+            <div className="absolute top-0 left-0 right-0 p-4">
+              <GlobalSearch
+                placeholder="Search..."
+                className="w-full"
+                onResultSelect={() => setShowSearchMobile(false)}
+              />
+            </div>
+          </div>
         )}
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-shrink-0">
         {/* Dynamic Create Club / Add Team Button */}
         <Button
           onClick={buttonConfig.action}
           size="sm"
-          className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-semibold transition-all hover:shadow-lg"
+          className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-semibold transition-all hover:shadow-lg hidden sm:flex"
           aria-label={buttonConfig.text}
         >
           <Plus className="w-4 h-4 mr-2" />
           {buttonConfig.text}
+        </Button>
+
+        {/* Create Button Mobile */}
+        <Button
+          onClick={buttonConfig.action}
+          size="sm"
+          className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white sm:hidden"
+          aria-label={buttonConfig.text}
+        >
+          <Plus className="w-4 h-4" />
         </Button>
 
         {/* Notifications Button */}
@@ -440,18 +537,30 @@ export function DashboardHeader({
           >
             <Bell className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
             {/* Notification Badge */}
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            {notificationCount > 0 && (
+              <Badge
+                variant="primary"
+                className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full p-0 animate-pulse"
+              >
+                {notificationCount > 99 ? '99+' : notificationCount}
+              </Badge>
+            )}
           </Button>
 
           {/* Notifications Dropdown */}
           {showNotifications && (
             <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 max-h-96 overflow-y-auto transition-colors duration-200 animate-in fade-in">
-              <div className="p-4 border-b border-neutral-200 dark:border-charcoal-700 sticky top-0 bg-white dark:bg-charcoal-800">
+              <div className="p-4 border-b border-neutral-200 dark:border-charcoal-700 sticky top-0 bg-white dark:bg-charcoal-800 flex items-center justify-between">
                 <h3 className="font-bold text-charcoal-900 dark:text-white">Notifications</h3>
+                {notificationCount > 0 && (
+                  <Badge variant="primary" className="bg-blue-600">
+                    {notificationCount}
+                  </Badge>
+                )}
               </div>
               <div className="p-2">
                 {/* Sample Notification */}
-                <div className="p-3 hover:bg-neutral-50 dark:hover:bg-charcoal-700 rounded-lg cursor-pointer transition-colors">
+                <div className="p-3 hover:bg-neutral-50 dark:hover:bg-charcoal-700 rounded-lg cursor-pointer transition-colors border-l-4 border-blue-500">
                   <p className="text-sm font-semibold text-charcoal-900 dark:text-white">
                     Welcome to PitchConnect!
                   </p>
@@ -462,10 +571,12 @@ export function DashboardHeader({
                 </div>
 
                 {/* Empty State */}
-                <div className="text-center py-8">
-                  <Bell className="w-12 h-12 text-neutral-300 dark:text-charcoal-600 mx-auto mb-2" />
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">No new notifications</p>
-                </div>
+                {notificationCount === 0 && (
+                  <div className="text-center py-8">
+                    <Bell className="w-12 h-12 text-neutral-300 dark:text-charcoal-600 mx-auto mb-2" />
+                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400">No new notifications</p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -476,7 +587,7 @@ export function DashboardHeader({
           variant="ghost"
           size="sm"
           onClick={handleSettingsClick}
-          className="hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-colors"
+          className="hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-colors hidden sm:inline-flex"
           aria-label="Settings"
         >
           <Settings className="w-5 h-5 text-charcoal-700 dark:text-charcoal-300" />
@@ -499,6 +610,16 @@ export function DashboardHeader({
           {showProfileMenu && (
             <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-charcoal-800 rounded-xl shadow-xl border border-neutral-200 dark:border-charcoal-700 z-50 transition-colors duration-200 animate-in fade-in">
               <div className="p-2">
+                {/* User Info */}
+                <div className="px-4 py-3 border-b border-neutral-200 dark:border-charcoal-700">
+                  <p className="text-sm font-semibold text-charcoal-900 dark:text-white truncate">
+                    {session?.user?.name || 'User'}
+                  </p>
+                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400 truncate">
+                    {session?.user?.email}
+                  </p>
+                </div>
+
                 <button
                   onClick={handleSettingsClick}
                   className="w-full text-left px-4 py-2 text-sm text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700 rounded-lg flex items-center gap-2 transition-colors font-medium"
