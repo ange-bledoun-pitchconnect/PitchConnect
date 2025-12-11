@@ -25,6 +25,9 @@ import {
   Award,
   CheckCircle,
   XCircle,
+  BarChart3,
+  Activity,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -79,7 +82,7 @@ interface League {
 export default function LeagueDashboardPage() {
   const router = useRouter();
   const params = useParams();
-  const id = params.id as string;
+  const id = params.leagueId as string;
 
   const [league, setLeague] = useState<League | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -235,20 +238,29 @@ export default function LeagueDashboardPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Link href={`/dashboard/leagues/${id}/teams`}>
                 <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
                   <Plus className="w-4 h-4 mr-2" />
                   Manage Teams
                 </Button>
               </Link>
-              <Link href={`/dashboard/leagues/${id}/edit`}>
+              <Link href={`/dashboard/leagues/${id}/manage`}>
                 <Button 
                   variant="outline" 
                   className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
                 >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Edit
+                  <Settings className="w-4 h-4 mr-2" />
+                  Manage
+                </Button>
+              </Link>
+              <Link href={`/dashboard/leagues/${id}/analytics`}>
+                <Button 
+                  variant="outline" 
+                  className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+                >
+                  <BarChart3 className="w-4 h-4 mr-2" />
+                  Analytics
                 </Button>
               </Link>
               <Button
@@ -272,7 +284,7 @@ export default function LeagueDashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           {/* Total Teams */}
           <Link href={`/dashboard/leagues/${id}/teams`}>
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 cursor-pointer hover:shadow-lg dark:hover:shadow-charcoal-900/30 hover:border-gold-300 dark:hover:border-gold-600 transition-all">
+            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 cursor-pointer hover:shadow-lg dark:hover:shadow-charcoal-900/30 hover:border-gold-300 dark:hover:border-gold-600 transition-all h-full">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -295,8 +307,8 @@ export default function LeagueDashboardPage() {
           </Link>
 
           {/* Total Fixtures */}
-          <Link href={`/dashboard/leagues/${id}/fixtures`}>
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 cursor-pointer hover:shadow-lg dark:hover:shadow-charcoal-900/30 hover:border-blue-300 dark:hover:border-blue-600 transition-all">
+          <Link href={`/dashboard/leagues/${id}/standings`}>
+            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 cursor-pointer hover:shadow-lg dark:hover:shadow-charcoal-900/30 hover:border-blue-300 dark:hover:border-blue-600 transition-all h-full">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -314,7 +326,7 @@ export default function LeagueDashboardPage() {
           </Link>
 
           {/* League Format */}
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 h-full">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -331,7 +343,7 @@ export default function LeagueDashboardPage() {
           </Card>
 
           {/* Registration Status */}
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 h-full">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>

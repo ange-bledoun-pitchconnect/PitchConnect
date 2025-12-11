@@ -46,7 +46,7 @@ interface League {
 export default function LeagueStandingsPage() {
   const router = useRouter();
   const params = useParams();
-  const leagueId = params.id as string;
+  const leagueId = params.leagueId as string;
 
   const [league, setLeague] = useState<League | null>(null);
   const [standings, setStandings] = useState<Standing[]>([]);

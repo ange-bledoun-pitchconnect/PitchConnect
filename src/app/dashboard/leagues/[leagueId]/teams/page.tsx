@@ -22,6 +22,7 @@ import {
   UserPlus,
   MapPin,
   CheckCircle,
+  AlertCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -64,7 +65,7 @@ interface League {
 export default function TeamsManagementPage() {
   const router = useRouter();
   const params = useParams();
-  const id = params.id as string;
+  const leagueId = params.leagueId as string;
 
   const [league, setLeague] = useState<League | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -80,20 +81,20 @@ export default function TeamsManagementPage() {
   useEffect(() => {
     fetchLeagueData();
     fetchInvitations();
-  }, [id]);
+  }, [leagueId]);
 
   const fetchLeagueData = async () => {
     try {
       setIsLoading(true);
       
       // Fetch league details
-      const leagueRes = await fetch(`/api/leagues/${id}`);
+      const leagueRes = await fetch(`/api/leagues/${leagueId}`);
       if (!leagueRes.ok) throw new Error('Failed to fetch league');
       const leagueData = await leagueRes.json();
       setLeague(leagueData);
 
       // Fetch available teams (includes teams in league)
-      const teamsRes = await fetch(`/api/leagues/${id}/available-teams`);
+      const teamsRes = await fetch(`/api/leagues/${leagueId}/available-teams`);
       if (!teamsRes.ok) throw new Error('Failed to fetch teams');
       const teamsData = await teamsRes.json();
       setTeams(teamsData.teams || []);
@@ -107,7 +108,7 @@ export default function TeamsManagementPage() {
 
   const fetchInvitations = async () => {
     try {
-      const response = await fetch(`/api/leagues/${id}/invitations`);
+      const response = await fetch(`/api/leagues/${leagueId}/invitations`);
       if (!response.ok) throw new Error('Failed to fetch invitations');
       const data = await response.json();
       setInvitations(data);
@@ -125,7 +126,7 @@ export default function TeamsManagementPage() {
 
     setIsSendingInvite(true);
     try {
-      const response = await fetch(`/api/leagues/${id}/invitations`, {
+      const response = await fetch(`/api/leagues/${leagueId}/invitations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -156,7 +157,7 @@ export default function TeamsManagementPage() {
     if (!confirm('Are you sure you want to cancel this invitation?')) return;
 
     try {
-      const response = await fetch(`/api/leagues/${id}/invitations/${invitationId}`, {
+      const response = await fetch(`/api/leagues/${leagueId}/invitations/${invitationId}`, {
         method: 'DELETE',
       });
 
@@ -175,7 +176,7 @@ export default function TeamsManagementPage() {
 
     setRemovingTeamId(teamId);
     try {
-      const response = await fetch(`/api/leagues/${id}/teams/${teamId}`, {
+      const response = await fetch(`/api/leagues/${leagueId}/teams/${teamId}`, {
         method: 'DELETE',
       });
 
@@ -224,7 +225,7 @@ export default function TeamsManagementPage() {
         <div className="mb-8">
           <Button
             variant="ghost"
-            onClick={() => router.push(`/dashboard/leagues/${id}`)}
+            onClick={() => router.push(`/dashboard/leagues/${leagueId}`)}
             className="mb-4 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -245,7 +246,7 @@ export default function TeamsManagementPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               {registrationOpen && canAddMoreTeams && (
                 <Button
                   onClick={handleOpenInviteModal}
