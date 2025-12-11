@@ -399,6 +399,53 @@ enum ClubMemberRole {
   MEDICAL_STAFF
 }
 
+enum VideoQuality {
+  Q_480P
+  Q_720P
+  Q_1080P
+  Q_4K
+}
+
+enum TranscodingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum VideoProcessingProvider {
+  MUX
+  AWS_MEDIACONVERT
+  BUNNY_CDN
+  CLOUDINARY
+  INTERNAL
+}
+
+enum PredictionType {
+  INJURY_RISK
+  PERFORMANCE_DECLINE
+  OPTIMAL_FORMATION
+  PLAYER_POTENTIAL
+  MARKET_VALUE
+  FATIGUE_LEVEL
+  CAREER_TRAJECTORY
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PredictionAccuracy {
+  VERY_HIGH
+  HIGH
+  MEDIUM
+  LOW
+}
+
 // ============================================================================
 // USER & AUTHENTICATION MODELS - ENHANCED
 // ============================================================================
@@ -2078,6 +2125,7 @@ model Video {
   team Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
   match Match?  @relation(fields: [matchId], references: [id], onDelete: SetNull)
   creator User   @relation("videosUploaded", fields: [createdBy], references: [id], onDelete: Cascade)
+  stream        VideoStream?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2088,35 +2136,9 @@ model Video {
   @@index([type])
   @@map("videos")
 }
-// ============================================================================
-// VIDEO STREAMING ENUMS (Add to existing enums section)
-// ============================================================================
-
-enum VideoQuality {
-  Q_480P
-  Q_720P
-  Q_1080P
-  Q_4K
-}
-
-enum TranscodingStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum VideoProcessingProvider {
-  MUX
-  AWS_MEDIACONVERT
-  BUNNY_CDN
-  CLOUDINARY
-  INTERNAL
-}
 
 // ============================================================================
-// VIDEO STREAMING MODELS (Add to schema after existing Video model)
+// VIDEO STREAMING MODELS
 // ============================================================================
 
 model VideoStream {
@@ -2304,33 +2326,6 @@ model VideoComment {
   @@index([parentCommentId])
   @@map("video_comments")
 }
-// ============================================================================
-// PREDICTIVE ANALYTICS ENUMS (Add to existing enums section)
-// ============================================================================
-
-enum PredictionType {
-  INJURY_RISK
-  PERFORMANCE_DECLINE
-  OPTIMAL_FORMATION
-  PLAYER_POTENTIAL
-  MARKET_VALUE
-  FATIGUE_LEVEL
-  CAREER_TRAJECTORY
-}
-
-enum RiskLevel {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-enum PredictionAccuracy {
-  VERY_HIGH
-  HIGH
-  MEDIUM
-  LOW
-}
 
 // ============================================================================
 // PREDICTIVE ANALYTICS MODELS
@@ -2351,7 +2346,7 @@ model InjuryPrediction {
   previousInjuries      Int?            // Count of past injuries
   ageInYears            Int?
   bmi                   Float?
-  sprackAcceleration    Float?          // Recent acceleration in sprints
+  sprintAcceleration    Float?          // Recent acceleration in sprints
   
   // Vulnerability Factors
   vulnerabilityFactors  Json?           // { factor: { score, weight } }
@@ -2442,7 +2437,7 @@ model FormationOptimization {
   opponentStrengths     String[]
   opponentWeaknesses    String[]
   teamAvailablePlayers  String[]
-  banedOrInjuredPlayers String[]
+  bannedOrInjuredPlayers String[]
   
   // Recommended Formation
   recommendedFormation  String    @default("4-3-3")
@@ -2520,7 +2515,7 @@ model PlayerPotential {
   // Career Projection
   projectedCareerValue  Json?     // { year: estimatedValue }
   retirementAgeEstimate Int?      // Estimated career end
-  internationalization Probability Float? // Chance of national team
+  internationalChance   Float?    // Chance of playing for national team
   transferMarketValue   Float?    // Current estimated market value
   
   // Training Recommendations
