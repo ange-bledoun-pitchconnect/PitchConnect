@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-authreact';
+import { useSession, signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
