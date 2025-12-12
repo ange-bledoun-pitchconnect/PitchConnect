@@ -1,39 +1,70 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="17" failures="0" errors="0" time="1.463">
-  <testsuite name="useResponsive Hook" errors="0" failures="0" skipped="0" timestamp="2025-12-12T09:05:03" time="0.693" tests="17">
-    <testcase classname="useResponsive Hook" name="should detect mobile device correctly" time="0.002">
+<testsuites name="jest tests" tests="23" failures="1" errors="0" time="16.584">
+  <testsuite name="/api/players" errors="0" failures="1" skipped="0" timestamp="2025-12-12T17:55:41" time="4.895" tests="23">
+    <testcase classname="/api/players › GET /api/players" name="should return players list" time="0.005">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: &quot;John Doe&quot;
+Received: undefined
+    at Object.toBe (C:\Users\Hazye\PitchConnect V1\tests\integration\api.test.ts:39:32)
+    at Promise.then.completed (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at _runTest (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\run.js:121:9)
+    at _runTestsForDescribeBlock (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\Hazye\PitchConnect V1\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\Hazye\PitchConnect V1\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\Hazye\PitchConnect V1\node_modules\jest-runner\build\runTest.js:444:34)</failure>
     </testcase>
-    <testcase classname="useResponsive Hook" name="should return correct breakpoint state" time="0">
+    <testcase classname="/api/players › GET /api/players" name="should handle pagination parameters" time="0.003">
     </testcase>
-    <testcase classname="useResponsive Hook" name="should update on viewport resize" time="0.001">
+    <testcase classname="/api/players › GET /api/players" name="should filter by club ID" time="0.001">
     </testcase>
-    <testcase classname="useResponsive Hook" name="should handle touch device detection" time="0.001">
+    <testcase classname="/api/players › GET /api/players" name="should search by player name" time="0">
     </testcase>
-    <testcase classname="useExport Hook" name="should export data as PDF" time="0.001">
+    <testcase classname="/api/players › GET /api/players" name="should return 401 without authentication" time="0.001">
     </testcase>
-    <testcase classname="useExport Hook" name="should export data as CSV" time="0">
+    <testcase classname="/api/players › POST /api/players" name="should create new player" time="0.001">
     </testcase>
-    <testcase classname="useExport Hook" name="should handle export errors" time="0">
+    <testcase classname="/api/players › POST /api/players" name="should validate required fields" time="0.001">
     </testcase>
-    <testcase classname="useExport Hook" name="should track loading state during export" time="0.001">
+    <testcase classname="/api/players › POST /api/players" name="should handle duplicate player creation" time="0.001">
     </testcase>
-    <testcase classname="useExport Hook" name="should validate email before sending" time="0">
+    <testcase classname="/api/players › PUT /api/players/:id" name="should update player data" time="0.001">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should return performance metrics" time="0">
+    <testcase classname="/api/players › PUT /api/players/:id" name="should return 404 for non-existent player" time="0.001">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should calculate performance score correctly" time="0.001">
+    <testcase classname="/api/players › DELETE /api/players/:id" name="should delete player" time="0.001">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should track Core Web Vitals" time="0.001">
+    <testcase classname="/api/players › DELETE /api/players/:id" name="should return 404 for non-existent player" time="0">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should provide rating based on score" time="0">
+    <testcase classname="/api/export › POST /api/export/pdf" name="should generate PDF export" time="0.001">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should handle metric collection errors gracefully" time="0">
+    <testcase classname="/api/export › POST /api/export/pdf" name="should handle large datasets" time="0">
     </testcase>
-    <testcase classname="Utility Functions › formatNumber" name="should format numbers correctly" time="0.07">
+    <testcase classname="/api/export › POST /api/export/csv" name="should generate CSV export" time="0">
     </testcase>
-    <testcase classname="Utility Functions › isValidEmail" name="should validate email format" time="0.001">
+    <testcase classname="/api/export › POST /api/export/csv" name="should handle encoding correctly" time="0">
     </testcase>
-    <testcase classname="Utility Functions › formatDate" name="should handle date operations" time="0.01">
+    <testcase classname="/api/export › POST /api/export/email" name="should send email export" time="0">
+    </testcase>
+    <testcase classname="/api/export › POST /api/export/email" name="should validate email address" time="0">
+    </testcase>
+    <testcase classname="Authentication" name="should require valid token" time="0">
+    </testcase>
+    <testcase classname="Authentication" name="should reject expired tokens" time="0">
+    </testcase>
+    <testcase classname="Error Handling" name="should handle 400 bad request" time="0">
+    </testcase>
+    <testcase classname="Error Handling" name="should handle 500 server error" time="0">
+    </testcase>
+    <testcase classname="Error Handling" name="should handle rate limiting" time="0">
     </testcase>
   </testsuite>
 </testsuites>
