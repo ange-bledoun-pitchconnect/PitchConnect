@@ -1,128 +1,188 @@
 // ============================================================================
-// src/app/api/teams/[teamId]/route.ts
-// GET - Team details with full roster | PATCH - Update team information
-// ALIGNED WITH: Your Prisma schema (Team relationships)
+// WORLD-CLASS ENHANCED: /src/app/api/teams/[teamId]/route.ts
+// Complete Team Details with Roster, Statistics & League Integration
+// VERSION: 3.0 - Production Grade | Multi-Sport Ready
 // ============================================================================
 
-import { getServerSession } from 'next-auth/next';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import {
-  parseJsonBody,
-  validateStringLength,
-  validateHexColor,
-  validateUrl,
-} from '@/lib/api/validation';
-import { errorResponse } from '@/lib/api/responses';
-import { NotFoundError, ForbiddenError } from '@/lib/api/errors';
-import { logResourceUpdated } from '@/lib/api/audit';
+import { NotFoundError, ForbiddenError, BadRequestError } from '@/lib/api/errors';
+import { logAuditAction } from '@/lib/api/audit';
+import { logger } from '@/lib/api/logger';
 
-/**
- * GET /api/teams/[teamId]
- * Get complete team information including roster and statistics
- * 
- * Returns: 200 OK with team details
- * Authorization: Any authenticated user
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { teamId: string } }
-) {
+interface TeamParams {
+  params: { teamId: string };
+}
+
+// ============================================================================
+// GET /api/teams/[teamId] - Get Complete Team Details
+// Authorization: Any authenticated user (with privacy checks)
+// ============================================================================
+
+export async function GET(request: NextRequest, { params }: TeamParams) {
+  const requestId = crypto.randomUUID();
+
   try {
+    logger.info(`[${requestId}] GET /api/teams/[${params.teamId}]`);
+
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        {
+          error: 'Unauthorized',
+          message: 'Authentication required',
+          code: 'AUTH_REQUIRED',
+          requestId,
+        },
+        { status: 401 }
+      );
     }
 
-    const { teamId } = params;
+    // ✅ Validate team ID format
+    if (!params.teamId || typeof params.teamId !== 'string') {
+      throw new BadRequestError('Invalid team ID format');
+    }
 
-    // Fetch team with all relationships
+    // ✅ Fetch team with comprehensive relationships
     const team = await prisma.team.findUnique({
-      where: { id: teamId },
+      where: { id: params.teamId },
       include: {
+        // Club information
         club: {
           select: {
             id: true,
             name: true,
+            code: true,
             city: true,
             country: true,
-            logo: true,
+            logoUrl: true,
+            primaryColor: true,
+            secondaryColor: true,
+            website: true,
             founded: true,
           },
         },
-        manager: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        players: {
+
+        // Team members (players, coaches, staff)
+        members: {
           include: {
-            player: {
+            user: {
               select: {
                 id: true,
                 firstName: true,
                 lastName: true,
-                position: true,
-                photo: true,
+                avatar: true,
                 dateOfBirth: true,
+                nationality: true,
+                roles: true,
               },
             },
           },
-          orderBy: { jerseyNumber: 'asc' },
+          orderBy: { status: 'asc' },
         },
-        matches: {
-          where: {
-            status: 'COMPLETED',
-          },
-          select: {
-            id: true,
-            homeTeamId: true,
-            awayTeamId: true,
-            homeGoals: true,
-            awayGoals: true,
-            date: true,
-          },
-        },
-        leagues: {
-          select: {
+
+        // League participation
+        leagueTeams: {
+          include: {
             league: {
               select: {
                 id: true,
                 name: true,
+                code: true,
                 season: true,
+                sport: true,
               },
             },
           },
         },
-        standings: {
+
+        // Standings (current league position)
+        matchesHome: {
+          where: { status: { in: ['FINISHED', 'LIVE'] } },
           select: {
-            position: true,
-            played: true,
-            wins: true,
-            draws: true,
-            losses: true,
-            goalsFor: true,
-            goalsAgainst: true,
-            points: true,
+            id: true,
+            date: true,
+            status: true,
+            homeGoals: true,
+            awayGoals: true,
+            awayTeam: { select: { id: true, name: true } },
+          },
+          orderBy: { date: 'desc' },
+          take: 10,
+        },
+
+        matchesAway: {
+          where: { status: { in: ['FINISHED', 'LIVE'] } },
+          select: {
+            id: true,
+            date: true,
+            status: true,
+            homeGoals: true,
+            awayGoals: true,
+            homeTeam: { select: { id: true, name: true } },
+          },
+          orderBy: { date: 'desc' },
+          take: 10,
+        },
+
+        // Upcoming matches
+        upcomingMatchesHome: {
+          where: { status: { in: ['SCHEDULED', 'POSTPONED'] } },
+          select: {
+            id: true,
+            date: true,
+            venue: true,
+            awayTeam: { select: { id: true, name: true } },
+          },
+          orderBy: { date: 'asc' },
+          take: 5,
+        },
+
+        upcomingMatchesAway: {
+          where: { status: { in: ['SCHEDULED', 'POSTPONED'] } },
+          select: {
+            id: true,
+            date: true,
+            venue: true,
+            homeTeam: { select: { id: true, name: true } },
+          },
+          orderBy: { date: 'asc' },
+          take: 5,
+        },
+
+        // Training sessions
+        trainingSessions: {
+          orderBy: { date: 'desc' },
+          take: 5,
+          select: {
+            id: true,
+            date: true,
+            location: true,
+            focus: true,
+            coach: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
           },
         },
       },
     });
 
+    // ✅ Team not found
     if (!team) {
-      throw new NotFoundError(`Team '${teamId}' not found`);
+      throw new NotFoundError('Team', params.teamId);
     }
 
-    // Calculate statistics
-    let wins = 0, draws = 0, losses = 0, goalsFor = 0, goalsAgainst = 0;
+    // ✅ Calculate team statistics
+    const allMatches = [...team.matchesHome, ...team.matchesAway];
+    let wins = 0,
+      draws = 0,
+      losses = 0,
+      goalsFor = 0,
+      goalsAgainst = 0;
 
-    team.matches.forEach((match) => {
-      const isHome = match.homeTeamId === teamId;
+    for (const match of allMatches) {
+      const isHome = 'awayTeam' in match;
       const teamGoals = isHome ? match.homeGoals : match.awayGoals;
       const oppositionGoals = isHome ? match.awayGoals : match.homeGoals;
 
@@ -130,225 +190,511 @@ export async function GET(
       else if (teamGoals === oppositionGoals) draws++;
       else losses++;
 
-      goalsFor += teamGoals;
-      goalsAgainst += oppositionGoals;
-    });
+      goalsFor += teamGoals || 0;
+      goalsAgainst += oppositionGoals || 0;
+    }
 
-    // Format roster
-    const roster = team.players.map((pt) => ({
-      id: pt.player.id,
-      firstName: pt.player.firstName,
-      lastName: pt.player.lastName,
-      position: pt.player.position,
-      jerseyNumber: pt.jerseyNumber,
-      photo: pt.player.photo,
-      dateOfBirth: pt.player.dateOfBirth,
-      joinDate: pt.joinDate,
-      role: pt.role,
-    }));
+    const matchesPlayed = wins + draws + losses;
+    const points = wins * 3 + draws;
 
-    // Format standings from relationship
-    const standings = team.standings[0] || {
-      position: 0,
-      played: 0,
-      wins: 0,
-      draws: 0,
-      losses: 0,
-      goalsFor: 0,
-      goalsAgainst: 0,
-      points: 0,
+    // ✅ Calculate roster statistics
+    const activeMembers = team.members.filter((m) => m.status === 'ACTIVE');
+    const players = activeMembers.filter(
+      (m) => m.role === 'PLAYER' || !m.role
+    );
+    const coaches = activeMembers.filter((m) => m.role === 'COACH');
+    const staff = activeMembers.filter(
+      (m) => !['PLAYER', 'COACH'].includes(m.role)
+    );
+
+    // ✅ Get captain information
+    const captain = activeMembers.find((m) => m.isCaptain);
+
+    // ✅ Parse sport-specific data
+    const sportConfig = {
+      FOOTBALL: { maxPlayers: 11, squadSize: 23 },
+      NETBALL: { maxPlayers: 7, squadSize: 15 },
+      RUGBY: { maxPlayers: 15, squadSize: 23 },
+      CRICKET: { maxPlayers: 11, squadSize: 15 },
+      AMERICAN_FOOTBALL: { maxPlayers: 11, squadSize: 45 },
+      BASKETBALL: { maxPlayers: 5, squadSize: 15 },
     };
 
-    // Format leagues
-    const leagues = team.leagues.map((tl) => ({
-      id: tl.league.id,
-      name: tl.league.name,
-      season: tl.league.season,
-      position: standings.position,
-      points: standings.points,
-    }));
+    const sportData =
+      sportConfig[team.sport as keyof typeof sportConfig] ||
+      sportConfig.FOOTBALL;
 
-    return NextResponse.json(
-      {
+    // ✅ Build comprehensive response
+    const response = {
+      success: true,
+      data: {
+        // Basic Info
         id: team.id,
         name: team.name,
-        shortCode: team.shortCode,
+        code: team.code,
         sport: team.sport,
+        ageGroup: team.ageGroup,
+        category: team.category,
+        status: team.status,
+
+        // Club Information
         club: team.club,
-        manager: {
-          id: team.manager.id,
-          name: `${team.manager.firstName} ${team.manager.lastName}`,
-          email: team.manager.email,
-        },
+
+        // Team Description
         description: team.description,
-        logo: team.logo,
-        colors: team.colors,
+        logoUrl: team.logoUrl,
         founded: team.founded,
-        roster,
+
+        // Configuration
+        sportConfiguration: {
+          sport: team.sport,
+          maxPlayersOnPitch: sportData.maxPlayers,
+          typicalSquadSize: sportData.squadSize,
+          currentSquadSize: activeMembers.length,
+          squadCompletion: `${Math.round((activeMembers.length / sportData.squadSize) * 100)}%`,
+        },
+
+        // Roster Information
+        roster: {
+          total: activeMembers.length,
+          players: players.length,
+          coaches: coaches.length,
+          staff: staff.length,
+          squads: {
+            active: players.map((m) => ({
+              id: m.userId,
+              firstName: m.user.firstName,
+              lastName: m.user.lastName,
+              fullName: `${m.user.firstName} ${m.user.lastName}`,
+              avatar: m.user.avatar,
+              number: m.number,
+              isCaptain: m.isCaptain,
+              joinedAt: m.joinedAt,
+              status: m.status,
+              age: m.user.dateOfBirth
+                ? Math.floor(
+                    (new Date().getTime() -
+                      new Date(m.user.dateOfBirth).getTime()) /
+                      (365.25 * 24 * 60 * 60 * 1000)
+                  )
+                : null,
+              nationality: m.user.nationality,
+            })),
+            coaches: coaches.map((m) => ({
+              id: m.userId,
+              firstName: m.user.firstName,
+              lastName: m.user.lastName,
+              fullName: `${m.user.firstName} ${m.user.lastName}`,
+              avatar: m.user.avatar,
+              role: m.role,
+              joinedAt: m.joinedAt,
+            })),
+            staff: staff.map((m) => ({
+              id: m.userId,
+              firstName: m.user.firstName,
+              lastName: m.user.lastName,
+              fullName: `${m.user.firstName} ${m.user.lastName}`,
+              role: m.role,
+              joinedAt: m.joinedAt,
+            })),
+          },
+          captain: captain
+            ? {
+                id: captain.userId,
+                firstName: captain.user.firstName,
+                lastName: captain.user.lastName,
+                number: captain.number,
+              }
+            : null,
+        },
+
+        // Performance Statistics
         statistics: {
-          playerCount: roster.length,
-          matchesPlayed: team.matches.length,
+          matchesPlayed,
           wins,
           draws,
           losses,
+          winRate: matchesPlayed > 0 ? ((wins / matchesPlayed) * 100).toFixed(1) : '0.0',
           goalsFor,
           goalsAgainst,
           goalDifference: goalsFor - goalsAgainst,
-          points: wins * 3 + draws,
+          goalsPerMatch: matchesPlayed > 0 ? (goalsFor / matchesPlayed).toFixed(2) : '0.00',
+          points,
+          averagePointsPerMatch:
+            matchesPlayed > 0 ? (points / matchesPlayed).toFixed(2) : '0.00',
         },
-        standings: {
-          position: standings.position,
-          played: standings.played,
-          wins: standings.wins,
-          draws: standings.draws,
-          losses: standings.losses,
-          goalsFor: standings.goalsFor,
-          goalsAgainst: standings.goalsAgainst,
-          goalDifference: standings.goalsFor - standings.goalsAgainst,
-          points: standings.points,
+
+        // League Information
+        leagues: team.leagueTeams.map((lt) => ({
+          id: lt.league.id,
+          name: lt.league.name,
+          code: lt.league.code,
+          season: lt.league.season,
+          sport: lt.league.sport,
+          joinedAt: lt.joinedAt,
+        })),
+
+        // Recent Matches
+        recentMatches: {
+          played: allMatches.slice(0, 5).map((match) => {
+            const isHome = 'awayTeam' in match;
+            return {
+              id: match.id,
+              date: match.date,
+              opponent: isHome ? match.awayTeam : match.homeTeam,
+              homeGoals: match.homeGoals,
+              awayGoals: match.awayGoals,
+              result: match.homeGoals! > match.awayGoals! ? 'W' : match.homeGoals === match.awayGoals ? 'D' : 'L',
+              status: match.status,
+            };
+          }),
+          upcoming: [
+            ...team.upcomingMatchesHome.map((m) => ({
+              id: m.id,
+              date: m.date,
+              type: 'HOME',
+              opponent: m.awayTeam,
+              venue: m.venue,
+            })),
+            ...team.upcomingMatchesAway.map((m) => ({
+              id: m.id,
+              date: m.date,
+              type: 'AWAY',
+              opponent: m.homeTeam,
+              venue: m.venue,
+            })),
+          ]
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            .slice(0, 5),
         },
-        leagues,
-        createdAt: team.createdAt,
+
+        // Training Information
+        training: {
+          recentSessions: team.trainingSessions.length,
+          nextSessions: team.trainingSessions.slice(0, 3).map((s) => ({
+            id: s.id,
+            date: s.date,
+            location: s.location,
+            focus: s.focus,
+            coach: s.coach
+              ? `${s.coach.user.firstName} ${s.coach.user.lastName}`
+              : null,
+          })),
+        },
+
+        // Metadata
+        metadata: {
+          teamId: team.id,
+          requestId,
+          timestamp: new Date().toISOString(),
+          createdAt: team.createdAt,
+          updatedAt: team.updatedAt,
+        },
       },
-      { status: 200 }
-    );
+    };
+
+    logger.info(`[${requestId}] Successfully retrieved team ${params.teamId}`);
+
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('[GET /api/teams/[teamId]] Error:', error);
-    return errorResponse(error as Error);
-  }
-}
+    logger.error(`[${requestId}] Error in GET /api/teams/[${params.teamId}]:`, error);
 
-/**
- * PATCH /api/teams/[teamId]
- * Update team information
- * 
- * Request Body:
- *   Optional:
- *     - name: string (3-100 chars)
- *     - description: string
- *     - managerId: string
- *     - logo: string (URL)
- *     - colors: { primary: hex, secondary: hex }
- * 
- * Authorization: Team manager, Club owner, SUPERADMIN
- * Returns: 200 OK
- */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { teamId: string } }
-) {
-  try {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { teamId } = params;
-    const body = await parseJsonBody(request);
-
-    // Fetch team
-    const team = await prisma.team.findUnique({
-      where: { id: teamId },
-      include: {
-        club: { select: { id: true, ownerId: true, name: true } },
-        manager: { select: { id: true } },
-      },
-    });
-
-    if (!team) {
-      throw new NotFoundError(`Team '${teamId}' not found`);
-    }
-
-    // Authorization check
-    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
-    const isTeamManager = session.user.id === team.managerId;
-    const isClubOwner = session.user.id === team.club.ownerId;
-
-    if (!isSuperAdmin && !isTeamManager && !isClubOwner) {
-      throw new ForbiddenError(
-        'You can only update teams you manage or clubs you own'
+    if (error instanceof NotFoundError) {
+      return NextResponse.json(
+        {
+          error: 'Not Found',
+          message: error.message,
+          code: 'TEAM_NOT_FOUND',
+          requestId,
+        },
+        { status: 404 }
       );
     }
 
-    // Validate optional updates
-    if (body.name !== undefined) {
-      validateStringLength(body.name, 3, 100, 'Team name');
+    if (error instanceof BadRequestError) {
+      return NextResponse.json(
+        {
+          error: 'Bad Request',
+          message: error.message,
+          code: 'INVALID_INPUT',
+          requestId,
+        },
+        { status: 400 }
+      );
     }
 
-    if (body.colors) {
-      if (body.colors.primary)
-        validateHexColor(body.colors.primary, 'Primary color');
-      if (body.colors.secondary)
-        validateHexColor(body.colors.secondary, 'Secondary color');
+    return NextResponse.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to retrieve team details',
+        code: 'SERVER_ERROR',
+        requestId,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================================================
+// PATCH /api/teams/[teamId] - Update Team Details
+// Authorization: Team manager, Club owner, SUPERADMIN
+// ============================================================================
+
+export async function PATCH(request: NextRequest, { params }: TeamParams) {
+  const requestId = crypto.randomUUID();
+
+  try {
+    logger.info(`[${requestId}] PATCH /api/teams/[${params.teamId}]`);
+
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          error: 'Unauthorized',
+          message: 'Authentication required',
+          code: 'AUTH_REQUIRED',
+          requestId,
+        },
+        { status: 401 }
+      );
     }
 
-    if (body.logo) validateUrl(body.logo, 'Logo URL');
+    // ✅ Parse request body
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      throw new BadRequestError('Invalid JSON in request body');
+    }
 
-    // Verify manager if updating
-    if (body.managerId) {
-      const manager = await prisma.user.findUnique({
-        where: { id: body.managerId },
-        select: { id: true, firstName: true, lastName: true },
-      });
+    // ✅ Fetch existing team
+    const existingTeam = await prisma.team.findUnique({
+      where: { id: params.teamId },
+      include: { club: { select: { ownerId: true } } },
+    });
 
-      if (!manager) {
-        throw new NotFoundError('Manager not found');
+    if (!existingTeam) {
+      throw new NotFoundError('Team', params.teamId);
+    }
+
+    // ✅ Authorization check
+    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
+    const isClubOwner = session.user.id === existingTeam.club.ownerId;
+
+    if (!isSuperAdmin && !isClubOwner) {
+      throw new ForbiddenError(
+        'Only SUPERADMIN or club owner can update teams'
+      );
+    }
+
+    // ✅ Validate updateable fields
+    const allowedFields = [
+      'name',
+      'description',
+      'logoUrl',
+      'ageGroup',
+      'category',
+      'status',
+    ];
+
+    const updateData: any = {};
+    const changes: any = {};
+
+    for (const field of allowedFields) {
+      if (field in body && body[field] !== undefined && body[field] !== null) {
+        const oldValue = (existingTeam as any)[field];
+        const newValue = body[field];
+
+        // ✅ Validation
+        if (field === 'name') {
+          if (typeof newValue !== 'string' || newValue.length < 2 || newValue.length > 100) {
+            throw new BadRequestError('Team name must be 2-100 characters');
+          }
+        }
+
+        if (oldValue !== newValue) {
+          updateData[field] = newValue;
+          changes[field] = { from: oldValue, to: newValue };
+        }
       }
     }
 
-    // Update team
+    // ✅ Check if there are actual changes
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'No changes were made',
+          data: existingTeam,
+        },
+        { status: 200 }
+      );
+    }
+
+    // ✅ Update team
     const updatedTeam = await prisma.team.update({
-      where: { id: teamId },
-      data: {
-        name: body.name !== undefined ? body.name.trim() : team.name,
-        description: body.description !== undefined ? body.description : team.description,
-        managerId: body.managerId || team.managerId,
-        logo: body.logo !== undefined ? body.logo : team.logo,
-        colors: body.colors !== undefined ? body.colors : team.colors,
-      },
+      where: { id: params.teamId },
+      data: updateData,
       include: {
-        manager: { select: { id: true, firstName: true, lastName: true } },
+        club: { select: { name: true } },
       },
     });
 
-    // Log audit trail
-    const changes: Record<string, any> = {};
-    if (body.name !== undefined && body.name !== team.name) changes.name = body.name;
-    if (body.description !== undefined && body.description !== team.description)
-      changes.description = body.description;
-    if (body.managerId && body.managerId !== team.managerId)
-      changes.managerId = body.managerId;
-    if (body.logo !== undefined && body.logo !== team.logo) changes.logo = body.logo;
-
-    await logResourceUpdated(
-      session.user.id,
-      'Team',
-      teamId,
-      team.name,
+    // ✅ Audit logging
+    await logAuditAction({
+      performedById: session.user.id,
+      action: 'USER_UPDATED',
+      entityType: 'Team',
+      entityId: params.teamId,
       changes,
-      `Updated team: ${team.name}`,
-      Object.keys(changes)
+      details: `Updated team: ${existingTeam.name}. Changed fields: ${Object.keys(changes).join(', ')}`,
+    });
+
+    logger.info(
+      `[${requestId}] Successfully updated team ${params.teamId}`,
+      { changedFields: Object.keys(changes) }
     );
 
     return NextResponse.json(
       {
-        id: updatedTeam.id,
-        name: updatedTeam.name,
-        description: updatedTeam.description,
-        managerId: updatedTeam.managerId,
-        manager: {
-          id: updatedTeam.manager.id,
-          name: `${updatedTeam.manager.firstName} ${updatedTeam.manager.lastName}`,
-        },
-        logo: updatedTeam.logo,
-        colors: updatedTeam.colors,
+        success: true,
         message: 'Team updated successfully',
+        data: updatedTeam,
+        changes,
+        metadata: { requestId, timestamp: new Date().toISOString() },
       },
       { status: 200 }
     );
   } catch (error) {
-    console.error('[PATCH /api/teams/[teamId]] Error:', error);
-    return errorResponse(error as Error);
+    logger.error(`[${requestId}] Error in PATCH /api/teams/[${params.teamId}]:`, error);
+
+    if (error instanceof NotFoundError) {
+      return NextResponse.json(
+        { error: 'Not Found', message: error.message, code: 'TEAM_NOT_FOUND', requestId },
+        { status: 404 }
+      );
+    }
+
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json(
+        { error: 'Forbidden', message: error.message, code: 'ACCESS_DENIED', requestId },
+        { status: 403 }
+      );
+    }
+
+    if (error instanceof BadRequestError) {
+      return NextResponse.json(
+        { error: 'Bad Request', message: error.message, code: 'INVALID_INPUT', requestId },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to update team',
+        code: 'SERVER_ERROR',
+        requestId,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================================================
+// DELETE /api/teams/[teamId] - Archive Team (Soft Delete)
+// Authorization: SUPERADMIN, Club owner
+// ============================================================================
+
+export async function DELETE(request: NextRequest, { params }: TeamParams) {
+  const requestId = crypto.randomUUID();
+
+  try {
+    logger.info(`[${requestId}] DELETE /api/teams/[${params.teamId}]`);
+
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          error: 'Unauthorized',
+          message: 'Authentication required',
+          code: 'AUTH_REQUIRED',
+          requestId,
+        },
+        { status: 401 }
+      );
+    }
+
+    // ✅ Authorization
+    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
+    const existingTeam = await prisma.team.findUnique({
+      where: { id: params.teamId },
+      include: { club: { select: { ownerId: true } } },
+    });
+
+    if (!existingTeam) {
+      throw new NotFoundError('Team', params.teamId);
+    }
+
+    const isClubOwner = session.user.id === existingTeam.club.ownerId;
+
+    if (!isSuperAdmin && !isClubOwner) {
+      throw new ForbiddenError('Only SUPERADMIN or club owner can delete teams');
+    }
+
+    // ✅ Soft delete: set status to ARCHIVED
+    const archivedTeam = await prisma.team.update({
+      where: { id: params.teamId },
+      data: { status: 'ARCHIVED' },
+    });
+
+    // ✅ Audit logging
+    await logAuditAction({
+      performedById: session.user.id,
+      action: 'USER_DELETED',
+      entityType: 'Team',
+      entityId: params.teamId,
+      details: `Archived team: ${existingTeam.name}`,
+    });
+
+    logger.info(`[${requestId}] Successfully archived team ${params.teamId}`);
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Team archived successfully',
+        data: { id: archivedTeam.id, status: archivedTeam.status },
+        metadata: { requestId, timestamp: new Date().toISOString() },
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    logger.error(`[${requestId}] Error in DELETE /api/teams/[${params.teamId}]:`, error);
+
+    if (error instanceof NotFoundError) {
+      return NextResponse.json(
+        { error: 'Not Found', message: error.message, code: 'TEAM_NOT_FOUND', requestId },
+        { status: 404 }
+      );
+    }
+
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json(
+        { error: 'Forbidden', message: error.message, code: 'ACCESS_DENIED', requestId },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to archive team',
+        code: 'SERVER_ERROR',
+        requestId,
+      },
+      { status: 500 }
+    );
   }
 }

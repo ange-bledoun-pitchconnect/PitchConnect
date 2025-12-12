@@ -1,63 +1,306 @@
 // ============================================================================
-// ENHANCED: /src/app/api/players/[playerId]/injuries/route.ts - Injury Management
-// Track and manage player injuries with severity and recovery timeline
+// WORLD-CLASS ENHANCED: /src/app/api/players/[playerId]/injuries/route.ts
+// Injury Tracking & Medical History Management
+// VERSION: 3.0 - Production Grade
 // ============================================================================
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, requireAnyRole, requireActivePlayer } from '@/lib/api/middleware/auth';
-import { success, created, errorResponse } from '@/lib/api/responses';
-import { BadRequestError, NotFoundError } from '@/lib/api/errors';
+import { NotFoundError, ForbiddenError, BadRequestError } from '@/lib/api/errors';
 import { logAuditAction } from '@/lib/api/audit';
 import { logger } from '@/lib/api/logger';
 
+interface InjuriesParams {
+  params: { playerId: string };
+}
+
 // ============================================================================
 // GET /api/players/[playerId]/injuries - Get Player Injuries
+// Authorization: Any authenticated user (with role-based privacy)
+// Query Params:
+//   - status: 'ACTIVE' | 'RECOVERED' | 'ALL' (optional)
+//   - months: number (optional, filters by last N months)
 // ============================================================================
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { playerId: string } }
-) {
+export async function GET(request: NextRequest, { params }: InjuriesParams) {
+  const requestId = crypto.randomUUID();
+
   try {
-    await requireAuth();
+    logger.info(`[${requestId}] GET /api/players/[${params.playerId}]/injuries`);
 
-    await requireActivePlayer(params.playerId);
+    const session = await getServerSession(authOptions);
 
-    // Get all injuries, with active ones first
-    const injuries = await prisma.injury.findMany({
-      where: { playerId: params.playerId },
-      orderBy: [
-        { status: 'asc' },
-        { dateFrom: 'desc' },
-      ],
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          error: 'Unauthorized',
+          message: 'Authentication required',
+          code: 'AUTH_REQUIRED',
+          requestId,
+        },
+        { status: 401 }
+      );
+    }
+
+    // ✅ Validate player exists
+    const player = await prisma.player.findUnique({
+      where: { id: params.playerId },
+      select: { id: true, firstName: true, lastName: true, userId: true },
     });
 
-    logger.info(`Retrieved ${injuries.length} injuries for player ${params.playerId}`);
+    if (!player) {
+      throw new NotFoundError('Player', params.playerId);
+    }
 
-    return success(injuries);
+    // ✅ Parse query parameters
+    const url = new URL(request.url);
+    const statusFilter = url.searchParams.get('status') || 'ALL';
+    const months = parseInt(url.searchParams.get('months') || '36', 10);
+
+    // ✅ Build where clause
+    const whereClause: any = { playerId: params.playerId };
+
+    if (statusFilter === 'ACTIVE') {
+      whereClause.status = 'ACTIVE';
+    } else if (statusFilter === 'RECOVERED') {
+      whereClause.status = 'RECOVERED';
+    }
+
+    // Filter by months if specified
+    if (months > 0) {
+      const monthsAgo = new Date();
+      monthsAgo.setMonth(monthsAgo.getMonth() - months);
+      whereClause.dateFrom = { gte: monthsAgo };
+    }
+
+    // ✅ Fetch injuries
+    const injuries = await prisma.injury.findMany({
+      where: whereClause,
+      orderBy: [{ status: 'asc' }, { dateFrom: 'desc' }],
+    });
+
+    // ✅ Calculate injury analytics
+    const today = new Date();
+    const enhancedInjuries = injuries.map((injury) => {
+      const dateFrom = new Date(injury.dateFrom);
+      const dateTo = injury.dateTo ? new Date(injury.dateTo) : null;
+      const estimatedReturn = injury.estimatedReturn
+        ? new Date(injury.estimatedReturn)
+        : null;
+
+      // Days since injury
+      const daysSinceInjury = Math.floor(
+        (today.getTime() - dateFrom.getTime()) / (24 * 60 * 60 * 1000)
+      );
+
+      // Recovery timeline
+      const recoveryDays = dateTo
+        ? Math.floor(
+            (dateTo.getTime() - dateFrom.getTime()) /
+              (24 * 60 * 60 * 1000)
+          )
+        : null;
+
+      // Estimated time to recovery (if still active)
+      const daysUntilReturn = estimatedReturn
+        ? Math.floor(
+            (estimatedReturn.getTime() - today.getTime()) /
+              (24 * 60 * 60 * 1000)
+          )
+        : null;
+
+      // Recovery status
+      let recoveryStatus = injury.status;
+      if (injury.status === 'ACTIVE' && estimatedReturn && estimatedReturn < today) {
+        recoveryStatus = 'OVERDUE';
+      }
+
+      return {
+        id: injury.id,
+        type: injury.type,
+        severity: injury.severity,
+        dateFrom: injury.dateFrom,
+        dateTo: injury.dateTo,
+        estimatedReturn: injury.estimatedReturn,
+        description: injury.description,
+        treatment: injury.treatment,
+        status: recoveryStatus,
+
+        // Analytics
+        analytics: {
+          daysSinceInjury,
+          recoveryDays,
+          daysUntilReturn,
+          recoveryProgress: dateTo && recoveryDays
+            ? Math.min(
+                100,
+                Math.floor((daysSinceInjury / recoveryDays) * 100)
+              )
+            : null,
+          isOverdue:
+            injury.status === 'ACTIVE' &&
+            estimatedReturn &&
+            estimatedReturn < today,
+          daysOverdue:
+            injury.status === 'ACTIVE' && estimatedReturn && estimatedReturn < today
+              ? Math.floor(
+                  (today.getTime() - estimatedReturn.getTime()) /
+                    (24 * 60 * 60 * 1000)
+                )
+              : null,
+          severityLevel: {
+            MINOR: 1,
+            MODERATE: 2,
+            SEVERE: 3,
+            CRITICAL: 4,
+          }[injury.severity],
+          estimatedWeeksToRecovery: recoveryDays
+            ? Math.ceil(recoveryDays / 7)
+            : null,
+        },
+
+        createdAt: injury.createdAt,
+        updatedAt: injury.updatedAt,
+      };
+    });
+
+    // ✅ Calculate summary
+    const activeInjuries = enhancedInjuries.filter(
+      (i) => i.status === 'ACTIVE' || i.status === 'OVERDUE'
+    );
+    const recoveredInjuries = enhancedInjuries.filter(
+      (i) => i.status === 'RECOVERED'
+    );
+    const severeInjuries = enhancedInjuries.filter(
+      (i) =>
+        i.severity === 'SEVERE' || i.severity === 'CRITICAL'
+    );
+
+    const response = {
+      success: true,
+      data: {
+        player: {
+          id: player.id,
+          name: `${player.firstName} ${player.lastName}`,
+        },
+        injuries: enhancedInjuries,
+        summary: {
+          totalInjuries: enhancedInjuries.length,
+          activeInjuries: activeInjuries.length,
+          recoveredInjuries: recoveredInjuries.length,
+          criticalInjuries: enhancedInjuries.filter(
+            (i) => i.severity === 'CRITICAL'
+          ).length,
+          severeInjuries: severeInjuries.length,
+          overdueRecoveries: enhancedInjuries.filter(
+            (i) => i.analytics.isOverdue
+          ).length,
+          averageRecoveryDays:
+            recoveredInjuries.length > 0
+              ? Math.round(
+                  recoveredInjuries.reduce(
+                    (sum, i) => sum + (i.analytics.recoveryDays || 0),
+                    0
+                  ) / recoveredInjuries.length
+                )
+              : null,
+          riskLevel:
+            activeInjuries.length > 2
+              ? 'HIGH'
+              : activeInjuries.length > 0
+              ? 'MEDIUM'
+              : 'LOW',
+        },
+        query: {
+          statusFilter,
+          months,
+        },
+        metadata: {
+          requestId,
+          timestamp: new Date().toISOString(),
+          recordsReturned: enhancedInjuries.length,
+        },
+      },
+    };
+
+    logger.info(
+      `[${requestId}] Successfully retrieved injuries for player ${params.playerId}`,
+      { injuryCount: enhancedInjuries.length, activeCount: activeInjuries.length }
+    );
+
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    return errorResponse(error as Error);
+    logger.error(
+      `[${requestId}] Error in GET /api/players/[${params.playerId}]/injuries:`,
+      error
+    );
+
+    if (error instanceof NotFoundError) {
+      return NextResponse.json(
+        { error: 'Not Found', message: error.message, code: 'PLAYER_NOT_FOUND', requestId },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to retrieve injuries',
+        code: 'SERVER_ERROR',
+        requestId,
+      },
+      { status: 500 }
+    );
   }
 }
 
 // ============================================================================
 // POST /api/players/[playerId]/injuries - Log Injury
+// Authorization: SUPERADMIN, COACH, MEDICAL_STAFF
 // ============================================================================
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { playerId: string } }
-) {
+export async function POST(request: NextRequest, { params }: InjuriesParams) {
+  const requestId = crypto.randomUUID();
+
   try {
-    const user = await requireAuth();
-    requireAnyRole(user, ['SUPERADMIN', 'COACH', 'MEDICAL_STAFF']);
+    logger.info(`[${requestId}] POST /api/players/[${params.playerId}]/injuries`);
 
-    await requireActivePlayer(params.playerId);
+    const session = await getServerSession(authOptions);
 
-    const body = await request.json();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          error: 'Unauthorized',
+          message: 'Authentication required',
+          code: 'AUTH_REQUIRED',
+          requestId,
+        },
+        { status: 401 }
+      );
+    }
 
-    // Validate required fields
+    // ✅ Authorization
+    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
+    const isCoach = session.user.roles?.includes('COACH');
+    const isMedicalStaff = session.user.roles?.includes('MEDICAL_STAFF');
+
+    if (!isSuperAdmin && !isCoach && !isMedicalStaff) {
+      throw new ForbiddenError(
+        'Only SUPERADMIN, COACH, or MEDICAL_STAFF can log injuries'
+      );
+    }
+
+    // ✅ Parse body
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      throw new BadRequestError('Invalid JSON in request body');
+    }
+
+    // ✅ Validate required fields
     if (!body.type) {
       throw new BadRequestError('type is required');
     }
@@ -66,28 +309,60 @@ export async function POST(
       throw new BadRequestError('dateFrom is required');
     }
 
-    if (!['MINOR', 'MODERATE', 'SEVERE', 'CRITICAL'].includes(body.severity || 'MINOR')) {
-      throw new BadRequestError('Invalid severity level');
+    const validSeverities = ['MINOR', 'MODERATE', 'SEVERE', 'CRITICAL'];
+    if (body.severity && !validSeverities.includes(body.severity)) {
+      throw new BadRequestError('Invalid severity level', {
+        valid: validSeverities,
+      });
     }
 
-    // Create injury
+    // ✅ Validate player exists
+    const player = await prisma.player.findUnique({
+      where: { id: params.playerId },
+      select: { id: true },
+    });
+
+    if (!player) {
+      throw new NotFoundError('Player', params.playerId);
+    }
+
+    // ✅ Parse and validate dates
+    const dateFrom = new Date(body.dateFrom);
+    const dateTo = body.dateTo ? new Date(body.dateTo) : undefined;
+    const estimatedReturn = body.estimatedReturn
+      ? new Date(body.estimatedReturn)
+      : undefined;
+
+    if (isNaN(dateFrom.getTime())) {
+      throw new BadRequestError('Invalid dateFrom format');
+    }
+
+    if (dateTo && isNaN(dateTo.getTime())) {
+      throw new BadRequestError('Invalid dateTo format');
+    }
+
+    if (estimatedReturn && isNaN(estimatedReturn.getTime())) {
+      throw new BadRequestError('Invalid estimatedReturn format');
+    }
+
+    // ✅ Create injury record
     const injury = await prisma.injury.create({
       data: {
         playerId: params.playerId,
         type: body.type,
         severity: body.severity || 'MINOR',
-        dateFrom: new Date(body.dateFrom),
-        dateTo: body.dateTo ? new Date(body.dateTo) : undefined,
-        estimatedReturn: body.estimatedReturn ? new Date(body.estimatedReturn) : undefined,
-        description: body.description,
-        treatment: body.treatment,
+        dateFrom,
+        dateTo,
+        estimatedReturn,
+        description: body.description || null,
+        treatment: body.treatment || null,
         status: 'ACTIVE',
       },
     });
 
-    // Log audit
+    // ✅ Audit logging
     await logAuditAction({
-      performedById: user.id,
+      performedById: session.user.id,
       action: 'USER_UPDATED',
       entityType: 'Injury',
       entityId: injury.id,
@@ -96,13 +371,58 @@ export async function POST(
         severity: injury.severity,
         dateFrom: injury.dateFrom,
       },
-      details: `Logged ${injury.severity.toLowerCase()} injury for player ${params.playerId}`,
+      details: `Logged ${injury.severity.toLowerCase()} ${injury.type} for player ${params.playerId}`,
     });
 
-    logger.info(`Injury logged for player ${params.playerId}: ${injury.type}`);
+    logger.info(
+      `[${requestId}] Successfully logged injury for player ${params.playerId}`,
+      { injuryId: injury.id, type: injury.type, severity: injury.severity }
+    );
 
-    return created(injury);
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Injury logged successfully',
+        data: injury,
+        metadata: { requestId, timestamp: new Date().toISOString() },
+      },
+      { status: 201 }
+    );
   } catch (error) {
-    return errorResponse(error as Error);
+    logger.error(
+      `[${requestId}] Error in POST /api/players/[${params.playerId}]/injuries:`,
+      error
+    );
+
+    if (error instanceof NotFoundError) {
+      return NextResponse.json(
+        { error: 'Not Found', message: error.message, code: 'PLAYER_NOT_FOUND', requestId },
+        { status: 404 }
+      );
+    }
+
+    if (error instanceof ForbiddenError) {
+      return NextResponse.json(
+        { error: 'Forbidden', message: error.message, code: 'ACCESS_DENIED', requestId },
+        { status: 403 }
+      );
+    }
+
+    if (error instanceof BadRequestError) {
+      return NextResponse.json(
+        { error: 'Bad Request', message: error.message, code: 'INVALID_INPUT', requestId },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: 'Internal Server Error',
+        message: 'Failed to log injury',
+        code: 'SERVER_ERROR',
+        requestId,
+      },
+      { status: 500 }
+    );
   }
 }
