@@ -1,5 +1,5 @@
-// 🎯 SECTION 6: WEBSOCKET INFRASTRUCTURE - REAL-TIME FEATURES
-// Path: src/lib/websocket/socket-server.ts
+// 🎯 PRODUCTION-GRADE WEBSOCKET SETUP
+// Enhanced with better error handling and monitoring
 
 import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
@@ -7,7 +7,7 @@ import { createClient } from 'redis';
 import { logger } from '@/lib/api/logger';
 
 // ============================================================================
-// TYPES
+// TYPES & INTERFACES
 // ============================================================================
 
 interface SocketUser {
@@ -15,66 +15,77 @@ interface SocketUser {
   username: string;
   role: string;
   joinedAt: Date;
+  isOnline: boolean;
 }
 
 interface MatchRoom {
   matchId: string;
   activeUsers: Map<string, SocketUser>;
-  status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED';
+  status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'PAUSED';
   lastUpdate: Date;
+  lastScore: { home: number; away: number } | null;
 }
 
 interface NotificationPayload {
   id: string;
-  type: string;
+  type: 'MATCH_UPDATE' | 'GOAL' | 'CARD' | 'INJURY' | 'TEAM_MESSAGE' | 'SYSTEM';
   title: string;
   message: string;
   recipientId: string;
   createdAt: string;
   read: boolean;
+  metadata?: Record<string, any>;
 }
 
 // ============================================================================
-// SOCKET SERVER SETUP
+// SOCKET SERVER INITIALIZATION
 // ============================================================================
 
 let io: SocketIOServer | null = null;
 const matchRooms = new Map<string, MatchRoom>();
-const userSockets = new Map<string, Set<string>>(); // userId -> set of socket IDs
+const userSockets = new Map<string, Set<string>>();
+const userPresence = new Map<string, { status: 'online' | 'away' | 'offline'; lastSeen: Date }>();
 
-/**
- * Initialize Socket.IO server with Redis adapter for scalability
- * Call this once on server startup
- */
 export async function initializeSocketServer(httpServer: any): Promise<SocketIOServer> {
   if (io) {
+    logger.info('[WebSocket] Socket server already initialized');
     return io;
   }
 
   try {
-    // Create Redis client for adapter
+    // Initialize Redis clients
     const pubClient = createClient({
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      retryStrategy: (times) => Math.min(times * 50, 500),
     });
 
     const subClient = pubClient.duplicate();
 
-    await Promise.all([pubClient.connect(), subClient.connect()]);
+    // Connect clients
+    await Promise.all([
+      pubClient.connect(),
+      subClient.connect(),
+    ]);
 
-    // Initialize Socket.IO with Redis adapter
+    logger.info('[WebSocket] Redis clients connected');
+
+    // Initialize Socket.IO
     io = new SocketIOServer(httpServer, {
       cors: {
         origin: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
         credentials: true,
+        methods: ['GET', 'POST'],
       },
       adapter: createAdapter(pubClient, subClient),
       transports: ['websocket', 'polling'],
-      maxHttpBufferSize: 1e6, // 1MB
+      maxHttpBufferSize: 1e6, // 1MB max message size
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: 5,
+      pingInterval: 25000,
+      pingTimeout: 60000,
     });
 
     // ========================================================================
@@ -85,16 +96,29 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
     io.use((socket, next) => {
       const token = socket.handshake.auth.token;
       const userId = socket.handshake.auth.userId;
+      const username = socket.handshake.auth.username || 'Anonymous';
 
       if (!token || !userId) {
         return next(new Error('Authentication failed: token or userId missing'));
       }
 
-      // In production, verify JWT token here
-      socket.data.userId = userId;
-      socket.data.token = token;
+      // In production, verify JWT here
+      socket.data = {
+        userId,
+        username,
+        token,
+        connectedAt: new Date(),
+      };
 
       logger.info(`[WebSocket] User ${userId} authenticated`);
+      next();
+    });
+
+    // Error middleware
+    io.use((socket, next) => {
+      socket.on('error', (error) => {
+        logger.error(`[WebSocket] Socket error for ${socket.data.userId}:`, error);
+      });
       next();
     });
 
@@ -104,27 +128,37 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
 
     io.on('connection', (socket) => {
       const userId = socket.data.userId;
+      const username = socket.data.username;
+
       logger.info(`[WebSocket] User ${userId} connected. Socket ID: ${socket.id}`);
 
       // Track user sockets
       if (!userSockets.has(userId)) {
         userSockets.set(userId, new Set());
-        // Notify others that user is online
+        userPresence.set(userId, {
+          status: 'online',
+          lastSeen: new Date(),
+        });
+
+        // Notify all users
         io?.emit('presence:user-online', {
           userId,
-          socketId: socket.id,
+          username,
           timestamp: new Date().toISOString(),
         });
       }
       userSockets.get(userId)?.add(socket.id);
 
-      // ========================================================================
+      // ====================================================================
       // MATCH EVENTS
-      // ========================================================================
+      // ====================================================================
 
-      socket.on('match:join', (matchId: string) => {
+      socket.on('match:join', (data: { matchId: string; teamId?: string }) => {
+        const { matchId, teamId } = data;
         const room = `match:${matchId}`;
+
         socket.join(room);
+        logger.info(`[WebSocket] User ${userId} joined match ${matchId}`);
 
         // Initialize room if needed
         if (!matchRooms.has(matchId)) {
@@ -133,30 +167,25 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
             activeUsers: new Map(),
             status: 'SCHEDULED',
             lastUpdate: new Date(),
+            lastScore: null,
           });
         }
 
-        const matchRoom = matchRooms.get(matchId);
-        if (matchRoom) {
-          matchRoom.activeUsers.set(socket.id, {
-            userId,
-            username: socket.handshake.auth.username || 'Anonymous',
-            role: socket.handshake.auth.role || 'VIEWER',
-            joinedAt: new Date(),
-          });
-        }
-
-        logger.info(`[WebSocket] User ${userId} joined match ${matchId}`);
-
-        // Notify others in room
-        socket.emit('match:user-joined', {
+        const matchRoom = matchRooms.get(matchId)!;
+        matchRoom.activeUsers.set(socket.id, {
           userId,
-          totalUsers: matchRoom?.activeUsers.size || 0,
+          username,
+          role: 'VIEWER',
+          joinedAt: new Date(),
+          isOnline: true,
         });
 
-        socket.to(room).emit('match:user-joined', {
+        // Notify room
+        io?.to(room).emit('match:user-joined', {
           userId,
-          totalUsers: matchRoom?.activeUsers.size || 0,
+          username,
+          totalUsers: matchRoom.activeUsers.size,
+          timestamp: new Date().toISOString(),
         });
       });
 
@@ -166,7 +195,6 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
 
         if (matchRoom) {
           matchRoom.activeUsers.delete(socket.id);
-
           if (matchRoom.activeUsers.size === 0) {
             matchRooms.delete(matchId);
           }
@@ -175,68 +203,57 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
         socket.leave(room);
         logger.info(`[WebSocket] User ${userId} left match ${matchId}`);
 
-        socket.to(room).emit('match:user-left', {
+        io?.to(room).emit('match:user-left', {
           userId,
+          timestamp: new Date().toISOString(),
           totalUsers: matchRoom?.activeUsers.size || 0,
         });
       });
 
-      /**
-       * Handle real-time match score updates
-       * Event: match:score-updated
-       * Payload: { matchId, homeGoals, awayGoals, timestamp }
-       */
-      socket.on('match:score-updated', (data) => {
-        const { matchId, homeGoals, awayGoals } = data;
+      // Real-time match score update
+      socket.on('match:score-update', (data: any) => {
+        const { matchId, homeGoals, awayGoals, minute } = data;
         const room = `match:${matchId}`;
 
-        logger.info(`[WebSocket] Match ${matchId} score updated: ${homeGoals} - ${awayGoals}`);
+        const matchRoom = matchRooms.get(matchId);
+        if (matchRoom) {
+          matchRoom.lastScore = { home: homeGoals, away: awayGoals };
+          matchRoom.lastUpdate = new Date();
+        }
 
-        // Broadcast to all users in match room
         io?.to(room).emit('match:score-updated', {
           matchId,
           homeGoals,
           awayGoals,
+          minute,
           timestamp: new Date().toISOString(),
         });
 
-        // Optionally persist to database here
-        if (matchRooms.has(matchId)) {
-          const matchRoom = matchRooms.get(matchId)!;
-          matchRoom.lastUpdate = new Date();
-        }
+        logger.info(`[WebSocket] Match ${matchId} score: ${homeGoals}-${awayGoals}`);
       });
 
-      /**
-       * Handle match event logging (goal, yellow card, etc)
-       * Event: match:event-logged
-       * Payload: { matchId, eventType, playerId, minute, description }
-       */
-      socket.on('match:event-logged', (data) => {
-        const { matchId, eventType, playerId, minute } = data;
+      // Match event logged (goal, card, etc)
+      socket.on('match:event-logged', (data: any) => {
+        const { matchId, eventType, playerId, playerName, minute, description } = data;
         const room = `match:${matchId}`;
-
-        logger.info(`[WebSocket] Event logged in match ${matchId}: ${eventType} by player ${playerId} at minute ${minute}`);
 
         io?.to(room).emit('match:event-logged', {
           matchId,
           eventType,
           playerId,
+          playerName,
           minute,
+          description,
           timestamp: new Date().toISOString(),
         });
+
+        logger.info(`[WebSocket] Event in match ${matchId}: ${eventType} by ${playerName}`);
       });
 
-      /**
-       * Handle match status changes
-       * Event: match:status-changed
-       * Payload: { matchId, status }
-       */
-      socket.on('match:status-changed', (data) => {
+      // Match status change
+      socket.on('match:status-change', (data: any) => {
         const { matchId, status } = data;
         const room = `match:${matchId}`;
-
-        logger.info(`[WebSocket] Match ${matchId} status changed to ${status}`);
 
         if (matchRooms.has(matchId)) {
           matchRooms.get(matchId)!.status = status;
@@ -247,17 +264,14 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
           status,
           timestamp: new Date().toISOString(),
         });
+
+        logger.info(`[WebSocket] Match ${matchId} status: ${status}`);
       });
 
-      // ========================================================================
-      // NOTIFICATION EVENTS
-      // ========================================================================
+      // ====================================================================
+      // NOTIFICATIONS
+      // ====================================================================
 
-      /**
-       * Send notification to specific user
-       * Event: notification:send
-       * Payload: { recipientId, type, title, message }
-       */
       socket.on('notification:send', (data: Omit<NotificationPayload, 'id' | 'createdAt' | 'read'>) => {
         const notification: NotificationPayload = {
           id: `notif_${Date.now()}_${Math.random()}`,
@@ -266,7 +280,6 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
           read: false,
         };
 
-        // Send to recipient's sockets
         const recipientSockets = userSockets.get(data.recipientId);
         if (recipientSockets) {
           recipientSockets.forEach((socketId) => {
@@ -274,103 +287,96 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
           });
         }
 
-        logger.info(
-          `[WebSocket] Notification sent to user ${data.recipientId}: ${data.title}`
-        );
+        logger.info(`[WebSocket] Notification sent to ${data.recipientId}: ${notification.title}`);
       });
 
       socket.on('notification:read', (notificationId: string) => {
-        logger.info(`[WebSocket] Notification ${notificationId} marked as read by user ${userId}`);
-
-        socket.emit('notification:acknowledged', {
+        io?.emit('notification:acknowledged', {
           notificationId,
           read: true,
+          timestamp: new Date().toISOString(),
         });
       });
 
-      // ========================================================================
-      // PRESENCE EVENTS
-      // ========================================================================
+      // ====================================================================
+      // PRESENCE
+      // ====================================================================
 
-      /**
-       * User explicitly indicates online status
-       * Broadcasts to all connected users
-       */
-      socket.on('presence:status-update', (data) => {
+      socket.on('presence:status-change', (status: 'online' | 'away' | 'offline') => {
+        userPresence.set(userId, {
+          status,
+          lastSeen: new Date(),
+        });
+
         io?.emit('presence:user-status', {
           userId,
-          status: data.status, // 'online', 'away', 'offline'
+          username,
+          status,
           lastSeen: new Date().toISOString(),
         });
       });
 
-      // ========================================================================
-      // TEAM COLLABORATION EVENTS
-      // ========================================================================
+      // ====================================================================
+      // TEAM COLLABORATION
+      // ====================================================================
 
-      /**
-       * Join team chat/collaboration room
-       */
       socket.on('team:join', (teamId: string) => {
         const teamRoom = `team:${teamId}`;
         socket.join(teamRoom);
 
-        logger.info(`[WebSocket] User ${userId} joined team ${teamId}`);
-
-        socket.to(teamRoom).emit('team:user-joined', {
+        io?.to(teamRoom).emit('team:user-joined', {
           userId,
+          username,
           timestamp: new Date().toISOString(),
         });
+
+        logger.info(`[WebSocket] User ${userId} joined team ${teamId}`);
       });
 
-      /**
-       * Send message in team chat
-       */
-      socket.on('team:message', (data) => {
-        const { teamId, message } = data;
+      socket.on('team:message', (data: { teamId: string; message: string; type?: string }) => {
+        const { teamId, message, type = 'TEXT' } = data;
         const teamRoom = `team:${teamId}`;
-
-        logger.info(`[WebSocket] Message in team ${teamId} from ${userId}`);
 
         io?.to(teamRoom).emit('team:message-received', {
           userId,
+          username,
           message,
+          type,
           timestamp: new Date().toISOString(),
         });
+
+        logger.info(`[WebSocket] Team ${teamId} message from ${username}`);
       });
 
       socket.on('team:leave', (teamId: string) => {
         const teamRoom = `team:${teamId}`;
         socket.leave(teamRoom);
 
-        logger.info(`[WebSocket] User ${userId} left team ${teamId}`);
-
-        socket.to(teamRoom).emit('team:user-left', {
+        io?.to(teamRoom).emit('team:user-left', {
           userId,
+          username,
           timestamp: new Date().toISOString(),
         });
       });
 
-      // ========================================================================
-      // ERROR & DISCONNECT HANDLERS
-      // ========================================================================
-
-      socket.on('error', (error) => {
-        logger.error(`[WebSocket] Socket error for user ${userId}:`, error);
-      });
+      // ====================================================================
+      // DISCONNECT
+      // ====================================================================
 
       socket.on('disconnect', () => {
-        logger.info(`[WebSocket] User ${userId} disconnected. Socket ID: ${socket.id}`);
+        logger.info(`[WebSocket] User ${userId} disconnected`);
 
-        // Clean up user sockets
         const userSocketSet = userSockets.get(userId);
         if (userSocketSet) {
           userSocketSet.delete(socket.id);
 
           if (userSocketSet.size === 0) {
             userSockets.delete(userId);
+            userPresence.set(userId, {
+              status: 'offline',
+              lastSeen: new Date(),
+            });
 
-            // Notify others that user is offline
             io?.emit('presence:user-offline', {
               userId,
               timestamp: new Date().toISOString(),
@@ -396,7 +402,7 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
     logger.info('[WebSocket] Socket.IO server initialized successfully');
     return io;
   } catch (error) {
-    logger.error('[WebSocket] Failed to initialize Socket.IO server:', error);
+    logger.error('[WebSocket] Failed to initialize Socket.IO:', error);
     throw error;
   }
 }
@@ -405,62 +411,55 @@ export async function initializeSocketServer(httpServer: any): Promise<SocketIOS
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/**
- * Broadcast message to all connected clients
- */
-export function broadcastMessage(event: string, data: any) {
-  if (!io) {
-    logger.warn('[WebSocket] Attempted broadcast without initialized socket server');
-    return;
-  }
+export function getSocketServer(): SocketIOServer | null {
+  return io;
+}
+
+export function broadcastMessage(event: string, data: any): void {
+  if (!io) return;
   io.emit(event, data);
 }
 
-/**
- * Send message to specific user's sockets
- */
-export function sendToUser(userId: string, event: string, data: any) {
-  if (!io) {
-    logger.warn('[WebSocket] Attempted send without initialized socket server');
-    return;
-  }
-
-  const userSocketIds = userSockets.get(userId);
-  if (userSocketIds) {
-    userSocketIds.forEach((socketId) => {
+export function sendToUser(userId: string, event: string, data: any): void {
+  if (!io) return;
+  const socketIds = userSockets.get(userId);
+  if (socketIds) {
+    socketIds.forEach((socketId) => {
       io?.to(socketId).emit(event, data);
     });
   }
 }
 
-/**
- * Send message to specific room
- */
-export function sendToRoom(room: string, event: string, data: any) {
-  if (!io) {
-    logger.warn('[WebSocket] Attempted send without initialized socket server');
-    return;
-  }
+export function sendToRoom(room: string, event: string, data: any): void {
+  if (!io) return;
   io.to(room).emit(event, data);
 }
 
-/**
- * Get active users count
- */
 export function getActiveUsersCount(): number {
   return userSockets.size;
 }
 
-/**
- * Get match room info
- */
 export function getMatchRoomInfo(matchId: string): MatchRoom | undefined {
   return matchRooms.get(matchId);
 }
 
-/**
- * Get Socket.IO instance
- */
-export function getSocketServer(): SocketIOServer | null {
-  return io;
+export function getMatchRoomUsers(matchId: string): string[] {
+  const room = matchRooms.get(matchId);
+  return room ? Array.from(room.activeUsers.values()).map((u) => u.userId) : [];
 }
+
+export function isUserOnline(userId: string): boolean {
+  return userPresence.get(userId)?.status === 'online';
+}
+
+export default {
+  initializeSocketServer,
+  getSocketServer,
+  broadcastMessage,
+  sendToUser,
+  sendToRoom,
+  getActiveUsersCount,
+  getMatchRoomInfo,
+  getMatchRoomUsers,
+  isUserOnline,
+};
