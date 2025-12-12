@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 
 /**
  * useResponsive - Track responsive breakpoints and device capabilities
- * Production-grade hook with comprehensive device detection
- * @returns {Object} Responsive state object with breakpoint information
+ * Production-grade hook with comprehensive device detection for PitchConnect
+ * @returns {Object} Responsive state object with complete viewport information
  */
 export const useResponsive = () => {
+  const [width, setWidth] = useState(0)
+  const [height, setHeight] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
   const [isTablet, setIsTablet] = useState(false)
   const [isDesktop, setIsDesktop] = useState(true)
@@ -13,18 +15,22 @@ export const useResponsive = () => {
   const [isTouchDevice, setIsTouchDevice] = useState(false)
 
   const handleResize = useCallback(() => {
-    const width = window.innerWidth
+    const newWidth = window.innerWidth
+    const newHeight = window.innerHeight
 
-    // Determine breakpoints
-    const mobile = width < 640
-    const tablet = width >= 640 && width < 1024
-    const desktop = width >= 1024
+    setWidth(newWidth)
+    setHeight(newHeight)
+
+    // Determine breakpoints using Tailwind CSS standards
+    const mobile = newWidth < 768
+    const tablet = newWidth >= 768 && newWidth < 1024
+    const desktop = newWidth >= 1024
 
     setIsMobile(mobile)
     setIsTablet(tablet)
     setIsDesktop(desktop)
 
-    // Set breakpoint label
+    // Set breakpoint label for responsive layouts
     if (mobile) {
       setBreakpoint('mobile')
     } else if (tablet) {
@@ -35,6 +41,7 @@ export const useResponsive = () => {
   }, [])
 
   const detectTouchDevice = useCallback(() => {
+    // Multiple methods to detect touch capability
     const hasTouchPoints =
       navigator.maxTouchPoints !== undefined && navigator.maxTouchPoints > 0
 
@@ -47,25 +54,37 @@ export const useResponsive = () => {
       navigator.msMaxTouchPoints !== undefined &&
       navigator.msMaxTouchPoints > 0
 
-    const isTouch = hasTouchPoints || hasTouchEvent || hasMsPointer
+    // Media query check for touch devices
+    const mediaQueryTouch =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(hover: none) and (pointer: coarse)').matches
+
+    const isTouch = hasTouchPoints || hasTouchEvent || hasMsPointer || mediaQueryTouch
 
     setIsTouchDevice(isTouch)
   }, [])
 
   useEffect(() => {
-    // Initial detection
-    handleResize()
-    detectTouchDevice()
+    // Initial detection on mount
+    if (typeof window !== 'undefined') {
+      handleResize()
+      detectTouchDevice()
 
-    // Add event listener for resize
-    window.addEventListener('resize', handleResize)
+      // Add event listeners
+      window.addEventListener('resize', handleResize)
+      window.addEventListener('orientationchange', handleResize)
 
-    return () => {
-      window.removeEventListener('resize', handleResize)
+      // Cleanup
+      return () => {
+        window.removeEventListener('resize', handleResize)
+        window.removeEventListener('orientationchange', handleResize)
+      }
     }
   }, [handleResize, detectTouchDevice])
 
   return {
+    width,
+    height,
     isMobile,
     isTablet,
     isDesktop,
