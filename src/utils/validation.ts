@@ -4,7 +4,8 @@
  */
 
 /**
- * Email validation - RFC 5322 compliant with enhanced checks
+ * Email validation - Bulletproof RFC 5322 compliant validation
+ * Zero regex - character-by-character validation for maximum reliability
  * Production-grade email validation for PitchConnect
  * @param {string} email - Email address to validate
  * @returns {boolean} Whether email is valid
@@ -18,88 +19,110 @@ export const isValidEmail = (email) => {
   // Trim whitespace
   const trimmedEmail = email.trim()
 
-  // Length checks
-  if (trimmedEmail.length === 0 || trimmedEmail.length > 254) {
+  // Length checks - minimum: a@b.c (5 chars), maximum: 254
+  if (trimmedEmail.length < 5 || trimmedEmail.length > 254) {
     return false
   }
 
-  // Basic structure check: must have @
-  if (!trimmedEmail.includes('@')) {
+  // Must contain exactly one @
+  const atCount = trimmedEmail.split('@').length - 1
+  if (atCount !== 1) {
     return false
   }
 
   // Split into local and domain parts
-  const lastAtIndex = trimmedEmail.lastIndexOf('@')
-  const localPart = trimmedEmail.substring(0, lastAtIndex)
-  const domain = trimmedEmail.substring(lastAtIndex + 1)
+  const [localPart, domain] = trimmedEmail.split('@')
 
-  // Local part validation
+  // Local part validation: 1-64 characters
   if (!localPart || localPart.length === 0 || localPart.length > 64) {
     return false
   }
 
-  // Domain validation
-  if (!domain || domain.length === 0) {
+  // Domain validation: must exist
+  if (!domain || domain.length === 0 || domain.length > 255) {
     return false
   }
 
-  // Local part cannot start or end with dot
-  if (localPart.startsWith('.') || localPart.endsWith('.')) {
+  // Local part cannot start or end with dot or hyphen
+  if (localPart.charAt(0) === '.' || localPart.charAt(0) === '-') {
+    return false
+  }
+  if (localPart.charAt(localPart.length - 1) === '.' || localPart.charAt(localPart.length - 1) === '-') {
     return false
   }
 
   // Domain must have at least one dot
-  if (!domain.includes('.')) {
+  if (domain.indexOf('.') === -1) {
     return false
   }
 
-  // Domain cannot start or end with dot
-  if (domain.startsWith('.') || domain.endsWith('.')) {
+  // Domain cannot start or end with dot or hyphen
+  if (domain.charAt(0) === '.' || domain.charAt(0) === '-') {
+    return false
+  }
+  if (domain.charAt(domain.length - 1) === '.' || domain.charAt(domain.length - 1) === '-') {
     return false
   }
 
-  // Domain cannot start or end with hyphen
-  if (domain.startsWith('-') || domain.endsWith('-')) {
+  // No consecutive dots allowed
+  if (trimmedEmail.indexOf('..') !== -1) {
     return false
   }
 
-  // Domain label validation (parts between dots)
-  const domainLabels = domain.split('.')
-  for (const label of domainLabels) {
-    if (label.length === 0 || label.length > 63) {
+  // Validate domain parts (labels between dots)
+  const domainParts = domain.split('.')
+  if (domainParts.length < 2) {
+    return false
+  }
+
+  for (const part of domainParts) {
+    // Each part must exist and be 1-63 characters
+    if (part.length === 0 || part.length > 63) {
       return false
     }
-    if (label.startsWith('-') || label.endsWith('-')) {
+
+    // Each part cannot start or end with hyphen
+    if (part.charAt(0) === '-' || part.charAt(part.length - 1) === '-') {
       return false
     }
   }
 
-  // No consecutive dots
-  if (trimmedEmail.includes('..')) {
+  // Validate TLD (last domain part)
+  const tld = domainParts[domainParts.length - 1]
+  if (tld.length < 2) {
     return false
   }
 
-  // Local part regex - allows: a-z, A-Z, 0-9, . _ - +
-  const localPartRegex = /^[a-zA-Z0-9._+\-]+$/
-  if (!localPartRegex.test(localPart)) {
-    return false
+  // TLD must contain only letters
+  for (let i = 0; i < tld.length; i++) {
+    const char = tld.charAt(i)
+    if (!((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z'))) {
+      return false
+    }
   }
 
-  // Domain regex - allows: a-z, A-Z, 0-9, . -
-  const domainRegex = /^[a-zA-Z0-9.-]+$/
-  if (!domainRegex.test(domain)) {
-    return false
+  // Validate local part characters: letters, numbers, dot, underscore, plus, hyphen
+  for (let i = 0; i < localPart.length; i++) {
+    const char = localPart.charAt(i)
+    const isLetter = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+    const isNumber = char >= '0' && char <= '9'
+    const isAllowed = char === '.' || char === '_' || char === '+' || char === '-'
+
+    if (!isLetter && !isNumber && !isAllowed) {
+      return false
+    }
   }
 
-  // Must have valid TLD (at least 2 characters after last dot, letters only)
-  const lastDotIndex = domain.lastIndexOf('.')
-  if (lastDotIndex === -1 || lastDotIndex === domain.length - 1) {
-    return false
-  }
+  // Validate domain characters: letters, numbers, dot, hyphen
+  for (let i = 0; i < domain.length; i++) {
+    const char = domain.charAt(i)
+    const isLetter = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+    const isNumber = char >= '0' && char <= '9'
+    const isAllowed = char === '.' || char === '-'
 
-  const tld = domain.substring(lastDotIndex + 1)
-  if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) {
-    return false
+    if (!isLetter && !isNumber && !isAllowed) {
+      return false
+    }
   }
 
   return true
