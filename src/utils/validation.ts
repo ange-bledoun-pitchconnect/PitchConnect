@@ -1,4 +1,9 @@
 /**
+ * Utility Functions - Production-grade helper functions for PitchConnect
+ * Comprehensive validation, formatting, and conversion utilities
+ */
+
+/**
  * Email validation - RFC 5322 compliant with enhanced checks
  * Production-grade email validation for PitchConnect
  * @param {string} email - Email address to validate
@@ -18,7 +23,7 @@ export const isValidEmail = (email) => {
     return false
   }
 
-  // Basic structure check: must have @ and at least one dot
+  // Basic structure check: must have @
   if (!trimmedEmail.includes('@')) {
     return false
   }
@@ -38,25 +43,22 @@ export const isValidEmail = (email) => {
     return false
   }
 
-  // Local part cannot start or end with dot or hyphen
+  // Local part cannot start or end with dot
   if (localPart.startsWith('.') || localPart.endsWith('.')) {
     return false
   }
 
-  if (localPart.startsWith('-') || localPart.endsWith('-')) {
-    return false
-  }
-
-  // Domain must have at least one dot and cannot be too short
+  // Domain must have at least one dot
   if (!domain.includes('.')) {
     return false
   }
 
-  // Domain cannot start or end with dot or hyphen
+  // Domain cannot start or end with dot
   if (domain.startsWith('.') || domain.endsWith('.')) {
     return false
   }
 
+  // Domain cannot start or end with hyphen
   if (domain.startsWith('-') || domain.endsWith('-')) {
     return false
   }
@@ -72,32 +74,31 @@ export const isValidEmail = (email) => {
     }
   }
 
-  // RFC 5322 simplified pattern - allows alphanumeric and common special characters in local part
-  // Local part allows: letters, numbers, dots, hyphens, underscores, plus signs
-  const localPartRegex = /^[a-zA-Z0-9._\-+]+$/
+  // No consecutive dots
+  if (trimmedEmail.includes('..')) {
+    return false
+  }
+
+  // Local part regex - allows: a-z, A-Z, 0-9, . _ - +
+  const localPartRegex = /^[a-zA-Z0-9._+\-]+$/
   if (!localPartRegex.test(localPart)) {
     return false
   }
 
-  // Domain allows: letters, numbers, hyphens, dots
+  // Domain regex - allows: a-z, A-Z, 0-9, . -
   const domainRegex = /^[a-zA-Z0-9.-]+$/
   if (!domainRegex.test(domain)) {
     return false
   }
 
-  // Must have valid TLD (at least 2 characters after last dot)
+  // Must have valid TLD (at least 2 characters after last dot, letters only)
   const lastDotIndex = domain.lastIndexOf('.')
   if (lastDotIndex === -1 || lastDotIndex === domain.length - 1) {
     return false
   }
 
   const tld = domain.substring(lastDotIndex + 1)
-  if (tld.length < 2 || !/^[a-zA-Z]{2,}$/.test(tld)) {
-    return false
-  }
-
-  // No consecutive dots
-  if (trimmedEmail.includes('..')) {
+  if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) {
     return false
   }
 

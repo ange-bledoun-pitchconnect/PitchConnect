@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="jest tests" tests="17" failures="1" errors="0" time="1.862">
-  <testsuite name="useResponsive Hook" errors="0" failures="1" skipped="0" timestamp="2025-12-12T08:30:11" time="1.08" tests="17">
-    <testcase classname="useResponsive Hook" name="should detect mobile device correctly" time="0.019">
+<testsuites name="jest tests" tests="17" failures="1" errors="0" time="1.832">
+  <testsuite name="useResponsive Hook" errors="0" failures="1" skipped="0" timestamp="2025-12-12T08:35:24" time="1.088" tests="17">
+    <testcase classname="useResponsive Hook" name="should detect mobile device correctly" time="0.022">
     </testcase>
-    <testcase classname="useResponsive Hook" name="should return correct breakpoint state" time="0.003">
+    <testcase classname="useResponsive Hook" name="should return correct breakpoint state" time="0.004">
     </testcase>
     <testcase classname="useResponsive Hook" name="should update on viewport resize" time="0.004">
     </testcase>
@@ -13,21 +13,21 @@
     </testcase>
     <testcase classname="useExport Hook" name="should export data as CSV" time="0.002">
     </testcase>
-    <testcase classname="useExport Hook" name="should handle export errors" time="0.006">
+    <testcase classname="useExport Hook" name="should handle export errors" time="0.005">
     </testcase>
     <testcase classname="useExport Hook" name="should track loading state during export" time="0.002">
     </testcase>
     <testcase classname="useExport Hook" name="should validate email before sending" time="0.002">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should return performance metrics" time="0.002">
+    <testcase classname="usePerformance Hook" name="should return performance metrics" time="0.003">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should calculate performance score correctly" time="0.002">
+    <testcase classname="usePerformance Hook" name="should calculate performance score correctly" time="0.003">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should track Core Web Vitals" time="0.001">
+    <testcase classname="usePerformance Hook" name="should track Core Web Vitals" time="0.002">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should provide rating based on score" time="0.001">
+    <testcase classname="usePerformance Hook" name="should provide rating based on score" time="0.003">
     </testcase>
-    <testcase classname="usePerformance Hook" name="should handle metric collection errors gracefully" time="0.001">
+    <testcase classname="usePerformance Hook" name="should handle metric collection errors gracefully" time="0.002">
     </testcase>
     <testcase classname="Utility Functions" name="should format numbers correctly" time="0.001">
     </testcase>
@@ -51,7 +51,7 @@ Received: false
     at runTestInternal (C:\Users\Hazye\PitchConnect V1\node_modules\jest-runner\build\runTest.js:367:16)
     at runTest (C:\Users\Hazye\PitchConnect V1\node_modules\jest-runner\build\runTest.js:444:34)</failure>
     </testcase>
-    <testcase classname="Utility Functions" name="should handle date operations" time="0.001">
+    <testcase classname="Utility Functions" name="should handle date operations" time="0">
     </testcase>
   </testsuite>
 </testsuites>
