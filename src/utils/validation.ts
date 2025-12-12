@@ -4,127 +4,43 @@
  */
 
 /**
- * Email validation - Bulletproof RFC 5322 compliant validation
- * Zero regex - character-by-character validation for maximum reliability
+ * Email validation - Ultra-simple bulletproof validator
+ * Zero regex complexity - character-by-character validation
  * Production-grade email validation for PitchConnect
  * @param {string} email - Email address to validate
  * @returns {boolean} Whether email is valid
  */
 export const isValidEmail = (email) => {
-  // Type and null check
-  if (!email || typeof email !== 'string') {
-    return false
+  if (!email || typeof email !== 'string') return false
+  const e = email.trim()
+  if (e.length < 5 || e.length > 254) return false
+  if (e.split('@').length !== 2) return false
+  const [local, domain] = e.split('@')
+  if (!local || local.length > 64 || local[0] === '.' || local[0] === '-' || local[local.length - 1] === '.' || local[local.length - 1] === '-') return false
+  if (!domain || domain.length > 255 || !domain.includes('.') || domain[0] === '.' || domain[0] === '-' || domain[domain.length - 1] === '.' || domain[domain.length - 1] === '-') return false
+  if (e.includes('..')) return false
+  const parts = domain.split('.')
+  if (parts.length < 2) return false
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]
+    if (!p || p.length > 63 || p[0] === '-' || p[p.length - 1] === '-') return false
   }
-
-  // Trim whitespace
-  const trimmedEmail = email.trim()
-
-  // Length checks - minimum: a@b.c (5 chars), maximum: 254
-  if (trimmedEmail.length < 5 || trimmedEmail.length > 254) {
-    return false
-  }
-
-  // Must contain exactly one @
-  const atCount = trimmedEmail.split('@').length - 1
-  if (atCount !== 1) {
-    return false
-  }
-
-  // Split into local and domain parts
-  const [localPart, domain] = trimmedEmail.split('@')
-
-  // Local part validation: 1-64 characters
-  if (!localPart || localPart.length === 0 || localPart.length > 64) {
-    return false
-  }
-
-  // Domain validation: must exist
-  if (!domain || domain.length === 0 || domain.length > 255) {
-    return false
-  }
-
-  // Local part cannot start or end with dot or hyphen
-  if (localPart.charAt(0) === '.' || localPart.charAt(0) === '-') {
-    return false
-  }
-  if (localPart.charAt(localPart.length - 1) === '.' || localPart.charAt(localPart.length - 1) === '-') {
-    return false
-  }
-
-  // Domain must have at least one dot
-  if (domain.indexOf('.') === -1) {
-    return false
-  }
-
-  // Domain cannot start or end with dot or hyphen
-  if (domain.charAt(0) === '.' || domain.charAt(0) === '-') {
-    return false
-  }
-  if (domain.charAt(domain.length - 1) === '.' || domain.charAt(domain.length - 1) === '-') {
-    return false
-  }
-
-  // No consecutive dots allowed
-  if (trimmedEmail.indexOf('..') !== -1) {
-    return false
-  }
-
-  // Validate domain parts (labels between dots)
-  const domainParts = domain.split('.')
-  if (domainParts.length < 2) {
-    return false
-  }
-
-  for (const part of domainParts) {
-    // Each part must exist and be 1-63 characters
-    if (part.length === 0 || part.length > 63) {
-      return false
-    }
-
-    // Each part cannot start or end with hyphen
-    if (part.charAt(0) === '-' || part.charAt(part.length - 1) === '-') {
-      return false
-    }
-  }
-
-  // Validate TLD (last domain part)
-  const tld = domainParts[domainParts.length - 1]
-  if (tld.length < 2) {
-    return false
-  }
-
-  // TLD must contain only letters
+  const tld = parts[parts.length - 1]
+  if (tld.length < 2) return false
   for (let i = 0; i < tld.length; i++) {
-    const char = tld.charAt(i)
-    if (!((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z'))) {
-      return false
-    }
+    const c = tld[i]
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return false
   }
-
-  // Validate local part characters: letters, numbers, dot, underscore, plus, hyphen
-  for (let i = 0; i < localPart.length; i++) {
-    const char = localPart.charAt(i)
-    const isLetter = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
-    const isNumber = char >= '0' && char <= '9'
-    const isAllowed = char === '.' || char === '_' || char === '+' || char === '-'
-
-    if (!isLetter && !isNumber && !isAllowed) {
-      return false
-    }
+  for (let i = 0; i < local.length; i++) {
+    const c = local[i]
+    const ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || '._+-'.includes(c)
+    if (!ok) return false
   }
-
-  // Validate domain characters: letters, numbers, dot, hyphen
   for (let i = 0; i < domain.length; i++) {
-    const char = domain.charAt(i)
-    const isLetter = (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
-    const isNumber = char >= '0' && char <= '9'
-    const isAllowed = char === '.' || char === '-'
-
-    if (!isLetter && !isNumber && !isAllowed) {
-      return false
-    }
+    const c = domain[i]
+    const ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || '.-'.includes(c)
+    if (!ok) return false
   }
-
   return true
 }
 
@@ -250,10 +166,7 @@ export const isValidPhone = (phone) => {
     return false
   }
 
-  // Remove common formatting characters
   const cleaned = phone.replace(/[\s\-\(\)\.]/g, '')
-
-  // Must be at least 10 digits for international support
   return /^\+?[\d]{10,}$/.test(cleaned)
 }
 
