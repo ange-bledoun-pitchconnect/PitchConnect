@@ -1,77 +1,194 @@
 // ============================================================================
-// WORLD-CLASS ENHANCED: /src/app/api/matches/route.ts
-// Match Management (List & Create) with Advanced Filtering & Analytics
-// VERSION: 3.0 - Production Grade | Multi-Sport Ready
+// 🏆 ENHANCED: src/app/api/matches/route.ts
+// GET - List matches with advanced filtering | POST - Create match
+// VERSION: 3.5 - World-Class Enhanced
 // ============================================================================
 
-import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
+import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { NotFoundError, BadRequestError, ForbiddenError } from '@/lib/api/errors';
-import { logAuditAction } from '@/lib/api/audit';
-import { logger } from '@/lib/api/logger';
+import { parseJsonBody, validateRequired } from '@/lib/api/validation';
+import { errorResponse } from '@/lib/api/responses';
+import { NotFoundError, ForbiddenError, BadRequestError } from '@/lib/api/errors';
+import { logResourceCreated, createAuditLog } from '@/lib/api/audit';
 
 // ============================================================================
-// GET /api/matches - List Matches with Advanced Filtering
-// Query Params:
-//   - page: number (default: 1)
-//   - limit: number (default: 25, max: 100)
-//   - status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'CANCELLED' | 'ALL'
-//   - teamId: string (filter by team - home or away)
-//   - leagueId: string (filter by league)
-//   - dateFrom: ISO string
-//   - dateTo: ISO string
-//   - sport: 'FOOTBALL' | 'NETBALL' | etc
-//   - sortBy: 'date' | 'status' (default: date)
-//   - sortOrder: 'asc' | 'desc' (default: desc)
+// TYPES & INTERFACES
 // ============================================================================
 
-export async function GET(request: NextRequest) {
+interface CreateMatchRequest {
+  homeTeamId: string;
+  awayTeamId: string;
+  date: string;
+  kickOffTime?: string;
+  venue?: string;
+  venueCity?: string;
+  fixtureId?: string;
+  refereeId?: string;
+  notes?: string;
+}
+
+interface MatchListItem {
+  id: string;
+  status: string;
+  sport: string;
+  date: string;
+  kickOffTime: string | null;
+  venue: string | null;
+  venueCity: string | null;
+  homeTeam: {
+    id: string;
+    name: string;
+    code: string;
+    logo: string | null;
+    location: string;
+  };
+  awayTeam: {
+    id: string;
+    name: string;
+    code: string;
+    logo: string | null;
+    location: string;
+  };
+  score: {
+    homeGoals: number | null;
+    awayGoals: number | null;
+    result: string;
+  };
+  referee: {
+    id: string;
+    name: string;
+    license: string;
+  } | null;
+  fixture: {
+    id: string;
+    matchweek: number;
+    season: number;
+    league: {
+      id: string;
+      name: string;
+    };
+  } | null;
+  statistics: {
+    possession: { home: number | null; away: number | null };
+    shots: { home: number | null; away: number | null };
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CreateMatchResponse {
+  success: true;
+  id: string;
+  homeTeam: { id: string; name: string };
+  awayTeam: { id: string; name: string };
+  date: string;
+  venue: string | null;
+  status: string;
+  sport: string;
+  message: string;
+  timestamp: string;
+  requestId: string;
+}
+
+interface MatchesListResponse {
+  success: true;
+  matches: MatchListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+  filters: Record<string, any>;
+  sort: Record<string, any>;
+  timestamp: string;
+  requestId: string;
+}
+
+// ============================================================================
+// GET /api/matches - List Matches
+// ============================================================================
+
+/**
+ * GET /api/matches
+ * List matches with comprehensive filtering and pagination
+ * 
+ * Query Parameters:
+ *   - page: number (default: 1)
+ *   - limit: number (default: 25, max: 100)
+ *   - status: 'SCHEDULED' | 'LIVE' | 'FINISHED' | 'CANCELLED' | 'POSTPONED' | 'ALL'
+ *   - teamId: string (filter by team - home or away)
+ *   - leagueId: string (filter by league)
+ *   - dateFrom: ISO string (start date)
+ *   - dateTo: ISO string (end date)
+ *   - sport: string (FOOTBALL, NETBALL, RUGBY, etc.)
+ *   - sortBy: 'date' | 'status' (default: 'date')
+ *   - sortOrder: 'asc' | 'desc' (default: 'desc')
+ * 
+ * Authorization: Any authenticated user
+ * 
+ * Returns: 200 OK with paginated matches
+ * 
+ * Features:
+ *   ✅ Advanced filtering by status, team, league, date, sport
+ *   ✅ Date range filtering
+ *   ✅ Flexible sorting
+ *   ✅ Rich match metadata
+ *   ✅ Statistics included
+ */
+export async function GET(request: NextRequest): Promise<NextResponse<MatchesListResponse | { success: false; error: string; code: string; requestId: string }>> {
   const requestId = crypto.randomUUID();
 
   try {
-    logger.info(`[${requestId}] GET /api/matches`);
-
+    // 1. Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
       return NextResponse.json(
         {
-          error: 'Unauthorized',
-          message: 'Authentication required',
+          success: false,
+          error: 'Unauthorized - Authentication required',
           code: 'AUTH_REQUIRED',
           requestId,
         },
-        { status: 401 }
+        { status: 401, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // ✅ Parse pagination parameters
-    const url = new URL(request.url);
-    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-    const limit = Math.min(
-      100,
-      Math.max(1, parseInt(url.searchParams.get('limit') || '25', 10))
-    );
+    // 2. Parse pagination parameters
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '25', 10)));
     const skip = (page - 1) * limit;
 
-    // ✅ Parse filter parameters
-    const statusFilter = url.searchParams.get('status') || 'ALL';
-    const teamId = url.searchParams.get('teamId');
-    const leagueId = url.searchParams.get('leagueId');
-    const dateFrom = url.searchParams.get('dateFrom');
-    const dateTo = url.searchParams.get('dateTo');
-    const sport = url.searchParams.get('sport');
-    const sortBy = url.searchParams.get('sortBy') || 'date';
-    const sortOrder = url.searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
+    // 3. Extract filter parameters
+    const statusFilter = searchParams.get('status') || 'ALL';
+    const teamId = searchParams.get('teamId');
+    const leagueId = searchParams.get('leagueId');
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo = searchParams.get('dateTo');
+    const sport = searchParams.get('sport');
+    const sortBy = searchParams.get('sortBy') || 'date';
+    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
 
-    // ✅ Validate date parameters
+    // 4. Validate date parameters
     if (dateFrom) {
       try {
         new Date(dateFrom);
       } catch {
-        throw new BadRequestError('Invalid dateFrom format. Use ISO 8601');
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid dateFrom format. Use ISO 8601 (YYYY-MM-DD)',
+            code: 'INVALID_DATE_FORMAT',
+            requestId,
+          },
+          { status: 400, headers: { 'X-Request-ID': requestId } }
+        );
       }
     }
 
@@ -79,26 +196,34 @@ export async function GET(request: NextRequest) {
       try {
         new Date(dateTo);
       } catch {
-        throw new BadRequestError('Invalid dateTo format. Use ISO 8601');
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid dateTo format. Use ISO 8601 (YYYY-MM-DD)',
+            code: 'INVALID_DATE_FORMAT',
+            requestId,
+          },
+          { status: 400, headers: { 'X-Request-ID': requestId } }
+        );
       }
     }
 
-    // ✅ Build dynamic where clause
+    // 5. Build where clause
     const where: any = {};
 
     // Status filter
+    const validStatuses = ['SCHEDULED', 'LIVE', 'HALFTIME', 'FINISHED', 'CANCELLED', 'POSTPONED', 'ABANDONED'];
     if (statusFilter !== 'ALL') {
-      const validStatuses = [
-        'SCHEDULED',
-        'LIVE',
-        'HALFTIME',
-        'FINISHED',
-        'CANCELLED',
-        'POSTPONED',
-        'ABANDONED',
-      ];
       if (!validStatuses.includes(statusFilter)) {
-        throw new BadRequestError('Invalid status. Must be one of: ' + validStatuses.join(', '));
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Invalid status. Must be one of: ${validStatuses.join(', ')}, or ALL`,
+            code: 'INVALID_STATUS',
+            requestId,
+          },
+          { status: 400, headers: { 'X-Request-ID': requestId } }
+        );
       }
       where.status = statusFilter;
     }
@@ -108,7 +233,7 @@ export async function GET(request: NextRequest) {
       where.OR = [{ homeTeamId: teamId }, { awayTeamId: teamId }];
     }
 
-    // League filter
+    // League filter (via fixture)
     if (leagueId) {
       where.fixture = { leagueId };
     }
@@ -131,21 +256,19 @@ export async function GET(request: NextRequest) {
       where.sport = sport;
     }
 
-    // ✅ Build order by clause
-    let orderBy: any = {};
-    switch (sortBy) {
-      case 'status':
-        orderBy = { status: sortOrder };
-        break;
-      case 'date':
-      default:
-        orderBy = { date: sortOrder };
+    // 6. Determine sort order
+    const orderBy: any = {};
+    if (sortBy === 'status') {
+      orderBy.status = sortOrder;
+    } else {
+      orderBy.date = sortOrder;
     }
 
-    // ✅ Get total count
+    // 7. Get total count
     const total = await prisma.match.count({ where });
+    const totalPages = Math.ceil(total / limit);
 
-    // ✅ Fetch matches with comprehensive relationships
+    // 8. Fetch matches with relationships
     const matches = await prisma.match.findMany({
       where,
       include: {
@@ -153,8 +276,8 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            code: true,
-            logoUrl: true,
+            shortCode: true,
+            logo: true,
             club: { select: { city: true, country: true } },
           },
         },
@@ -162,8 +285,8 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            code: true,
-            logoUrl: true,
+            shortCode: true,
+            logo: true,
             club: { select: { city: true, country: true } },
           },
         },
@@ -188,12 +311,7 @@ export async function GET(request: NextRequest) {
             awayPossession: true,
             homeShots: true,
             awayShots: true,
-            homeShotsOnTarget: true,
-            awayShotsOnTarget: true,
           },
-        },
-        _count: {
-          select: { events: true, playerAttendances: true },
         },
       },
       orderBy,
@@ -201,8 +319,8 @@ export async function GET(request: NextRequest) {
       take: limit,
     });
 
-    // ✅ Enhance match data with calculated fields
-    const enhancedMatches = matches.map((match) => {
+    // 9. Format matches
+    const formattedMatches: MatchListItem[] = matches.map((match) => {
       const homeGoals = match.homeGoals || 0;
       const awayGoals = match.awayGoals || 0;
       let result = 'PENDING';
@@ -217,49 +335,36 @@ export async function GET(request: NextRequest) {
         id: match.id,
         status: match.status,
         sport: match.sport,
-        date: match.date,
-        kickOffTime: match.kickOffTime,
+        date: match.date.toISOString(),
+        kickOffTime: match.kickOffTime?.toISOString() || null,
         venue: match.venue,
         venueCity: match.venueCity,
-
-        // Teams
         homeTeam: {
           id: match.homeTeam.id,
           name: match.homeTeam.name,
-          code: match.homeTeam.code,
-          logo: match.homeTeam.logoUrl,
-          location: `${match.homeTeam.club?.city}, ${match.homeTeam.club?.country}`,
+          code: match.homeTeam.shortCode,
+          logo: match.homeTeam.logo,
+          location: `${match.homeTeam.club?.city || 'Unknown'}, ${match.homeTeam.club?.country}`,
         },
-
         awayTeam: {
           id: match.awayTeam.id,
           name: match.awayTeam.name,
-          code: match.awayTeam.code,
-          logo: match.awayTeam.logoUrl,
-          location: `${match.awayTeam.club?.city}, ${match.awayTeam.club?.country}`,
+          code: match.awayTeam.shortCode,
+          logo: match.awayTeam.logo,
+          location: `${match.awayTeam.club?.city || 'Unknown'}, ${match.awayTeam.club?.country}`,
         },
-
-        // Score
         score: {
           homeGoals,
           awayGoals,
           result,
-          homeGoalsET: match.homeGoalsET,
-          awayGoalsET: match.awayGoalsET,
-          homePenalties: match.homePenalties,
-          awayPenalties: match.awayPenalties,
         },
-
-        // Referee
         referee: match.referee
           ? {
               id: match.referee.id,
               name: `${match.referee.user.firstName} ${match.referee.user.lastName}`,
-              licenseNumber: match.referee.licenseNumber,
+              license: match.referee.licenseNumber || 'N/A',
             }
           : null,
-
-        // Fixture
         fixture: match.fixture
           ? {
               id: match.fixture.id,
@@ -268,8 +373,6 @@ export async function GET(request: NextRequest) {
               league: match.fixture.league,
             }
           : null,
-
-        // Statistics
         statistics: {
           possession: {
             home: match.stats?.homePossession,
@@ -278,145 +381,165 @@ export async function GET(request: NextRequest) {
           shots: {
             home: match.stats?.homeShots,
             away: match.stats?.awayShots,
-            onTarget: {
-              home: match.stats?.homeShotsOnTarget,
-              away: match.stats?.awayShotsOnTarget,
-            },
           },
-          events: match._count.events,
-          attendances: match._count.playerAttendances,
         },
-
-        // Additional info
-        attendance: match.attendance,
-        highlights: match.highlights,
-        notes: match.notes,
-
-        // Metadata
-        createdAt: match.createdAt,
-        updatedAt: match.updatedAt,
+        createdAt: match.createdAt.toISOString(),
+        updatedAt: match.updatedAt.toISOString(),
       };
     });
 
-    // ✅ Calculate pagination data
-    const totalPages = Math.ceil(total / limit);
-
-    const response = {
-      success: true,
-      data: {
-        matches: enhancedMatches,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages,
-          hasNextPage: page < totalPages,
-          hasPreviousPage: page > 1,
-          nextPage: page < totalPages ? page + 1 : null,
-          previousPage: page > 1 ? page - 1 : null,
-        },
+    // 10. Create audit log
+    await createAuditLog({
+      userId: session.user.id,
+      action: 'MATCHESVIEWED',
+      resourceType: 'Match',
+      details: {
         filters: {
           status: statusFilter,
-          teamId: teamId || null,
-          leagueId: leagueId || null,
-          dateFrom: dateFrom || null,
-          dateTo: dateTo || null,
-          sport: sport || null,
+          teamId: teamId || 'all',
+          leagueId: leagueId || 'all',
+          sport: sport || 'all',
         },
-        sort: {
-          sortBy,
-          sortOrder,
-        },
-        metadata: {
-          requestId,
-          timestamp: new Date().toISOString(),
-          recordsReturned: enhancedMatches.length,
-        },
+        pageSize: limit,
+        currentPage: page,
+        totalMatches: total,
       },
+      requestId,
+    });
+
+    // 11. Build response
+    const response: MatchesListResponse = {
+      success: true,
+      matches: formattedMatches,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+      filters: {
+        status: statusFilter,
+        teamId: teamId || null,
+        leagueId: leagueId || null,
+        dateFrom: dateFrom || null,
+        dateTo: dateTo || null,
+        sport: sport || null,
+      },
+      sort: {
+        sortBy,
+        sortOrder,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
     };
 
-    logger.info(`[${requestId}] Successfully retrieved ${enhancedMatches.length} matches`);
-
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, {
+      status: 200,
+      headers: { 'X-Request-ID': requestId },
+    });
   } catch (error) {
-    logger.error(`[${requestId}] Error in GET /api/matches:`, error);
+    console.error('[GET /api/matches]', {
+      requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
 
-    if (error instanceof BadRequestError) {
-      return NextResponse.json(
-        {
-          error: 'Bad Request',
-          message: error.message,
-          code: 'INVALID_INPUT',
-          requestId,
-        },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: 'Failed to retrieve matches',
-        code: 'SERVER_ERROR',
-        requestId,
-      },
-      { status: 500 }
-    );
+    return errorResponse(error as Error, {
+      headers: { 'X-Request-ID': requestId },
+    });
   }
 }
 
 // ============================================================================
-// POST /api/matches - Create New Match
-// Authorization: SUPERADMIN, LEAGUE_ADMIN, CLUB_MANAGER
+// POST /api/matches - Create Match
 // ============================================================================
 
-export async function POST(request: NextRequest) {
+/**
+ * POST /api/matches
+ * Create a new match
+ * 
+ * Authorization: SUPERADMIN, LEAGUE_ADMIN, CLUB_MANAGER
+ * 
+ * Request Body:
+ *   Required:
+ *     - homeTeamId: string
+ *     - awayTeamId: string
+ *     - date: ISO string (future date)
+ *   
+ *   Optional:
+ *     - kickOffTime: ISO string
+ *     - venue: string
+ *     - venueCity: string
+ *     - fixtureId: string
+ *     - refereeId: string
+ *     - notes: string
+ * 
+ * Returns: 201 Created with match details
+ * 
+ * Features:
+ *   ✅ Multi-role authorization
+ *   ✅ Team validation
+ *   ✅ Date validation
+ *   ✅ Transaction support
+ *   ✅ Comprehensive audit logging
+ */
+export async function POST(request: NextRequest): Promise<NextResponse<CreateMatchResponse | { success: false; error: string; code: string; requestId: string }>> {
   const requestId = crypto.randomUUID();
 
   try {
-    logger.info(`[${requestId}] POST /api/matches`);
-
+    // 1. Authentication check
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
       return NextResponse.json(
         {
-          error: 'Unauthorized',
-          message: 'Authentication required',
+          success: false,
+          error: 'Unauthorized - Authentication required',
           code: 'AUTH_REQUIRED',
           requestId,
         },
-        { status: 401 }
+        { status: 401, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // ✅ Authorization
+    // 2. Authorization check
     const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
     const isLeagueAdmin = session.user.roles?.includes('LEAGUE_ADMIN');
     const isClubManager = session.user.roles?.includes('CLUB_MANAGER');
 
     if (!isSuperAdmin && !isLeagueAdmin && !isClubManager) {
-      throw new ForbiddenError('Only SUPERADMIN, LEAGUE_ADMIN, or CLUB_MANAGER can create matches');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden - Only SUPERADMIN, LEAGUE_ADMIN, or CLUB_MANAGER can create matches',
+          code: 'INSUFFICIENT_PERMISSIONS',
+          requestId,
+        },
+        { status: 403, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
-    // ✅ Parse request body
-    let body: any;
+    // 3. Parse request body
+    let body: CreateMatchRequest;
     try {
-      body = await request.json();
+      body = await parseJsonBody(request);
     } catch {
-      throw new BadRequestError('Invalid JSON in request body');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid JSON in request body',
+          code: 'INVALID_JSON',
+          requestId,
+        },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
-    // ✅ Validate required fields
-    if (!body.homeTeamId || !body.awayTeamId) {
-      throw new BadRequestError('homeTeamId and awayTeamId are required');
-    }
+    // 4. Validate required fields
+    validateRequired(body, ['homeTeamId', 'awayTeamId', 'date']);
 
-    if (!body.date) {
-      throw new BadRequestError('date is required');
-    }
-
-    // ✅ Verify teams exist and are different
+    // 5. Verify both teams exist and are different
     const [homeTeam, awayTeam] = await Promise.all([
       prisma.team.findUnique({
         where: { id: body.homeTeamId },
@@ -428,29 +551,81 @@ export async function POST(request: NextRequest) {
       }),
     ]);
 
-    if (!homeTeam || !awayTeam) {
-      throw new NotFoundError('One or both teams not found');
+    if (!homeTeam) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Home team "${body.homeTeamId}" not found`,
+          code: 'HOME_TEAM_NOT_FOUND',
+          requestId,
+        },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    if (!awayTeam) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Away team "${body.awayTeamId}" not found`,
+          code: 'AWAY_TEAM_NOT_FOUND',
+          requestId,
+        },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
     if (homeTeam.id === awayTeam.id) {
-      throw new BadRequestError('A team cannot play against itself');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'A team cannot play against itself',
+          code: 'INVALID_MATCH_SETUP',
+          requestId,
+        },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
     if (homeTeam.sport !== awayTeam.sport) {
-      throw new BadRequestError('Teams must be from the same sport');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Teams must be from the same sport',
+          code: 'SPORT_MISMATCH',
+          requestId,
+        },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
-    // ✅ Parse and validate date
+    // 6. Validate match date
     const matchDate = new Date(body.date);
     if (isNaN(matchDate.getTime())) {
-      throw new BadRequestError('Invalid date format. Use ISO 8601');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid date format. Use ISO 8601 (YYYY-MM-DDTHH:mm:ss)',
+          code: 'INVALID_DATE_FORMAT',
+          requestId,
+        },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
     if (matchDate < new Date()) {
-      throw new BadRequestError('Match date cannot be in the past');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Match date cannot be in the past',
+          code: 'INVALID_DATE',
+          requestId,
+        },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
-    // ✅ Verify referee if provided
+    // 7. Verify referee if provided
     if (body.refereeId) {
       const referee = await prisma.referee.findUnique({
         where: { id: body.refereeId },
@@ -458,11 +633,19 @@ export async function POST(request: NextRequest) {
       });
 
       if (!referee) {
-        throw new NotFoundError('Referee', body.refereeId);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Referee "${body.refereeId}" not found`,
+            code: 'REFEREE_NOT_FOUND',
+            requestId,
+          },
+          { status: 404, headers: { 'X-Request-ID': requestId } }
+        );
       }
     }
 
-    // ✅ Verify fixture if provided
+    // 8. Verify fixture if provided
     if (body.fixtureId) {
       const fixture = await prisma.fixture.findUnique({
         where: { id: body.fixtureId },
@@ -470,110 +653,80 @@ export async function POST(request: NextRequest) {
       });
 
       if (!fixture) {
-        throw new NotFoundError('Fixture', body.fixtureId);
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Fixture "${body.fixtureId}" not found`,
+            code: 'FIXTURE_NOT_FOUND',
+            requestId,
+          },
+          { status: 404, headers: { 'X-Request-ID': requestId } }
+        );
       }
     }
 
-    // ✅ Create match
-    const match = await prisma.match.create({
-      data: {
-        homeTeamId: body.homeTeamId,
-        awayTeamId: body.awayTeamId,
-        fixtureId: body.fixtureId || null,
-        refereeId: body.refereeId || null,
-        date: matchDate,
-        kickOffTime: body.kickOffTime ? new Date(body.kickOffTime) : null,
-        venue: body.venue || null,
-        venueCity: body.venueCity || null,
+    // 9. Create match with transaction
+    const match = await prisma.$transaction(async (tx) => {
+      return await tx.match.create({
+        data: {
+          homeTeamId: body.homeTeamId,
+          awayTeamId: body.awayTeamId,
+          fixtureId: body.fixtureId || null,
+          refereeId: body.refereeId || null,
+          date: matchDate,
+          kickOffTime: body.kickOffTime ? new Date(body.kickOffTime) : null,
+          venue: body.venue || null,
+          venueCity: body.venueCity || null,
+          sport: homeTeam.sport,
+          status: 'SCHEDULED',
+          notes: body.notes || null,
+        },
+      });
+    });
+
+    // 10. Create audit log
+    await logResourceCreated(
+      session.user.id,
+      'Match',
+      match.id,
+      `${homeTeam.name} vs ${awayTeam.name}`,
+      {
+        homeTeam: homeTeam.name,
+        awayTeam: awayTeam.name,
+        date: matchDate.toISOString(),
+        venue: body.venue || 'TBD',
         sport: homeTeam.sport,
-        status: 'SCHEDULED',
-        notes: body.notes || null,
-        highlights: null,
       },
-      include: {
-        homeTeam: { select: { id: true, name: true } },
-        awayTeam: { select: { id: true, name: true } },
-        fixture: { select: { id: true, matchweek: true } },
-      },
-    });
-
-    // ✅ Audit logging
-    await logAuditAction({
-      performedById: session.user.id,
-      action: 'USER_CREATED',
-      entityType: 'Match',
-      entityId: match.id,
-      changes: {
-        homeTeam: match.homeTeam.name,
-        awayTeam: match.awayTeam.name,
-        date: match.date,
-        venue: match.venue,
-        sport: match.sport,
-      },
-      details: `Created match: ${match.homeTeam.name} vs ${match.awayTeam.name} on ${match.date.toISOString()}`,
-    });
-
-    logger.info(
-      `[${requestId}] Successfully created match ${match.id}`,
-      { homeTeam: match.homeTeam.name, awayTeam: match.awayTeam.name }
+      `Created match: ${homeTeam.name} vs ${awayTeam.name}`
     );
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Match created successfully',
-        data: match,
-        metadata: { requestId, timestamp: new Date().toISOString() },
-      },
-      { status: 201 }
-    );
+    // 11. Build response
+    const response: CreateMatchResponse = {
+      success: true,
+      id: match.id,
+      homeTeam: { id: homeTeam.id, name: homeTeam.name },
+      awayTeam: { id: awayTeam.id, name: awayTeam.name },
+      date: match.date.toISOString(),
+      venue: match.venue,
+      status: match.status,
+      sport: match.sport,
+      message: `Match "${homeTeam.name} vs ${awayTeam.name}" created successfully`,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
+
+    return NextResponse.json(response, {
+      status: 201,
+      headers: { 'X-Request-ID': requestId },
+    });
   } catch (error) {
-    logger.error(`[${requestId}] Error in POST /api/matches:`, error);
+    console.error('[POST /api/matches]', {
+      requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
 
-    if (error instanceof NotFoundError) {
-      return NextResponse.json(
-        {
-          error: 'Not Found',
-          message: error.message,
-          code: 'NOT_FOUND',
-          requestId,
-        },
-        { status: 404 }
-      );
-    }
-
-    if (error instanceof ForbiddenError) {
-      return NextResponse.json(
-        {
-          error: 'Forbidden',
-          message: error.message,
-          code: 'ACCESS_DENIED',
-          requestId,
-        },
-        { status: 403 }
-      );
-    }
-
-    if (error instanceof BadRequestError) {
-      return NextResponse.json(
-        {
-          error: 'Bad Request',
-          message: error.message,
-          code: 'INVALID_INPUT',
-          requestId,
-        },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: 'Failed to create match',
-        code: 'SERVER_ERROR',
-        requestId,
-      },
-      { status: 500 }
-    );
+    return errorResponse(error as Error, {
+      headers: { 'X-Request-ID': requestId },
+    });
   }
 }
