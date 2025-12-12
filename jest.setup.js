@@ -1,30 +1,29 @@
-/**
- * ============================================================================
- * JEST SETUP FILE
- * ============================================================================
- * 
- * Configure test environment:
- * - Testing Library matchers
- * - Next.js mocks
- * - Global test utilities
- * - Environment variables
- */
+import '@testing-library/jest-dom'
 
-import '@testing-library/jest-dom';
+// Suppress specific React warnings during tests
+const originalError = console.error
+beforeAll(() => {
+  console.error = (...args) => {
+    if (
+      typeof args[0] === 'string' &&
+      (args[0].includes('Warning: ReactDOM.render') ||
+        args[0].includes('Not implemented: HTMLFormElement.prototype.submit') ||
+        args[0].includes('An update to') ||
+        args[0].includes('was not wrapped in act') ||
+        args[0].includes('Warning: useLayoutEffect') ||
+        args[0].includes('Warning: An update to an unmounted component'))
+    ) {
+      return
+    }
+    originalError.call(console, ...args)
+  }
+})
 
-// ============================================================================
-// ENVIRONMENT SETUP
-// ============================================================================
+afterAll(() => {
+  console.error = originalError
+})
 
-// Set test environment variables
-process.env.NEXTAUTH_SECRET = 'test-secret-key-for-testing-only';
-process.env.NEXTAUTH_URL = 'http://localhost:3000';
-process.env.NODE_ENV = 'test';
-
-// ============================================================================
-// NEXT.JS ROUTER MOCK
-// ============================================================================
-
+// Mock Next.js router
 jest.mock('next/router', () => ({
   useRouter() {
     return {
@@ -32,12 +31,12 @@ jest.mock('next/router', () => ({
       pathname: '/',
       query: {},
       asPath: '/',
-      push: jest.fn(),
-      replace: jest.fn(),
+      push: jest.fn(() => Promise.resolve(true)),
+      replace: jest.fn(() => Promise.resolve(true)),
       reload: jest.fn(),
       back: jest.fn(),
       forward: jest.fn(),
-      prefetch: jest.fn().mockResolvedValue(undefined),
+      prefetch: jest.fn(() => Promise.resolve()),
       beforePopState: jest.fn(),
       events: {
         on: jest.fn(),
@@ -48,53 +47,47 @@ jest.mock('next/router', () => ({
       isLocaleDomain: false,
       isReady: true,
       isPreview: false,
-    };
+    }
   },
-}));
+}))
 
-// ============================================================================
-// NEXT.JS IMAGE MOCK
-// ============================================================================
-
+// Mock Next.js Image component
 jest.mock('next/image', () => ({
   __esModule: true,
-  default: (props: any) => {
+  default: (props) => {
     // eslint-disable-next-line jsx-a11y/alt-text
-    return <img {...props} />;
+    return <img {...props} />
   },
-}));
+}))
 
-// ============================================================================
-// NEXT.JS NAVIGATION MOCK
-// ============================================================================
-
+// Mock Next.js Navigation
 jest.mock('next/navigation', () => ({
   useRouter() {
     return {
-      push: jest.fn(),
-      replace: jest.fn(),
-      prefetch: jest.fn().mockResolvedValue(undefined),
+      push: jest.fn(() => Promise.resolve()),
+      replace: jest.fn(() => Promise.resolve()),
+      refresh: jest.fn(),
       back: jest.fn(),
       forward: jest.fn(),
-      refresh: jest.fn(),
-    };
-  },
-  useSearchParams() {
-    return new URLSearchParams();
+      prefetch: jest.fn(),
+    }
   },
   usePathname() {
-    return '/';
+    return '/'
   },
-}));
+  useSearchParams() {
+    return new URLSearchParams()
+  },
+  useParams() {
+    return {}
+  },
+}))
 
-// ============================================================================
-// WINDOW.MATCHMEDIA MOCK
-// ============================================================================
-
+// Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: jest.fn().mockImplementation((query) => ({
-    matches: false,
+    matches: query === '(max-width: 768px)' ? false : true,
     media: query,
     onchange: null,
     addListener: jest.fn(),
@@ -103,150 +96,136 @@ Object.defineProperty(window, 'matchMedia', {
     removeEventListener: jest.fn(),
     dispatchEvent: jest.fn(),
   })),
-});
+})
 
-// ============================================================================
-// WINDOW.SCROLLTO MOCK
-// ============================================================================
-
+// Mock window.scrollTo
 Object.defineProperty(window, 'scrollTo', {
   writable: true,
   value: jest.fn(),
-});
+})
 
-// ============================================================================
-// INTL MOCKS
-// ============================================================================
-
-Object.defineProperty(global, 'IntlPolyfill', {
-  writable: true,
-  value: Intl,
-});
-
-// ============================================================================
-// SUPPRESS CONSOLE ERRORS IN TESTS
-// ============================================================================
-
-const originalError = console.error;
-
-beforeAll(() => {
-  console.error = (...args: any[]) => {
-    if (
-      typeof args[0] === 'string' &&
-      (args[0].includes('Warning: ReactDOM.render') ||
-        args[0].includes('Not implemented: HTMLFormElement.prototype.submit') ||
-        args[0].includes('getComputedStyle') ||
-        args[0].includes('ClientRectList'))
-    ) {
-      return;
-    }
-    originalError.call(console, ...args);
-  };
-});
-
-afterAll(() => {
-  console.error = originalError;
-});
-
-// ============================================================================
-// SUPPRESS CONSOLE WARNINGS IN TESTS
-// ============================================================================
-
-const originalWarn = console.warn;
-
-beforeAll(() => {
-  console.warn = (...args: any[]) => {
-    if (
-      typeof args[0] === 'string' &&
-      (args[0].includes('findDOMNode') ||
-        args[0].includes('ReactDOM.render') ||
-        args[0].includes('useLayoutEffect'))
-    ) {
-      return;
-    }
-    originalWarn.call(console, ...args);
-  };
-});
-
-afterAll(() => {
-  console.warn = originalWarn;
-});
-
-// ============================================================================
-// GLOBAL TEST UTILITIES
-// ============================================================================
-
-// Custom matchers
-expect.extend({
-  toBeWithinRange(received: number, floor: number, ceiling: number) {
-    const pass = received >= floor && received <= ceiling;
-    if (pass) {
-      return {
-        message: () =>
-          `expected ${received} not to be within range ${floor} - ${ceiling}`,
-        pass: true,
-      };
-    } else {
-      return {
-        message: () =>
-          `expected ${received} to be within range ${floor} - ${ceiling}`,
-        pass: false,
-      };
-    }
-  },
-});
-
-// ============================================================================
-// MOCK CRYPTO.SUBTLE (for NextAuth)
-// ============================================================================
-
-if (!global.crypto.subtle) {
-  Object.defineProperty(global.crypto, 'subtle', {
-    writable: true,
-    value: {
-      digest: jest.fn().mockResolvedValue(new ArrayBuffer(32)),
-      sign: jest.fn().mockResolvedValue(new ArrayBuffer(32)),
-    },
-  });
+// Mock IntersectionObserver
+global.IntersectionObserver = class IntersectionObserver {
+  constructor() {}
+  disconnect() {}
+  observe() {}
+  takeRecords() {
+    return []
+  }
+  unobserve() {}
 }
 
-// ============================================================================
-// MOCK FETCH (if needed)
-// ============================================================================
-
-if (!global.fetch) {
-  global.fetch = jest.fn();
+// Mock ResizeObserver
+global.ResizeObserver = class ResizeObserver {
+  constructor() {}
+  disconnect() {}
+  observe() {}
+  unobserve() {}
 }
 
-// ============================================================================
-// DISABLE API LOGS DURING TESTS
-// ============================================================================
-
-if (process.env.LOG_LEVEL !== 'debug') {
-  jest.spyOn(console, 'log').mockImplementation(() => {});
-  jest.spyOn(console, 'info').mockImplementation(() => {});
-}
-
-// ============================================================================
-// PERFORMANCE OBSERVER MOCK
-// ============================================================================
-
+// Mock Performance Observer
 if (!global.PerformanceObserver) {
   global.PerformanceObserver = class PerformanceObserver {
-    constructor(callback: any) {}
+    constructor() {}
     observe() {}
     disconnect() {}
-  } as any;
-}
-
-// ============================================================================
-// EXPORT TYPES FOR CUSTOM MATCHERS
-// ============================================================================
-
-declare global {
-  namespace jest {
-    interface Matchers<R> {
-      toBeWithinRange(floor: number, ceiling: number): R;
+    takeRecords() {
+      return []
     }
   }
 }
+
+// Mock crypto API (for NextAuth)
+if (!global.crypto) {
+  global.crypto = {
+    getRandomValues: (arr) => {
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = Math.floor(Math.random() * 256)
+      }
+      return arr
+    },
+    subtle: {
+      digest: jest.fn(),
+    },
+  }
+}
+
+// Mock localStorage
+const localStorageMock = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+}
+global.localStorage = localStorageMock
+
+// Mock sessionStorage
+const sessionStorageMock = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+}
+global.sessionStorage = sessionStorageMock
+
+// Mock fetch if not available
+if (!global.fetch) {
+  global.fetch = jest.fn(() =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({}),
+      text: () => Promise.resolve(''),
+      blob: () => Promise.resolve(new Blob()),
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+    })
+  )
+}
+
+// Mock requestAnimationFrame
+global.requestAnimationFrame = jest.fn((cb) => {
+  return setTimeout(cb, 0)
+})
+
+global.cancelAnimationFrame = jest.fn((id) => {
+  clearTimeout(id)
+})
+
+// Custom Jest matchers
+expect.extend({
+  toBeWithinRange(received, floor, ceiling) {
+    const pass = received >= floor && received <= ceiling
+    if (pass) {
+      return {
+        message: () => `expected ${received} not to be within range ${floor} - ${ceiling}`,
+        pass: true,
+      }
+    } else {
+      return {
+        message: () => `expected ${received} to be within range ${floor} - ${ceiling}`,
+        pass: false,
+      }
+    }
+  },
+  toBeValidEmail(received) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const pass = emailRegex.test(received)
+    if (pass) {
+      return {
+        message: () => `expected ${received} not to be a valid email`,
+        pass: true,
+      }
+    } else {
+      return {
+        message: () => `expected ${received} to be a valid email`,
+        pass: false,
+      }
+    }
+  },
+})
+
+// Setup default test timeouts
+jest.setTimeout(10000)
+
+// Suppress deprecation warnings
+process.noDeprecation = true
