@@ -1,300 +1,339 @@
-// ============================================================================
-// WORLD-CLASS ENHANCED: /src/app/api/matches/[matchId]/events/route.ts
-// Match Event Management with Real-Time Broadcasting Support
-// VERSION: 3.0 - Production Grade
-// ============================================================================
+// MATCH EVENTS API - POST & GET EVENTS
+// Path: src/app/api/matches/[matchId]/events/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { NotFoundError, BadRequestError, ForbiddenError } from '@/lib/api/errors';
+import { NotFoundError, BadRequestError } from '@/lib/api/errors';
 import { logAuditAction } from '@/lib/api/audit';
 import { logger } from '@/lib/api/logger';
 
-interface EventParams {
-  params: { matchId: string };
+// ============================================================================
+// TYPES & CONSTANTS
+// ============================================================================
+
+const VALID_EVENT_TYPES = [
+  'GOAL',
+  'OWN_GOAL',
+  'YELLOW_CARD',
+  'RED_CARD',
+  'SUBSTITUTION',
+  'INJURY',
+  'INJURY_RETURN',
+  'PENALTY',
+  'PENALTY_MISS',
+  'PENALTY_SAVED',
+  'ASSIST',
+  'CORNER',
+  'FREE_KICK',
+  'TACKLE',
+  'PASS',
+  'SHOT',
+  'SAVE',
+  'CLEARANCE',
+  'FOUL',
+  'OFFSIDE',
+  'TIMEOUT',
+  'WICKET',
+  'RUN',
+  'BOUNDARY',
+  'LBW',
+  'CAUGHT',
+];
+
+interface MatchEventPayload {
+  eventType: string;
+  teamId: string;
+  playerId?: string;
+  minute: number;
+  additionalMinute?: number;
+  description?: string;
+  involvedPlayerIds?: string[]; // For assists, tackles involving multiple players
+  notes?: string;
+}
+
+interface MatchEventResponse {
+  id: string;
+  match: {
+    id: string;
+    homeTeam: string;
+    awayTeam: string;
+    status: string;
+  };
+  eventType: string;
+  team: {
+    id: string;
+    name: string;
+  };
+  player?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    shirtNumber?: number;
+  };
+  minute: number;
+  additionalMinute?: number;
+  description?: string;
+  createdAt: string;
+}
+
+interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+  hasMore: boolean;
+}
+
+interface ErrorResponse {
+  success: false;
+  error: string;
+  code?: string;
+}
+
+interface SuccessResponse<T> {
+  success: true;
+  data?: T;
+  message?: string;
+  pagination?: PaginationInfo;
+  timestamp: string;
 }
 
 // ============================================================================
-// GET /api/matches/[matchId]/events - Get Match Events
-// Query Params:
-//   - page: number (default: 1)
-//   - limit: number (default: 50, max: 100)
-//   - type: 'GOAL' | 'YELLOW_CARD' | 'RED_CARD' | 'SUBSTITUTION_ON' | etc
-//   - team: 'HOME' | 'AWAY'
+// GET HANDLER: Get Match Events Timeline
 // ============================================================================
 
-export async function GET(request: NextRequest, { params }: EventParams) {
+/**
+ * GET /api/matches/[matchId]/events
+ * Query Parameters:
+ * - eventType: Filter by event type
+ * - teamId: Filter by team
+ * - playerId: Filter by player
+ * - page: Page number
+ * - limit: Results per page
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { matchId: string } }
+): Promise<NextResponse> {
   const requestId = crypto.randomUUID();
+  const startTime = performance.now();
 
   try {
-    logger.info(`[${requestId}] GET /api/matches/[${params.matchId}]/events`);
+    logger.info(`[${requestId}] GET /api/matches/${params.matchId}/events - Start`);
 
+    // 1. AUTHORIZATION
     const session = await getServerSession(authOptions);
-
     if (!session?.user?.id) {
       return NextResponse.json(
-        {
-          error: 'Unauthorized',
-          message: 'Authentication required',
-          code: 'AUTH_REQUIRED',
-          requestId,
-        },
-        { status: 401 }
+        { success: false, error: 'Unauthorized', code: 'AUTH_REQUIRED' } as ErrorResponse,
+        { status: 401, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // ✅ Validate match exists
+    // 2. VALIDATE MATCH EXISTS
     const match = await prisma.match.findUnique({
       where: { id: params.matchId },
-      select: {
-        id: true,
-        status: true,
-        homeTeam: { select: { name: true } },
-        awayTeam: { select: { name: true } },
-      },
+      select: { id: true, status: true },
     });
 
     if (!match) {
       throw new NotFoundError('Match', params.matchId);
     }
 
-    // ✅ Parse query parameters
-    const url = new URL(request.url);
-    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-    const limit = Math.min(
-      100,
-      Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10))
-    );
+    // 3. PARSE PAGINATION & FILTERS
+    const searchParams = request.nextUrl.searchParams;
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)));
     const skip = (page - 1) * limit;
-    const typeFilter = url.searchParams.get('type');
-    const teamFilter = url.searchParams.get('team');
 
-    // ✅ Build where clause
-    const where: any = { matchId: params.matchId };
+    const filter: any = { matchId: params.matchId };
 
-    if (typeFilter) {
-      where.type = typeFilter;
+    const eventType = searchParams.get('eventType');
+    if (eventType && VALID_EVENT_TYPES.includes(eventType.toUpperCase())) {
+      filter.eventType = eventType.toUpperCase();
     }
 
-    if (teamFilter) {
-      if (!['HOME', 'AWAY'].includes(teamFilter)) {
-        throw new BadRequestError('team must be HOME or AWAY');
-      }
-      where.team = teamFilter;
+    const teamId = searchParams.get('teamId');
+    if (teamId) {
+      filter.teamId = teamId;
     }
 
-    // ✅ Get total count
-    const total = await prisma.matchEvent.count({ where });
+    const playerId = searchParams.get('playerId');
+    if (playerId) {
+      filter.playerId = playerId;
+    }
 
-    // ✅ Fetch events
-    const events = await prisma.matchEvent.findMany({
-      where,
-      include: {
-        player: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
+    // 4. FETCH EVENTS
+    const [events, totalCount] = await Promise.all([
+      prisma.matchEvent.findMany({
+        where: filter,
+        include: {
+          player: {
+            select: {
+              id: true,
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+              shirtNumber: true,
+            },
+          },
+          team: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-      },
-      orderBy: { minute: 'asc' },
-      skip,
-      take: limit,
+        orderBy: {
+          minute: 'asc',
+        },
+        take: limit,
+        skip,
+      }),
+      prisma.matchEvent.count({ where: filter }),
+    ]);
+
+    // 5. LOG AUDIT
+    await logAuditAction(session.user.id, null, 'DATA_VIEWED', {
+      action: 'match_events_list_viewed',
+      matchId: params.matchId,
+      eventCount: totalCount,
+      requestId,
     });
 
-    // ✅ Enhance events with calculated fields
-    const enhancedEvents = events.map((event) => ({
-      id: event.id,
-      type: event.type,
-      minute: event.minute,
-      isExtraTime: event.isExtraTime,
-      team: event.team,
-      teamName: event.team === 'HOME' ? match.homeTeam.name : match.awayTeam.name,
-      player: event.player
-        ? {
-            id: event.playerId,
-            firstName: event.player.firstName,
-            lastName: event.player.lastName,
-            fullName: `${event.player.firstName} ${event.player.lastName}`,
-          }
-        : null,
-      assistedBy: event.assistedBy,
-      additionalInfo: event.additionalInfo,
-      createdAt: event.createdAt,
-    }));
-
-    // ✅ Calculate summary
-    const goalsHome = enhancedEvents.filter(
-      (e) => e.type === 'GOAL' && e.team === 'HOME'
-    ).length;
-    const goalsAway = enhancedEvents.filter(
-      (e) => e.type === 'GOAL' && e.team === 'AWAY'
-    ).length;
-    const yellowCardsHome = enhancedEvents.filter(
-      (e) => e.type === 'YELLOW_CARD' && e.team === 'HOME'
-    ).length;
-    const yellowCardsAway = enhancedEvents.filter(
-      (e) => e.type === 'YELLOW_CARD' && e.team === 'AWAY'
-    ).length;
-    const redCardsHome = enhancedEvents.filter(
-      (e) => e.type === 'RED_CARD' && e.team === 'HOME'
-    ).length;
-    const redCardsAway = enhancedEvents.filter(
-      (e) => e.type === 'RED_CARD' && e.team === 'AWAY'
-    ).length;
-
-    const response = {
-      success: true,
-      data: {
-        match: {
-          id: match.id,
-          status: match.status,
-          homeTeam: match.homeTeam.name,
-          awayTeam: match.awayTeam.name,
-        },
-        events: enhancedEvents,
-        summary: {
-          total,
-          goals: { home: goalsHome, away: goalsAway },
-          yellowCards: { home: yellowCardsHome, away: yellowCardsAway },
-          redCards: { home: redCardsHome, away: redCardsAway },
-          substitutions: enhancedEvents.filter(
-            (e) =>
-              e.type === 'SUBSTITUTION_ON' ||
-              e.type === 'SUBSTITUTION_OFF'
-          ).length,
-        },
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-          hasNextPage: page < Math.ceil(total / limit),
-          hasPreviousPage: page > 1,
-        },
-        filters: {
-          type: typeFilter || null,
-          team: teamFilter || null,
-        },
-        metadata: {
-          matchId: params.matchId,
-          requestId,
-          timestamp: new Date().toISOString(),
-          recordsReturned: enhancedEvents.length,
-        },
-      },
+    // 6. BUILD RESPONSE
+    const pagination: PaginationInfo = {
+      page,
+      limit,
+      total: totalCount,
+      pages: Math.ceil(totalCount / limit),
+      hasMore: page < Math.ceil(totalCount / limit),
     };
 
-    logger.info(
-      `[${requestId}] Successfully retrieved ${enhancedEvents.length} events for match ${params.matchId}`
-    );
+    const response: SuccessResponse<MatchEventResponse[]> = {
+      success: true,
+      data: events.map((event) => ({
+        id: event.id,
+        match: {
+          id: params.matchId,
+          homeTeam: 'Home Team',
+          awayTeam: 'Away Team',
+          status: match.status,
+        },
+        eventType: event.eventType,
+        team: event.team,
+        player: event.player
+          ? {
+              id: event.player.id,
+              firstName: event.player.user.firstName,
+              lastName: event.player.user.lastName,
+              shirtNumber: event.player.shirtNumber || undefined,
+            }
+          : undefined,
+        minute: event.minute,
+        additionalMinute: event.additionalMinute || undefined,
+        description: event.description || undefined,
+        createdAt: event.createdAt.toISOString(),
+      })),
+      pagination,
+      timestamp: new Date().toISOString(),
+    };
 
-    return NextResponse.json(response, { status: 200 });
+    const duration = performance.now() - startTime;
+    logger.info(`[${requestId}] GET /api/matches/${params.matchId}/events - Success`, {
+      duration: Math.round(duration),
+      eventCount: events.length,
+      totalCount,
+    });
+
+    return NextResponse.json(response, {
+      status: 200,
+      headers: {
+        'X-Request-ID': requestId,
+        'X-Response-Time': `${Math.round(duration)}ms`,
+        'Cache-Control': 'private, max-age=30',
+      },
+    });
   } catch (error) {
-    logger.error(
-      `[${requestId}] Error in GET /api/matches/[${params.matchId}]/events:`,
-      error
-    );
+    const duration = performance.now() - startTime;
 
-    if (error instanceof NotFoundError) {
+    if (error instanceof NotFoundError || error instanceof BadRequestError) {
+      logger.warn(`[${requestId}] GET /api/matches/${params.matchId}/events - Error`, {
+        error: error.message,
+      });
       return NextResponse.json(
-        { error: 'Not Found', message: error.message, code: 'MATCH_NOT_FOUND', requestId },
-        { status: 404 }
+        { success: false, error: error.message, code: error instanceof NotFoundError ? 'NOT_FOUND' : 'BAD_REQUEST' } as ErrorResponse,
+        { status: error instanceof NotFoundError ? 404 : 400, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    if (error instanceof BadRequestError) {
-      return NextResponse.json(
-        { error: 'Bad Request', message: error.message, code: 'INVALID_INPUT', requestId },
-        { status: 400 }
-      );
-    }
+    logger.error(`[${requestId}] GET /api/matches/${params.matchId}/events - Error`, {
+      error: error instanceof Error ? error.message : String(error),
+      duration: Math.round(duration),
+    });
 
     return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: 'Failed to retrieve events',
-        code: 'SERVER_ERROR',
-        requestId,
-      },
-      { status: 500 }
+      { success: false, error: 'Failed to fetch match events', code: 'INTERNAL_ERROR' } as ErrorResponse,
+      { status: 500, headers: { 'X-Request-ID': requestId } }
     );
   }
 }
 
 // ============================================================================
-// POST /api/matches/[matchId]/events - Log Match Event
-// Authorization: SUPERADMIN, LEAGUE_ADMIN, REFEREE
+// POST HANDLER: Log Match Event
 // ============================================================================
 
-export async function POST(request: NextRequest, { params }: EventParams) {
+/**
+ * POST /api/matches/[matchId]/events
+ * Body:
+ * {
+ *   "eventType": "GOAL|YELLOW_CARD|RED_CARD|SUBSTITUTION|etc",
+ *   "teamId": "string",
+ *   "playerId": "string (optional for team events)",
+ *   "minute": 45,
+ *   "additionalMinute": 2,
+ *   "description": "string",
+ *   "involvedPlayerIds": ["player1", "player2"]
+ * }
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { matchId: string } }
+): Promise<NextResponse> {
   const requestId = crypto.randomUUID();
+  const startTime = performance.now();
 
   try {
-    logger.info(`[${requestId}] POST /api/matches/[${params.matchId}]/events`);
+    logger.info(`[${requestId}] POST /api/matches/${params.matchId}/events - Start`);
 
+    // 1. AUTHORIZATION
     const session = await getServerSession(authOptions);
-
     if (!session?.user?.id) {
       return NextResponse.json(
-        {
-          error: 'Unauthorized',
-          message: 'Authentication required',
-          code: 'AUTH_REQUIRED',
-          requestId,
-        },
-        { status: 401 }
+        { success: false, error: 'Unauthorized', code: 'AUTH_REQUIRED' } as ErrorResponse,
+        { status: 401, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // ✅ Authorization
-    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
-    const isLeagueAdmin = session.user.roles?.includes('LEAGUE_ADMIN');
-    const isReferee = session.user.roles?.includes('REFEREE');
-    const isCoach = session.user.roles?.includes('COACH');
+    // Check authorization (REFEREE, MANAGER, SUPER_ADMIN)
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { roles: true },
+    });
 
-    if (!isSuperAdmin && !isLeagueAdmin && !isReferee && !isCoach) {
-      throw new ForbiddenError(
-        'Only SUPERADMIN, LEAGUE_ADMIN, REFEREE, or COACH can log match events'
+    if (!user?.roles?.some((r) => ['REFEREE', 'MANAGER', 'SUPER_ADMIN', 'STATISTICIAN'].includes(r))) {
+      return NextResponse.json(
+        { success: false, error: 'Insufficient permissions', code: 'FORBIDDEN' } as ErrorResponse,
+        { status: 403, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // ✅ Parse body
-    let body: any;
-    try {
-      body = await request.json();
-    } catch {
-      throw new BadRequestError('Invalid JSON in request body');
-    }
-
-    // ✅ Validate required fields
-    if (!body.type) {
-      throw new BadRequestError('type is required');
-    }
-
-    if (body.minute === undefined || body.minute === null) {
-      throw new BadRequestError('minute is required');
-    }
-
-    if (!body.team) {
-      throw new BadRequestError('team is required');
-    }
-
-    // ✅ Validate minute
-    const minute = parseInt(body.minute, 10);
-    if (isNaN(minute) || minute < 0 || minute > 150) {
-      throw new BadRequestError('minute must be between 0 and 150');
-    }
-
-    // ✅ Validate team
-    if (!['HOME', 'AWAY'].includes(body.team)) {
-      throw new BadRequestError('team must be HOME or AWAY');
-    }
-
-    // ✅ Validate match exists and is live/finished
+    // 2. VALIDATE MATCH EXISTS & IS IN PROGRESS OR COMPLETED
     const match = await prisma.match.findUnique({
       where: { id: params.matchId },
       select: {
@@ -309,107 +348,177 @@ export async function POST(request: NextRequest, { params }: EventParams) {
       throw new NotFoundError('Match', params.matchId);
     }
 
-    if (!['LIVE', 'HALFTIME', 'FINISHED'].includes(match.status)) {
+    if (!['IN_PROGRESS', 'COMPLETED'].includes(match.status)) {
+      throw new BadRequestError(`Cannot log events for match with status: ${match.status}`);
+    }
+
+    // 3. PARSE & VALIDATE REQUEST BODY
+    let body: MatchEventPayload;
+    try {
+      body = await request.json();
+    } catch {
+      throw new BadRequestError('Invalid JSON in request body');
+    }
+
+    // Validate required fields
+    if (!body.eventType) throw new BadRequestError('eventType is required');
+    if (!body.teamId) throw new BadRequestError('teamId is required');
+    if (body.minute === undefined) throw new BadRequestError('minute is required');
+
+    // Validate event type
+    if (!VALID_EVENT_TYPES.includes(body.eventType.toUpperCase())) {
       throw new BadRequestError(
-        `Cannot log events for ${match.status} matches. Match must be LIVE or FINISHED`
+        `Invalid eventType. Valid types: ${VALID_EVENT_TYPES.slice(0, 5).join(', ')}, ...`
       );
     }
 
-    // ✅ If playerId provided, validate player belongs to team
-    if (body.playerId) {
-      const teamId = body.team === 'HOME' ? match.homeTeamId : match.awayTeamId;
+    // Validate team belongs to match
+    if (![match.homeTeamId, match.awayTeamId].includes(body.teamId)) {
+      throw new BadRequestError('teamId must be either homeTeamId or awayTeamId of this match');
+    }
 
-      const player = await prisma.player.findUnique({
-        where: { id: body.playerId },
-        select: { id: true, firstName: true, lastName: true },
-      });
+    // Validate minute
+    if (typeof body.minute !== 'number' || body.minute < 0 || body.minute > 180) {
+      throw new BadRequestError('minute must be between 0 and 180');
+    }
 
-      if (!player) {
-        throw new NotFoundError('Player', body.playerId);
+    if (body.additionalMinute !== undefined) {
+      if (typeof body.additionalMinute !== 'number' || body.additionalMinute < 0) {
+        throw new BadRequestError('additionalMinute must be a non-negative number');
       }
     }
 
-    // ✅ Create event
-    const event = await prisma.matchEvent.create({
-      data: {
-        matchId: params.matchId,
-        type: body.type,
-        minute,
-        isExtraTime: body.isExtraTime || false,
-        team: body.team,
-        playerId: body.playerId || null,
-        assistedBy: body.assistedBy || null,
-        additionalInfo: body.additionalInfo || null,
-      },
+    // Validate player if provided
+    if (body.playerId) {
+      const player = await prisma.player.findUnique({
+        where: { id: body.playerId },
+        select: { teamId: true },
+      });
+      if (!player) {
+        throw new NotFoundError('Player', body.playerId);
+      }
+      if (player.teamId !== body.teamId) {
+        throw new BadRequestError('Player must belong to the specified team');
+      }
+    }
+
+    // 4. CREATE EVENT
+    const eventData: any = {
+      matchId: params.matchId,
+      eventType: body.eventType.toUpperCase(),
+      teamId: body.teamId,
+      minute: body.minute,
+      description: body.description || undefined,
+    };
+
+    if (body.playerId) {
+      eventData.playerId = body.playerId;
+    }
+
+    if (body.additionalMinute) {
+      eventData.additionalMinute = body.additionalMinute;
+    }
+
+    const newEvent = await prisma.matchEvent.create({
+      data: eventData,
       include: {
-        player: { select: { firstName: true, lastName: true } },
+        player: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+            shirtNumber: true,
+          },
+        },
+        team: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
-    // ✅ Audit logging
-    await logAuditAction({
-      performedById: session.user.id,
-      action: 'USER_CREATED',
-      entityType: 'MatchEvent',
-      entityId: event.id,
-      changes: {
-        type: event.type,
-        team: body.team,
-        minute: event.minute,
-        playerId: event.playerId,
-      },
-      details: `Logged ${event.type} event in match ${params.matchId} at minute ${minute}`,
+    // 5. LOG AUDIT
+    await logAuditAction(session.user.id, null, 'MATCH_EVENT_CREATED', {
+      matchId: params.matchId,
+      eventId: newEvent.id,
+      eventType: body.eventType,
+      teamId: body.teamId,
+      playerId: body.playerId,
+      minute: body.minute,
+      requestId,
     });
 
-    logger.info(
-      `[${requestId}] Successfully logged event for match ${params.matchId}`,
-      { type: body.type, team: body.team, minute }
-    );
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Event logged successfully',
-        data: event,
-        metadata: { requestId, timestamp: new Date().toISOString() },
+    // 6. RETURN RESPONSE
+    const response: SuccessResponse<MatchEventResponse> = {
+      success: true,
+      data: {
+        id: newEvent.id,
+        match: {
+          id: params.matchId,
+          homeTeam: 'Home Team',
+          awayTeam: 'Away Team',
+          status: match.status,
+        },
+        eventType: newEvent.eventType,
+        team: newEvent.team,
+        player: newEvent.player
+          ? {
+              id: newEvent.player.id,
+              firstName: newEvent.player.user.firstName,
+              lastName: newEvent.player.user.lastName,
+              shirtNumber: newEvent.player.shirtNumber || undefined,
+            }
+          : undefined,
+        minute: newEvent.minute,
+        additionalMinute: newEvent.additionalMinute || undefined,
+        description: newEvent.description || undefined,
+        createdAt: newEvent.createdAt.toISOString(),
       },
-      { status: 201 }
-    );
+      message: 'Event logged successfully',
+      timestamp: new Date().toISOString(),
+    };
+
+    const duration = performance.now() - startTime;
+    logger.info(`[${requestId}] POST /api/matches/${params.matchId}/events - Success`, {
+      eventId: newEvent.id,
+      eventType: body.eventType,
+      duration: Math.round(duration),
+    });
+
+    return NextResponse.json(response, {
+      status: 201,
+      headers: {
+        'X-Request-ID': requestId,
+        'X-Response-Time': `${Math.round(duration)}ms`,
+      },
+    });
   } catch (error) {
-    logger.error(
-      `[${requestId}] Error in POST /api/matches/[${params.matchId}]/events:`,
-      error
-    );
+    const duration = performance.now() - startTime;
 
-    if (error instanceof NotFoundError) {
+    if (error instanceof BadRequestError || error instanceof NotFoundError) {
+      logger.warn(`[${requestId}] POST /api/matches/${params.matchId}/events - Validation Error`, {
+        error: error.message,
+      });
       return NextResponse.json(
-        { error: 'Not Found', message: error.message, code: 'NOT_FOUND', requestId },
-        { status: 404 }
+        { success: false, error: error.message, code: error instanceof NotFoundError ? 'NOT_FOUND' : 'BAD_REQUEST' } as ErrorResponse,
+        { status: error instanceof NotFoundError ? 404 : 400, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    if (error instanceof ForbiddenError) {
-      return NextResponse.json(
-        { error: 'Forbidden', message: error.message, code: 'ACCESS_DENIED', requestId },
-        { status: 403 }
-      );
-    }
-
-    if (error instanceof BadRequestError) {
-      return NextResponse.json(
-        { error: 'Bad Request', message: error.message, code: 'INVALID_INPUT', requestId },
-        { status: 400 }
-      );
-    }
+    logger.error(`[${requestId}] POST /api/matches/${params.matchId}/events - Error`, {
+      error: error instanceof Error ? error.message : String(error),
+      duration: Math.round(duration),
+    });
 
     return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: 'Failed to log event',
-        code: 'SERVER_ERROR',
-        requestId,
-      },
-      { status: 500 }
+      { success: false, error: 'Failed to log event', code: 'INTERNAL_ERROR' } as ErrorResponse,
+      { status: 500, headers: { 'X-Request-ID': requestId } }
     );
   }
 }

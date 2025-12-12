@@ -1,366 +1,453 @@
+// MATCH MANAGEMENT UI - PRODUCTION GRADE
+// Path: src/app/dashboard/matches/create/page.tsx
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import {
-  ArrowLeft,
-  Calendar,
-  Loader2,
-  CheckCircle,
-  MapPin,
-  Clock,
-  Shield,
-} from 'lucide-react';
-import toast from 'react-hot-toast';
+import { useSession } from 'next-auth/react';
+import { AlertCircle, Loader2, CheckCircle, Calendar, Clock, Users } from 'lucide-react';
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface League {
+  id: string;
+  name: string;
+  sport: string;
+}
 
 interface Team {
   id: string;
   name: string;
-  club: {
-    name: string;
-  };
+  logo?: string;
 }
+
+interface MatchFormData {
+  homeTeamId: string;
+  awayTeamId: string;
+  leagueId: string;
+  venueId?: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  sport: string;
+  matchType: 'LEAGUE' | 'CUP' | 'FRIENDLY' | 'PLAYOFF';
+  notes?: string;
+}
+
+interface FormError {
+  field: string;
+  message: string;
+}
+
+// ============================================================================
+// MATCH CREATION FORM
+// ============================================================================
 
 export default function CreateMatchPage() {
   const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { data: session } = useSession();
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [errors, setErrors] = useState<FormError[]>([]);
+  const [leagues, setLeagues] = useState<League[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [isLoadingTeams, setIsLoadingTeams] = useState(true);
+  const [selectedLeague, setSelectedLeague] = useState<League | null>(null);
 
-  const [matchData, setMatchData] = useState({
+  const [formData, setFormData] = useState<MatchFormData>({
     homeTeamId: '',
     awayTeamId: '',
-    date: '',
-    time: '',
-    venue: '',
-    attendanceDeadline: '',
+    leagueId: '',
+    sport: 'FOOTBALL',
+    matchType: 'LEAGUE',
+    scheduledDate: '',
+    scheduledTime: '15:00',
   });
 
+  // Fetch leagues on mount
   useEffect(() => {
-    fetchTeams();
-  }, []);
+    const fetchLeagues = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/leagues');
+        const json = await response.json();
+        if (json.success) {
+          setLeagues(json.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch leagues:', error);
+        setErrors([{ field: 'general', message: 'Failed to load leagues' }]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const fetchTeams = async () => {
-    try {
-      const response = await fetch('/api/teams');
-      if (!response.ok) throw new Error('Failed to fetch teams');
-
-      const data = await response.json();
-      setTeams(data.teams);
-    } catch (error) {
-      console.error('Error fetching teams:', error);
-      toast.error('Failed to load teams');
-    } finally {
-      setIsLoadingTeams(false);
+    if (session?.user) {
+      fetchLeagues();
     }
+  }, [session?.user]);
+
+  // Fetch teams when league changes
+  useEffect(() => {
+    if (!formData.leagueId) {
+      setTeams([]);
+      setSelectedLeague(null);
+      return;
+    }
+
+    const fetchTeams = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/leagues/${formData.leagueId}/available-teams`);
+        const json = await response.json();
+        if (json.success) {
+          setTeams(json.data || []);
+          const league = leagues.find((l) => l.id === formData.leagueId);
+          setSelectedLeague(league || null);
+          setFormData((prev) => ({ ...prev, sport: league?.sport || 'FOOTBALL' }));
+        }
+      } catch (error) {
+        console.error('Failed to fetch teams:', error);
+        setErrors([{ field: 'teams', message: 'Failed to load teams' }]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTeams();
+  }, [formData.leagueId, leagues]);
+
+  // Validate form
+  const validateForm = (): boolean => {
+    const newErrors: FormError[] = [];
+
+    if (!formData.leagueId) newErrors.push({ field: 'leagueId', message: 'League is required' });
+    if (!formData.homeTeamId) newErrors.push({ field: 'homeTeamId', message: 'Home team is required' });
+    if (!formData.awayTeamId) newErrors.push({ field: 'awayTeamId', message: 'Away team is required' });
+    if (!formData.scheduledDate) newErrors.push({ field: 'scheduledDate', message: 'Match date is required' });
+
+    if (formData.homeTeamId === formData.awayTeamId) {
+      newErrors.push({ field: 'awayTeamId', message: 'Home and away teams must be different' });
+    }
+
+    const matchDateTime = new Date(`${formData.scheduledDate}T${formData.scheduledTime}`);
+    if (matchDateTime < new Date()) {
+      newErrors.push({ field: 'scheduledDate', message: 'Match date cannot be in the past' });
+    }
+
+    setErrors(newErrors);
+    return newErrors.length === 0;
   };
 
+  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!matchData.homeTeamId || !matchData.awayTeamId) {
-      toast.error('Please select both home and away teams');
+    if (!validateForm()) {
       return;
     }
 
-    if (matchData.homeTeamId === matchData.awayTeamId) {
-      toast.error('Home and away teams must be different');
-      return;
-    }
-
-    if (!matchData.date || !matchData.time) {
-      toast.error('Please provide match date and time');
-      return;
-    }
-
-    setIsSubmitting(true);
+    setSubmitting(true);
 
     try {
-      const matchDateTime = new Date(`${matchData.date}T${matchData.time}`);
-      const attendanceDeadlineDateTime = matchData.attendanceDeadline
-        ? new Date(`${matchData.attendanceDeadline}T23:59:59`)
-        : new Date(matchDateTime.getTime() - 24 * 60 * 60 * 1000); // 24 hours before
+      const scheduledDateTime = `${formData.scheduledDate}T${formData.scheduledTime}:00Z`;
 
-      const response = await fetch('/api/matches/create', {
+      const response = await fetch('/api/matches', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          homeTeamId: matchData.homeTeamId,
-          awayTeamId: matchData.awayTeamId,
-          date: matchDateTime.toISOString(),
-          venue: matchData.venue || null,
-          attendanceDeadline: attendanceDeadlineDateTime.toISOString(),
+          homeTeamId: formData.homeTeamId,
+          awayTeamId: formData.awayTeamId,
+          leagueId: formData.leagueId,
+          scheduledDate: scheduledDateTime,
+          sport: formData.sport,
+          matchType: formData.matchType,
+          notes: formData.notes,
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create match');
+      const json = await response.json();
+
+      if (!json.success) {
+        setErrors([{ field: 'general', message: json.error || 'Failed to create match' }]);
+        return;
       }
 
-      const data = await response.json();
-      toast.success('⚽ Match created successfully!');
+      setSuccess(true);
 
+      // Redirect to match detail page after 2 seconds
       setTimeout(() => {
-        router.push(`/dashboard/matches/${data.matchId}`);
-      }, 1000);
+        router.push(`/dashboard/matches/${json.data.id}`);
+      }, 2000);
     } catch (error) {
-      console.error('Match creation error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create match');
+      console.error('Error creating match:', error);
+      setErrors([{ field: 'general', message: 'An error occurred. Please try again.' }]);
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
 
-  const getTeamName = (teamId: string) => {
-    const team = teams.find((t) => t.id === teamId);
-    return team ? `${team.name} (${team.club.name})` : 'Select team...';
-  };
+  // Error display component
+  const ErrorAlert = ({ error }: { error: FormError }) => (
+    <div className="flex items-start gap-3 rounded-lg bg-red-50 p-4 text-red-900 border border-red-200">
+      <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+      <div>
+        <p className="font-medium">{error.message}</p>
+      </div>
+    </div>
+  );
 
-  if (isLoadingTeams) {
+  if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-blue-50/10 to-green-50/10">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" />
-          <p className="text-charcoal-600">Loading teams...</p>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center space-y-4">
+          <CheckCircle className="h-16 w-16 text-green-600 mx-auto" />
+          <h2 className="text-2xl font-bold">Match Created Successfully!</h2>
+          <p className="text-gray-600">Redirecting to match details...</p>
         </div>
       </div>
     );
   }
 
+  const homeTeam = teams.find((t) => t.id === formData.homeTeamId);
+  const awayTeam = teams.find((t) => t.id === formData.awayTeamId);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-blue-50/10 to-green-50/10 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-3xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl">
         {/* Header */}
         <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/dashboard/matches')}
-            className="mb-4"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Matches
-          </Button>
-
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-green-400 rounded-2xl flex items-center justify-center shadow-lg">
-              <Calendar className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold text-charcoal-900">Create New Match</h1>
-              <p className="text-charcoal-600">Schedule a match between two teams</p>
-            </div>
-          </div>
+          <h1 className="text-3xl font-bold text-gray-900">Create New Match</h1>
+          <p className="mt-2 text-lg text-gray-600">Set up a new match for your league</p>
         </div>
 
+        {/* Errors */}
+        {errors.length > 0 && (
+          <div className="mb-6 space-y-3">
+            {errors.map((error, idx) => (
+              <ErrorAlert key={idx} error={error} />
+            ))}
+          </div>
+        )}
+
         {/* Form */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-blue-500" />
-              Match Details
-            </CardTitle>
-            <CardDescription>Enter match information</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Teams Selection */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Home Team */}
-                <div className="space-y-2">
-                  <Label htmlFor="homeTeam">
-                    Home Team <span className="text-red-500">*</span>
-                  </Label>
+        <div className="rounded-lg bg-white shadow-lg">
+          <form onSubmit={handleSubmit} className="space-y-6 p-8">
+            {/* League Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select League *
+              </label>
+              <select
+                value={formData.leagueId}
+                onChange={(e) => {
+                  setFormData({ ...formData, leagueId: e.target.value });
+                  setErrors(errors.filter((err) => err.field !== 'leagueId'));
+                }}
+                disabled={loading || leagues.length === 0}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                <option value="">Choose a league...</option>
+                {leagues.map((league) => (
+                  <option key={league.id} value={league.id}>
+                    {league.name} ({league.sport})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Sport and Match Type (Read-only after league selection) */}
+            {selectedLeague && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sport
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.sport}
+                    disabled
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Match Type
+                  </label>
                   <select
-                    id="homeTeam"
-                    value={matchData.homeTeamId}
+                    value={formData.matchType}
                     onChange={(e) =>
-                      setMatchData({ ...matchData, homeTeamId: e.target.value })
+                      setFormData({
+                        ...formData,
+                        matchType: e.target.value as MatchFormData['matchType'],
+                      })
                     }
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="LEAGUE">League</option>
+                    <option value="CUP">Cup</option>
+                    <option value="FRIENDLY">Friendly</option>
+                    <option value="PLAYOFF">Playoff</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Home vs Away Team Selection */}
+            {teams.length > 0 && (
+              <div className="space-y-6">
+                {/* Home Team */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Users className="inline h-4 w-4 mr-2" />
+                    Home Team *
+                  </label>
+                  <select
+                    value={formData.homeTeamId}
+                    onChange={(e) => {
+                      setFormData({ ...formData, homeTeamId: e.target.value });
+                      setErrors(errors.filter((err) => err.field !== 'homeTeamId' && err.field !== 'awayTeamId'));
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="">Select home team...</option>
-                    {teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name} ({team.club.name})
-                      </option>
-                    ))}
+                    {teams
+                      .filter((t) => t.id !== formData.awayTeamId)
+                      .map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
                 {/* Away Team */}
-                <div className="space-y-2">
-                  <Label htmlFor="awayTeam">
-                    Away Team <span className="text-red-500">*</span>
-                  </Label>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Users className="inline h-4 w-4 mr-2" />
+                    Away Team *
+                  </label>
                   <select
-                    id="awayTeam"
-                    value={matchData.awayTeamId}
-                    onChange={(e) =>
-                      setMatchData({ ...matchData, awayTeamId: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
+                    value={formData.awayTeamId}
+                    onChange={(e) => {
+                      setFormData({ ...formData, awayTeamId: e.target.value });
+                      setErrors(errors.filter((err) => err.field !== 'homeTeamId' && err.field !== 'awayTeamId'));
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="">Select away team...</option>
-                    {teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name} ({team.club.name})
-                      </option>
-                    ))}
+                    {teams
+                      .filter((t) => t.id !== formData.homeTeamId)
+                      .map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>
+            )}
 
-              {/* Date & Time */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="date" className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    Match Date <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={matchData.date}
-                    onChange={(e) => setMatchData({ ...matchData, date: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="time" className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    Kick-off Time <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="time"
-                    type="time"
-                    value={matchData.time}
-                    onChange={(e) => setMatchData({ ...matchData, time: e.target.value })}
-                    required
-                  />
+            {/* Match Preview */}
+            {homeTeam && awayTeam && (
+              <div className="rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border border-blue-200">
+                <p className="text-sm text-gray-600 mb-2">Match Preview:</p>
+                <div className="flex items-center justify-between text-center">
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">{homeTeam.name}</p>
+                  </div>
+                  <p className="px-4 text-gray-400">vs</p>
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">{awayTeam.name}</p>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Venue */}
-              <div className="space-y-2">
-                <Label htmlFor="venue" className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
-                  Venue
-                </Label>
-                <Input
-                  id="venue"
-                  value={matchData.venue}
-                  onChange={(e) => setMatchData({ ...matchData, venue: e.target.value })}
-                  placeholder="e.g., City Stadium, Pitch 1"
-                />
-              </div>
-
-              {/* Attendance Deadline */}
-              <div className="space-y-2">
-                <Label htmlFor="attendanceDeadline">
-                  Attendance Deadline (Optional)
-                </Label>
-                <Input
-                  id="attendanceDeadline"
+            {/* Date and Time */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Calendar className="inline h-4 w-4 mr-2" />
+                  Match Date *
+                </label>
+                <input
                   type="date"
-                  value={matchData.attendanceDeadline}
-                  onChange={(e) =>
-                    setMatchData({ ...matchData, attendanceDeadline: e.target.value })
-                  }
+                  value={formData.scheduledDate}
+                  onChange={(e) => {
+                    setFormData({ ...formData, scheduledDate: e.target.value });
+                    setErrors(errors.filter((err) => err.field !== 'scheduledDate'));
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
-                <p className="text-xs text-charcoal-600">
-                  Players must confirm availability before this date (default: 24 hours before match)
-                </p>
               </div>
-
-              {/* Preview */}
-              {matchData.homeTeamId && matchData.awayTeamId && matchData.date && (
-                <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                  <p className="text-sm text-charcoal-600 mb-3 font-semibold">Match Preview:</p>
-                  <div className="flex items-center justify-between">
-                    <div className="text-center flex-1">
-                      <p className="font-bold text-charcoal-900">
-                        {getTeamName(matchData.homeTeamId).split('(')[0]}
-                      </p>
-                      <Badge className="bg-blue-100 text-blue-700 border-blue-300 mt-2">
-                        HOME
-                      </Badge>
-                    </div>
-                    <div className="px-6">
-                      <p className="text-2xl font-bold text-charcoal-900">VS</p>
-                    </div>
-                    <div className="text-center flex-1">
-                      <p className="font-bold text-charcoal-900">
-                        {getTeamName(matchData.awayTeamId).split('(')[0]}
-                      </p>
-                      <Badge className="bg-orange-100 text-orange-700 border-orange-300 mt-2">
-                        AWAY
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="mt-4 pt-4 border-t border-blue-200 text-center">
-                    <p className="text-sm text-charcoal-700">
-                      <Calendar className="w-4 h-4 inline mr-2" />
-                      {new Date(`${matchData.date}T${matchData.time || '00:00'}`).toLocaleString(
-                        'en-GB',
-                        {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        }
-                      )}
-                    </p>
-                    {matchData.venue && (
-                      <p className="text-sm text-charcoal-600 mt-1">
-                        <MapPin className="w-4 h-4 inline mr-2" />
-                        {matchData.venue}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Submit */}
-              <div className="flex justify-end gap-3 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.push('/dashboard/matches')}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || !matchData.homeTeamId || !matchData.awayTeamId}
-                  className="bg-gradient-to-r from-blue-500 to-green-400 hover:from-blue-600 hover:to-green-500 text-white"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Create Match
-                    </>
-                  )}
-                </Button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Clock className="inline h-4 w-4 mr-2" />
+                  Match Time
+                </label>
+                <input
+                  type="time"
+                  value={formData.scheduledTime}
+                  onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
               </div>
-            </form>
-          </CardContent>
-        </Card>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Notes (Optional)
+              </label>
+              <textarea
+                value={formData.notes || ''}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Add any additional notes about the match..."
+                rows={4}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              />
+            </div>
+
+            {/* Submit Buttons */}
+            <div className="flex gap-4 pt-4">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                disabled={submitting}
+                className="flex-1 px-6 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting || loading}
+                className="flex-1 px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Match'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Info Box */}
+        <div className="mt-6 rounded-lg bg-blue-50 p-4 text-blue-900 border border-blue-200">
+          <p className="text-sm">
+            <strong>Note:</strong> Once the match is created, you'll be able to add lineups, assign a referee, and
+            start logging events when the match begins.
+          </p>
+        </div>
       </div>
     </div>
   );
