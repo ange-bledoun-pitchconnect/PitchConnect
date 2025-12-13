@@ -1,0 +1,132 @@
+{
+  "expo": {
+    "name": "PitchConnect",
+    "slug": "pitchconnect-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "pitchconnectmobile",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "enabled": true,
+      "checkOnLaunch": "always",
+      "fallbackToCacheTimeout": 1000,
+      "url": "https://updates.expo.dev/YOUR_PROJECT_ID"
+    },
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff",
+      "dark": {
+        "image": "./assets/images/splash-icon-dark.png",
+        "backgroundColor": "#000000"
+      }
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pitchconnect.mobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "PitchConnect needs camera access for video uploads",
+        "NSPhotoLibraryUsageDescription": "PitchConnect needs photo library access for media uploads",
+        "NSMicrophoneUsageDescription": "PitchConnect needs microphone access for video recording",
+        "NSLocationWhenInUseUsageDescription": "PitchConnect uses your location for team events",
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.pitchconnect.mobile",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.INTERNET",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "useNextNotificationsApi": true,
+      "softwareKeyboardLayoutMode": "pan"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000",
+            "image": "./assets/images/splash-icon-dark.png"
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#0891b2",
+          "sounds": [
+            "./assets/sounds/notification.wav"
+          ]
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos",
+          "savePhotosPermission": "Allow $(PRODUCT_NAME) to save photos"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      },
+      "apiUrl": "http://localhost:3000/api",
+      "socketUrl": "http://localhost:3000",
+      "mlServiceUrl": "http://localhost:5000"
+    }
+  }
+}
