@@ -2683,3 +2683,433 @@ model FatigueAnalysis {
   @@index([riskLevel])
   @@map("fatigue_analyses")
 }
+// ============================================================================
+// PRISMA SCHEMA ADDITIONS - PHASE 3 ANALYTICS MODELS
+// Insert these models into your existing schema.prisma AFTER existing models
+// ============================================================================
+
+// ============================================================================
+// ANALYTICS MODELS - REAL-TIME PLAYER & MATCH ANALYTICS
+// ============================================================================
+
+model PlayerAnalytic {
+  id                String    @id @default(cuid())
+  playerId          String
+  teamId            String?
+  leagueId          String?
+  
+  // Time Series Data
+  season            Int
+  matchweek         Int?
+  recordedAt        DateTime  @default(now())
+  
+  // Performance Metrics
+  rating            Float     @default(5.0)
+  ratingTrend       String    @default("STABLE") // IMPROVING, STABLE, DECLINING
+  form              String    @default("MODERATE") // EXCELLENT, GOOD, SATISFACTORY, MODERATE, POOR
+  
+  // Aggregated Stats for Period
+  appearances       Int       @default(0)
+  goals             Int       @default(0)
+  assists           Int       @default(0)
+  minutesPlayed     Int       @default(0)
+  
+  // Detailed Performance
+  passingAccuracy   Float?
+  passes            Int?
+  passesCompleted   Int?
+  
+  tackles           Int?
+  interceptions     Int?
+  clearances        Int?
+  blocks            Int?
+  
+  shotsOnTarget     Int?
+  totalShots        Int?
+  expectedGoals     Float?
+  expectedAssists   Float?
+  
+  // Physical Metrics
+  sprintDistance    Float?
+  topSpeed          Float?
+  acceleration      Float?
+  jumpHeight        Float?
+  
+  // Discipline
+  foulsCommitted    Int?
+  foulsDrawn        Int?
+  yellowCards       Int?
+  redCards          Int?
+  
+  // Additional Context
+  opposition        String?
+  homeAway          String?   // HOME, AWAY
+  result            String?   // WIN, DRAW, LOSS
+  quality           Float?    // Opposition quality rating
+  
+  player            Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([playerId, season, matchweek])
+  @@index([playerId])
+  @@index([season])
+  @@index([leagueId])
+  @@index([recordedAt])
+  @@index([rating])
+  @@map("player_analytics")
+}
+
+model MatchAnalytic {
+  id                String    @id @default(cuid())
+  matchId           String    @unique
+  
+  // Teams
+  homeTeamId        String
+  awayTeamId        String
+  
+  // Match Context
+  importance        Float     @default(1.0) // 1.0 = regular, 1.5 = important, 2.0 = critical
+  weather           String?
+  
+  // Home Team Stats
+  homePossession    Int?
+  homeShots         Int?
+  homeShotsOnTarget Int?
+  homePasses        Int?
+  homePassAccuracy  Float?
+  homeTackles       Int?
+  homeFouls         Int?
+  homeCorners       Int?
+  homeOffsides      Int?
+  homeYellowCards   Int?
+  homeRedCards      Int?
+  homeDangerousPasses Int?
+  
+  // Away Team Stats
+  awayPossession    Int?
+  awayShots         Int?
+  awayShotsOnTarget Int?
+  awayPasses        Int?
+  awayPassAccuracy  Float?
+  awayTackles       Int?
+  awayFouls         Int?
+  awayCorners       Int?
+  awayOffsides      Int?
+  awayYellowCards   Int?
+  awayRedCards      Int?
+  awayDangerousPasses Int?
+  
+  // Match Quality
+  expectedGoalsHome Float?
+  expectedGoalsAway Float?
+  
+  // Analysis
+  dominantTeam      String?   // HOME, AWAY, BALANCED
+  keyMoments        Json?     // Array of significant moments
+  tactical          String?   // Tactical summary
+  analysis          String?   @db.Text
+  
+  match             Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([matchId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@map("match_analytics")
+}
+
+model LeagueAnalytic {
+  id                String    @id @default(cuid())
+  leagueId          String
+  season            Int
+  
+  // League-wide Stats
+  totalMatches      Int       @default(0)
+  totalGoals        Int       @default(0)
+  averageGoalsPerMatch Float?
+  
+  topScorer         String?
+  topAssisters      String[]
+  
+  // Team Distribution
+  averageAttendance Int?
+  highestAttendance Int?
+  lowestAttendance  Int?
+  
+  // Quality Metrics
+  averageRating     Float?
+  goalScoringTrend  Json?     // Time series of goals per matchweek
+  
+  league            League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@unique([leagueId, season])
+  @@index([leagueId])
+  @@index([season])
+  @@map("league_analytics")
+}
+
+// ============================================================================
+// EXTEND EXISTING MODELS WITH ANALYTICS RELATIONS
+// ============================================================================
+
+// Add this to the Player model:
+// analytics   PlayerAnalytic[]
+
+// Add this to the Match model:
+// analytics   MatchAnalytic?
+
+// Add this to the League model:
+// analytics   LeagueAnalytic[]
+
+// ============================================================================
+// CACHE & PERFORMANCE MODELS
+// ============================================================================
+
+model CacheEntry {
+  id                String    @id @default(cuid())
+  key               String    @unique
+  value             String    @db.Text
+  expiresAt         DateTime?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([expiresAt])
+  @@map("cache_entries")
+}
+
+// ============================================================================
+// DASHBOARD & REPORT MODELS
+// ============================================================================
+
+model DashboardConfig {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  
+  // Widget Configuration
+  widgets           Json      // Array of widget IDs and positions
+  theme             String    @default("light")
+  
+  // Default Filters
+  defaultSeason     Int?
+  defaultSport      String?
+  defaultTeamId     String?
+  
+  // Preferences
+  autoRefresh       Boolean   @default(true)
+  refreshInterval   Int       @default(300) // seconds
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([userId])
+  @@map("dashboard_configs")
+}
+
+model Report {
+  id                String    @id @default(cuid())
+  userId            String
+  type              String    // PLAYER_ANALYSIS, MATCH_REPORT, SEASON_REVIEW, etc
+  
+  title             String
+  description       String?   @db.Text
+  content           String    @db.Text // Markdown or HTML content
+  
+  scope             String    // PLAYER, TEAM, LEAGUE, CUSTOM
+  scopeId           String?
+  
+  season            Int?
+  generatedAt       DateTime  @default(now())
+  
+  format            String    @default("HTML") // HTML, PDF, EXCEL
+  fileUrl           String?
+  
+  isPublic          Boolean   @default(false)
+  isArchived        Boolean   @default(false)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([type])
+  @@index([season])
+  @@map("reports")
+}
+
+// ============================================================================
+// INSIGHT & RECOMMENDATION MODELS
+// ============================================================================
+
+model PlayerInsight {
+  id                String    @id @default(cuid())
+  playerId          String
+  
+  insightType       String    // FORM_ALERT, INJURY_RISK, PERFORMANCE_TREND, etc
+  category          String    // POSITIVE, NEUTRAL, ALERT
+  
+  title             String
+  description       String    @db.Text
+  recommendation    String?   @db.Text
+  
+  dataSource        String    // Which metrics generated this
+  confidence        Float     @default(0.75) // 0-1 confidence score
+  
+  isResolved        Boolean   @default(false)
+  acknowledgedBy    String?
+  acknowledgedAt    DateTime?
+  
+  validUntil        DateTime?
+  
+  metadata          Json?
+  
+  player            Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime  @default(now())
+  
+  @@index([playerId])
+  @@index([insightType])
+  @@index([category])
+  @@index([isResolved])
+  @@map("player_insights")
+}
+
+model TeamInsight {
+  id                String    @id @default(cuid())
+  teamId            String
+  
+  insightType       String    // LINEUP_RECOMMENDATION, FORMATION_SUGGESTION, etc
+  category          String    // POSITIVE, NEUTRAL, ALERT
+  
+  title             String
+  description       String    @db.Text
+  recommendation    String?   @db.Text
+  
+  confidence        Float     @default(0.75)
+  
+  isResolved        Boolean   @default(false)
+  acknowledgedAt    DateTime?
+  
+  validUntil        DateTime?
+  
+  createdAt         DateTime  @default(now())
+  
+  @@index([teamId])
+  @@index([insightType])
+  @@map("team_insights")
+}
+
+// ============================================================================
+// FEATURE FLAG & CONFIGURATION MODELS
+// ============================================================================
+
+model FeatureFlag {
+  id                String    @id @default(cuid())
+  name              String    @unique
+  description       String?
+  enabled           Boolean   @default(false)
+  
+  // Rollout Configuration
+  rolloutPercentage Int       @default(0) // 0-100
+  targetUsers       String[]  // Specific user IDs for early access
+  targetTeams       String[]  // Specific team IDs
+  
+  // Timeline
+  enabledAt         DateTime?
+  disabledAt        DateTime?
+  
+  metadata          Json?
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([enabled])
+  @@map("feature_flags")
+}
+
+// ============================================================================
+// EXPORT MODELS FOR GDPR/DATA COMPLIANCE
+// ============================================================================
+
+model DataExport {
+  id                String    @id @default(cuid())
+  userId            String
+  
+  exportType        String    // USER_DATA, TEAM_DATA, MATCH_DATA, ALL
+  scope             String    // PERSONAL, TEAM, LEAGUE
+  
+  status            String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  format            String    @default("CSV") // CSV, JSON, XML
+  
+  fileUrl           String?
+  fileSize          Int?
+  
+  reason            String?
+  requestedReason   String?   // GDPR, BACKUP, ANALYSIS, etc
+  
+  expiresAt         DateTime?
+  
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("data_exports")
+}
+
+// ============================================================================
+// USER RELATION UPDATES
+// ============================================================================
+// Add these relations to the User model:
+// dataExports       DataExport[]
+// dashboardConfig   DashboardConfig?
+// reports           Report[]
+// playerInsights    PlayerInsight[]
+// insights          Notification[] (if not already there)
+
+// ============================================================================
+// PLAYER RELATION UPDATES
+// ============================================================================
+// Add these relations to the Player model:
+// analytics         PlayerAnalytic[]
+// insights          PlayerInsight[]
+
+// ============================================================================
+// MATCH RELATION UPDATES  
+// ============================================================================
+// Add this relation to the Match model:
+// analytics         MatchAnalytic?
+
+// ============================================================================
+// LEAGUE RELATION UPDATES
+// ============================================================================
+// Add this relation to the League model:
+// analytics         LeagueAnalytic[]
+
+// ============================================================================
+// MIGRATION NOTES
+// ============================================================================
+// After adding these models, run:
+//
+// 1. Create migration:
+//    npx prisma migrate dev --name add_phase3_analytics
+//
+// 2. Generate Prisma Client:
+//    npx prisma generate
+//
+// 3. Check studio (optional):
+//    npx prisma studio
+//
+// 4. Seed data (if applicable):
+//    npx tsx prisma/seed.ts
+//
+// ============================================================================
