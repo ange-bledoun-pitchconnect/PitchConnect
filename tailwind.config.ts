@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss'
+import plugin from 'tailwindcss/plugin'
 
 const config: Config = {
     darkMode: ['class'],
@@ -45,6 +46,9 @@ const config: Config = {
                 'dark-mode': { 'raw': '(prefers-color-scheme: dark)' },
                 'light-mode': { 'raw': '(prefers-color-scheme: light)' },
                 'print': { 'raw': 'print' },
+                // Sports-specific breakpoints
+                'coach': '1400px',
+                'stats': '1600px',
             },
 
             /**
@@ -65,6 +69,7 @@ const config: Config = {
              * - Use purple for team/collaboration features
              * - Use charcoal for text and structural elements
              * - Use neutral for backgrounds and spacing
+             * - Use sport-specific colors for team tracking
              */
             colors: {
                 // Primary Brand Colors
@@ -156,6 +161,31 @@ const config: Config = {
                     'DEFAULT': '#3B82F6',
                     'dark': '#2563EB',
                 },
+                // Sports-specific Colors
+                injury: {
+                    'light': '#FCA5A5',
+                    'DEFAULT': '#EF4444',
+                    'dark': '#DC2626',
+                    'bg': 'rgba(239, 68, 68, 0.1)',
+                },
+                fitness: {
+                    'light': '#86EFAC',
+                    'DEFAULT': '#22C55E',
+                    'dark': '#16A34A',
+                    'bg': 'rgba(34, 197, 94, 0.1)',
+                },
+                performance: {
+                    'light': '#60A5FA',
+                    'DEFAULT': '#3B82F6',
+                    'dark': '#2563EB',
+                    'bg': 'rgba(59, 130, 246, 0.1)',
+                },
+                recovery: {
+                    'light': '#A78BFA',
+                    'DEFAULT': '#8B5CF6',
+                    'dark': '#7C3AED',
+                    'bg': 'rgba(139, 92, 246, 0.1)',
+                },
                 // CSS Variables for Light/Dark Mode
                 background: 'hsl(var(--background))',
                 foreground: 'hsl(var(--foreground))',
@@ -207,6 +237,7 @@ const config: Config = {
             fontFamily: {
                 'sans': ['var(--font-inter)', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"Roboto"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
                 'mono': ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
+                'display': ['var(--font-inter)', 'system-ui', 'sans-serif'],
             },
 
             /**
@@ -245,6 +276,12 @@ const config: Config = {
                 'gradient-mesh-light': 'radial-gradient(at 40% 20%, rgba(212, 175, 55, 0.3) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(168, 85, 247, 0.2) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(255, 107, 53, 0.2) 0px, transparent 50%)',
                 'gradient-mesh-dark': 'radial-gradient(at 40% 20%, rgba(212, 175, 55, 0.15) 0px, transparent 50%), radial-gradient(at 80% 0%, rgba(168, 85, 247, 0.1) 0px, transparent 50%), radial-gradient(at 0% 50%, rgba(255, 107, 53, 0.1) 0px, transparent 50%)',
                 'grid-pattern': 'linear-gradient(to right, #f3f4f6 1px, transparent 1px), linear-gradient(to bottom, #f3f4f6 1px, transparent 1px)',
+                // Sports field patterns
+                'field-pattern': 'linear-gradient(0deg, transparent 24%, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, 0.05) 75%, rgba(255, 255, 255, 0.05) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, 0.05) 75%, rgba(255, 255, 255, 0.05) 76%, transparent 77%, transparent)',
+                'gradient-injury': 'linear-gradient(135deg, #FCA5A5 0%, #EF4444 100%)',
+                'gradient-fitness': 'linear-gradient(135deg, #86EFAC 0%, #22C55E 100%)',
+                'gradient-performance': 'linear-gradient(135deg, #60A5FA 0%, #3B82F6 100%)',
+                'gradient-recovery': 'linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%)',
             },
 
             /**
@@ -269,6 +306,9 @@ const config: Config = {
                 'gold': '0 10px 25px -5px rgba(212, 175, 55, 0.3)',
                 'purple': '0 10px 25px -5px rgba(168, 85, 247, 0.3)',
                 'orange': '0 10px 25px -5px rgba(255, 107, 53, 0.3)',
+                'injury': '0 10px 25px -5px rgba(239, 68, 68, 0.2)',
+                'fitness': '0 10px 25px -5px rgba(34, 197, 94, 0.2)',
+                'performance': '0 10px 25px -5px rgba(59, 130, 246, 0.2)',
             },
 
             /**
@@ -296,6 +336,9 @@ const config: Config = {
                 'gradient': 'gradient 15s ease infinite',
                 'float': 'float 3s ease-in-out infinite',
                 'bounce-sm': 'bounceSm 1s ease-in-out infinite',
+                'pulse-injury': 'pulseInjury 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                'spin-slow': 'spin 3s linear infinite',
+                'bounce-gentle': 'bounceGentle 2s infinite',
             },
 
             /**
@@ -313,10 +356,12 @@ const config: Config = {
                 scaleIn: { '0%': { opacity: '0', transform: 'scale(0.95)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
                 scaleOut: { '0%': { opacity: '1', transform: 'scale(1)' }, '100%': { opacity: '0', transform: 'scale(0.95)' } },
                 pulseGlow: { '0%, 100%': { opacity: '1' }, '50%': { opacity: '0.7' } },
+                pulseInjury: { '0%, 100%': { opacity: '1', boxShadow: '0 0 0 0 rgba(239, 68, 68, 0.7)' }, '50%': { opacity: '0.8', boxShadow: '0 0 0 10px rgba(239, 68, 68, 0)' } },
                 shimmer: { '0%': { backgroundPosition: '-1000px 0' }, '100%': { backgroundPosition: '1000px 0' } },
                 gradient: { '0%, 100%': { backgroundPosition: '0% 50%' }, '50%': { backgroundPosition: '100% 50%' } },
                 float: { '0%, 100%': { transform: 'translateY(0px)' }, '50%': { transform: 'translateY(-10px)' } },
                 bounceSm: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-4px)' } },
+                bounceGentle: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-2px)' } },
             },
 
             /**
@@ -415,6 +460,17 @@ const config: Config = {
 
             /**
              * =====================================================================
+             * TRANSITION TIMING FUNCTIONS - EASING CURVES
+             * =====================================================================
+             */
+            transitionTimingFunction: {
+                'smooth': 'cubic-bezier(0.4, 0, 0.2, 1)',
+                'bounce': 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+                'sport': 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+            },
+
+            /**
+             * =====================================================================
              * Z-INDEX LAYERING - STACKING CONTEXT
              * =====================================================================
              */
@@ -432,10 +488,110 @@ const config: Config = {
                 'notification': '1200',
                 'max': '9999',
             },
+
+            /**
+             * =====================================================================
+             * ASPECT RATIOS - COMMON MEDIA DIMENSIONS
+             * =====================================================================
+             */
+            aspectRatio: {
+                'video': '16 / 9',
+                'square': '1 / 1',
+                'portrait': '3 / 4',
+                'wide': '21 / 9',
+                'field': '100 / 64',
+            },
         },
     },
 
-    plugins: [require('tailwindcss-animate')],
+    plugins: [
+        require('tailwindcss-animate'),
+        // Custom plugin for sports-specific utilities
+        plugin(function ({ addComponents, addUtilities, theme }) {
+            // Sports field grid
+            addUtilities({
+                '.field-grid': {
+                    'backgroundImage': theme('backgroundImage.field-pattern'),
+                    'backgroundSize': '20px 20px',
+                    'backgroundColor': 'rgba(16, 185, 129, 0.05)',
+                },
+                '.player-card': {
+                    'position': 'relative',
+                    'overflow': 'hidden',
+                    'borderRadius': theme('borderRadius.lg'),
+                    'boxShadow': theme('boxShadow.md'),
+                    'transition': 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+                    '&:hover': {
+                        'transform': 'translateY(-4px)',
+                        'boxShadow': theme('boxShadow.lg'),
+                    },
+                },
+                '.stat-badge': {
+                    'display': 'inline-flex',
+                    'alignItems': 'center',
+                    'justifyContent': 'center',
+                    'minWidth': '2.5rem',
+                    'minHeight': '2.5rem',
+                    'borderRadius': theme('borderRadius.full'),
+                    'fontSize': theme('fontSize.xs')[0],
+                    'fontWeight': '600',
+                    'transition': 'all 200ms ease-in-out',
+                },
+                '.injury-indicator': {
+                    'position': 'relative',
+                    '&::after': {
+                        'content': '""',
+                        'position': 'absolute',
+                        'inset': '0',
+                        'borderRadius': theme('borderRadius.inherit'),
+                        'animation': 'pulse-injury 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                },
+                '.performance-indicator': {
+                    'position': 'relative',
+                    'display': 'inline-block',
+                    'width': '100%',
+                    'height': '4px',
+                    'backgroundColor': theme('colors.neutral')[200],
+                    'borderRadius': theme('borderRadius.full'),
+                    'overflow': 'hidden',
+                    '&::after': {
+                        'content': '""',
+                        'position': 'absolute',
+                        'inset': '0',
+                        'backgroundColor': theme('colors.performance.DEFAULT'),
+                        'animation': 'slideLeft 1.5s ease-in-out infinite',
+                    },
+                },
+                '.focus-ring-sports': {
+                    'outline': 'none',
+                    'ringWidth': '2px',
+                    'ringColor': theme('colors.gold')[500],
+                    'ringOffsetWidth': '2px',
+                    'ringOffsetColor': theme('colors.background'),
+                },
+            })
+
+            // Component styles
+            addComponents({
+                '.btn-sport': {
+                    '@apply': 'inline-flex items-center justify-center px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 focus-ring-sports disabled:opacity-50 disabled:cursor-not-allowed',
+                },
+                '.btn-sport-primary': {
+                    '@apply': 'btn-sport bg-gold-500 text-white hover:bg-gold-600 active:bg-gold-700 shadow-gold',
+                },
+                '.btn-sport-secondary': {
+                    '@apply': 'btn-sport bg-orange-500 text-white hover:bg-orange-600 active:bg-orange-700 shadow-orange',
+                },
+                '.card-sport': {
+                    '@apply': 'rounded-lg bg-card border border-border shadow-md hover:shadow-lg transition-all duration-300',
+                },
+                '.stat-container': {
+                    '@apply': 'flex flex-col items-center justify-center p-4 rounded-lg bg-card border border-border',
+                },
+            })
+        }),
+    ],
 }
 
 export default config
