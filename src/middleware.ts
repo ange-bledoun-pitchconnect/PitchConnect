@@ -1,40 +1,67 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
+// ============================================================================
+// FILE: src/middleware.ts
+// ============================================================================
+// NextAuth Middleware - Route Protection
 
-export async function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
+import { withAuth } from 'next-auth/middleware';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-  // Only protect dashboard routes
-  if (!pathname.startsWith('/dashboard')) {
+// Routes that require authentication
+const protectedRoutes = [
+  '/dashboard',
+  '/players',
+  '/teams',
+  '/matches',
+  '/training',
+  '/analytics',
+  '/api/players',
+  '/api/teams',
+  '/api/matches',
+  '/api/training',
+];
+
+// Routes accessible only to authenticated users
+const authRoutes = ['/auth/login', '/auth/register', '/auth/reset-password'];
+
+// Routes accessible only to unauthenticated users
+const publicRoutes = ['/', '/about', '/pricing', '/contact'];
+
+export const middleware = withAuth(
+  function onSuccess(request: NextRequest) {
+    const token = request.nextauth.token;
+    const pathname = request.nextUrl.pathname;
+
+    // Redirect authenticated users away from auth pages
+    if (authRoutes.some(route => pathname.startsWith(route)) && token) {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+
     return NextResponse.next();
+  },
+  {
+    callbacks: {
+      authorized: ({ token, req }) => {
+        const pathname = req.nextUrl.pathname;
+
+        // Check if route is protected
+        if (protectedRoutes.some(route => pathname.startsWith(route))) {
+          return !!token;
+        }
+
+        // Public and auth routes are always allowed
+        return true;
+      },
+    },
+    pages: {
+      signIn: '/auth/login',
+      error: '/auth/login',
+    },
   }
-
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-
-  // If unauthenticated, redirect to login
-  if (!token) {
-    return NextResponse.redirect(new URL('/auth/login', req.url));
-  }
-
-  // 🔧 FIXED: Check isSuperAdmin flag OR roles array
-  const isSuperAdmin = token.isSuperAdmin === true;
-  const roles = (token.roles as string[]) || [];
-  const hasSuperAdminRole = roles.includes('SUPERADMIN');
-
-  // Allow SuperAdmin access to everything
-  if (isSuperAdmin || hasSuperAdminRole) {
-    return NextResponse.next();
-  }
-
-  // Block access to SuperAdmin dashboard for non-superadmins
-  if (pathname.startsWith('/dashboard/superadmin')) {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
-  }
-
-  // Allow access to other dashboard routes
-  return NextResponse.next();
-}
+);
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|public).*)',
+  ],
 };

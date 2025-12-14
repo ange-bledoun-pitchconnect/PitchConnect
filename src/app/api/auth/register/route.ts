@@ -1,147 +1,105 @@
 // ============================================================================
-// src/app/api/auth/register/route.ts
-// POST - User registration with email verification
+// FILE: src/app/api/auth/register/route.ts
 // ============================================================================
+// User Registration Endpoint
 
-import { NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import {
-  parseJsonBody,
-  validateRequired,
-  validateEmail,
-  validatePassword,
-  validateStringLength,
-} from '@/lib/api/validation';
-import { success, errorResponse } from '@/lib/api/responses';
-import { BadRequestError, ConflictError } from '@/lib/api/errors';
-import { logSecurityEvent, logAuthEvent } from '@/lib/api/audit';
-import bcrypt from 'bcryptjs';
+import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/lib/prisma';
+import { hashPassword, validatePassword, isValidEmail, sanitizeEmail } from '@/lib/auth';
+import { registerSchema } from '@/lib/validation';
 
-/**
- * POST /api/auth/register
- * Register a new user account
- * 
- * Request Body:
- *   Required:
- *     - email: string (must be valid email format)
- *     - password: string (min 8 chars, must include uppercase, lowercase, number, special char)
- *     - firstName: string (1-50 chars)
- *     - lastName: string (1-50 chars)
- *   
- *   Optional:
- *     - phoneNumber: string
- *     - role: enum (PLAYER, COACH, CLUB_MANAGER, CLUB_OWNER, SCOUT, ANALYST, MEDICAL_STAFF, LEAGUE_ADMIN)
- * 
- * Validation Rules:
- *   - Email must be unique in system
- *   - Email must be valid format
- *   - Password must meet strength requirements
- *   - Names must be 1-50 characters
- *   - Phone number must be valid format (if provided)
- * 
- * Response:
- *   - User object with ID (without password)
- *   - Verification email sent
- *   - Account status: PENDING_EMAIL_VERIFICATION
- * 
- * Side Effects:
- *   - Creates User record in database
- *   - Generates verification token
- *   - Sends verification email
- *   - Logs registration event to audit trail
- * 
- * Status Code: 201 Created
- */
 export async function POST(request: NextRequest) {
   try {
-    const body = await parseJsonBody(request);
+    const body = await request.json();
 
-    // Validate required fields
-    validateRequired(body, ['email', 'password', 'firstName', 'lastName']);
+    // Validate input
+    const validatedData = registerSchema.parse(body);
 
-    // Validate email
-    const email = body.email.toLowerCase().trim();
-    validateEmail(email);
+    // Sanitize email
+    const email = sanitizeEmail(validatedData.email);
 
-    // Validate password strength
-    validatePassword(body.password);
-
-    // Validate names
-    validateStringLength(body.firstName, 1, 50, 'First name');
-    validateStringLength(body.lastName, 1, 50, 'Last name');
-
-    // Validate phone if provided
-    if (body.phoneNumber) {
-      validateStringLength(body.phoneNumber, 10, 20, 'Phone number');
+    // Validate email format
+    if (!isValidEmail(email)) {
+      return NextResponse.json(
+        { error: 'Invalid email format' },
+        { status: 400 }
+      );
     }
 
-    // Check if email already exists
+    // Validate password strength
+    const passwordValidation = validatePassword(validatedData.password);
+    if (!passwordValidation.isValid) {
+      return NextResponse.json(
+        {
+          error: 'Password is not strong enough',
+          details: passwordValidation.errors,
+          suggestions: passwordValidation.suggestions,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if user exists
     const existingUser = await prisma.user.findUnique({
       where: { email },
-      select: { id: true },
     });
 
     if (existingUser) {
-      throw new ConflictError(
-        'Email address is already registered. Please login or use a different email.'
+      return NextResponse.json(
+        { error: 'User with this email already exists' },
+        { status: 409 }
       );
     }
 
     // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(body.password, salt);
-
-    // Generate verification token
-    const verificationToken = await bcrypt.hash(
-      `${email}${Date.now()}${Math.random()}`,
-      salt
-    );
-    const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const hashedPassword = await hashPassword(validatedData.password);
 
     // Create user
-    const user = await prisma.user.create({
+    const newUser = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
-        firstName: body.firstName,
-        lastName: body.lastName,
-        phoneNumber: body.phoneNumber || null,
-        emailVerified: false,
-        emailVerificationToken: verificationToken,
-        emailVerificationTokenExpiry: verificationTokenExpiry,
-        status: 'PENDING_EMAIL_VERIFICATION',
-        roles: {
-          create: {
-            role: body.role || 'PLAYER',
-          },
-        },
+        firstName: validatedData.firstName,
+        lastName: validatedData.lastName,
+        roles: ['PLAYER'],
+        status: 'PENDING_VERIFICATION',
       },
       select: {
         id: true,
         email: true,
         firstName: true,
         lastName: true,
-        status: true,
         createdAt: true,
-        roles: {
-          select: { role: true },
-        },
       },
     });
 
-    // Log registration event
-    await logAuthEvent(
-      user.id,
-      'REGISTRATION',
-      `New user registered: ${user.firstName} ${user.lastName}`,
-      request.headers.get('x-forwarded-for') || undefined
+    // Log activity
+    await prisma.auditLog.create({
+      data: {
+        performedById: newUser.id,
+        action: 'USER_CREATED',
+        entityType: 'User',
+        entityId: newUser.id,
+        details: `User registered: ${email}`,
+        ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      },
+    });
+
+    return NextResponse.json(
+      {
+        message: 'User registered successfully',
+        user: newUser,
+      },
+      { status: 201 }
     );
-
-    // TODO: Send verification email (integrate with email service)
-    // await sendVerificationEmail(user.email, verificationToken);
-
-    return success(user, 201);
   } catch (error) {
-    return errorResponse(error as Error);
+    console.error('[Register] Error:', error);
+    return NextResponse.json(
+      {
+        error: 'Registration failed',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
   }
 }
