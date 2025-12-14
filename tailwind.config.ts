@@ -1,5 +1,4 @@
 import type { Config } from 'tailwindcss'
-import { fontFamily } from 'tailwindcss/defaultConfig'
 
 const config: Config = {
     darkMode: ['class'],
@@ -206,18 +205,8 @@ const config: Config = {
              * =====================================================================
              */
             fontFamily: {
-                'inter': ['var(--font-inter)', 'Inter', ...fontFamily.sans],
-                'sans': ['var(--font-inter)', 'Inter', ...fontFamily.sans],
-                'mono': [
-                    'ui-monospace',
-                    'SFMono-Regular',
-                    'Menlo',
-                    'Monaco',
-                    'Consolas',
-                    'Liberation Mono',
-                    'Courier New',
-                    'monospace',
-                ],
+                'sans': ['var(--font-inter)', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"Roboto"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+                'mono': ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'Liberation Mono', 'Courier New', 'monospace'],
             },
 
             /**
@@ -229,83 +218,17 @@ const config: Config = {
              * Uses line-height and letter-spacing for readability
              */
             fontSize: {
-                'xs': [
-                    '0.75rem',
-                    {
-                        lineHeight: '1rem',
-                        letterSpacing: '0.015em',
-                    },
-                ],
-                'sm': [
-                    '0.875rem',
-                    {
-                        lineHeight: '1.25rem',
-                        letterSpacing: '0.01em',
-                    },
-                ],
-                'base': [
-                    '1rem',
-                    {
-                        lineHeight: '1.5rem',
-                        letterSpacing: '0em',
-                    },
-                ],
-                'lg': [
-                    '1.125rem',
-                    {
-                        lineHeight: '1.75rem',
-                        letterSpacing: '-0.005em',
-                    },
-                ],
-                'xl': [
-                    '1.25rem',
-                    {
-                        lineHeight: '1.75rem',
-                        letterSpacing: '-0.01em',
-                    },
-                ],
-                '2xl': [
-                    '1.5rem',
-                    {
-                        lineHeight: '2rem',
-                        letterSpacing: '-0.01em',
-                    },
-                ],
-                '3xl': [
-                    '1.875rem',
-                    {
-                        lineHeight: '2.25rem',
-                        letterSpacing: '-0.02em',
-                    },
-                ],
-                '4xl': [
-                    '2.25rem',
-                    {
-                        lineHeight: '2.5rem',
-                        letterSpacing: '-0.025em',
-                    },
-                ],
-                '5xl': [
-                    '3rem',
-                    {
-                        lineHeight: '3.5rem',
-                        letterSpacing: '-0.03em',
-                    },
-                ],
-                '6xl': [
-                    '3.75rem',
-                    {
-                        lineHeight: '4.5rem',
-                        letterSpacing: '-0.03em',
-                    },
-                ],
-                '7xl': [
-                    '4.5rem',
-                    {
-                        lineHeight: '5.625rem',
-                        letterSpacing: '-0.04em',
-                    },
-                ],
+                'xs': ['0.75rem', { lineHeight: '1rem', letterSpacing: '0.015em' }],
+                'sm': ['0.875rem', { lineHeight: '1.25rem', letterSpacing: '0.01em' }],
+                'base': ['1rem', { lineHeight: '1.5rem', letterSpacing: '0em' }],
+                'lg': ['1.125rem', { lineHeight: '1.75rem', letterSpacing: '-0.005em' }],
+                'xl': ['1.25rem', { lineHeight: '1.75rem', letterSpacing: '-0.01em' }],
+                '2xl': ['1.5rem', { lineHeight: '2rem', letterSpacing: '-0.01em' }],
+                '3xl': ['1.875rem', { lineHeight: '2.25rem', letterSpacing: '-0.02em' }],
+                '4xl': ['2.25rem', { lineHeight: '2.5rem', letterSpacing: '-0.025em' }],
+                '5xl': ['3rem', { lineHeight: '3.5rem', letterSpacing: '-0.03em' }],
+                '6xl': ['3.75rem', { lineHeight: '4.5rem', letterSpacing: '-0.03em' }],
+                '7xl': ['4.5rem', { lineHeight: '5.625rem', letterSpacing: '-0.04em' }],
             },
 
             /**
@@ -381,58 +304,19 @@ const config: Config = {
              * =====================================================================
              */
             keyframes: {
-                fadeIn: {
-                    '0%': { opacity: '0' },
-                    '100%': { opacity: '1' },
-                },
-                fadeOut: {
-                    '0%': { opacity: '1' },
-                    '100%': { opacity: '0' },
-                },
-                slideUp: {
-                    '0%': { opacity: '0', transform: 'translateY(20px)' },
-                    '100%': { opacity: '1', transform: 'translateY(0)' },
-                },
-                slideDown: {
-                    '0%': { opacity: '0', transform: 'translateY(-20px)' },
-                    '100%': { opacity: '1', transform: 'translateY(0)' },
-                },
-                slideLeft: {
-                    '0%': { opacity: '0', transform: 'translateX(20px)' },
-                    '100%': { opacity: '1', transform: 'translateX(0)' },
-                },
-                slideRight: {
-                    '0%': { opacity: '0', transform: 'translateX(-20px)' },
-                    '100%': { opacity: '1', transform: 'translateX(0)' },
-                },
-                scaleIn: {
-                    '0%': { opacity: '0', transform: 'scale(0.95)' },
-                    '100%': { opacity: '1', transform: 'scale(1)' },
-                },
-                scaleOut: {
-                    '0%': { opacity: '1', transform: 'scale(1)' },
-                    '100%': { opacity: '0', transform: 'scale(0.95)' },
-                },
-                pulseGlow: {
-                    '0%, 100%': { opacity: '1' },
-                    '50%': { opacity: '0.7' },
-                },
-                shimmer: {
-                    '0%': { backgroundPosition: '-1000px 0' },
-                    '100%': { backgroundPosition: '1000px 0' },
-                },
-                gradient: {
-                    '0%, 100%': { backgroundPosition: '0% 50%' },
-                    '50%': { backgroundPosition: '100% 50%' },
-                },
-                float: {
-                    '0%, 100%': { transform: 'translateY(0px)' },
-                    '50%': { transform: 'translateY(-10px)' },
-                },
-                bounceSm: {
-                    '0%, 100%': { transform: 'translateY(0)' },
-                    '50%': { transform: 'translateY(-4px)' },
-                },
+                fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+                fadeOut: { '0%': { opacity: '1' }, '100%': { opacity: '0' } },
+                slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+                slideDown: { '0%': { opacity: '0', transform: 'translateY(-20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+                slideLeft: { '0%': { opacity: '0', transform: 'translateX(20px)' }, '100%': { opacity: '1', transform: 'translateX(0)' } },
+                slideRight: { '0%': { opacity: '0', transform: 'translateX(-20px)' }, '100%': { opacity: '1', transform: 'translateX(0)' } },
+                scaleIn: { '0%': { opacity: '0', transform: 'scale(0.95)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
+                scaleOut: { '0%': { opacity: '1', transform: 'scale(1)' }, '100%': { opacity: '0', transform: 'scale(0.95)' } },
+                pulseGlow: { '0%, 100%': { opacity: '1' }, '50%': { opacity: '0.7' } },
+                shimmer: { '0%': { backgroundPosition: '-1000px 0' }, '100%': { backgroundPosition: '1000px 0' } },
+                gradient: { '0%, 100%': { backgroundPosition: '0% 50%' }, '50%': { backgroundPosition: '100% 50%' } },
+                float: { '0%, 100%': { transform: 'translateY(0px)' }, '50%': { transform: 'translateY(-10px)' } },
+                bounceSm: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-4px)' } },
             },
 
             /**
