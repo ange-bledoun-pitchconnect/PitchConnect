@@ -1,7 +1,7 @@
 // src/app/api/auth/[...nextauth]/route.ts
 
 import NextAuth from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { authOptions } from '@/lib/auth/auth.config';
 
 // ✅ EXPORT authOptions so API routes can import it
 export { authOptions };
