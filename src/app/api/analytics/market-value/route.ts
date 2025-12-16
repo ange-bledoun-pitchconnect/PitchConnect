@@ -1,7 +1,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { auth } from '@/lib/auth';
 import { ApiResponse } from '@/lib/api/responses';
 import { ApiError } from '@/lib/api/errors';
 import prisma from '@/lib/prisma';
