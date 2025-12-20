@@ -1,312 +1,413 @@
-// ============================================================================
-// ENHANCED: src/lib/api/responses.ts - Standardized Response Format
-// Type-safe, consistent API responses with metadata
-// ============================================================================
+/**
+ * 🌟 PITCHCONNECT - API Response Handler
+ * Path: /src/lib/api/responses.ts
+ */
 
-import { NextResponse } from 'next/server';
-import { isApiError, ApiError } from './errors';
-import { logger } from './logger';
+import { logger } from '@/lib/logging';
 
-// ============================================================================
-// RESPONSE TYPES
-// ============================================================================
+type StatusCode =
+  | 200 | 201 | 202 | 204 | 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 502 | 503;
 
-export type ApiMeta = {
-  timestamp: string;
-  traceId?: string;
-  version: string;
-  environment: string;
-};
-
-export type ApiSuccessResponse<T = any> = {
-  success: true;
-  data: T;
-  meta: ApiMeta;
-};
-
-export type ApiPaginatedResponse<T = any> = ApiSuccessResponse<T> & {
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-    hasMore: boolean;
-    hasPrevious: boolean;
-  };
-};
-
-export type ApiErrorResponse = {
-  success: false;
-  error: {
-    code: string;
-    message: string;
-    status: number;
-    details?: Record<string, any>;
-    traceId?: string;
-    timestamp: string;
-  };
-};
-
-export type ApiCreatedResponse<T = any> = ApiSuccessResponse<T> & {
-  statusCode: 201;
-};
-
-export type ApiListResponse<T = any> = ApiPaginatedResponse<T[]>;
-
-// ============================================================================
-// HELPERS
-// ============================================================================
-
-function getMeta(traceId?: string): ApiMeta {
-  return {
-    timestamp: new Date().toISOString(),
-    traceId,
-    version: process.env.API_VERSION || '1.0.0',
-    environment: process.env.NODE_ENV || 'development',
-  };
+interface ApiErrorDetail {
+  field?: string;
+  message: string;
+  code?: string;
 }
 
-function shouldExposeSensitiveData(): boolean {
-  return process.env.NODE_ENV === 'development';
+interface ApiResponseMeta {
+  timestamp: string;
+  requestId: string;
+  version: string;
+}
+
+interface PaginationMeta {
+  page: number;
+  perPage: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+interface ApiSuccessResponse<T> {
+  success: true;
+  statusCode: StatusCode;
+  data: T;
+  message?: string;
+  meta: ApiResponseMeta;
+  pagination?: PaginationMeta;
+  timestamp: string;
+}
+
+interface ApiErrorResponse {
+  success: false;
+  statusCode: StatusCode;
+  error: {
+    message: string;
+    code: string;
+    details?: ApiErrorDetail[];
+  };
+  meta: ApiResponseMeta;
+  timestamp: string;
+}
+
+type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+const API_VERSION = '1.0.0';
+
+function generateRequestId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function getCurrentTimestamp(): string {
+  return new Date().toISOString();
+}
+
+function createMeta(requestId?: string): ApiResponseMeta {
+  return {
+    timestamp: getCurrentTimestamp(),
+    requestId: requestId || generateRequestId(),
+    version: API_VERSION,
+  };
 }
 
 // ============================================================================
 // SUCCESS RESPONSES
 // ============================================================================
 
-/**
- * Send successful response with data
- */
-export function success<T = any>(
+export function successResponse<T>(
   data: T,
-  status = 200,
-  traceId?: string
-): NextResponse<ApiSuccessResponse<T>> {
-  return NextResponse.json(
-    {
-      success: true,
-      data,
-      meta: getMeta(traceId),
-    },
-    { status }
-  );
+  message?: string,
+  statusCode: StatusCode = 200,
+  requestId?: string
+): ApiSuccessResponse<T> {
+  return {
+    success: true,
+    statusCode,
+    data,
+    message: message || getStatusMessage(statusCode),
+    meta: createMeta(requestId),
+    timestamp: getCurrentTimestamp(),
+  };
 }
 
-/**
- * Send paginated response
- */
-export function paginated<T = any>(
+export function createdResponse<T>(
+  data: T,
+  message?: string,
+  requestId?: string
+): ApiSuccessResponse<T> {
+  return {
+    success: true,
+    statusCode: 201,
+    data,
+    message: message || 'Resource created successfully',
+    meta: createMeta(requestId),
+    timestamp: getCurrentTimestamp(),
+  };
+}
+
+export function paginatedResponse<T>(
   data: T[],
-  options: {
-    page: number;
-    limit: number;
-    total: number;
-  },
-  status = 200,
-  traceId?: string
-): NextResponse<ApiPaginatedResponse<T>> {
-  const pages = Math.ceil(options.total / options.limit) || 1;
-  const hasMore = options.page < pages;
-  const hasPrevious = options.page > 1;
-
-  return NextResponse.json(
-    {
-      success: true,
-      data,
-      pagination: {
-        page: options.page,
-        limit: options.limit,
-        total: options.total,
-        pages,
-        hasMore,
-        hasPrevious,
-      },
-      meta: getMeta(traceId),
-    },
-    { status }
-  );
-}
-
-/**
- * Send created resource response (201)
- */
-export function created<T = any>(
-  data: T,
-  traceId?: string
-): NextResponse<ApiCreatedResponse<T>> {
-  return NextResponse.json(
-    {
-      success: true,
-      data,
-      meta: getMeta(traceId),
-      statusCode: 201,
-    },
-    { status: 201 }
-  );
-}
-
-/**
- * Send list response with pagination
- */
-export function list<T = any>(
-  items: T[],
+  page: number,
+  perPage: number,
   total: number,
-  page: number = 1,
-  limit: number = 25,
-  traceId?: string
-): NextResponse<ApiListResponse<T>> {
-  return paginated(items, { page, limit, total }, 200, traceId);
-}
+  message?: string,
+  requestId?: string
+): ApiSuccessResponse<T[]> & { pagination: PaginationMeta } {
+  const totalPages = Math.ceil(total / perPage);
+  const hasMore = page < totalPages;
 
-/**
- * Send no content response (204)
- */
-export function noContent(): NextResponse<void> {
-  return new NextResponse(null, { status: 204 });
-}
-
-/**
- * Send accepted response (202) for async operations
- */
-export function accepted<T = any>(
-  data?: T,
-  traceId?: string
-): NextResponse<ApiSuccessResponse<T>> {
-  return NextResponse.json(
-    {
-      success: true,
-      data: data || { message: 'Request accepted for processing' },
-      meta: getMeta(traceId),
+  return {
+    success: true,
+    statusCode: 200,
+    data,
+    message: message || 'Data retrieved successfully',
+    meta: createMeta(requestId),
+    pagination: {
+      page,
+      perPage,
+      total,
+      totalPages,
+      hasMore,
     },
-    { status: 202 }
-  );
+    timestamp: getCurrentTimestamp(),
+  };
+}
+
+export function noContentResponse(requestId?: string): ApiSuccessResponse<null> {
+  return {
+    success: true,
+    statusCode: 204,
+    data: null,
+    message: 'No content',
+    meta: createMeta(requestId),
+    timestamp: getCurrentTimestamp(),
+  };
 }
 
 // ============================================================================
 // ERROR RESPONSES
 // ============================================================================
 
-/**
- * Send error response
- */
 export function errorResponse(
-  error: ApiError | Error,
-  fallbackStatus = 500,
-  traceId?: string
-): NextResponse<ApiErrorResponse> {
-  const status = isApiError(error) ? error.status : fallbackStatus;
-  const message = error.message || 'An unexpected error occurred';
-  const code = isApiError(error) ? error.code : 'UNKNOWN_ERROR';
-  const details = isApiError(error) ? error.details : undefined;
-
-  // Log error
-  logger.error({
-    code,
-    message,
-    status,
-    details,
-    traceId,
-    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-  });
-
-  return NextResponse.json(
+  message: string,
+  statusCode: StatusCode = 500,
+  code: string = 'INTERNAL_ERROR',
+  details?: ApiErrorDetail[],
+  requestId?: string
+): ApiErrorResponse {
+  logger.error(
     {
-      success: false,
-      error: {
-        code,
-        message,
-        status,
-        ...(details ? { details } : {}),
-        traceId,
-        timestamp: new Date().toISOString(),
+      statusCode,
+      code,
+      message,
+      details,
+    },
+    'API Error'
+  );
+
+  return {
+    success: false,
+    statusCode,
+    error: {
+      message,
+      code,
+      details,
+    },
+    meta: createMeta(requestId),
+    timestamp: getCurrentTimestamp(),
+  };
+}
+
+export function badRequestResponse(
+  message: string = 'Bad request',
+  details?: ApiErrorDetail[],
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 400, 'BAD_REQUEST', details, requestId);
+}
+
+export function unauthorizedResponse(
+  message: string = 'Authentication required',
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 401, 'UNAUTHORIZED', undefined, requestId);
+}
+
+export function forbiddenResponse(
+  message: string = 'Access denied',
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 403, 'FORBIDDEN', undefined, requestId);
+}
+
+export function notFoundResponse(
+  message: string = 'Resource not found',
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 404, 'NOT_FOUND', undefined, requestId);
+}
+
+export function conflictResponse(
+  message: string = 'Resource conflict',
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 409, 'CONFLICT', undefined, requestId);
+}
+
+export function validationErrorResponse(
+  message: string = 'Validation failed',
+  details?: ApiErrorDetail[],
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 422, 'VALIDATION_ERROR', details, requestId);
+}
+
+export function rateLimitResponse(
+  message: string = 'Too many requests',
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 429, 'RATE_LIMIT_EXCEEDED', undefined, requestId);
+}
+
+export function serverErrorResponse(
+  message: string = 'Internal server error',
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 500, 'INTERNAL_SERVER_ERROR', undefined, requestId);
+}
+
+export function serviceUnavailableResponse(
+  message: string = 'Service unavailable',
+  requestId?: string
+): ApiErrorResponse {
+  return errorResponse(message, 503, 'SERVICE_UNAVAILABLE', undefined, requestId);
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+export function getStatusMessage(statusCode: StatusCode): string {
+  const messages: Record<StatusCode, string> = {
+    200: 'OK',
+    201: 'Created',
+    202: 'Accepted',
+    204: 'No Content',
+    400: 'Bad Request',
+    401: 'Unauthorized',
+    403: 'Forbidden',
+    404: 'Not Found',
+    409: 'Conflict',
+    422: 'Unprocessable Entity',
+    429: 'Too Many Requests',
+    500: 'Internal Server Error',
+    502: 'Bad Gateway',
+    503: 'Service Unavailable',
+  };
+
+  return messages[statusCode] || 'Unknown';
+}
+
+export function isSuccessResponse<T>(response: ApiResponse<T>): response is ApiSuccessResponse<T> {
+  return response.success === true;
+}
+
+export function isErrorResponse(response: ApiResponse<any>): response is ApiErrorResponse {
+  return response.success === false;
+}
+
+export function logApiResponse<T>(
+  response: ApiResponse<T>,
+  method?: string,
+  path?: string,
+  duration?: number
+): void {
+  if (isSuccessResponse(response)) {
+    logger.info(
+      {
+        statusCode: response.statusCode,
+        method,
+        path,
+        duration,
+        requestId: response.meta.requestId,
       },
-    },
-    { status }
-  );
+      'API Success'
+    );
+  } else {
+    logger.error(
+      {
+        statusCode: response.statusCode,
+        errorCode: response.error.code,
+        message: response.error.message,
+        method,
+        path,
+        duration,
+        requestId: response.meta.requestId,
+      },
+      'API Error'
+    );
+  }
 }
 
 // ============================================================================
-// SPECIAL RESPONSES
+// CLASS-BASED API RESPONSE
 // ============================================================================
 
-/**
- * Send redirect response
- */
-export function redirect(
-  url: string,
-  status: 301 | 302 | 307 | 308 = 302
-): NextResponse {
-  return NextResponse.redirect(url, { status });
-}
-
-/**
- * Send file download response
- */
-export function file(
-  buffer: Buffer,
-  filename: string,
-  contentType: string = 'application/octet-stream'
-): NextResponse {
-  return new NextResponse(buffer, {
-    headers: {
-      'Content-Type': contentType,
-      'Content-Disposition': `attachment; filename="${filename}"`,
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-    },
-  });
-}
-
-/**
- * Send health check response
- */
-export function health(
-  status: 'UP' | 'DEGRADED' | 'DOWN' = 'UP'
-): NextResponse {
-  const statusCode = status === 'UP' ? 200 : status === 'DEGRADED' ? 503 : 503;
-
-  return NextResponse.json(
-    {
-      status,
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-    },
-    { status: statusCode }
-  );
-}
-
-// ============================================================================
-// BULK OPERATIONS RESPONSE
-// ============================================================================
-
-export type BulkOperationResult<T = any> = {
+export class ApiResponse<T = any> {
   success: boolean;
-  item: T;
-  error?: string;
-};
+  statusCode: StatusCode;
+  data?: T;
+  error?: {
+    message: string;
+    code: string;
+    details?: ApiErrorDetail[];
+  };
+  message?: string;
+  meta: ApiResponseMeta;
+  timestamp: string;
+  pagination?: PaginationMeta;
 
-export function bulkOperationResponse<T = any>(
-  results: BulkOperationResult<T>[],
-  traceId?: string
-): NextResponse {
-  const successful = results.filter(r => r.success);
-  const failed = results.filter(r => !r.success);
-  const status = failed.length === 0 ? 200 : failed.length === results.length ? 400 : 207;
+  constructor(
+    success: boolean,
+    statusCode: StatusCode,
+    data?: T,
+    message?: string,
+    error?: ApiErrorResponse['error'],
+    requestId?: string
+  ) {
+    this.success = success;
+    this.statusCode = statusCode;
+    this.data = data;
+    this.message = message;
+    this.error = error;
+    this.meta = createMeta(requestId);
+    this.timestamp = getCurrentTimestamp();
+  }
 
-  return NextResponse.json(
-    {
-      success: failed.length === 0,
-      data: {
-        successful,
-        failed,
-        summary: {
-          total: results.length,
-          succeededCount: successful.length,
-          failedCount: failed.length,
-          successRate: (successful.length / results.length) * 100,
-        },
-      },
-      meta: getMeta(traceId),
-    },
-    { status }
-  );
+  static success<T>(
+    data: T,
+    message?: string,
+    statusCode: StatusCode = 200,
+    requestId?: string
+  ): ApiResponse<T> {
+    return new ApiResponse(true, statusCode, data, message || getStatusMessage(statusCode), undefined, requestId);
+  }
+
+  static error(
+    message: string,
+    statusCode: StatusCode = 500,
+    code: string = 'INTERNAL_ERROR',
+    details?: ApiErrorDetail[],
+    requestId?: string
+  ): ApiResponse {
+    return new ApiResponse(
+      false,
+      statusCode,
+      undefined,
+      undefined,
+      { message, code, details },
+      requestId
+    );
+  }
+
+  setPagination(page: number, perPage: number, total: number): this {
+    const totalPages = Math.ceil(total / perPage);
+    this.pagination = {
+      page,
+      perPage,
+      total,
+      totalPages,
+      hasMore: page < totalPages,
+    };
+    return this;
+  }
+
+  toJSON() {
+    const response: any = {
+      success: this.success,
+      statusCode: this.statusCode,
+      meta: this.meta,
+      timestamp: this.timestamp,
+    };
+
+    if (this.success) {
+      response.data = this.data;
+      if (this.message) response.message = this.message;
+      if (this.pagination) response.pagination = this.pagination;
+    } else {
+      response.error = this.error;
+    }
+
+    return response;
+  }
 }
+
+export type {
+  ApiResponse as IApiResponse,
+  ApiSuccessResponse,
+  ApiErrorResponse,
+  ApiErrorDetail,
+  ApiResponseMeta,
+  PaginationMeta,
+  StatusCode,
+};

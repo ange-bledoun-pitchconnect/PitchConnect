@@ -1,238 +1,443 @@
+/**
+ * 🌟 PITCHCONNECT - API Validation Library
+ * Path: /src/lib/api/validation.ts
+ */
+
+import { logger } from '@/lib/logging';
+
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings?: string[];
+}
+
 // ============================================================================
-// src/lib/api/validation.ts - Input Validation & Parsing
+// URL VALIDATION
 // ============================================================================
 
-import { BadRequestError, UnprocessableEntityError } from './errors';
+export function validateUrl(url: string): ValidationResult {
+  const errors: string[] = [];
 
-/**
- * Parse and validate pagination parameters
- */
-export function parsePaginationParams(searchParams: URLSearchParams) {
-  const page = Math.max(parseInt(searchParams.get('page') || '1', 10), 1);
-  const limit = Math.min(
-    Math.max(parseInt(searchParams.get('limit') || '25', 10), 1),
-    100
-  );
-
-  return { page, limit };
-}
-
-/**
- * Parse and validate query search parameter
- */
-export function parseSearchQuery(searchParams: URLSearchParams): string | null {
-  const search = searchParams.get('search')?.trim();
-  return search && search.length > 0 ? search : null;
-}
-
-/**
- * Validate required fields
- */
-export function validateRequired(
-  data: Record<string, any>,
-  fields: string[]
-): void {
-  const missing = fields.filter((field) => !data[field]);
-  if (missing.length > 0) {
-    throw new BadRequestError('Missing required fields', {
-      missing,
-    });
+  if (!url) {
+    errors.push('URL is required');
+    return { valid: false, errors };
   }
-}
 
-/**
- * Validate email format
- */
-export function validateEmail(email: string): void {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    throw new BadRequestError('Invalid email format');
+  if (typeof url !== 'string') {
+    errors.push('URL must be a string');
+    return { valid: false, errors };
   }
-}
 
-/**
- * Validate password strength
- */
-export function validatePassword(password: string): void {
-  if (password.length < 8) {
-    throw new BadRequestError('Password must be at least 8 characters');
-  }
-  if (!/[A-Z]/.test(password)) {
-    throw new BadRequestError('Password must contain uppercase letter');
-  }
-  if (!/[0-9]/.test(password)) {
-    throw new BadRequestError('Password must contain number');
-  }
-}
-
-/**
- * Validate string field length
- */
-export function validateStringLength(
-  value: string,
-  min: number,
-  max: number,
-  fieldName: string
-): void {
-  if (value.length < min || value.length > max) {
-    throw new BadRequestError(
-      `${fieldName} must be between ${min} and ${max} characters`
-    );
-  }
-}
-
-/**
- * Validate age
- */
-export function validateAge(dateOfBirth: Date, minAge: number): void {
-  const today = new Date();
-  const age = today.getFullYear() - dateOfBirth.getFullYear();
-  const hasHadBirthday =
-    today.getMonth() > dateOfBirth.getMonth() ||
-    (today.getMonth() === dateOfBirth.getMonth() &&
-      today.getDate() >= dateOfBirth.getDate());
-
-  const actualAge = hasHadBirthday ? age : age - 1;
-
-  if (actualAge < minAge) {
-    throw new BadRequestError(
-      `Must be at least ${minAge} years old`
-    );
-  }
-}
-
-/**
- * Validate phone number (basic)
- */
-export function validatePhoneNumber(phone: string): void {
-  const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-  if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
-    throw new BadRequestError('Invalid phone number format');
-  }
-}
-
-/**
- * Validate Sport enum
- */
-export function validateSport(sport: any): void {
-  const validSports = [
-    'FOOTBALL',
-    'NETBALL',
-    'RUGBY',
-    'CRICKET',
-    'AMERICAN_FOOTBALL',
-    'BASKETBALL',
-  ];
-  if (!validSports.includes(sport)) {
-    throw new BadRequestError('Invalid sport', {
-      valid: validSports,
-    });
-  }
-}
-
-/**
- * Validate Position enum
- */
-export function validatePosition(position: any): void {
-  const validPositions = [
-    // Football
-    'GOALKEEPER',
-    'DEFENDER',
-    'MIDFIELDER',
-    'FORWARD',
-    // Netball
-    'GOALKEEPER_NETBALL',
-    'GOAL_ATTACK',
-    'WING_ATTACK',
-    'CENTER',
-    'WING_DEFENSE',
-    'GOAL_DEFENSE',
-    'GOAL_SHOOTER',
-    // Rugby
-    'PROP',
-    'HOOKER',
-    'LOCK',
-    'FLANKER',
-    'NUMBER_8',
-    'SCRUM_HALF',
-    'FLY_HALF',
-    'INSIDE_CENTER',
-    'OUTSIDE_CENTER',
-    'WINGER',
-    'FULLBACK',
-    // American Football
-    'QUARTERBACK',
-    'RUNNING_BACK',
-    'WIDE_RECEIVER',
-    'TACKLE',
-    'GUARD',
-    'CENTER_POSITION',
-    'LINEBACKER',
-    'SAFETY',
-    'CORNERBACK',
-    // Basketball
-    'POINT_GUARD',
-    'SHOOTING_GUARD',
-    'SMALL_FORWARD',
-    'POWER_FORWARD',
-    'CENTER_BASKETBALL',
-    // Cricket
-    'BATSMAN',
-    'BOWLER',
-    'FIELDER',
-    'WICKET_KEEPER',
-  ];
-
-  if (!validPositions.includes(position)) {
-    throw new BadRequestError('Invalid position', {
-      valid: validPositions,
-    });
-  }
-}
-
-/**
- * Parse JSON body safely
- */
-export async function parseJsonBody(request: Request): Promise<any> {
   try {
-    return await request.json();
-  } catch (error) {
-    throw new BadRequestError('Invalid JSON in request body');
-  }
-}
+    const urlObj = new URL(url);
 
-/**
- * Validate date format (ISO 8601)
- */
-export function validateDateFormat(dateString: string): Date {
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) {
-    throw new BadRequestError('Invalid date format (use ISO 8601)');
-  }
-  return date;
-}
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      errors.push('URL must use HTTP or HTTPS protocol');
+    }
 
-/**
- * Validate object structure
- */
-export function validateObjectSchema(
-  data: any,
-  schema: Record<string, 'string' | 'number' | 'boolean' | 'date'>
-): void {
-  const errors: Record<string, string> = {};
+    if (url.length > 2048) {
+      errors.push('URL is too long (max 2048 characters)');
+    }
 
-  for (const [key, type] of Object.entries(schema)) {
-    const value = data[key];
-    if (value !== undefined && value !== null) {
-      if (type === 'date') {
-        validateDateFormat(value);
-      } else if (typeof value !== type) {
-        errors[key] = `Expected ${type}, got ${typeof value}`;
+    if (!urlObj.hostname) {
+      errors.push('URL must have a valid hostname');
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
+        errors.push('Localhost URLs are not allowed in production');
       }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
+  } catch (error) {
+    errors.push('Invalid URL format');
+    return { valid: false, errors };
+  }
+}
+
+export function extractDomain(url: string): string | null {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname;
+  } catch {
+    return null;
+  }
+}
+
+export function isInternalUrl(url: string, baseDomain?: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const domain = baseDomain || process.env.NEXT_PUBLIC_APP_URL || 'localhost';
+    return urlObj.hostname === new URL(domain).hostname;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================================
+// COLOR VALIDATION
+// ============================================================================
+
+export function validateHexColor(color: string): ValidationResult {
+  const errors: string[] = [];
+
+  if (!color) {
+    errors.push('Color is required');
+    return { valid: false, errors };
+  }
+
+  if (typeof color !== 'string') {
+    errors.push('Color must be a string');
+    return { valid: false, errors };
+  }
+
+  const cleanColor = color.startsWith('#') ? color.slice(1) : color;
+
+  if (cleanColor.length !== 3 && cleanColor.length !== 6) {
+    errors.push('Hex color must be 3 or 6 characters');
+    return { valid: false, errors };
+  }
+
+  if (!/^[0-9A-Fa-f]+$/.test(cleanColor)) {
+    errors.push('Hex color must contain only valid hex characters (0-9, A-F)');
+    return { valid: false, errors };
+  }
+
+  return {
+    valid: true,
+    errors: [],
+  };
+}
+
+export function normalizeHexColor(color: string): string {
+  let cleanColor = color.startsWith('#') ? color.slice(1) : color;
+
+  if (cleanColor.length === 3) {
+    cleanColor = cleanColor
+      .split('')
+      .map((char) => char + char)
+      .join('');
+  }
+
+  return `#${cleanColor.toUpperCase()}`;
+}
+
+export function validateRgbColor(color: string): ValidationResult {
+  const errors: string[] = [];
+  const rgbRegex = /^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/;
+
+  if (!color) {
+    errors.push('Color is required');
+    return { valid: false, errors };
+  }
+
+  const match = color.match(rgbRegex);
+  if (!match) {
+    errors.push('Invalid RGB color format. Use rgb(r, g, b)');
+    return { valid: false, errors };
+  }
+
+  const [, r, g, b] = match.map((x) => parseInt(x, 10));
+
+  if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+    errors.push('RGB values must be between 0 and 255');
+    return { valid: false, errors };
+  }
+
+  return {
+    valid: true,
+    errors: [],
+  };
+}
+
+// ============================================================================
+// FILE VALIDATION
+// ============================================================================
+
+interface FileValidationOptions {
+  maxSize?: number;
+  allowedMimes?: string[];
+  allowedExtensions?: string[];
+}
+
+export function validateFile(
+  file: File | { size: number; type: string; name: string },
+  options: FileValidationOptions = {}
+): ValidationResult {
+  const errors: string[] = [];
+
+  const {
+    maxSize = 10 * 1024 * 1024,
+    allowedMimes = [],
+    allowedExtensions = [],
+  } = options;
+
+  if (!file) {
+    errors.push('File is required');
+    return { valid: false, errors };
+  }
+
+  if (file.size > maxSize) {
+    errors.push(`File size exceeds maximum allowed size of ${formatFileSize(maxSize)}`);
+  }
+
+  if (allowedMimes.length > 0 && !allowedMimes.includes(file.type)) {
+    errors.push(`File type ${file.type} is not allowed`);
+  }
+
+  if (allowedExtensions.length > 0) {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension || !allowedExtensions.includes(extension)) {
+      errors.push(`File extension ${extension} is not allowed`);
     }
   }
 
-  if (Object.keys(errors).length > 0) {
-    throw new UnprocessableEntityError('Validation failed', errors);
-  }
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
 }
+
+export function validateImageFile(
+  file: File | { size: number; type: string; name: string },
+  maxSizeMB: number = 5
+): ValidationResult {
+  return validateFile(file, {
+    maxSize: maxSizeMB * 1024 * 1024,
+    allowedMimes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+    allowedExtensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+  });
+}
+
+export function validateVideoFile(
+  file: File | { size: number; type: string; name: string },
+  maxSizeMB: number = 100
+): ValidationResult {
+  return validateFile(file, {
+    maxSize: maxSizeMB * 1024 * 1024,
+    allowedMimes: ['video/mp4', 'video/webm', 'video/ogg', 'video/quicktime'],
+    allowedExtensions: ['mp4', 'webm', 'ogv', 'mov'],
+  });
+}
+
+export function validatePdfFile(
+  file: File | { size: number; type: string; name: string },
+  maxSizeMB: number = 25
+): ValidationResult {
+  return validateFile(file, {
+    maxSize: maxSizeMB * 1024 * 1024,
+    allowedMimes: ['application/pdf'],
+    allowedExtensions: ['pdf'],
+  });
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+// ============================================================================
+// PAGINATION VALIDATION
+// ============================================================================
+
+interface PaginationParams {
+  page?: number | string;
+  perPage?: number | string;
+  maxPerPage?: number;
+}
+
+export function validatePagination(
+  params: PaginationParams
+): { page: number; perPage: number; errors: string[] } {
+  const errors: string[] = [];
+  let page = 1;
+  let perPage = 10;
+  const maxPerPage = params.maxPerPage || 100;
+
+  if (params.page !== undefined) {
+    const parsedPage = parseInt(String(params.page), 10);
+    if (isNaN(parsedPage) || parsedPage < 1) {
+      errors.push('Page must be a number greater than 0');
+      page = 1;
+    } else {
+      page = parsedPage;
+    }
+  }
+
+  if (params.perPage !== undefined) {
+    const parsedPerPage = parseInt(String(params.perPage), 10);
+    if (isNaN(parsedPerPage) || parsedPerPage < 1) {
+      errors.push('perPage must be a number greater than 0');
+      perPage = 10;
+    } else if (parsedPerPage > maxPerPage) {
+      errors.push(`perPage cannot exceed ${maxPerPage}`);
+      perPage = maxPerPage;
+    } else {
+      perPage = parsedPerPage;
+    }
+  }
+
+  return { page, perPage, errors };
+}
+
+// ============================================================================
+// STRING VALIDATION
+// ============================================================================
+
+export function validateUsername(username: string): ValidationResult {
+  const errors: string[] = [];
+
+  if (!username) {
+    errors.push('Username is required');
+    return { valid: false, errors };
+  }
+
+  if (username.length < 3) {
+    errors.push('Username must be at least 3 characters');
+  }
+
+  if (username.length > 30) {
+    errors.push('Username must not exceed 30 characters');
+  }
+
+  if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+    errors.push('Username can only contain letters, numbers, underscores, and hyphens');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+export function validateSlug(slug: string): ValidationResult {
+  const errors: string[] = [];
+
+  if (!slug) {
+    errors.push('Slug is required');
+    return { valid: false, errors };
+  }
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    errors.push('Slug must contain only lowercase letters, numbers, and hyphens');
+  }
+
+  if (slug.length > 200) {
+    errors.push('Slug must not exceed 200 characters');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+export function sanitizeSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 200);
+}
+
+export function validateSearchQuery(query: string, minLength: number = 2): ValidationResult {
+  const errors: string[] = [];
+
+  if (!query) {
+    errors.push('Search query is required');
+    return { valid: false, errors };
+  }
+
+  const trimmedQuery = query.trim();
+
+  if (trimmedQuery.length < minLength) {
+    errors.push(`Search query must be at least ${minLength} characters`);
+  }
+
+  if (trimmedQuery.length > 500) {
+    errors.push('Search query must not exceed 500 characters');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+// ============================================================================
+// NUMERIC VALIDATION
+// ============================================================================
+
+export function validateIntegerRange(
+  value: any,
+  min?: number,
+  max?: number
+): ValidationResult {
+  const errors: string[] = [];
+
+  if (value === undefined || value === null || value === '') {
+    errors.push('Value is required');
+    return { valid: false, errors };
+  }
+
+  const num = parseInt(String(value), 10);
+  if (isNaN(num)) {
+    errors.push('Value must be a valid integer');
+    return { valid: false, errors };
+  }
+
+  if (min !== undefined && num < min) {
+    errors.push(`Value must be at least ${min}`);
+  }
+
+  if (max !== undefined && num > max) {
+    errors.push(`Value must not exceed ${max}`);
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+export function validatePositiveInteger(value: any): ValidationResult {
+  return validateIntegerRange(value, 1);
+}
+
+// ============================================================================
+// GENERAL UTILITIES
+// ============================================================================
+
+export function allValid(results: ValidationResult[]): boolean {
+  return results.every((result) => result.valid);
+}
+
+export function collectErrors(results: ValidationResult[]): string[] {
+  return results.flatMap((result) => result.errors);
+}
+
+export function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') {
+    return '';
+  }
+
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}
+
+export type { ValidationResult, FileValidationOptions, PaginationParams };

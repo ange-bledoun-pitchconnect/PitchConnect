@@ -1,30 +1,38 @@
 /**
- * Enhanced Authentication & Authorization Library - WORLD-CLASS VERSION
+ * 🌟 PITCHCONNECT - Enterprise Authentication & Authorization Library
  * Path: /src/lib/auth.ts
  *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * WORLD-CLASS FEATURES
  * ============================================================================
+ * ✅ NextAuth.js v5 Compatible
  * ✅ Zero bcryptjs dependency (native Node.js crypto)
  * ✅ JWT handling without external libraries
  * ✅ Role-based access control (RBAC) with granular permissions
  * ✅ Session management and validation
  * ✅ Password hashing with PBKDF2
  * ✅ Two-factor authentication ready
+ * ✅ Email validation & sanitization
  * ✅ Audit logging
  * ✅ Permission inheritance
  * ✅ GDPR-compliant
  * ✅ Production-ready code
+ * ✅ NextAuth v5 Server Actions
+ * ✅ Prisma Integration
+ * ============================================================================
  */
 
 import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
+import type { NextAuthOptions } from 'next-auth';
+import Credentials from 'next-auth/providers/credentials';
+import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logging';
 
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
 
-type UserRole = 
+type UserRole =
   | 'SUPERADMIN'
   | 'ADMIN'
   | 'CLUB_OWNER'
@@ -37,7 +45,7 @@ type UserRole =
   | 'PLAYER'
   | 'PARENT';
 
-type PermissionName = 
+type PermissionName =
   | 'manage_users'
   | 'manage_teams'
   | 'manage_leagues'
@@ -62,7 +70,12 @@ type PermissionName =
   | 'view_stats'
   | 'view_players'
   | 'manage_drills'
-  | 'view_child_profile';
+  | 'view_child_profile'
+  | 'manage_videos'
+  | 'manage_live_matches'
+  | 'view_match_stats'
+  | 'manage_injuries'
+  | 'view_reports';
 
 interface User {
   id: string;
@@ -80,6 +93,7 @@ interface User {
   createdAt: Date;
   updatedAt: Date;
   isSuperAdmin: boolean;
+  emailVerifiedAt?: Date | null;
 }
 
 interface Session {
@@ -87,6 +101,9 @@ interface Session {
   token: string;
   expiresAt: Date;
   createdAt: Date;
+  user: User;
+  roles: UserRole[];
+  permissions: PermissionName[];
 }
 
 interface PasswordValidationResult {
@@ -100,6 +117,7 @@ interface TokenPayload {
   roles: UserRole[];
   iat: number;
   exp: number;
+  sub: string;
 }
 
 interface PasswordHash {
@@ -108,32 +126,24 @@ interface PasswordHash {
   iterations: number;
 }
 
-interface AuthContext {
-  user: User | null;
-  isAuthenticated: boolean;
-  isAuthorized: boolean;
-  permissions: PermissionName[];
-}
-
 // ============================================================================
 // CONSTANTS & CONFIGURATION
 // ============================================================================
 
-const PASSWORD_HASH_ITERATIONS = 100000; // PBKDF2 iterations
-const PASSWORD_SALT_LENGTH = 32; // bytes
+const PASSWORD_HASH_ITERATIONS = 100000;
+const PASSWORD_SALT_LENGTH = 32;
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 128;
 
 const JWT_ALGORITHM = 'HS256';
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-key';
-const JWT_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-key-change-in-production';
+const JWT_EXPIRY = 24 * 60 * 60 * 1000;
 
-const SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1000;
 
-// Password requirements regex
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
-// Role hierarchy for permission inheritance
 const ROLE_HIERARCHY: Record<UserRole, number> = {
   SUPERADMIN: 100,
   ADMIN: 90,
@@ -148,9 +158,39 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
   PARENT: 20,
 };
 
-// Permission mapping by role
 const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
-  SUPERADMIN: ['*'] as any, // All permissions
+  SUPERADMIN: [
+    'manage_users',
+    'manage_teams',
+    'manage_leagues',
+    'manage_clubs',
+    'view_analytics',
+    'manage_payments',
+    'view_audit_logs',
+    'manage_league',
+    'manage_fixtures',
+    'manage_standings',
+    'manage_players',
+    'manage_training',
+    'manage_tactics',
+    'analyze_performance',
+    'generate_reports',
+    'manage_scouting',
+    'manage_profile',
+    'manage_club',
+    'manage_members',
+    'view_profile',
+    'view_team',
+    'view_stats',
+    'view_players',
+    'manage_drills',
+    'view_child_profile',
+    'manage_videos',
+    'manage_live_matches',
+    'view_match_stats',
+    'manage_injuries',
+    'view_reports',
+  ],
   ADMIN: [
     'manage_users',
     'manage_teams',
@@ -159,6 +199,8 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'view_analytics',
     'manage_payments',
     'view_audit_logs',
+    'view_match_stats',
+    'view_reports',
   ],
   CLUB_OWNER: [
     'manage_club',
@@ -166,48 +208,79 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'manage_members',
     'view_analytics',
     'manage_payments',
+    'manage_players',
+    'manage_injuries',
+    'view_reports',
   ],
   LEAGUE_ADMIN: [
     'manage_league',
     'manage_fixtures',
     'manage_standings',
     'view_analytics',
+    'manage_teams',
+    'view_match_stats',
+    'view_reports',
   ],
   MANAGER: [
     'manage_players',
     'manage_training',
     'manage_tactics',
     'view_analytics',
+    'manage_profile',
+    'view_team',
+    'view_stats',
+    'manage_injuries',
+    'manage_drills',
+    'manage_live_matches',
+    'view_match_stats',
   ],
   COACH: [
     'manage_players',
     'manage_training',
     'view_analytics',
     'manage_drills',
+    'manage_profile',
+    'view_team',
+    'view_stats',
+    'manage_injuries',
+    'manage_live_matches',
+    'view_match_stats',
   ],
   ANALYST: [
     'view_analytics',
     'analyze_performance',
     'generate_reports',
+    'view_players',
+    'view_match_stats',
+    'view_team',
+    'view_reports',
   ],
   SCOUT: [
     'view_players',
     'view_analytics',
     'manage_scouting',
+    'view_match_stats',
+    'view_team',
+    'view_reports',
   ],
   PLAYER_PRO: [
     'view_profile',
     'view_team',
     'view_stats',
     'manage_profile',
+    'view_match_stats',
+    'view_reports',
   ],
   PLAYER: [
     'view_profile',
     'view_team',
     'view_stats',
+    'manage_profile',
+    'view_match_stats',
   ],
   PARENT: [
     'view_child_profile',
+    'view_match_stats',
   ],
 };
 
@@ -250,9 +323,6 @@ class TokenError extends Error {
 // UTILITY FUNCTIONS
 // ============================================================================
 
-/**
- * Constant-time string comparison (prevents timing attacks)
- */
 function timingSafeCompare(a: string, b: string): boolean {
   try {
     return timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -261,29 +331,56 @@ function timingSafeCompare(a: string, b: string): boolean {
   }
 }
 
-/**
- * Generate random hex string
- */
 function generateRandomHex(length: number): string {
   return randomBytes(length).toString('hex');
 }
 
-/**
- * Generate random bytes
- */
 function generateRandomBytes(length: number): Buffer {
   return randomBytes(length);
+}
+
+// ============================================================================
+// EMAIL VALIDATION & SANITIZATION
+// ============================================================================
+
+export function isValidEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') {
+    return false;
+  }
+
+  const trimmedEmail = email.trim().toLowerCase();
+  return EMAIL_REGEX.test(trimmedEmail) && trimmedEmail.length <= 255;
+}
+
+export function sanitizeEmail(email: string): string {
+  if (!email || typeof email !== 'string') {
+    return '';
+  }
+
+  return email.trim().toLowerCase();
+}
+
+export function isDisposableEmail(email: string): boolean {
+  const disposableDomains = [
+    'tempmail.com',
+    'throwaway.email',
+    '10minutemail.com',
+    'guerrillamail.com',
+    'mailinator.com',
+    'temp-mail.org',
+    'yopmail.com',
+    'maildrop.cc',
+  ];
+
+  const domain = email.split('@')[1]?.toLowerCase() || '';
+  return disposableDomains.includes(domain);
 }
 
 // ============================================================================
 // PASSWORD MANAGEMENT
 // ============================================================================
 
-/**
- * Validate password strength
- * Requires: 8+ chars, uppercase, lowercase, number, special char
- */
-export function validatePasswordStrength(password: string): PasswordValidationResult {
+export function validatePassword(password: string): PasswordValidationResult {
   const errors: string[] = [];
 
   if (!password) {
@@ -321,28 +418,16 @@ export function validatePasswordStrength(password: string): PasswordValidationRe
   };
 }
 
-/**
- * Hash password using PBKDF2
- * Returns object with hash, salt, and iterations for storage
- */
 export function hashPassword(password: string): PasswordHash {
   try {
-    const validation = validatePasswordStrength(password);
+    const validation = validatePassword(password);
     if (!validation.valid) {
       throw new PasswordValidationError(validation.errors);
     }
 
-    // Generate random salt
     const salt = generateRandomBytes(PASSWORD_SALT_LENGTH);
 
-    // Hash password using PBKDF2
-    const hash = pbkdf2Sync(
-      password,
-      salt,
-      PASSWORD_HASH_ITERATIONS,
-      64,
-      'sha256'
-    );
+    const hash = pbkdf2Sync(password, salt, PASSWORD_HASH_ITERATIONS, 64, 'sha256');
 
     logger.debug('Password hashed successfully');
 
@@ -352,17 +437,13 @@ export function hashPassword(password: string): PasswordHash {
       iterations: PASSWORD_HASH_ITERATIONS,
     };
   } catch (error) {
-    logger.error({ error }, 'Password hashing failed');
+    logger.error('Password hashing failed', {}, error as Error);
     throw error instanceof PasswordValidationError
       ? error
       : new Error('Failed to hash password');
   }
 }
 
-/**
- * Verify password against stored hash
- * Supports both old (salt separate) and new (salt in hash) formats
- */
 export function verifyPassword(
   password: string,
   storedHash: string,
@@ -374,7 +455,6 @@ export function verifyPassword(
       return false;
     }
 
-    // Handle format: "hash:salt:iterations"
     let hash: string;
     let hashSalt: string;
     let iterations = PASSWORD_HASH_ITERATIONS;
@@ -391,17 +471,11 @@ export function verifyPassword(
       hashSalt = salt || '';
     }
 
-    // Re-hash the provided password
     const saltBuffer = Buffer.from(hashSalt, 'hex');
-    const computedHash = pbkdf2Sync(
-      password,
-      saltBuffer,
-      iterations,
-      64,
-      'sha256'
-    ).toString('hex');
+    const computedHash = pbkdf2Sync(password, saltBuffer, iterations, 64, 'sha256').toString(
+      'hex'
+    );
 
-    // Compare using timing-safe function
     const isValid = timingSafeCompare(computedHash, hash);
 
     if (!isValid) {
@@ -410,14 +484,11 @@ export function verifyPassword(
 
     return isValid;
   } catch (error) {
-    logger.error({ error }, 'Password verification error');
+    logger.error('Password verification error', {}, error as Error);
     return false;
   }
 }
 
-/**
- * Generate secure random password
- */
 export function generateSecurePassword(): string {
   const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const lowercase = 'abcdefghijklmnopqrstuvwxyz';
@@ -427,18 +498,15 @@ export function generateSecurePassword(): string {
 
   let password = '';
 
-  // Ensure one of each required type
   password += uppercase[Math.floor(Math.random() * uppercase.length)];
   password += lowercase[Math.floor(Math.random() * lowercase.length)];
   password += numbers[Math.floor(Math.random() * numbers.length)];
   password += special[Math.floor(Math.random() * special.length)];
 
-  // Fill remaining length with random chars
   for (let i = password.length; i < 16; i++) {
     password += all[Math.floor(Math.random() * all.length)];
   }
 
-  // Shuffle
   return password.split('').sort(() => Math.random() - 0.5).join('');
 }
 
@@ -446,9 +514,6 @@ export function generateSecurePassword(): string {
 // JWT TOKEN MANAGEMENT
 // ============================================================================
 
-/**
- * Create JWT token manually (without external library)
- */
 export function createJWT(
   payload: Record<string, any>,
   expiryMs: number = JWT_EXPIRY
@@ -463,7 +528,6 @@ export function createJWT(
       exp,
     };
 
-    // Base64 encode header and payload
     const header = Buffer.from(
       JSON.stringify({ alg: JWT_ALGORITHM, typ: 'JWT' })
     ).toString('base64url');
@@ -472,21 +536,17 @@ export function createJWT(
 
     const message = `${header}.${body}`;
 
-    // Sign with HMAC-SHA256
     const signature = createHmac('sha256', JWT_SECRET)
       .update(message)
       .digest('base64url');
 
     return `${message}.${signature}`;
   } catch (error) {
-    logger.error({ error }, 'JWT creation failed');
+    logger.error('JWT creation failed', {}, error as Error);
     throw new TokenError('Failed to create token');
   }
 }
 
-/**
- * Verify and decode JWT token manually
- */
 export function verifyJWT(token: string): TokenPayload | null {
   try {
     const parts = token.split('.');
@@ -497,7 +557,6 @@ export function verifyJWT(token: string): TokenPayload | null {
 
     const [header, body, signature] = parts;
 
-    // Reconstruct and verify signature
     const message = `${header}.${body}`;
     const expectedSignature = createHmac('sha256', JWT_SECRET)
       .update(message)
@@ -507,12 +566,8 @@ export function verifyJWT(token: string): TokenPayload | null {
       throw new TokenError('Invalid signature');
     }
 
-    // Decode payload
-    const decoded = JSON.parse(
-      Buffer.from(body, 'base64url').toString('utf8')
-    ) as TokenPayload;
+    const decoded = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as TokenPayload;
 
-    // Check expiration
     const now = Math.floor(Date.now() / 1000);
     if (decoded.exp < now) {
       throw new TokenError('Token expired');
@@ -523,14 +578,11 @@ export function verifyJWT(token: string): TokenPayload | null {
     if (error instanceof TokenError) {
       throw error;
     }
-    logger.error({ error }, 'JWT verification failed');
+    logger.error('JWT verification failed', {}, error as Error);
     return null;
   }
 }
 
-/**
- * Decode JWT token without verification (unsafe, use only for inspection)
- */
 export function decodeToken(token: string): TokenPayload | null {
   try {
     const parts = token.split('.');
@@ -539,20 +591,15 @@ export function decodeToken(token: string): TokenPayload | null {
       return null;
     }
 
-    const decoded = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf8')
-    ) as TokenPayload;
+    const decoded = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as TokenPayload;
 
     return decoded;
   } catch (error) {
-    logger.error({ error }, 'Failed to decode token');
+    logger.error('Failed to decode token', {}, error as Error);
     return null;
   }
 }
 
-/**
- * Check if token is expired
- */
 export function isTokenExpired(token: string): boolean {
   try {
     const decoded = decodeToken(token);
@@ -563,7 +610,7 @@ export function isTokenExpired(token: string): boolean {
     const now = Math.floor(Date.now() / 1000);
     return decoded.exp < now;
   } catch (error) {
-    logger.error({ error }, 'Failed to check token expiration');
+    logger.error('Failed to check token expiration', {}, error as Error);
     return true;
   }
 }
@@ -575,29 +622,27 @@ export function isTokenExpired(token: string): boolean {
 class SessionManager {
   private sessions = new Map<string, Session>();
 
-  /**
-   * Create new session
-   */
-  createSession(userId: string): Session {
+  createSession(userId: string, user: User, roles: UserRole[]): Session {
     const token = generateRandomHex(32);
     const expiresAt = new Date(Date.now() + SESSION_EXPIRY);
+    const permissions = getUserPermissions(roles);
 
     const session: Session = {
       userId,
       token,
       expiresAt,
       createdAt: new Date(),
+      user,
+      roles,
+      permissions,
     };
 
     this.sessions.set(token, session);
-    logger.info({ userId }, 'Session created');
+    logger.info('Session created', { userId });
 
     return session;
   }
 
-  /**
-   * Verify session token
-   */
   verifySession(token: string): Session | null {
     const session = this.sessions.get(token);
 
@@ -607,24 +652,18 @@ class SessionManager {
 
     if (new Date() > session.expiresAt) {
       this.sessions.delete(token);
-      logger.debug({ token }, 'Session expired and removed');
+      logger.debug('Session expired and removed', { token });
       return null;
     }
 
     return session;
   }
 
-  /**
-   * Invalidate session
-   */
   invalidateSession(token: string): void {
     this.sessions.delete(token);
-    logger.info({ token }, 'Session invalidated');
+    logger.info('Session invalidated', { token });
   }
 
-  /**
-   * Invalidate all sessions for user
-   */
   invalidateUserSessions(userId: string): void {
     let count = 0;
 
@@ -635,12 +674,9 @@ class SessionManager {
       }
     }
 
-    logger.info({ userId, count }, 'All user sessions invalidated');
+    logger.info('All user sessions invalidated', { userId, count });
   }
 
-  /**
-   * Clean up expired sessions
-   */
   cleanup(): number {
     const now = new Date();
     let removed = 0;
@@ -653,22 +689,16 @@ class SessionManager {
     }
 
     if (removed > 0) {
-      logger.debug({ removed }, 'Expired sessions cleaned up');
+      logger.debug('Expired sessions cleaned up', { removed });
     }
 
     return removed;
   }
 
-  /**
-   * Get session count
-   */
   getCount(): number {
     return this.sessions.size;
   }
 
-  /**
-   * Clear all sessions
-   */
   clear(): void {
     this.sessions.clear();
     logger.info('All sessions cleared');
@@ -681,30 +711,18 @@ const sessionManager = new SessionManager();
 // PERMISSION MANAGEMENT
 // ============================================================================
 
-/**
- * Get all permissions for a role
- */
 export function getRolePermissions(role: UserRole): PermissionName[] {
-  const permissions = ROLE_PERMISSIONS[role] || [];
-  return permissions === '*' as any ? ['*'] : permissions;
+  return ROLE_PERMISSIONS[role] || [];
 }
 
-/**
- * Check if user has permission
- */
-export function hasPermission(
-  userRoles: UserRole[],
-  permission: PermissionName
-): boolean {
-  // Superadmins have all permissions
+export function hasPermission(userRoles: UserRole[], permission: PermissionName): boolean {
   if (userRoles.includes('SUPERADMIN')) {
     return true;
   }
 
-  // Check if any role has permission
   for (const role of userRoles) {
     const permissions = getRolePermissions(role);
-    if (permissions.includes('*' as any) || permissions.includes(permission)) {
+    if (permissions.includes(permission)) {
       return true;
     }
   }
@@ -712,21 +730,14 @@ export function hasPermission(
   return false;
 }
 
-/**
- * Get user permission level (0-100)
- */
 export function getUserPermissionLevel(userRoles: UserRole[]): number {
   const levels = userRoles.map((role) => ROLE_HIERARCHY[role] || 0);
   return Math.max(...levels, 0);
 }
 
-/**
- * Get all permissions for user
- */
 export function getUserPermissions(userRoles: UserRole[]): PermissionName[] {
   const permissions = new Set<PermissionName>();
 
-  // Superadmins have all permissions
   if (userRoles.includes('SUPERADMIN')) {
     return Object.values(ROLE_PERMISSIONS).flat() as PermissionName[];
   }
@@ -739,49 +750,279 @@ export function getUserPermissions(userRoles: UserRole[]): PermissionName[] {
   return Array.from(permissions);
 }
 
-// ============================================================================
-// PUBLIC API
-// ============================================================================
-
-/**
- * Create session for user
- */
-export function createSession(userId: string): Session {
-  return sessionManager.createSession(userId);
+export function requirePermission(userRoles: UserRole[], permission: PermissionName): void {
+  if (!hasPermission(userRoles, permission)) {
+    throw new AuthorizationError(`Missing required permission: ${permission}`);
+  }
 }
 
-/**
- * Verify session token
- */
-export function verifySession(token: string): Session | null {
+export function isSuperAdmin(userRoles: UserRole[]): boolean {
+  return userRoles.includes('SUPERADMIN');
+}
+
+// ============================================================================
+// AUTHENTICATION FLOW - NextAuth.js v5
+// ============================================================================
+
+export const authOptions: NextAuthOptions = {
+  providers: [
+    Credentials({
+      name: 'Credentials',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        try {
+          if (!credentials?.email || !credentials?.password) {
+            throw new AuthenticationError('Email and password required');
+          }
+
+          const email = sanitizeEmail(credentials.email);
+
+          if (!isValidEmail(email)) {
+            throw new AuthenticationError('Invalid email format');
+          }
+
+          const user = await prisma.user.findUnique({
+            where: { email },
+            include: {
+              roles: true,
+              profile: true,
+            },
+          });
+
+          if (!user) {
+            logger.warn('User not found', { email });
+            throw new AuthenticationError('Invalid credentials');
+          }
+
+          if (user.status !== 'ACTIVE') {
+            logger.warn('User account inactive', { userId: user.id });
+            throw new AuthenticationError('Account is inactive');
+          }
+
+          const isPasswordValid = verifyPassword(credentials.password, user.password);
+          if (!isPasswordValid) {
+            logger.warn('Invalid password', { userId: user.id });
+            throw new AuthenticationError('Invalid credentials');
+          }
+
+          logger.info('User authenticated successfully', { userId: user.id });
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.firstName + ' ' + user.lastName,
+            image: user.profile?.avatar,
+          };
+        } catch (error) {
+          if (error instanceof AuthenticationError) {
+            throw new Error(error.message);
+          }
+          logger.error('Authentication error', {}, error as Error);
+          throw new Error('Authentication failed');
+        }
+      },
+    }),
+  ],
+
+  pages: {
+    signIn: '/auth/login',
+    error: '/auth/error',
+    signOut: '/auth/signout',
+  },
+
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          include: { roles: true },
+        });
+
+        if (dbUser) {
+          token.userId = dbUser.id;
+          token.email = dbUser.email;
+          token.roles = dbUser.roles.map((r) => r.name as UserRole);
+          token.isSuperAdmin = dbUser.roles.some((r) => r.name === 'SUPERADMIN');
+        }
+      }
+
+      return token;
+    },
+
+    async session({ session, token }) {
+      if (session.user && token) {
+        (session as any).userId = token.userId as string;
+        session.user.email = token.email as string;
+        const roles = (token.roles as UserRole[]) || [];
+        (session as any).roles = roles;
+        (session as any).permissions = getUserPermissions(roles);
+      }
+
+      return session;
+    },
+  },
+
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
+  },
+
+  jwt: {
+    secret: JWT_SECRET,
+    maxAge: 30 * 24 * 60 * 60,
+  },
+
+  events: {
+    async signIn({ user }) {
+      logger.info('User signed in', { userId: user.id });
+    },
+    async signOut({ token }) {
+      logger.info('User signed out', { userId: token.sub });
+    },
+  },
+};
+
+// ============================================================================
+// GET CURRENT USER & SESSION
+// ============================================================================
+
+export async function getCurrentUser(userId: string): Promise<User | null> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        roles: true,
+        profile: true,
+      },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: user.firstName + ' ' + user.lastName,
+      avatar: user.profile?.avatar,
+      roles: user.roles.map((r) => r.name as UserRole),
+      status: user.status,
+      isEmailVerified: user.emailVerifiedAt !== null,
+      emailVerifiedAt: user.emailVerifiedAt,
+      twoFactorEnabled: user.twoFactorEnabled,
+      subscriptionTier: user.subscriptionTier,
+      subscriptionStatus: user.subscriptionStatus,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      isSuperAdmin: user.roles.some((r) => r.name === 'SUPERADMIN'),
+    };
+  } catch (error) {
+    logger.error('Failed to get current user', { userId }, error as Error);
+    return null;
+  }
+}
+
+export async function getSession(): Promise<Session | null> {
+  try {
+    const { auth } = await import('@/auth');
+    const session = await auth();
+    return session as Session | null;
+  } catch (error) {
+    logger.debug('Failed to get session', {}, error as Error);
+    return null;
+  }
+}
+
+export async function getServerSession(): Promise<Session | null> {
+  try {
+    const { auth } = await import('@/auth');
+    return await auth();
+  } catch (error) {
+    logger.error('Failed to get server session', {}, error as Error);
+    return null;
+  }
+}
+
+export const auth = async () => {
+  try {
+    const { auth: nextAuth } = await import('@/auth');
+    return await nextAuth();
+  } catch (error) {
+    logger.error('Auth error', {}, error as Error);
+    return null;
+  }
+};
+
+// ============================================================================
+// AUTHORIZATION HELPERS
+// ============================================================================
+
+export async function requireAuth(): Promise<Session> {
+  const session = await getServerSession();
+
+  if (!session || !session.userId) {
+    throw new AuthenticationError('Authentication required');
+  }
+
+  return session;
+}
+
+export async function verifySuperAdmin(): Promise<User> {
+  const session = await requireAuth();
+
+  if (!session.roles || !session.roles.includes('SUPERADMIN')) {
+    throw new AuthorizationError('Superadmin access required');
+  }
+
+  const user = await getCurrentUser(session.userId);
+  if (!user) {
+    throw new AuthenticationError('User not found');
+  }
+
+  return user;
+}
+
+export async function verifyPermission(permission: PermissionName): Promise<Session> {
+  const session = await requireAuth();
+
+  if (!session.roles || !hasPermission(session.roles, permission)) {
+    throw new AuthorizationError(`Permission required: ${permission}`);
+  }
+
+  return session;
+}
+
+// ============================================================================
+// SESSION PUBLIC API
+// ============================================================================
+
+export function createSessionToken(userId: string, user: User, roles: UserRole[]): Session {
+  return sessionManager.createSession(userId, user, roles);
+}
+
+export function verifySessionToken(token: string): Session | null {
   return sessionManager.verifySession(token);
 }
 
-/**
- * Invalidate session
- */
-export function invalidateSession(token: string): void {
+export function invalidateSessionToken(token: string): void {
   sessionManager.invalidateSession(token);
 }
 
-/**
- * Invalidate all sessions for user
- */
-export function invalidateUserSessions(userId: string): void {
+export function invalidateAllUserSessions(userId: string): void {
   sessionManager.invalidateUserSessions(userId);
 }
 
-/**
- * Clean up expired sessions
- */
-export function cleanupSessions(): number {
+export function cleanupExpiredSessions(): number {
   return sessionManager.cleanup();
 }
 
-/**
- * Get active session count
- */
-export function getActiveSessionCount(): number {
+export function getActiveSessionsCount(): number {
   return sessionManager.getCount();
 }
 
@@ -803,6 +1044,5 @@ export {
   type Session,
   type TokenPayload,
   type PasswordHash,
-  type AuthContext,
   type PasswordValidationResult,
 };

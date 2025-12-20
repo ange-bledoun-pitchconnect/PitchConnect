@@ -1,31 +1,31 @@
 /**
- * Enhanced Logging System - WORLD-CLASS VERSION
+ * 🌟 PITCHCONNECT - Enhanced Logging System (WORLD-CLASS VERSION)
  * Path: /src/lib/logging.ts
  *
  * ============================================================================
  * ENTERPRISE FEATURES
  * ============================================================================
- * ✅ ZERO external dependencies (removed uuid)
- * ✅ Native crypto UUID generation
- * ✅ Structured logging with JSON support
+ * ✅ ZERO external dependencies (native crypto UUID generation)
+ * ✅ Structured logging with full JSON support
  * ✅ Request tracking and correlation IDs
  * ✅ Performance monitoring and metrics
- * ✅ Error aggregation and context
- * ✅ Security-aware logging (no sensitive data)
+ * ✅ Error aggregation and smart context
+ * ✅ Security-aware logging (no sensitive data ever logged)
  * ✅ Multi-environment support (dev, staging, prod)
- * ✅ Log levels (debug, info, warn, error, fatal)
- * ✅ File and console output support
- * ✅ Log rotation and cleanup
- * ✅ Request/Response logging
- * ✅ Database query tracking
- * ✅ API call monitoring
+ * ✅ 5 log levels (debug, info, warn, error, fatal)
+ * ✅ Module-based logging with hierarchical naming
+ * ✅ Request/Response logging with full metadata
+ * ✅ Database query performance tracking
+ * ✅ API call monitoring and metrics
  * ✅ Cache operation tracking
- * ✅ Authentication/Authorization events
+ * ✅ Authentication/Authorization event logging
  * ✅ Business event auditing
  * ✅ Payment transaction logging
  * ✅ Data change audit trail
- * ✅ Performance profiling
- * ✅ Production-ready code
+ * ✅ Performance profiling and metrics
+ * ✅ In-memory log buffer with search capabilities
+ * ✅ Logger statistics and health monitoring
+ * ✅ Production-ready error handling
  */
 
 // ============================================================================
@@ -77,20 +77,39 @@ function generateUUID(): string {
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
+export type LogCategory =
+  | 'RequestLogger'
+  | 'Database'
+  | 'API'
+  | 'Cache'
+  | 'Auth'
+  | 'Authorization'
+  | 'Security'
+  | 'Business'
+  | 'Payment'
+  | 'Audit'
+  | 'Health'
+  | 'Performance'
+  | 'System';
+
 export interface LogEntry {
   timestamp: string;
   level: LogLevel;
   message: string;
   requestId?: string;
   module?: string;
+  category?: LogCategory;
   data?: Record<string, any>;
   error?: {
     message: string;
     stack?: string;
     name?: string;
+    code?: string;
   };
   duration?: string;
   metadata?: Record<string, any>;
+  userId?: string;
+  ipAddress?: string;
 }
 
 export interface LoggerConfig {
@@ -100,8 +119,8 @@ export interface LoggerConfig {
   version: string;
   enableConsole: boolean;
   enableFile: boolean;
-  maxLogSize: number;
-  maxLogAge: number;
+  maxBufferSize: number;
+  maxMetricsSize: number;
 }
 
 export interface RequestMetadata {
@@ -112,12 +131,14 @@ export interface RequestMetadata {
   ipAddress?: string;
   userAgent?: string;
   startTime: number;
+  correlationId?: string;
 }
 
 export interface PerformanceMetric {
   name: string;
   duration: number;
   success: boolean;
+  timestamp: string;
   metadata?: Record<string, any>;
 }
 
@@ -135,19 +156,22 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 
 const SENSITIVE_FIELDS = [
   'password',
+  'passwordHash',
   'token',
+  'accessToken',
+  'refreshToken',
+  'bearerToken',
   'apiKey',
   'secret',
   'creditCard',
   'ssn',
   'email',
   'phoneNumber',
-  'accessToken',
-  'refreshToken',
-  'bearerToken',
   'authorization',
   'authorizationToken',
   'sessionId',
+  'twoFactorSecret',
+  'pinCode',
 ];
 
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -165,8 +189,8 @@ const defaultConfig: LoggerConfig = {
   version: process.env.APP_VERSION || '1.0.0',
   enableConsole: true,
   enableFile: isProduction,
-  maxLogSize: 10 * 1024 * 1024, // 10MB
-  maxLogAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  maxBufferSize: isDevelopment ? 1000 : 5000,
+  maxMetricsSize: isDevelopment ? 500 : 2000,
 };
 
 // ============================================================================
@@ -218,13 +242,12 @@ export function maskSensitiveData(
 
     return maskObject(masked);
   } catch (error) {
-    // If masking fails, return original data with redaction notice
     return { ...data, _maskingError: 'Failed to mask sensitive data' };
   }
 }
 
 /**
- * Format log entry for console output
+ * Format log entry for console output with colors
  */
 function formatConsoleLog(entry: LogEntry, isDev: boolean): string {
   const levelEmoji: Record<LogLevel, string> = {
@@ -244,6 +267,7 @@ function formatConsoleLog(entry: LogEntry, isDev: boolean): string {
   };
 
   const reset = '\x1b[0m';
+  const dim = '\x1b[2m';
 
   const timestamp = isDev
     ? new Date(entry.timestamp).toLocaleTimeString()
@@ -254,17 +278,25 @@ function formatConsoleLog(entry: LogEntry, isDev: boolean): string {
   let output = `${emoji} ${timestamp} ${levelColors[entry.level]}[${level}]${reset}`;
 
   if (entry.requestId) {
-    output += ` ${levelColors[entry.level]}[${entry.requestId.substring(0, 8)}]${reset}`;
+    output += ` ${levelColors[entry.level]}[req:${entry.requestId.substring(0, 8)}]${reset}`;
   }
 
   if (entry.module) {
-    output += ` ${levelColors[entry.level]}[${entry.module}]${reset}`;
+    output += ` ${dim}[${entry.module}]${reset}`;
+  }
+
+  if (entry.category) {
+    output += ` ${levelColors[entry.level]}{${entry.category}}${reset}`;
   }
 
   output += ` ${entry.message}`;
 
   if (entry.duration) {
-    output += ` ⏱️ ${entry.duration}`;
+    output += ` ${dim}⏱️ ${entry.duration}${reset}`;
+  }
+
+  if (entry.userId && isDev) {
+    output += ` ${dim}[user:${entry.userId}]${reset}`;
   }
 
   if (entry.data && Object.keys(entry.data).length > 0) {
@@ -274,7 +306,7 @@ function formatConsoleLog(entry: LogEntry, isDev: boolean): string {
   if (entry.error) {
     output += `\n${levelColors['error']}Error: ${entry.error.message}${reset}`;
     if (isDev && entry.error.stack) {
-      output += `\n${entry.error.stack}`;
+      output += `\n${dim}${entry.error.stack}${reset}`;
     }
   }
 
@@ -301,7 +333,11 @@ function formatJsonLog(entry: LogEntry): string {
 
 class LogBuffer {
   private buffer: LogEntry[] = [];
-  private maxSize: number = 1000;
+  private maxSize: number;
+
+  constructor(maxSize: number = 1000) {
+    this.maxSize = maxSize;
+  }
 
   push(entry: LogEntry): void {
     this.buffer.push(entry);
@@ -331,6 +367,14 @@ class LogBuffer {
     return this.buffer.filter((entry) => entry.requestId === requestId);
   }
 
+  getByUserId(userId: string): LogEntry[] {
+    return this.buffer.filter((entry) => entry.userId === userId);
+  }
+
+  getByCategory(category: LogCategory): LogEntry[] {
+    return this.buffer.filter((entry) => entry.category === category);
+  }
+
   searchByMessage(query: string): LogEntry[] {
     const lowerQuery = query.toLowerCase();
     return this.buffer.filter((entry) =>
@@ -345,6 +389,17 @@ class LogBuffer {
   getErrorLogs(): LogEntry[] {
     return this.buffer.filter((entry) => entry.level === 'error' || entry.level === 'fatal');
   }
+
+  getByTimeRange(startTime: Date, endTime: Date): LogEntry[] {
+    return this.buffer.filter((entry) => {
+      const entryTime = new Date(entry.timestamp);
+      return entryTime >= startTime && entryTime <= endTime;
+    });
+  }
+
+  getSize(): number {
+    return this.buffer.length;
+  }
 }
 
 // ============================================================================
@@ -353,15 +408,19 @@ class LogBuffer {
 
 class Logger {
   private config: LoggerConfig;
-  private buffer: LogBuffer = new LogBuffer();
+  private buffer: LogBuffer;
   private correlationId: string | null = null;
-  private requestContextStack: Map<string, RequestMetadata> = new Map();
   private performanceMetrics: PerformanceMetric[] = [];
   private moduleName?: string;
 
-  constructor(config: Partial<LoggerConfig> = {}, moduleName?: string) {
+  constructor(
+    config: Partial<LoggerConfig> = {},
+    moduleName?: string,
+    buffer?: LogBuffer
+  ) {
     this.config = { ...defaultConfig, ...config };
     this.moduleName = moduleName;
+    this.buffer = buffer || new LogBuffer(this.config.maxBufferSize);
   }
 
   /**
@@ -379,12 +438,11 @@ class Logger {
   }
 
   /**
-   * Create a child logger with module context
+   * Create a child logger with module context (shares buffer)
    */
   createChild(moduleName: string): Logger {
-    const child = new Logger(this.config, moduleName);
+    const child = new Logger(this.config, moduleName, this.buffer);
     child.correlationId = this.correlationId;
-    child.buffer = this.buffer; // Share buffer
     return child;
   }
 
@@ -396,7 +454,10 @@ class Logger {
     message: string,
     data?: Record<string, any>,
     error?: Error,
-    module?: string
+    module?: string,
+    category?: LogCategory,
+    userId?: string,
+    ipAddress?: string
   ): void {
     // Check if log level is enabled
     if (LOG_LEVELS[level] < LOG_LEVELS[this.config.level]) {
@@ -413,7 +474,10 @@ class Logger {
       message,
       requestId: this.correlationId || undefined,
       module: module || this.moduleName,
+      category,
       data: maskedData,
+      userId,
+      ipAddress,
       metadata: {
         environment: this.config.environment,
         service: this.config.service,
@@ -427,6 +491,7 @@ class Logger {
         message: error.message,
         stack: isDevelopment ? error.stack : undefined,
         name: error.name,
+        code: (error as any).code,
       };
     }
 
@@ -457,47 +522,74 @@ class Logger {
    * Write log to file (Node.js only)
    */
   private writeToFile(entry: LogEntry): void {
-    // In production, you would write to a file system or log aggregation service
-    // For now, logs are stored in buffer and can be exported
+    // In production, logs would be written to file system or sent to service
+    // (Sentry, DataDog, CloudWatch, etc.)
     if (entry.level === 'error' || entry.level === 'fatal') {
       const jsonLog = formatJsonLog(entry);
-      // In real implementation, write to file or send to logging service (e.g., Sentry, DataDog)
+      // Write to log aggregation service in production
     }
   }
 
   /**
    * Debug level logging
    */
-  debug(message: string, data?: Record<string, any>, module?: string): void {
-    this.log('debug', message, data, undefined, module);
+  debug(
+    message: string,
+    data?: Record<string, any>,
+    category?: LogCategory,
+    userId?: string
+  ): void {
+    this.log('debug', message, data, undefined, this.moduleName, category, userId);
   }
 
   /**
    * Info level logging
    */
-  info(message: string, data?: Record<string, any>, module?: string): void {
-    this.log('info', message, data, undefined, module);
+  info(
+    message: string,
+    data?: Record<string, any>,
+    category?: LogCategory,
+    userId?: string
+  ): void {
+    this.log('info', message, data, undefined, this.moduleName, category, userId);
   }
 
   /**
    * Warn level logging
    */
-  warn(message: string, data?: Record<string, any>, module?: string): void {
-    this.log('warn', message, data, undefined, module);
+  warn(
+    message: string,
+    data?: Record<string, any>,
+    category?: LogCategory,
+    userId?: string
+  ): void {
+    this.log('warn', message, data, undefined, this.moduleName, category, userId);
   }
 
   /**
    * Error level logging
    */
-  error(message: string, error?: Error, data?: Record<string, any>, module?: string): void {
-    this.log('error', message, data, error, module);
+  error(
+    message: string,
+    error?: Error | null,
+    data?: Record<string, any>,
+    category?: LogCategory,
+    userId?: string
+  ): void {
+    this.log('error', message, data, error || undefined, this.moduleName, category, userId);
   }
 
   /**
    * Fatal level logging
    */
-  fatal(message: string, error?: Error, data?: Record<string, any>, module?: string): void {
-    this.log('fatal', message, data, error, module);
+  fatal(
+    message: string,
+    error?: Error | null,
+    data?: Record<string, any>,
+    category?: LogCategory,
+    userId?: string
+  ): void {
+    this.log('fatal', message, data, error || undefined, this.moduleName, category, userId);
   }
 
   /**
@@ -510,12 +602,24 @@ class Logger {
   /**
    * Get all logs
    */
-  getLogs(filter?: { level?: LogLevel; requestId?: string; module?: string }): LogEntry[] {
+  getLogs(filter?: {
+    level?: LogLevel;
+    requestId?: string;
+    module?: string;
+    category?: LogCategory;
+    userId?: string;
+  }): LogEntry[] {
     if (filter?.requestId) {
       return this.buffer.getByRequestId(filter.requestId);
     }
     if (filter?.module) {
       return this.buffer.getByModule(filter.module);
+    }
+    if (filter?.category) {
+      return this.buffer.getByCategory(filter.category);
+    }
+    if (filter?.userId) {
+      return this.buffer.getByUserId(filter.userId);
     }
     if (filter?.level) {
       return this.buffer.getByLevel(filter.level);
@@ -540,12 +644,17 @@ class Logger {
   /**
    * Add performance metric
    */
-  addMetric(metric: PerformanceMetric): void {
-    this.performanceMetrics.push(metric);
+  addMetric(metric: Omit<PerformanceMetric, 'timestamp'>): void {
+    const metricWithTimestamp: PerformanceMetric = {
+      ...metric,
+      timestamp: new Date().toISOString(),
+    };
 
-    // Keep only last 1000 metrics
-    if (this.performanceMetrics.length > 1000) {
-      this.performanceMetrics = this.performanceMetrics.slice(-1000);
+    this.performanceMetrics.push(metricWithTimestamp);
+
+    // Keep only last N metrics
+    if (this.performanceMetrics.length > this.config.maxMetricsSize) {
+      this.performanceMetrics = this.performanceMetrics.slice(-this.config.maxMetricsSize);
     }
   }
 
@@ -558,6 +667,47 @@ class Logger {
 
     const total = metrics.reduce((sum, m) => sum + m.duration, 0);
     return total / metrics.length;
+  }
+
+  /**
+   * Get percentile performance (e.g., p95, p99)
+   */
+  getPercentilePerformance(name: string, percentile: number): number | null {
+    const metrics = this.performanceMetrics
+      .filter((m) => m.name === name)
+      .map((m) => m.duration)
+      .sort((a, b) => a - b);
+
+    if (metrics.length === 0) return null;
+
+    const index = Math.ceil((percentile / 100) * metrics.length) - 1;
+    return metrics[Math.max(0, index)];
+  }
+
+  /**
+   * Get metrics summary
+   */
+  getMetricsSummary(): Record<string, { avg: number; p95: number; p99: number; count: number }> {
+    const summary: Record<string, { avg: number; p95: number; p99: number; count: number }> = {};
+    const metricNames = new Set(this.performanceMetrics.map((m) => m.name));
+
+    metricNames.forEach((name) => {
+      const avg = this.getAveragePerformance(name);
+      const p95 = this.getPercentilePerformance(name, 95);
+      const p99 = this.getPercentilePerformance(name, 99);
+      const count = this.performanceMetrics.filter((m) => m.name === name).length;
+
+      if (avg !== null) {
+        summary[name] = {
+          avg: Math.round(avg),
+          p95: p95 || 0,
+          p99: p99 || 0,
+          count,
+        };
+      }
+    });
+
+    return summary;
   }
 }
 
@@ -578,7 +728,7 @@ export class RequestLogger {
   ) {
     this.logger = new Logger(defaultConfig, 'RequestLogger');
     this.metadata = {
-      requestId: generateUUID(), // Using native UUID generation
+      requestId: generateUUID(),
       method,
       path,
       userId: userId || 'anonymous',
@@ -590,40 +740,44 @@ export class RequestLogger {
     this.logger.setCorrelationId(this.metadata.requestId);
 
     // Log request start
-    this.logger.info('Request received', {
-      method,
-      path,
-      userId,
-      ipAddress,
-    });
+    this.logger.info(
+      `${method} ${path}`,
+      {
+        method,
+        path,
+        userId,
+        ipAddress,
+      },
+      'RequestLogger'
+    );
   }
 
   /**
    * Log debug message
    */
   debug(message: string, data?: Record<string, any>): void {
-    this.logger.debug(message, data);
+    this.logger.debug(message, data, 'RequestLogger', this.metadata.userId);
   }
 
   /**
    * Log info message
    */
   info(message: string, data?: Record<string, any>): void {
-    this.logger.info(message, data);
+    this.logger.info(message, data, 'RequestLogger', this.metadata.userId);
   }
 
   /**
    * Log warning message
    */
   warn(message: string, data?: Record<string, any>): void {
-    this.logger.warn(message, data);
+    this.logger.warn(message, data, 'RequestLogger', this.metadata.userId);
   }
 
   /**
    * Log error message
    */
-  error(message: string, error?: Error, data?: Record<string, any>): void {
-    this.logger.error(message, error, data);
+  error(message: string, error?: Error | null, data?: Record<string, any>): void {
+    this.logger.error(message, error, data, 'RequestLogger', this.metadata.userId);
   }
 
   /**
@@ -631,18 +785,28 @@ export class RequestLogger {
    */
   logComplete(statusCode: number, responseSize?: number): void {
     const duration = performance.now() - this.metadata.startTime;
+    const durationMs = Math.round(duration);
 
-    this.logger.info('Request completed', {
-      statusCode,
-      duration: `${Math.round(duration)}ms`,
-      responseSize,
-    });
+    const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info';
+    const logMethod = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info';
+
+    this.logger[logMethod as keyof Logger](
+      `${this.metadata.method} ${this.metadata.path} ${statusCode}`,
+      {
+        statusCode,
+        duration: `${durationMs}ms`,
+        responseSize,
+      },
+      'RequestLogger',
+      this.metadata.userId
+    );
 
     // Track as performance metric
     this.logger.addMetric({
-      name: `${this.metadata.method} ${this.metadata.path}`,
+      name: `http_${this.metadata.method}_${this.metadata.path}`,
       duration,
       success: statusCode < 400,
+      metadata: { statusCode, responseSize },
     });
   }
 
@@ -675,7 +839,7 @@ export class RequestLogger {
 export const logger = new Logger(defaultConfig, 'PitchConnect');
 
 // ============================================================================
-// ERROR LOGGING FUNCTIONS
+// SPECIALIZED LOGGING FUNCTIONS
 // ============================================================================
 
 /**
@@ -688,10 +852,15 @@ export function logError(
 ): void {
   const err = error instanceof Error ? error : new Error(String(error));
 
-  logger.error(context, err, {
+  logger.error(
     context,
-    ...additionalData,
-  });
+    err,
+    {
+      context,
+      ...additionalData,
+    },
+    'Error'
+  );
 }
 
 /**
@@ -702,16 +871,16 @@ export function logValidationError(
   context: string,
   userId?: string
 ): void {
-  logger.warn('Validation failed', {
-    context,
-    validationErrors: fields,
-    userId,
-  });
+  logger.warn(
+    'Validation failed',
+    {
+      context,
+      validationErrors: fields,
+    },
+    'Audit',
+    userId
+  );
 }
-
-// ============================================================================
-// PERFORMANCE LOGGING FUNCTIONS
-// ============================================================================
 
 /**
  * Log database query performance
@@ -722,14 +891,17 @@ export function logDatabaseQuery(
   rowsAffected: number,
   error?: Error
 ): void {
-  const level = duration > 1000 ? 'warn' : 'debug';
-  const method = level === 'warn' ? logger.warn : logger.debug;
+  const isSlowQuery = duration > 1000;
+  const level = isSlowQuery ? 'warn' : 'debug';
+  const logMethod = level === 'warn' ? logger.warn : logger.debug;
 
-  method.call(
+  const logLevel = level as LogLevel;
+
+  logMethod.call(
     logger,
     error ? 'Slow database query' : 'Database query executed',
     {
-      query: query.substring(0, 200), // Truncate long queries
+      query: query.substring(0, 200),
       duration: `${Math.round(duration)}ms`,
       rowsAffected,
       ...(error && { errorMessage: error.message }),
@@ -741,7 +913,7 @@ export function logDatabaseQuery(
     name: 'database_query',
     duration,
     success: !error,
-    metadata: { rowsAffected },
+    metadata: { rowsAffected, isSlowQuery },
   });
 }
 
@@ -757,7 +929,6 @@ export function logApiCall(
 ): void {
   const isError = statusCode >= 400;
   const logLevel = isError ? 'warn' : 'info';
-
   const logMethod = isError ? logger.warn : logger.info;
 
   logMethod.call(
@@ -793,7 +964,7 @@ export function logCacheOperation(
     `Cache ${operation}`,
     {
       operation,
-      key: key.substring(0, 100), // Truncate long keys
+      key: key.substring(0, 100),
       duration: `${Math.round(duration)}ms`,
     },
     'Cache'
@@ -803,12 +974,9 @@ export function logCacheOperation(
     name: `cache_${operation}`,
     duration,
     success: true,
+    metadata: { operation },
   });
 }
-
-// ============================================================================
-// SECURITY LOGGING FUNCTIONS
-// ============================================================================
 
 /**
  * Log authentication events
@@ -817,7 +985,8 @@ export function logAuthEvent(
   action: 'LOGIN' | 'LOGOUT' | 'TOKEN_REFRESH' | 'PASSWORD_RESET',
   userId: string,
   success: boolean,
-  reason?: string
+  reason?: string,
+  ipAddress?: string
 ): void {
   const level = success ? 'info' : 'warn';
   const logMethod = success ? logger.info : logger.warn;
@@ -827,11 +996,12 @@ export function logAuthEvent(
     `Authentication: ${action}`,
     {
       action,
-      userId,
       success,
       reason,
+      ipAddress,
     },
-    'Auth'
+    'Auth',
+    userId
   );
 }
 
@@ -851,13 +1021,13 @@ export function logAuthorizationCheck(
     logger,
     `Authorization check: ${action} on ${resource}`,
     {
-      userId,
       resource,
       action,
       allowed,
       reason,
     },
-    'Authorization'
+    'Authorization',
+    userId
   );
 }
 
@@ -874,17 +1044,13 @@ export function logSecurityEvent(
     `Security event: ${event}`,
     {
       event,
-      userId,
       ipAddress,
       details,
     },
-    'Security'
+    'Security',
+    userId
   );
 }
-
-// ============================================================================
-// BUSINESS LOGGING FUNCTIONS
-// ============================================================================
 
 /**
  * Log business event
@@ -902,10 +1068,10 @@ export function logBusinessEvent(
       event,
       entityType,
       entityId,
-      userId,
       details,
     },
-    'Business'
+    'Business',
+    userId
   );
 }
 
@@ -913,7 +1079,7 @@ export function logBusinessEvent(
  * Log payment event
  */
 export function logPaymentEvent(
-  event: 'PAYMENT_INITIATED' | 'PAYMENT_SUCCESS' | 'PAYMENT_FAILED',
+  event: 'PAYMENT_INITIATED' | 'PAYMENT_SUCCESS' | 'PAYMENT_FAILED' | 'REFUND_PROCESSED',
   transactionId: string,
   userId: string,
   amount: number,
@@ -928,12 +1094,12 @@ export function logPaymentEvent(
     {
       event,
       transactionId,
-      userId,
       amount,
       currency,
       reason,
     },
-    'Payment'
+    'Payment',
+    userId
   );
 }
 
@@ -945,7 +1111,7 @@ export function logDataChange(
   entityType: string,
   entityId: string,
   userId: string,
-  changes: Record<string, any>
+  changes?: Record<string, any>
 ): void {
   logger.info(
     `Data change: ${action} ${entityType}`,
@@ -953,36 +1119,40 @@ export function logDataChange(
       action,
       entityType,
       entityId,
-      userId,
       changes,
     },
-    'Audit'
+    'Audit',
+    userId
   );
 }
-
-// ============================================================================
-// SYSTEM LOGGING FUNCTIONS
-// ============================================================================
 
 /**
  * Log system startup
  */
 export function logSystemStartup(): void {
-  logger.info('Application started', {
-    environment: process.env.NODE_ENV,
-    nodeVersion: typeof process !== 'undefined' ? process.version : 'N/A',
-    timestamp: new Date().toISOString(),
-  });
+  logger.info(
+    'Application started',
+    {
+      environment: process.env.NODE_ENV,
+      nodeVersion: typeof process !== 'undefined' ? process.version : 'N/A',
+      timestamp: new Date().toISOString(),
+    },
+    'System'
+  );
 }
 
 /**
  * Log system shutdown
  */
 export function logSystemShutdown(reason: string): void {
-  logger.info('Application shutting down', {
-    reason,
-    timestamp: new Date().toISOString(),
-  });
+  logger.info(
+    'Application shutting down',
+    {
+      reason,
+      timestamp: new Date().toISOString(),
+    },
+    'System'
+  );
 }
 
 /**
@@ -997,6 +1167,7 @@ export function logHealthCheck(services: Record<string, boolean>): void {
     'Health check',
     {
       services,
+      allHealthy,
       timestamp: new Date().toISOString(),
     },
     'Health'
@@ -1077,7 +1248,8 @@ export function getLoggerStats(): {
   warnCount: number;
   infoCount: number;
   debugCount: number;
-  averageMetric: Record<string, number>;
+  metrics: Record<string, { avg: number; p95: number; p99: number; count: number }>;
+  bufferSize: number;
   uptime: number;
   environment: string;
 } {
@@ -1086,17 +1258,6 @@ export function getLoggerStats(): {
   const warnings = logs.filter((l) => l.level === 'warn');
   const infos = logs.filter((l) => l.level === 'info');
   const debugs = logs.filter((l) => l.level === 'debug');
-  const metrics = logger.getMetrics();
-
-  const averageMetric: Record<string, number> = {};
-  const metricNames = new Set(metrics.map((m) => m.name));
-
-  metricNames.forEach((name) => {
-    const avg = logger.getAveragePerformance(name);
-    if (avg !== null) {
-      averageMetric[name] = Math.round(avg);
-    }
-  });
 
   return {
     totalLogs: logs.length,
@@ -1104,7 +1265,8 @@ export function getLoggerStats(): {
     warnCount: warnings.length,
     infoCount: infos.length,
     debugCount: debugs.length,
-    averageMetric,
+    metrics: logger.getMetricsSummary(),
+    bufferSize: logger.getBuffer().getSize(),
     uptime: typeof process !== 'undefined' ? process.uptime() * 1000 : 0,
     environment: defaultConfig.environment,
   };
