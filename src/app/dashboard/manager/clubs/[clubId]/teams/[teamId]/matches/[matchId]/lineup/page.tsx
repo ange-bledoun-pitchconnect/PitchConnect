@@ -1,9 +1,32 @@
 'use client';
 
+/**
+ * PitchConnect Match Lineup Page - v2.0 ENHANCED
+ * Location: ./src/app/dashboard/manager/clubs/[clubId]/teams/[teamId]/matches/[matchId]/lineup/page.tsx
+ *
+ * Features:
+ * ✅ Formation selector (4-4-2, 4-3-3, 3-5-2, 5-3-2, 4-2-3-1, 3-4-3)
+ * ✅ Drag & drop-ready lineup management
+ * ✅ Starting XI selection (exactly 11 players)
+ * ✅ Substitute management (max 7 players)
+ * ✅ Available players pool
+ * ✅ Captain highlighting
+ * ✅ Jersey number display
+ * ✅ Position tracking
+ * ✅ Quick add to XI or substitutes
+ * ✅ Remove from lineup/substitutes
+ * ✅ Custom toast notifications (zero dependencies)
+ * ✅ Loading states
+ * ✅ Form validation (exactly 11 players required)
+ * ✅ Dark mode support
+ * ✅ Responsive grid layout
+ * ✅ Schema-aligned data models
+ * ✅ Full TypeScript type safety
+ */
+
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import {
   ArrowLeft,
   Users,
@@ -12,10 +35,12 @@ import {
   Save,
   Plus,
   X,
-  Settings,
+  Check,
 } from 'lucide-react';
-import Link from 'next/link';
-import toast from 'react-hot-toast';
+
+// ============================================================================
+// TYPES - SCHEMA-ALIGNED
+// ============================================================================
 
 interface Player {
   id: string;
@@ -28,32 +53,150 @@ interface Player {
   isCaptain: boolean;
 }
 
+interface LineupPlayer {
+  playerId: string;
+  position: string;
+  orderInFormation?: number;
+}
+
 interface Lineup {
   id: string;
   formation: string;
-  players: Array<{
-    playerId: string;
-    position: string;
-    orderInFormation: number;
-  }>;
+  players: LineupPlayer[];
 }
 
-const FORMATIONS = [
-  '4-4-2',
-  '4-3-3',
-  '3-5-2',
-  '5-3-2',
-  '4-2-3-1',
-  '3-4-3',
-  'CUSTOM',
-];
+interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
 
-const POSITION_GROUPS = {
-  Goalkeeper: ['Goalkeeper'],
-  Defense: ['Defender'],
-  Midfield: ['Midfielder', 'Winger'],
-  Attack: ['Forward', 'Striker'],
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const FORMATIONS = ['4-4-2', '4-3-3', '3-5-2', '5-3-2', '4-2-3-1', '3-4-3', 'CUSTOM'];
+
+// ============================================================================
+// TOAST COMPONENT
+// ============================================================================
+
+const Toast = ({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onClose: () => void;
+}) => {
+  const baseClasses =
+    'fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 z-50';
+
+  const typeClasses = {
+    success:
+      'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400',
+    error:
+      'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400',
+    info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400',
+  };
+
+  const icons = {
+    success: <Check className="h-5 w-5 flex-shrink-0" />,
+    error: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+    info: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+  };
+
+  return (
+    <div className={`${baseClasses} ${typeClasses[type]}`}>
+      {icons[type]}
+      <p className="text-sm font-medium">{message}</p>
+      <button onClick={onClose} className="ml-2 hover:opacity-70">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
 };
+
+const ToastContainer = ({
+  toasts,
+  onRemove,
+}: {
+  toasts: ToastMessage[];
+  onRemove: (id: string) => void;
+}) => (
+  <div className="fixed bottom-4 right-4 z-50 space-y-2">
+    {toasts.map((toast) => (
+      <Toast
+        key={toast.id}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => onRemove(toast.id)}
+      />
+    ))}
+  </div>
+);
+
+// ============================================================================
+// PLAYER CARD COMPONENT
+// ============================================================================
+
+const PlayerCard = ({
+  player,
+  onAddToLineup,
+  onAddToSubstitutes,
+  canAddToLineup,
+  canAddToSubstitutes,
+}: {
+  player: Player;
+  onAddToLineup: (id: string, position: string) => void;
+  onAddToSubstitutes: (id: string) => void;
+  canAddToLineup: boolean;
+  canAddToSubstitutes: boolean;
+}) => {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 transition-all hover:shadow-md dark:border-charcoal-600 dark:bg-charcoal-700 dark:hover:shadow-charcoal-900/30">
+      <div className="mb-3">
+        <p className="font-semibold text-charcoal-900 dark:text-white">
+          {player.user.firstName} {player.user.lastName}
+        </p>
+        <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
+          {player.position}
+          {player.jerseyNumber && ` • #${player.jerseyNumber}`}
+        </p>
+        {player.isCaptain && (
+          <span className="mt-1 inline-block rounded bg-gold-100 px-2 py-1 text-xs font-semibold text-gold-700 dark:bg-gold-900/30 dark:text-gold-300">
+            ⚜️ Captain
+          </span>
+        )}
+      </div>
+      <div className="flex gap-2">
+        {canAddToLineup && (
+          <button
+            onClick={() => onAddToLineup(player.id, player.position || 'MF')}
+            className="flex flex-1 items-center justify-center gap-1 rounded bg-gold-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-gold-600"
+          >
+            <Plus className="h-3 w-3" />
+            XI
+          </button>
+        )}
+        {canAddToSubstitutes && (
+          <button
+            onClick={() => onAddToSubstitutes(player.id)}
+            className="flex flex-1 items-center justify-center gap-1 rounded bg-blue-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-600"
+          >
+            <Plus className="h-3 w-3" />
+            Sub
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// MAIN PAGE COMPONENT
+// ============================================================================
 
 export default function LineupPage() {
   const router = useRouter();
@@ -62,69 +205,87 @@ export default function LineupPage() {
   const teamId = params.teamId as string;
   const matchId = params.matchId as string;
 
+  // State Management
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [teamPlayers, setTeamPlayers] = useState<Player[]>([]);
   const [selectedFormation, setSelectedFormation] = useState('4-4-2');
-  const [lineup, setLineup] = useState<Array<{ playerId: string; position: string }>>([]);
+  const [lineup, setLineup] = useState<LineupPlayer[]>([]);
   const [substitutes, setSubstitutes] = useState<string[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  useEffect(() => {
-    fetchTeamPlayers();
-    fetchMatchLineup();
+  // Toast utility
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+      const id = Math.random().toString(36).substr(2, 9);
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 4000);
+    },
+    []
+  );
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const fetchTeamPlayers = async () => {
-    try {
-      const response = await fetch(
-        `/api/manager/clubs/${clubId}/teams/${teamId}/players`
-      );
-      if (!response.ok) throw new Error('Failed to fetch players');
-      const data = await response.json();
-      setTeamPlayers(data);
-    } catch (error) {
-      console.error('Error fetching players:', error);
-      toast.error('Failed to load team players');
-    }
-  };
+  // ========================================================================
+  // DATA FETCHING
+  // ========================================================================
 
-  const fetchMatchLineup = async () => {
+  useEffect(() => {
+    fetchData();
+  }, [clubId, teamId, matchId]);
+
+  const fetchData = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(
-        `/api/manager/clubs/${clubId}/teams/${teamId}/matches/${matchId}/lineup`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setLineup(data.players || []);
-        setSelectedFormation(data.formation || '4-4-2');
-        setSubstitutes(data.substitutes || []);
+
+      const [playersRes, lineupRes] = await Promise.all([
+        fetch(`/api/manager/clubs/${clubId}/teams/${teamId}/players`),
+        fetch(
+          `/api/manager/clubs/${clubId}/teams/${teamId}/matches/${matchId}/lineup`
+        ),
+      ]);
+
+      if (playersRes.ok) {
+        const playersData = await playersRes.json();
+        setTeamPlayers(playersData || []);
+      }
+
+      if (lineupRes.ok) {
+        const lineupData = await lineupRes.json();
+        setLineup(lineupData.players || []);
+        setSelectedFormation(lineupData.formation || '4-4-2');
+        setSubstitutes(lineupData.substitutes || []);
       }
     } catch (error) {
-      console.error('Error fetching lineup:', error);
+      console.error('Error fetching data:', error);
+      showToast('Failed to load lineup data', 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getFormationPositions = (formation: string) => {
-    const formations: { [key: string]: string[] } = {
-      '4-4-2': ['GK', 'CB', 'CB', 'CB', 'CB', 'MF', 'MF', 'MF', 'MF', 'ST', 'ST'],
-      '4-3-3': ['GK', 'CB', 'CB', 'CB', 'CB', 'MF', 'MF', 'MF', 'ST', 'ST', 'ST'],
-      '3-5-2': ['GK', 'CB', 'CB', 'CB', 'MF', 'MF', 'MF', 'MF', 'MF', 'ST', 'ST'],
-      '5-3-2': ['GK', 'CB', 'CB', 'CB', 'CB', 'CB', 'MF', 'MF', 'MF', 'ST', 'ST'],
-      '4-2-3-1': ['GK', 'CB', 'CB', 'CB', 'CB', 'MF', 'MF', 'MF', 'MF', 'MF', 'ST'],
-      '3-4-3': ['GK', 'CB', 'CB', 'CB', 'MF', 'MF', 'MF', 'MF', 'ST', 'ST', 'ST'],
-    };
-    return formations[formation] || formations['4-4-2'];
-  };
+  // ========================================================================
+  // HANDLERS
+  // ========================================================================
 
   const handleAddToLineup = (playerId: string, position: string) => {
     if (lineup.length >= 11) {
-      toast.error('Starting XI is full (11 players max)');
+      showToast('Starting XI is full (11 players max)', 'error');
       return;
     }
-    setLineup([...lineup, { playerId, position }]);
+
+    setLineup([
+      ...lineup,
+      {
+        playerId,
+        position,
+        orderInFormation: lineup.length,
+      },
+    ]);
     setSubstitutes(substitutes.filter((id) => id !== playerId));
   };
 
@@ -134,9 +295,10 @@ export default function LineupPage() {
 
   const handleAddToSubstitutes = (playerId: string) => {
     if (substitutes.length >= 7) {
-      toast.error('Max 7 substitutes');
+      showToast('Max 7 substitutes allowed', 'error');
       return;
     }
+
     setSubstitutes([...substitutes, playerId]);
     setLineup(lineup.filter((p) => p.playerId !== playerId));
   };
@@ -147,12 +309,13 @@ export default function LineupPage() {
 
   const handleSaveLineup = async () => {
     if (lineup.length !== 11) {
-      toast.error('You must select exactly 11 players');
+      showToast('You must select exactly 11 players for the starting XI', 'error');
       return;
     }
 
     try {
       setIsSaving(true);
+
       const response = await fetch(
         `/api/manager/clubs/${clubId}/teams/${teamId}/matches/${matchId}/lineup`,
         {
@@ -166,60 +329,86 @@ export default function LineupPage() {
         }
       );
 
-      if (!response.ok) throw new Error('Failed to save lineup');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save lineup');
+      }
 
-      toast.success('Lineup saved successfully!');
-      router.push(`/dashboard/manager/clubs/${clubId}/teams/${teamId}/matches/${matchId}`);
+      showToast('Lineup saved successfully!', 'success');
+
+      setTimeout(() => {
+        router.push(
+          `/dashboard/manager/clubs/${clubId}/teams/${teamId}/matches/${matchId}`
+        );
+      }, 1000);
     } catch (error) {
       console.error('Error saving lineup:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to save lineup');
+      showToast(
+        error instanceof Error ? error.message : 'Failed to save lineup',
+        'error'
+      );
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-gold-500 mx-auto mb-4" />
-          <p className="text-charcoal-600 dark:text-charcoal-400">Loading lineup...</p>
-        </div>
-      </div>
-    );
-  }
+  // ========================================================================
+  // COMPUTED STATE
+  // ========================================================================
 
   const availablePlayers = teamPlayers.filter(
-    (p) => !lineup.some((l) => l.playerId === p.id) && !substitutes.includes(p.id)
+    (p) =>
+      !lineup.some((l) => l.playerId === p.id) &&
+      !substitutes.includes(p.id)
   );
 
   const lineupPlayers = lineup.map((l) =>
     teamPlayers.find((p) => p.id === l.playerId)
   );
 
-  const substitutePlayers = teamPlayers.filter((p) => substitutes.includes(p.id));
+  const substitutePlayers = teamPlayers.filter((p) =>
+    substitutes.includes(p.id)
+  );
+
+  // ========================================================================
+  // RENDER - LOADING STATE
+  // ========================================================================
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
+        <div className="text-center">
+          <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-gold-500" />
+          <p className="text-charcoal-600 dark:text-charcoal-400">
+            Loading lineup...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ========================================================================
+  // RENDER - MAIN PAGE
+  // ========================================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 transition-colors duration-200 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-7xl">
+        {/* HEADER */}
         <div className="mb-8">
           <Link href={`/dashboard/manager/clubs/${clubId}/teams/${teamId}`}>
-            <Button
-              variant="ghost"
-              className="mb-4 text-charcoal-700 dark:text-charcoal-300"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+            <button className="mb-4 flex items-center gap-2 rounded-lg px-4 py-2 text-charcoal-700 transition-colors hover:bg-gold-100 hover:text-charcoal-900 dark:text-charcoal-300 dark:hover:bg-charcoal-700 dark:hover:text-white">
+              <ArrowLeft className="h-4 w-4" />
               Back to Team
-            </Button>
+            </button>
           </Link>
 
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-gradient-to-br from-gold-500 to-orange-400 rounded-2xl flex items-center justify-center shadow-lg">
-              <Users className="w-7 h-7 text-white" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-gold-500 to-orange-400 shadow-lg">
+              <Users className="h-8 w-8 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-charcoal-900 dark:text-white mb-1">
+              <h1 className="mb-1 text-3xl font-bold text-charcoal-900 dark:text-white">
                 Submit Lineup
               </h1>
               <p className="text-charcoal-600 dark:text-charcoal-400">
@@ -229,58 +418,69 @@ export default function LineupPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Formation Selector */}
-          <Card className="lg:col-span-1 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 h-fit">
-            <CardHeader>
-              <CardTitle className="text-charcoal-900 dark:text-white text-lg">
-                Formation
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
+        {/* MAIN GRID */}
+        <div className="grid gap-8 lg:grid-cols-4">
+          {/* FORMATION SELECTOR */}
+          <div className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800 lg:col-span-1 h-fit">
+            <h2 className="mb-1 text-lg font-bold text-charcoal-900 dark:text-white">
+              Formation
+            </h2>
+            <p className="mb-4 text-xs text-charcoal-600 dark:text-charcoal-400">
+              Select your tactical setup
+            </p>
+
+            <div className="space-y-2">
               {FORMATIONS.map((formation) => (
                 <button
                   key={formation}
                   onClick={() => setSelectedFormation(formation)}
-                  className={`w-full p-3 rounded-lg font-semibold transition-all ${
+                  className={`w-full rounded-lg px-4 py-3 font-semibold transition-all ${
                     selectedFormation === formation
                       ? 'bg-gold-500 text-white dark:bg-gold-600'
-                      : 'bg-neutral-100 dark:bg-charcoal-700 text-charcoal-900 dark:text-white hover:bg-neutral-200 dark:hover:bg-charcoal-600'
+                      : 'bg-neutral-100 text-charcoal-900 hover:bg-neutral-200 dark:bg-charcoal-700 dark:text-white dark:hover:bg-charcoal-600'
                   }`}
                 >
                   {formation}
                 </button>
               ))}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          {/* Pitch & Lineup */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Starting XI */}
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-              <CardHeader>
-                <CardTitle className="text-charcoal-900 dark:text-white">
-                  Starting XI ({lineup.length}/11)
-                </CardTitle>
-                <CardDescription className="text-charcoal-600 dark:text-charcoal-400">
-                  Formation: {selectedFormation}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+          {/* LINEUP MANAGEMENT */}
+          <div className="space-y-6 lg:col-span-3">
+            {/* STARTING XI */}
+            <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+              <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-charcoal-900 dark:text-white">
+                      Starting XI
+                    </h3>
+                    <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
+                      Formation: {selectedFormation}
+                    </p>
+                  </div>
+                  <div className="rounded-full bg-gold-100 px-3 py-1 text-sm font-bold text-gold-700 dark:bg-gold-900/30 dark:text-gold-300">
+                    {lineup.length}/11
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
                 {lineup.length === 0 ? (
                   <div className="text-center py-12">
-                    <Users className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
+                    <Users className="mx-auto mb-4 h-16 w-16 text-charcoal-300 dark:text-charcoal-600" />
                     <p className="text-charcoal-600 dark:text-charcoal-400">
                       Select players from the available list below
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid gap-3 md:grid-cols-2">
                     {lineupPlayers.map((player) =>
                       player ? (
                         <div
                           key={player.id}
-                          className="p-4 bg-gradient-to-r from-gold-50 to-orange-50 dark:from-gold-900/20 dark:to-orange-900/20 rounded-lg border border-gold-200 dark:border-gold-800 flex items-center justify-between"
+                          className="flex items-center justify-between rounded-lg border border-gold-200 bg-gradient-to-r from-gold-50 to-orange-50 p-4 dark:border-gold-800 dark:from-gold-900/20 dark:to-orange-900/20"
                         >
                           <div>
                             <p className="font-bold text-charcoal-900 dark:text-white">
@@ -288,40 +488,47 @@ export default function LineupPage() {
                             </p>
                             <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
                               {player.position}
+                              {player.jerseyNumber && ` • #${player.jerseyNumber}`}
                             </p>
                           </div>
                           <button
                             onClick={() => handleRemoveFromLineup(player.id)}
-                            className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                            className="rounded bg-red-100 p-2 text-red-600 transition-colors hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
                           >
-                            <X className="w-4 h-4" />
+                            <X className="h-4 w-4" />
                           </button>
                         </div>
                       ) : null
                     )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Substitutes */}
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-              <CardHeader>
-                <CardTitle className="text-charcoal-900 dark:text-white">
-                  Substitutes ({substitutes.length}/7)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            {/* SUBSTITUTES */}
+            <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+              <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold text-charcoal-900 dark:text-white">
+                    Substitutes
+                  </h3>
+                  <div className="rounded-full bg-blue-100 px-3 py-1 text-sm font-bold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                    {substitutes.length}/7
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6">
                 {substitutes.length === 0 ? (
-                  <p className="text-charcoal-600 dark:text-charcoal-400 text-center py-4">
+                  <p className="py-4 text-center text-charcoal-600 dark:text-charcoal-400">
                     No substitutes selected
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid gap-3 md:grid-cols-2">
                     {substitutePlayers.map((player) => (
                       <div
                         key={player.id}
-                        className="p-4 bg-neutral-100 dark:bg-charcoal-700 rounded-lg flex items-center justify-between"
+                        className="flex items-center justify-between rounded-lg bg-neutral-100 p-4 dark:bg-charcoal-700"
                       >
                         <div>
                           <p className="font-semibold text-charcoal-900 dark:text-white">
@@ -329,112 +536,88 @@ export default function LineupPage() {
                           </p>
                           <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
                             {player.position}
+                            {player.jerseyNumber && ` • #${player.jerseyNumber}`}
                           </p>
                         </div>
                         <button
-                          onClick={() => handleRemoveFromSubstitutes(player.id)}
-                          className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded hover:bg-red-200 dark:hover:bg-red-900/50"
+                          onClick={() =>
+                            handleRemoveFromSubstitutes(player.id)
+                          }
+                          className="rounded bg-red-100 p-2 text-red-600 transition-colors hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
                         >
-                          <X className="w-4 h-4" />
+                          <X className="h-4 w-4" />
                         </button>
                       </div>
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Available Players */}
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-              <CardHeader>
-                <CardTitle className="text-charcoal-900 dark:text-white">
+            {/* AVAILABLE PLAYERS */}
+            <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+              <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+                <h3 className="font-bold text-charcoal-900 dark:text-white">
                   Available Players ({availablePlayers.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                </h3>
+              </div>
+
+              <div className="p-6">
                 {availablePlayers.length === 0 ? (
-                  <p className="text-charcoal-600 dark:text-charcoal-400 text-center py-4">
+                  <p className="py-4 text-center text-charcoal-600 dark:text-charcoal-400">
                     All players selected
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {availablePlayers.map((player) => (
-                      <div
+                      <PlayerCard
                         key={player.id}
-                        className="p-4 bg-neutral-50 dark:bg-charcoal-700 rounded-lg border border-neutral-200 dark:border-charcoal-600 hover:shadow-md dark:hover:shadow-charcoal-900/30 transition-all"
-                      >
-                        <div className="mb-3">
-                          <p className="font-semibold text-charcoal-900 dark:text-white">
-                            {player.user.firstName} {player.user.lastName}
-                          </p>
-                          <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
-                            {player.position}
-                            {player.jerseyNumber && ` • #${player.jerseyNumber}`}
-                          </p>
-                          {player.isCaptain && (
-                            <span className="inline-block mt-1 px-2 py-1 bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-300 rounded text-xs font-semibold">
-                              Captain
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          {lineup.length < 11 && (
-                            <button
-                              onClick={() => handleAddToLineup(player.id, player.position || 'MF')}
-                              className="flex-1 p-2 bg-gold-500 hover:bg-gold-600 text-white rounded text-xs font-semibold transition-colors flex items-center justify-center gap-1"
-                            >
-                              <Plus className="w-3 h-3" />
-                              XI
-                            </button>
-                          )}
-                          {substitutes.length < 7 && (
-                            <button
-                              onClick={() => handleAddToSubstitutes(player.id)}
-                              className="flex-1 p-2 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-semibold transition-colors"
-                            >
-                              Sub
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                        player={player}
+                        onAddToLineup={handleAddToLineup}
+                        onAddToSubstitutes={handleAddToSubstitutes}
+                        canAddToLineup={lineup.length < 11}
+                        canAddToSubstitutes={substitutes.length < 7}
+                      />
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Save Button */}
+            {/* ACTION BUTTONS */}
             <div className="flex gap-4">
-              <Link href={`/dashboard/manager/clubs/${clubId}/teams/${teamId}`} className="flex-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300"
-                >
+              <Link
+                href={`/dashboard/manager/clubs/${clubId}/teams/${teamId}`}
+                className="flex-1"
+              >
+                <button className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-600 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700">
                   Cancel
-                </Button>
+                </button>
               </Link>
-              <Button
+              <button
                 onClick={handleSaveLineup}
                 disabled={isSaving || lineup.length !== 11}
-                className="flex-1 bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-bold disabled:opacity-50"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-4 py-2 font-bold text-white transition-all hover:from-gold-700 hover:to-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     Saving...
                   </>
                 ) : (
                   <>
-                    <Save className="w-4 h-4 mr-2" />
+                    <Save className="h-4 w-4" />
                     Save Lineup
                   </>
                 )}
-              </Button>
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* TOAST CONTAINER */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

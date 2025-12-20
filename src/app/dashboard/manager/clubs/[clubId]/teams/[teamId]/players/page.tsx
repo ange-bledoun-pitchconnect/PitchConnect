@@ -1,36 +1,40 @@
 'use client';
 
 /**
- * Team Players Management Page
+ * Team Players Management Page - v2.0 ENHANCED
  * Path: /dashboard/manager/clubs/[clubId]/teams/[teamId]/players
  * 
  * Core Features:
- * - Complete player roster management
- * - Add players by email with position assignment
- * - Set and manage team captain
- * - Remove players from team
- * - Search and filter players
- * - Real-time player statistics
- * - Jersey number management
- * - Player performance tracking
- * - Responsive UI with dark mode
+ * ✅ Complete player roster management
+ * ✅ Add players by email with position assignment
+ * ✅ Set and manage team captain
+ * ✅ Remove players from team (with confirmation)
+ * ✅ Search and filter players (real-time)
+ * ✅ Jersey number management
+ * ✅ Player status tracking (Active/Inactive/Injured/Suspended)
+ * ✅ Team statistics dashboard
+ * ✅ Position selection with color coding
+ * ✅ Custom zero-dependency toast notifications
+ * ✅ Responsive UI with dark mode
+ * ✅ Loading and error states
+ * ✅ Full TypeScript type safety
+ * ✅ Schema-aligned data models
+ * ✅ Accessibility features
  * 
  * Schema Aligned: Team, Player, User, PlayerTeam models from Prisma
  * Team relationships: Team -> Player (many-to-many via PlayerTeam)
  * 
  * Business Logic:
  * - Only club managers can manage team players
- * - One captain per team
+ * - One captain per team (auto-demotes others)
  * - Players can have assigned positions
  * - Email-based player lookup for adding to team
+ * - Real-time search filtering
+ * - Status management (Active/Inactive/Injured/Suspended)
  */
 
 import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   ArrowLeft,
   Users,
@@ -38,16 +42,15 @@ import {
   Loader2,
   AlertCircle,
   Trash2,
-  Edit3,
   Crown,
-  ShirtIcon,
   Mail,
   Search,
   CheckCircle,
   X,
+  Info,
+  Check,
 } from 'lucide-react';
 import Link from 'next/link';
-import toast from 'react-hot-toast';
 
 // ============================================================================
 // TYPES - Schema Aligned
@@ -98,12 +101,18 @@ interface ApiResponse<T> {
   details?: string;
 }
 
+interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 // ============================================================================
 // CONSTANTS - Schema Aligned
 // ============================================================================
 
 const PLAYER_POSITIONS = [
-  { id: 'GOALKEEPER', label: 'Goalkeeper', abbr: 'GK', color: 'bg-gold-100 text-gold-700 dark:bg-gold-900/30 dark:text-gold-400' },
+  { id: 'GOALKEEPER', label: 'Goalkeeper', abbr: 'GK', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
   { id: 'DEFENDER', label: 'Defender', abbr: 'DEF', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
   { id: 'MIDFIELDER', label: 'Midfielder', abbr: 'MID', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
   { id: 'FORWARD', label: 'Forward', abbr: 'FWD', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
@@ -130,7 +139,252 @@ const EMPTY_MESSAGES = {
 };
 
 // ============================================================================
-// COMPONENT
+// TOAST COMPONENT (Zero Dependencies)
+// ============================================================================
+
+const Toast = ({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onClose: () => void;
+}) => {
+  const baseClasses =
+    'fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 z-50';
+
+  const typeClasses = {
+    success:
+      'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400',
+    error:
+      'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400',
+    info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400',
+  };
+
+  const icons = {
+    success: <Check className="h-5 w-5 flex-shrink-0" />,
+    error: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+    info: <Info className="h-5 w-5 flex-shrink-0" />,
+  };
+
+  return (
+    <div className={`${baseClasses} ${typeClasses[type]}`}>
+      {icons[type]}
+      <p className="text-sm font-medium">{message}</p>
+      <button onClick={onClose} className="ml-2 hover:opacity-70 transition-opacity">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
+const ToastContainer = ({
+  toasts,
+  onRemove,
+}: {
+  toasts: ToastMessage[];
+  onRemove: (id: string) => void;
+}) => (
+  <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none">
+    {toasts.map((toast) => (
+      <div key={toast.id} className="pointer-events-auto">
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => onRemove(toast.id)}
+        />
+      </div>
+    ))}
+  </div>
+);
+
+// ============================================================================
+// CARD COMPONENT (Reusable)
+// ============================================================================
+
+interface CardProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+const Card = ({ children, className = '' }: CardProps) => (
+  <div className={`rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800 ${className}`}>
+    {children}
+  </div>
+);
+
+const CardHeader = ({
+  children,
+  className = '',
+}: CardProps) => (
+  <div className={`border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700 ${className}`}>
+    {children}
+  </div>
+);
+
+const CardTitle = ({
+  children,
+  className = '',
+}: CardProps) => (
+  <h2 className={`text-xl font-bold text-charcoal-900 dark:text-white ${className}`}>
+    {children}
+  </h2>
+);
+
+const CardDescription = ({
+  children,
+  className = '',
+}: CardProps) => (
+  <p className={`mt-1 text-sm text-charcoal-600 dark:text-charcoal-400 ${className}`}>
+    {children}
+  </p>
+);
+
+const CardContent = ({
+  children,
+  className = '',
+}: CardProps) => (
+  <div className={`px-6 py-4 ${className}`}>
+    {children}
+  </div>
+);
+
+// ============================================================================
+// BUTTON COMPONENT (Reusable)
+// ============================================================================
+
+interface ButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  size?: 'sm' | 'md' | 'lg';
+  type?: 'button' | 'submit' | 'reset';
+}
+
+const Button = ({
+  children,
+  onClick,
+  disabled,
+  className = '',
+  variant = 'primary',
+  size = 'md',
+  type = 'button',
+}: ButtonProps) => {
+  const baseClasses =
+    'inline-flex items-center justify-center rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed';
+
+  const variantClasses = {
+    primary:
+      'bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white',
+    secondary:
+      'border border-neutral-300 bg-white text-charcoal-700 hover:bg-neutral-100 dark:border-charcoal-600 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700',
+    ghost:
+      'text-charcoal-600 dark:text-charcoal-400 hover:bg-neutral-100 dark:hover:bg-charcoal-700',
+    danger:
+      'text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30',
+  };
+
+  const sizeClasses = {
+    sm: 'px-3 py-1.5 text-sm gap-1',
+    md: 'px-4 py-2 gap-2',
+    lg: 'px-6 py-3 gap-2 text-lg',
+  };
+
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+// ============================================================================
+// INPUT COMPONENT (Reusable)
+// ============================================================================
+
+interface InputProps {
+  id?: string;
+  type?: string;
+  value?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+  min?: string | number;
+  max?: string | number;
+}
+
+const Input = ({
+  id,
+  type = 'text',
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  className = '',
+  min,
+  max,
+}: InputProps) => (
+  <input
+    id={id}
+    type={type}
+    value={value}
+    onChange={onChange}
+    placeholder={placeholder}
+    disabled={disabled}
+    min={min}
+    max={max}
+    className={`w-full rounded-lg border border-neutral-300 bg-white px-4 py-2 text-charcoal-900 transition-all focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 disabled:opacity-50 dark:border-charcoal-600 dark:bg-charcoal-700 dark:text-white dark:focus:border-gold-500 ${className}`}
+  />
+);
+
+// ============================================================================
+// LABEL COMPONENT (Reusable)
+// ============================================================================
+
+interface LabelProps {
+  htmlFor?: string;
+  children: React.ReactNode;
+  required?: boolean;
+  className?: string;
+}
+
+const Label = ({ htmlFor, children, required, className = '' }: LabelProps) => (
+  <label
+    htmlFor={htmlFor}
+    className={`block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300 ${className}`}
+  >
+    {children}
+    {required && <span className="text-red-500 ml-1">*</span>}
+  </label>
+);
+
+// ============================================================================
+// BADGE COMPONENT (Reusable)
+// ============================================================================
+
+interface BadgeProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+const Badge = ({ children, className = '' }: BadgeProps) => (
+  <span
+    className={`inline-block rounded-full px-3 py-1 text-xs font-semibold border ${className}`}
+  >
+    {children}
+  </span>
+);
+
+// ============================================================================
+// MAIN PAGE COMPONENT
 // ============================================================================
 
 export default function TeamPlayersPage() {
@@ -139,9 +393,9 @@ export default function TeamPlayersPage() {
   const clubId = params.clubId as string;
   const teamId = params.teamId as string;
 
-  // ============================================================================
+  // ========================================================================
   // STATE MANAGEMENT
-  // ============================================================================
+  // ========================================================================
 
   const [team, setTeam] = useState<Team | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -152,11 +406,11 @@ export default function TeamPlayersPage() {
   const [isAddingPlayer, setIsAddingPlayer] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState('');
   const [jerseyNumber, setJerseyNumber] = useState('');
-  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // ============================================================================
+  // ========================================================================
   // LIFECYCLE
-  // ============================================================================
+  // ========================================================================
 
   useEffect(() => {
     if (clubId && teamId) {
@@ -164,9 +418,28 @@ export default function TeamPlayersPage() {
     }
   }, [clubId, teamId]);
 
-  // ============================================================================
+  // ========================================================================
+  // TOAST UTILITIES
+  // ========================================================================
+
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+      const id = Math.random().toString(36).substr(2, 9);
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 4000);
+    },
+    []
+  );
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ========================================================================
   // FETCH FUNCTIONS
-  // ============================================================================
+  // ========================================================================
 
   /**
    * Fetch team details and player roster
@@ -203,15 +476,15 @@ export default function TeamPlayersPage() {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
       console.error('❌ Error fetching data:', errorMessage);
       setError(errorMessage);
-      toast.error(errorMessage);
+      showToast(errorMessage, 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [clubId, teamId]);
+  }, [clubId, teamId, showToast]);
 
-  // ============================================================================
+  // ========================================================================
   // HANDLERS
-  // ============================================================================
+  // ========================================================================
 
   /**
    * Add a new player to the team by email
@@ -221,7 +494,7 @@ export default function TeamPlayersPage() {
       e.preventDefault();
 
       if (!newPlayerEmail.trim()) {
-        toast.error('Email is required');
+        showToast('Email is required', 'error');
         return;
       }
 
@@ -268,20 +541,21 @@ export default function TeamPlayersPage() {
         setSelectedPosition('');
         setJerseyNumber('');
 
-        toast.success(
-          `${userData.firstName} ${userData.lastName} added successfully!`
+        showToast(
+          `${userData.firstName} ${userData.lastName} added successfully!`,
+          'success'
         );
 
         console.log('✅ Player added:', addedPlayer.id);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to add player';
         console.error('❌ Error adding player:', errorMessage);
-        toast.error(errorMessage);
+        showToast(errorMessage, 'error');
       } finally {
         setIsAddingPlayer(false);
       }
     },
-    [clubId, teamId, players, selectedPosition, newPlayerEmail, jerseyNumber]
+    [clubId, teamId, players, selectedPosition, newPlayerEmail, jerseyNumber, showToast]
   );
 
   /**
@@ -308,16 +582,16 @@ export default function TeamPlayersPage() {
         }
 
         setPlayers(players.filter((p) => p.id !== playerId));
-        toast.success(`${playerName} removed from team`);
+        showToast(`${playerName} removed from team`, 'success');
 
         console.log('✅ Player removed:', playerId);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to remove player';
         console.error('❌ Error removing player:', errorMessage);
-        toast.error(errorMessage);
+        showToast(errorMessage, 'error');
       }
     },
-    [clubId, teamId, players, team?.name]
+    [clubId, teamId, players, team?.name, showToast]
   );
 
   /**
@@ -356,16 +630,16 @@ export default function TeamPlayersPage() {
         );
 
         const action = !isCaptain ? 'Appointed' : 'Removed';
-        toast.success(`${action} ${playerName} as team captain`);
+        showToast(`${action} ${playerName} as team captain`, 'success');
 
         console.log('✅ Captain status updated:', playerId);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to update captain';
         console.error('❌ Error updating captain:', errorMessage);
-        toast.error(errorMessage);
+        showToast(errorMessage, 'error');
       }
     },
-    [clubId, teamId, players]
+    [clubId, teamId, players, showToast]
   );
 
   /**
@@ -391,24 +665,23 @@ export default function TeamPlayersPage() {
         const updatedPlayer = result.data || result;
 
         setPlayers(players.map((p) => (p.id === playerId ? updatedPlayer : p)));
-        setEditingPlayerId(null);
 
         const posLabel = PLAYER_POSITIONS.find((p) => p.id === newPosition)?.label || 'No position';
-        toast.success(`Updated ${playerName}'s position to ${posLabel}`);
+        showToast(`Updated ${playerName}'s position to ${posLabel}`, 'success');
 
         console.log('✅ Position updated:', playerId, newPosition);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to update position';
         console.error('❌ Error updating position:', errorMessage);
-        toast.error(errorMessage);
+        showToast(errorMessage, 'error');
       }
     },
-    [clubId, teamId, players]
+    [clubId, teamId, players, showToast]
   );
 
-  // ============================================================================
+  // ========================================================================
   // HELPERS
-  // ============================================================================
+  // ========================================================================
 
   /**
    * Filter players by search query
@@ -442,9 +715,9 @@ export default function TeamPlayersPage() {
     return PLAYER_STATUS.find((s) => s.id === status) || PLAYER_STATUS[0];
   };
 
-  // ============================================================================
+  // ========================================================================
   // LOADING STATE
-  // ============================================================================
+  // ========================================================================
 
   if (isLoading) {
     return (
@@ -464,25 +737,22 @@ export default function TeamPlayersPage() {
     );
   }
 
-  // ============================================================================
+  // ========================================================================
   // ERROR STATE
-  // ============================================================================
+  // ========================================================================
 
   if (error && !team) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:to-charcoal-800 p-4 sm:p-6 lg:p-8">
         <div className="max-w-6xl mx-auto">
           <Link href={`/dashboard/manager/clubs/${clubId}`}>
-            <Button
-              variant="ghost"
-              className="mb-4 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
-            >
+            <Button variant="ghost" className="mb-4">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Club
             </Button>
           </Link>
 
-          <Card className="bg-white dark:bg-charcoal-800 border-red-200 dark:border-red-900/30 shadow-sm">
+          <Card className="border-red-200 dark:border-red-900/30">
             <CardContent className="pt-6">
               <div className="flex items-start gap-4">
                 <AlertCircle className="w-8 h-8 text-red-500 flex-shrink-0 mt-0.5" />
@@ -493,7 +763,7 @@ export default function TeamPlayersPage() {
                   <p className="text-charcoal-600 dark:text-charcoal-400 text-sm">{error}</p>
                   <Button
                     onClick={fetchTeamAndPlayers}
-                    className="mt-4 bg-gold-500 hover:bg-gold-600 text-white"
+                    className="mt-4"
                   >
                     Try Again
                   </Button>
@@ -506,9 +776,9 @@ export default function TeamPlayersPage() {
     );
   }
 
-  // ============================================================================
+  // ========================================================================
   // RENDER
-  // ============================================================================
+  // ========================================================================
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 transition-colors duration-200 p-4 sm:p-6 lg:p-8">
@@ -516,10 +786,7 @@ export default function TeamPlayersPage() {
         {/* HEADER SECTION */}
         <div className="mb-8">
           <Link href={`/dashboard/manager/clubs/${clubId}`}>
-            <Button
-              variant="ghost"
-              className="mb-4 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
-            >
+            <Button variant="ghost" className="mb-4">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Club
             </Button>
@@ -530,13 +797,13 @@ export default function TeamPlayersPage() {
               <Users className="w-7 h-7 text-white" />
             </div>
             <div className="flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-3xl font-bold text-charcoal-900 dark:text-white">
                   {team?.name}
                 </h1>
-                <span className="px-3 py-1 bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 rounded-full text-sm font-semibold">
+                <Badge className="bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 border-gold-300 dark:border-gold-600">
                   {stats.total} Players
-                </span>
+                </Badge>
               </div>
               <p className="text-charcoal-600 dark:text-charcoal-400 mt-1">
                 Manage your team&apos;s roster and lineup
@@ -548,21 +815,16 @@ export default function TeamPlayersPage() {
         {/* MAIN CONTENT GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* ADD PLAYER FORM - Sidebar */}
-          <Card className="lg:col-span-1 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 h-fit shadow-sm">
+          <Card className="lg:col-span-1 h-fit">
             <CardHeader className="bg-gradient-to-r from-gold-50 to-transparent dark:from-gold-900/20 dark:to-transparent pb-4">
               <CardTitle className="text-charcoal-900 dark:text-white">Add Player</CardTitle>
-              <CardDescription className="text-charcoal-600 dark:text-charcoal-400">
-                Find and add players to your team
-              </CardDescription>
+              <CardDescription>Find and add players to your team</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <form onSubmit={handleAddPlayer} className="space-y-4">
                 {/* Email Input */}
                 <div>
-                  <Label
-                    htmlFor="email"
-                    className="block text-charcoal-700 dark:text-charcoal-300 mb-2 font-medium text-sm"
-                  >
+                  <Label htmlFor="email" required>
                     Player Email
                   </Label>
                   <Input
@@ -571,19 +833,13 @@ export default function TeamPlayersPage() {
                     value={newPlayerEmail}
                     onChange={(e) => setNewPlayerEmail(e.target.value)}
                     placeholder="player@example.com"
-                    className="bg-white dark:bg-charcoal-700 border-neutral-300 dark:border-charcoal-600 text-charcoal-900 dark:text-white"
                     disabled={isAddingPlayer}
                   />
                 </div>
 
                 {/* Position Selector */}
                 <div>
-                  <Label
-                    htmlFor="position"
-                    className="block text-charcoal-700 dark:text-charcoal-300 mb-2 font-medium text-sm"
-                  >
-                    Position (Optional)
-                  </Label>
+                  <Label htmlFor="position">Position (Optional)</Label>
                   <select
                     id="position"
                     value={selectedPosition}
@@ -602,12 +858,7 @@ export default function TeamPlayersPage() {
 
                 {/* Jersey Number */}
                 <div>
-                  <Label
-                    htmlFor="jersey"
-                    className="block text-charcoal-700 dark:text-charcoal-300 mb-2 font-medium text-sm"
-                  >
-                    Jersey Number (Optional)
-                  </Label>
+                  <Label htmlFor="jersey">Jersey Number (Optional)</Label>
                   <Input
                     id="jersey"
                     type="number"
@@ -616,7 +867,6 @@ export default function TeamPlayersPage() {
                     value={jerseyNumber}
                     onChange={(e) => setJerseyNumber(e.target.value)}
                     placeholder="e.g., 7"
-                    className="bg-white dark:bg-charcoal-700 border-neutral-300 dark:border-charcoal-600 text-charcoal-900 dark:text-white"
                     disabled={isAddingPlayer}
                   />
                 </div>
@@ -625,16 +875,16 @@ export default function TeamPlayersPage() {
                 <Button
                   type="submit"
                   disabled={isAddingPlayer || !newPlayerEmail.trim()}
-                  className="w-full bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-bold disabled:opacity-50 transition-all"
+                  className="w-full"
                 >
                   {isAddingPlayer ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin" />
                       Adding...
                     </>
                   ) : (
                     <>
-                      <Plus className="w-4 h-4 mr-2" />
+                      <Plus className="w-4 h-4" />
                       Add Player
                     </>
                   )}
@@ -653,13 +903,13 @@ export default function TeamPlayersPage() {
                 placeholder="Search by name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 text-charcoal-900 dark:text-white placeholder-charcoal-400"
+                className="pl-12"
               />
             </div>
 
             {/* Players Grid or Empty State */}
             {filteredPlayers.length === 0 ? (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+              <Card>
                 <CardContent className="pt-12 pb-12 text-center">
                   <Users className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-charcoal-900 dark:text-white mb-2">
@@ -683,7 +933,7 @@ export default function TeamPlayersPage() {
                   return (
                     <Card
                       key={player.id}
-                      className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm hover:shadow-md transition-all"
+                      className="hover:shadow-md transition-all"
                     >
                       <CardContent className="pt-6">
                         {/* Player Header */}
@@ -693,7 +943,7 @@ export default function TeamPlayersPage() {
                               <h3 className="font-bold text-charcoal-900 dark:text-white">
                                 {player.user.firstName} {player.user.lastName}
                               </h3>
-                              {/* Captain Badge with Tooltip */}
+                              {/* Captain Badge */}
                               {player.isCaptain && (
                                 <div className="relative group">
                                   <Crown className="w-5 h-5 text-gold-500 animate-pulse" />
@@ -718,26 +968,22 @@ export default function TeamPlayersPage() {
                           )}
                         </div>
 
-                        {/* Position Badge */}
-                        {positionLabel && (
-                          <div className="mb-3 inline-block">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${positionLabel.color}`}>
+                        {/* Position and Status Badges */}
+                        <div className="mb-4 flex items-center gap-2 flex-wrap">
+                          {positionLabel && (
+                            <Badge className={positionLabel.color}>
                               {positionLabel.abbr}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Status Badge */}
-                        <div className="mb-4 flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusStyle.color}`}>
+                            </Badge>
+                          )}
+                          <Badge className={statusStyle.color}>
                             {statusStyle.label}
-                          </span>
+                          </Badge>
                         </div>
 
                         {/* Action Buttons */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <Button
-                            variant="ghost"
+                            variant={player.isCaptain ? 'primary' : 'secondary'}
                             size="sm"
                             onClick={() =>
                               handleToggleCaptain(
@@ -746,17 +992,12 @@ export default function TeamPlayersPage() {
                                 `${player.user.firstName} ${player.user.lastName}`
                               )
                             }
-                            className={`text-xs ${
-                              player.isCaptain
-                                ? 'text-gold-600 dark:text-gold-400 hover:bg-gold-100 dark:hover:bg-gold-900/30'
-                                : 'text-charcoal-600 dark:text-charcoal-400 hover:bg-neutral-100 dark:hover:bg-charcoal-700'
-                            }`}
                           >
-                            <Crown className="w-4 h-4 mr-1" />
+                            <Crown className="w-4 h-4" />
                             {player.isCaptain ? 'Remove' : 'Make'} Captain
                           </Button>
                           <Button
-                            variant="ghost"
+                            variant="danger"
                             size="sm"
                             onClick={() =>
                               handleRemovePlayer(
@@ -764,7 +1005,7 @@ export default function TeamPlayersPage() {
                                 `${player.user.firstName} ${player.user.lastName}`
                               )
                             }
-                            className="text-xs text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 ml-auto"
+                            className="ml-auto"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -778,7 +1019,7 @@ export default function TeamPlayersPage() {
 
             {/* Team Statistics */}
             {players.length > 0 && (
-              <Card className="bg-gradient-to-r from-gold-50 to-orange-50 dark:from-gold-900/10 dark:to-orange-900/10 border-neutral-200 dark:border-charcoal-700 shadow-sm">
+              <Card className="bg-gradient-to-r from-gold-50 to-orange-50 dark:from-gold-900/10 dark:to-orange-900/10">
                 <CardContent className="pt-6">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div>
@@ -820,6 +1061,9 @@ export default function TeamPlayersPage() {
           </div>
         </div>
       </div>
+
+      {/* TOAST CONTAINER */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
