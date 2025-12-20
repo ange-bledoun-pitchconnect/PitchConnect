@@ -1,13 +1,29 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { useSession } from 'next-auth/react';
+/**
+ * PitchConnect Create Club Page - v2.0 ENHANCED
+ * Location: ./src/app/dashboard/clubs/create/page.tsx
+ * 
+ * Features:
+ * ✅ Multi-step club creation wizard (3 steps)
+ * ✅ Club details: name, location, colors, logo upload
+ * ✅ Optional: founded year, stadium, description
+ * ✅ First team setup (optional)
+ * ✅ Logo upload with image validation (5MB limit)
+ * ✅ Color picker with hex input support
+ * ✅ Review & confirmation step
+ * ✅ Custom toast notifications (zero dependencies)
+ * ✅ Progress tracking with visual indicators
+ * ✅ Dark mode support
+ * ✅ Responsive design
+ * ✅ Schema-aligned data models
+ * ✅ Comprehensive error handling
+ */
+
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
+import Image from 'next/image';
 import {
   Shield,
   Upload,
@@ -21,9 +37,13 @@ import {
   Palette,
   FileText,
   Camera,
+  AlertCircle,
+  X,
 } from 'lucide-react';
-import Image from 'next/image';
-import toast from 'react-hot-toast';
+
+// ============================================================================
+// TYPES - SCHEMA-ALIGNED
+// ============================================================================
 
 interface ClubFormData {
   name: string;
@@ -46,14 +66,170 @@ interface TeamFormData {
   category: string;
 }
 
+interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
+// ============================================================================
+// COUNTRIES LIST - FROM SCHEMA
+// ============================================================================
+
+const COUNTRIES = [
+  'United Kingdom',
+  'Spain',
+  'Germany',
+  'France',
+  'Italy',
+  'Netherlands',
+  'Portugal',
+  'Belgium',
+  'Austria',
+  'Switzerland',
+  'Sweden',
+  'Norway',
+  'Denmark',
+  'Greece',
+  'Turkey',
+  'Poland',
+  'Ukraine',
+  'Russia',
+  'United States',
+  'Canada',
+  'Mexico',
+  'Brazil',
+  'Argentina',
+  'Australia',
+  'Japan',
+  'South Korea',
+  'China',
+  'India',
+  'Other',
+] as const;
+
+const AGE_GROUPS = [
+  { value: 'SENIOR', label: 'Senior (18+)' },
+  { value: 'U21', label: 'Under 21' },
+  { value: 'U18', label: 'Under 18' },
+  { value: 'U16', label: 'Under 16' },
+  { value: 'U14', label: 'Under 14' },
+  { value: 'U12', label: 'Under 12' },
+  { value: 'U10', label: 'Under 10' },
+] as const;
+
+const TEAM_CATEGORIES = [
+  { value: 'FIRST_TEAM', label: 'First Team' },
+  { value: 'RESERVES', label: 'Reserves' },
+  { value: 'YOUTH', label: 'Youth/Academy' },
+  { value: 'WOMENS', label: "Women's Team" },
+] as const;
+
+// ============================================================================
+// TOAST COMPONENT (No External Dependency)
+// ============================================================================
+
+const Toast = ({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onClose: () => void;
+}) => {
+  const baseClasses =
+    'fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 z-50';
+
+  const typeClasses = {
+    success:
+      'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400',
+    error:
+      'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400',
+    info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400',
+  };
+
+  const icons = {
+    success: <CheckCircle className="h-5 w-5 flex-shrink-0" />,
+    error: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+    info: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+  };
+
+  return (
+    <div className={`${baseClasses} ${typeClasses[type]}`}>
+      {icons[type]}
+      <p className="text-sm font-medium">{message}</p>
+      <button onClick={onClose} className="ml-2 hover:opacity-70">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
+const ToastContainer = ({
+  toasts,
+  onRemove,
+}: {
+  toasts: ToastMessage[];
+  onRemove: (id: string) => void;
+}) => (
+  <div className="fixed bottom-4 right-4 z-50 space-y-2">
+    {toasts.map((toast) => (
+      <Toast
+        key={toast.id}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => onRemove(toast.id)}
+      />
+    ))}
+  </div>
+);
+
+// ============================================================================
+// PROGRESS STEP INDICATOR
+// ============================================================================
+
+const ProgressSteps = ({ currentStep }: { currentStep: number }) => {
+  const steps = [
+    { step: 1, label: 'Club Details' },
+    { step: 2, label: 'First Team' },
+    { step: 3, label: 'Review' },
+  ];
+
+  return (
+    <div className="flex items-center gap-4 mb-8">
+      {steps.map((item, index) => (
+        <div key={item.step} className="flex-1">
+          <div
+            className={`h-2 rounded-full transition-all ${
+              currentStep >= item.step
+                ? 'bg-gradient-to-r from-gold-500 to-orange-500'
+                : 'bg-neutral-200 dark:bg-charcoal-700'
+            }`}
+          />
+          <p className="text-xs font-semibold text-charcoal-600 dark:text-charcoal-400 mt-2">
+            {item.label}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ============================================================================
+// MAIN PAGE COMPONENT
+// ============================================================================
+
 export default function CreateClubPage() {
-  const { data: session } = useSession();
   const router = useRouter();
   const logoInputRef = useRef<HTMLInputElement>(null);
 
+  // State Management
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [createFirstTeam, setCreateFirstTeam] = useState(true);
 
   const [clubData, setClubData] = useState<ClubFormData>({
     name: '',
@@ -76,20 +252,35 @@ export default function CreateClubPage() {
     category: 'FIRST_TEAM',
   });
 
-  const [createFirstTeam, setCreateFirstTeam] = useState(true);
+  // Toast utility
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
 
-  // Handle logo upload
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ========================================================================
+  // LOGO UPLOAD HANDLER
+  // ========================================================================
+
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Validation
     if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file');
+      showToast('Please upload an image file', 'error');
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('Logo must be less than 5MB');
+      showToast('Logo must be less than 5MB', 'error');
       return;
     }
 
@@ -106,42 +297,49 @@ export default function CreateClubPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('❌ Upload Error:', errorData);
-        throw new Error(errorData.error || 'Upload failed');
+        throw new Error(errorData.error || 'Failed to upload logo');
       }
 
       const data = await response.json();
       setClubData({ ...clubData, logoUrl: data.url });
-      toast.success('Logo uploaded successfully!');
+      showToast('Logo uploaded successfully!', 'success');
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to upload logo';
+      showToast(errorMessage, 'error');
       console.error('Upload error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to upload logo');
     } finally {
       setIsUploadingLogo(false);
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
     }
   };
 
-  // Handle club creation - ENHANCED ERROR HANDLING
+  // ========================================================================
+  // SUBMIT HANDLER
+  // ========================================================================
+
   const handleSubmit = async () => {
     // Validation
-    if (!clubData.name || !clubData.city) {
-      toast.error('Please fill in all required fields');
+    if (!clubData.name.trim()) {
+      showToast('Please provide a club name', 'error');
       return;
     }
 
-    if (createFirstTeam && !teamData.name) {
-      toast.error('Please provide a team name');
+    if (!clubData.city.trim()) {
+      showToast('Please provide a city', 'error');
+      return;
+    }
+
+    if (createFirstTeam && !teamData.name.trim()) {
+      showToast('Please provide a team name', 'error');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      console.log('📤 Sending club data:', {
-        club: clubData,
-        firstTeam: createFirstTeam ? teamData : null,
-      });
-
       const response = await fetch('/api/clubs/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -151,104 +349,95 @@ export default function CreateClubPage() {
         }),
       });
 
-      // ENHANCED ERROR LOGGING
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('❌ API Error Response:', JSON.stringify(errorData, null, 2));
-        console.error('❌ Status Code:', response.status);
-        console.error('❌ Status Text:', response.statusText);
-        
-        // Show user-friendly error
-        const errorMessage = errorData.error || errorData.details || 'Failed to create club';
-        toast.error(errorMessage);
+        const errorMessage = errorData.error || errorData.message || 'Failed to create club';
         throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      console.log('✅ Club created successfully:', data);
-      
-      toast.success('🎉 Club created successfully!');
-      
-      // Redirect to club dashboard
+      showToast('🎉 Club created successfully!', 'success');
+
+      // Redirect after a short delay
       setTimeout(() => {
         router.push(`/dashboard/clubs/${data.clubId}`);
-      }, 1000);
+      }, 1200);
     } catch (error) {
-      console.error('❌ Creation error:', error);
-      // Error already shown via toast above
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to create club. Please try again.';
+      showToast(errorMessage, 'error');
+      console.error('Club creation error:', error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/dashboard')}
-            className="mb-4"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
-          </Button>
+  // ========================================================================
+  // RENDER
+  // ========================================================================
 
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-gold-500 to-orange-400 rounded-2xl flex items-center justify-center">
-              <Shield className="w-8 h-8 text-white" />
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-4xl">
+        {/* HEADER */}
+        <div className="mb-8">
+          <Link href="/dashboard">
+            <button className="mb-4 flex items-center gap-2 rounded-lg px-4 py-2 text-charcoal-700 transition-colors hover:bg-neutral-200 hover:text-charcoal-900 dark:text-charcoal-300 dark:hover:bg-charcoal-700 dark:hover:text-white">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </button>
+          </Link>
+
+          <div className="mb-6 flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-gold-500 to-orange-500 shadow-lg">
+              <Shield className="h-8 w-8 text-white" />
             </div>
             <div>
-              <h1 className="text-4xl font-bold text-charcoal-900">Create Your Club</h1>
-              <p className="text-charcoal-600">Set up your football club in minutes</p>
+              <h1 className="text-4xl font-bold text-charcoal-900 dark:text-white">
+                Create Your Club
+              </h1>
+              <p className="text-charcoal-600 dark:text-charcoal-400">
+                Set up your football club in minutes
+              </p>
             </div>
           </div>
 
-          {/* Progress Steps */}
-          <div className="flex items-center gap-4 mb-8">
-            <div className="flex-1">
-              <div className={`h-2 rounded-full transition-all ${step >= 1 ? 'bg-gradient-to-r from-gold-500 to-orange-400' : 'bg-neutral-200'}`} />
-              <p className="text-xs text-charcoal-600 mt-2 font-semibold">Club Details</p>
-            </div>
-            <div className="flex-1">
-              <div className={`h-2 rounded-full transition-all ${step >= 2 ? 'bg-gradient-to-r from-gold-500 to-orange-400' : 'bg-neutral-200'}`} />
-              <p className="text-xs text-charcoal-600 mt-2 font-semibold">First Team</p>
-            </div>
-            <div className="flex-1">
-              <div className={`h-2 rounded-full transition-all ${step >= 3 ? 'bg-gradient-to-r from-gold-500 to-orange-400' : 'bg-neutral-200'}`} />
-              <p className="text-xs text-charcoal-600 mt-2 font-semibold">Review</p>
-            </div>
-          </div>
+          {/* PROGRESS INDICATOR */}
+          <ProgressSteps currentStep={step} />
         </div>
 
-        {/* Step 1: Club Details */}
+        {/* STEP 1: CLUB DETAILS */}
         {step === 1 && (
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-gold-500" />
+            <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+              <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+                <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
+                  <Shield className="h-5 w-5 text-gold-600 dark:text-gold-400" />
                   Club Information
-                </CardTitle>
-                <CardDescription>Basic details about your club</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Logo Upload */}
+                </h2>
+                <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+                  Basic details about your club
+                </p>
+              </div>
+
+              <div className="space-y-6 p-6">
+                {/* LOGO UPLOAD */}
                 <div className="space-y-2">
-                  <Label>Club Logo (Optional)</Label>
+                  <label className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+                    Club Logo <span className="text-xs text-charcoal-500">(Optional)</span>
+                  </label>
                   <div className="flex items-center gap-6">
-                    <div className="w-24 h-24 rounded-xl bg-gradient-to-br from-gold-100 to-orange-100 flex items-center justify-center overflow-hidden border-4 border-white shadow-lg">
+                    <div className="flex h-24 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border-4 border-white bg-gradient-to-br from-gold-100 to-orange-100 shadow-lg dark:border-charcoal-700">
                       {clubData.logoUrl ? (
                         <Image
                           src={clubData.logoUrl}
                           alt="Club Logo"
                           width={96}
                           height={96}
-                          className="w-full h-full object-cover"
+                          className="h-full w-full object-cover"
                         />
                       ) : (
-                        <Camera className="w-10 h-10 text-gold-600" />
+                        <Camera className="h-10 w-10 text-gold-600 dark:text-gold-400" />
                       )}
                     </div>
                     <div>
@@ -259,92 +448,105 @@ export default function CreateClubPage() {
                         onChange={handleLogoUpload}
                         className="hidden"
                       />
-                      <Button
+                      <button
                         onClick={() => logoInputRef.current?.click()}
                         disabled={isUploadingLogo}
-                        variant="outline"
+                        className="flex items-center gap-2 rounded-lg bg-neutral-200 px-4 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-300 disabled:opacity-50 dark:bg-charcoal-700 dark:text-charcoal-300 dark:hover:bg-charcoal-600"
                       >
                         {isUploadingLogo ? (
                           <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            <Loader2 className="h-4 w-4 animate-spin" />
                             Uploading...
                           </>
                         ) : (
                           <>
-                            <Upload className="w-4 h-4 mr-2" />
+                            <Upload className="h-4 w-4" />
                             Upload Logo
                           </>
                         )}
-                      </Button>
-                      <p className="text-xs text-charcoal-500 mt-2">
+                      </button>
+                      <p className="mt-2 text-xs text-charcoal-500 dark:text-charcoal-500">
                         PNG, JPG up to 5MB. Square image recommended.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Club Name */}
+                {/* CLUB NAME */}
                 <div className="space-y-2">
-                  <Label htmlFor="clubName">
+                  <label
+                    htmlFor="clubName"
+                    className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                  >
                     Club Name <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
+                  </label>
+                  <input
                     id="clubName"
+                    type="text"
                     value={clubData.name}
                     onChange={(e) => setClubData({ ...clubData, name: e.target.value })}
-                    placeholder="e.g., Arsenal FC"
-                    required
+                    placeholder="e.g., Arsenal FC, Manchester United"
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 transition-all focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white dark:placeholder-charcoal-500"
                   />
                 </div>
 
-                {/* Location */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* LOCATION */}
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="city">
+                    <label
+                      htmlFor="city"
+                      className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                    >
                       City <span className="text-red-500">*</span>
-                    </Label>
+                    </label>
                     <div className="relative">
-                      <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-charcoal-400" />
-                      <Input
+                      <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-charcoal-400 dark:text-charcoal-500" />
+                      <input
                         id="city"
+                        type="text"
                         value={clubData.city}
                         onChange={(e) => setClubData({ ...clubData, city: e.target.value })}
                         placeholder="London"
-                        className="pl-10"
-                        required
+                        className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 pl-10 text-charcoal-900 placeholder-charcoal-400 transition-all focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white dark:placeholder-charcoal-500"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="country">Country</Label>
+                    <label
+                      htmlFor="country"
+                      className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                    >
+                      Country
+                    </label>
                     <select
                       id="country"
                       value={clubData.country}
                       onChange={(e) => setClubData({ ...clubData, country: e.target.value })}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 transition-all focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white"
                     >
-                      <option value="United Kingdom">United Kingdom</option>
-                      <option value="Spain">Spain</option>
-                      <option value="Germany">Germany</option>
-                      <option value="France">France</option>
-                      <option value="Italy">Italy</option>
+                      {COUNTRIES.map((country) => (
+                        <option key={country} value={country}>
+                          {country}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
 
-                {/* Club Colors */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <Palette className="w-4 h-4 text-gold-500" />
+                {/* CLUB COLORS */}
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+                    <Palette className="h-4 w-4 text-gold-600 dark:text-gold-400" />
                     Club Colors
-                  </Label>
-                  <div className="grid grid-cols-2 gap-4">
+                  </label>
+                  <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="primaryColor" className="text-sm">Primary Color</Label>
+                      <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                        Primary Color
+                      </p>
                       <div className="flex items-center gap-2">
                         <input
-                          id="primaryColor"
                           type="color"
                           value={clubData.colors.primary}
                           onChange={(e) =>
@@ -353,9 +555,10 @@ export default function CreateClubPage() {
                               colors: { ...clubData.colors, primary: e.target.value },
                             })
                           }
-                          className="w-12 h-12 rounded-lg border-2 border-neutral-300 cursor-pointer"
+                          className="h-12 w-12 cursor-pointer rounded-lg border-2 border-neutral-300 dark:border-charcoal-600"
                         />
-                        <Input
+                        <input
+                          type="text"
                           value={clubData.colors.primary}
                           onChange={(e) =>
                             setClubData({
@@ -364,16 +567,17 @@ export default function CreateClubPage() {
                             })
                           }
                           placeholder="#FFD700"
-                          className="flex-1"
+                          className="flex-1 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-charcoal-900 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white"
                         />
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="secondaryColor" className="text-sm">Secondary Color</Label>
+                      <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                        Secondary Color
+                      </p>
                       <div className="flex items-center gap-2">
                         <input
-                          id="secondaryColor"
                           type="color"
                           value={clubData.colors.secondary}
                           onChange={(e) =>
@@ -382,9 +586,10 @@ export default function CreateClubPage() {
                               colors: { ...clubData.colors, secondary: e.target.value },
                             })
                           }
-                          className="w-12 h-12 rounded-lg border-2 border-neutral-300 cursor-pointer"
+                          className="h-12 w-12 cursor-pointer rounded-lg border-2 border-neutral-300 dark:border-charcoal-600"
                         />
-                        <Input
+                        <input
+                          type="text"
                           value={clubData.colors.secondary}
                           onChange={(e) =>
                             setClubData({
@@ -393,18 +598,23 @@ export default function CreateClubPage() {
                             })
                           }
                           placeholder="#FF6B35"
-                          className="flex-1"
+                          className="flex-1 rounded-lg border border-neutral-200 bg-white px-4 py-2 text-charcoal-900 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white"
                         />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Optional Fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* OPTIONAL FIELDS */}
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="foundedYear">Founded Year (Optional)</Label>
-                    <Input
+                    <label
+                      htmlFor="foundedYear"
+                      className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                    >
+                      Founded Year <span className="text-xs text-charcoal-500">(Optional)</span>
+                    </label>
+                    <input
                       id="foundedYear"
                       type="number"
                       value={clubData.foundedYear}
@@ -412,289 +622,364 @@ export default function CreateClubPage() {
                       placeholder="2024"
                       min="1800"
                       max={new Date().getFullYear()}
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white dark:placeholder-charcoal-500"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="stadiumName">Stadium Name (Optional)</Label>
-                    <Input
+                    <label
+                      htmlFor="stadiumName"
+                      className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                    >
+                      Stadium Name <span className="text-xs text-charcoal-500">(Optional)</span>
+                    </label>
+                    <input
                       id="stadiumName"
+                      type="text"
                       value={clubData.stadiumName}
                       onChange={(e) => setClubData({ ...clubData, stadiumName: e.target.value })}
                       placeholder="Emirates Stadium"
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white dark:placeholder-charcoal-500"
                     />
                   </div>
                 </div>
 
-                {/* Description */}
+                {/* DESCRIPTION */}
                 <div className="space-y-2">
-                  <Label htmlFor="description" className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-gold-500" />
-                    Club Description (Optional)
-                  </Label>
+                  <label
+                    htmlFor="description"
+                    className="flex items-center gap-2 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                  >
+                    <FileText className="h-4 w-4 text-gold-600 dark:text-gold-400" />
+                    Club Description <span className="text-xs text-charcoal-500">(Optional)</span>
+                  </label>
                   <textarea
                     id="description"
                     value={clubData.description}
                     onChange={(e) => setClubData({ ...clubData, description: e.target.value })}
                     placeholder="Tell us about your club's history, values, and achievements..."
-                    className="w-full min-h-[120px] px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 text-charcoal-900"
                     maxLength={500}
+                    rows={4}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 transition-all focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white dark:placeholder-charcoal-500"
                   />
-                  <p className="text-xs text-charcoal-500">
+                  <p className="text-xs text-charcoal-500 dark:text-charcoal-500">
                     {clubData.description.length}/500 characters
                   </p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             <div className="flex justify-end">
-              <Button
+              <button
                 onClick={() => setStep(2)}
-                disabled={!clubData.name || !clubData.city}
-                className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white"
+                disabled={!clubData.name.trim() || !clubData.city.trim()}
+                className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-6 py-3 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600 disabled:cursor-not-allowed disabled:opacity-50 dark:from-gold-600 dark:to-orange-500 dark:hover:from-gold-700 dark:hover:to-orange-600"
               >
                 Next: First Team
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+                <ArrowRight className="h-4 w-4" />
+              </button>
             </div>
           </div>
         )}
 
-        {/* Step 2: First Team */}
+        {/* STEP 2: FIRST TEAM */}
         {step === 2 && (
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-gold-500" />
+            <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+              <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+                <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
+                  <Users className="h-5 w-5 text-gold-600 dark:text-gold-400" />
                   Create First Team
-                </CardTitle>
-                <CardDescription>
+                </h2>
+                <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
                   Set up your club's first team (you can add more teams later)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Create Team Toggle */}
-                <div className="flex items-center justify-between p-4 bg-gold-50 border border-gold-200 rounded-xl">
+                </p>
+              </div>
+
+              <div className="space-y-6 p-6">
+                {/* CREATE TEAM TOGGLE */}
+                <div className="flex items-center justify-between rounded-xl border border-gold-200 bg-gold-50 p-4 dark:border-gold-900/50 dark:bg-gold-900/20">
                   <div>
-                    <p className="font-semibold text-charcoal-900">Create first team now?</p>
-                    <p className="text-sm text-charcoal-600">You can skip this and add teams later</p>
+                    <p className="font-semibold text-charcoal-900 dark:text-white">
+                      Create first team now?
+                    </p>
+                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                      You can skip this and add teams later
+                    </p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
+                  <label className="relative inline-flex cursor-pointer items-center">
                     <input
                       type="checkbox"
                       checked={createFirstTeam}
                       onChange={(e) => setCreateFirstTeam(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gold-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-gold-500 peer-checked:to-orange-400"></div>
+                    <div className="peer-checked:from-gold-600 peer-checked:to-orange-500 h-6 w-11 rounded-full bg-neutral-200 transition-all peer-checked:bg-gradient-to-r dark:bg-charcoal-700" />
+                    <div className="peer-checked:translate-x-full absolute left-1 top-1 h-5 w-5 rounded-full bg-white transition-transform dark:bg-charcoal-900" />
                   </label>
                 </div>
 
+                {/* TEAM FIELDS */}
                 {createFirstTeam && (
-                  <>
-                    {/* Team Name */}
+                  <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="teamName">
+                      <label
+                        htmlFor="teamName"
+                        className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                      >
                         Team Name <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
+                      </label>
+                      <input
                         id="teamName"
+                        type="text"
                         value={teamData.name}
                         onChange={(e) => setTeamData({ ...teamData, name: e.target.value })}
-                        placeholder="e.g., First Team, U21, Women's Team"
-                        required={createFirstTeam}
+                        placeholder="e.g., First Team, U21 Squad"
+                        className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 transition-all focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white dark:placeholder-charcoal-500"
                       />
-                      <p className="text-xs text-charcoal-500">
+                      <p className="text-xs text-charcoal-500 dark:text-charcoal-500">
                         Suggestion: "{clubData.name} First Team"
                       </p>
                     </div>
 
-                    {/* Age Group */}
                     <div className="space-y-2">
-                      <Label htmlFor="ageGroup">Age Group</Label>
+                      <label
+                        htmlFor="ageGroup"
+                        className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                      >
+                        Age Group
+                      </label>
                       <select
                         id="ageGroup"
                         value={teamData.ageGroup}
                         onChange={(e) => setTeamData({ ...teamData, ageGroup: e.target.value })}
-                        className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
+                        className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 transition-all focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white"
                       >
-                        <option value="SENIOR">Senior (18+)</option>
-                        <option value="U21">Under 21</option>
-                        <option value="U18">Under 18</option>
-                        <option value="U16">Under 16</option>
-                        <option value="U14">Under 14</option>
-                        <option value="U12">Under 12</option>
-                        <option value="U10">Under 10</option>
+                        {AGE_GROUPS.map((group) => (
+                          <option key={group.value} value={group.value}>
+                            {group.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
-                    {/* Team Category */}
                     <div className="space-y-2">
-                      <Label htmlFor="category">Team Category</Label>
+                      <label
+                        htmlFor="category"
+                        className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                      >
+                        Team Category
+                      </label>
                       <select
                         id="category"
                         value={teamData.category}
                         onChange={(e) => setTeamData({ ...teamData, category: e.target.value })}
-                        className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
+                        className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 transition-all focus:border-gold-500 focus:ring-2 focus:ring-gold-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white"
                       >
-                        <option value="FIRST_TEAM">First Team</option>
-                        <option value="RESERVES">Reserves</option>
-                        <option value="YOUTH">Youth/Academy</option>
-                        <option value="WOMENS">Women's Team</option>
+                        {TEAM_CATEGORIES.map((category) => (
+                          <option key={category.value} value={category.value}>
+                            {category.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
-                  </>
+                  </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setStep(1)}>
-                <ArrowLeft className="w-4 h-4 mr-2" />
+              <button
+                onClick={() => setStep(1)}
+                className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-6 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700"
+              >
+                <ArrowLeft className="h-4 w-4" />
                 Back
-              </Button>
-              <Button
+              </button>
+              <button
                 onClick={() => setStep(3)}
-                disabled={createFirstTeam && !teamData.name}
-                className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white"
+                disabled={createFirstTeam && !teamData.name.trim()}
+                className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-6 py-3 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600 disabled:cursor-not-allowed disabled:opacity-50 dark:from-gold-600 dark:to-orange-500 dark:hover:from-gold-700 dark:hover:to-orange-600"
               >
                 Next: Review
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+                <ArrowRight className="h-4 w-4" />
+              </button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Review & Submit */}
+        {/* STEP 3: REVIEW */}
         {step === 3 && (
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-gold-500" />
+            <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+              <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+                <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
+                  <CheckCircle className="h-5 w-5 text-gold-600 dark:text-gold-400" />
                   Review Your Club
-                </CardTitle>
-                <CardDescription>Check everything looks good before creating</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Club Summary */}
-                <div className="space-y-4">
-                  <h3 className="font-bold text-charcoal-900 text-lg">Club Details</h3>
-                  
-                  <div className="grid grid-cols-2 gap-4 p-4 bg-neutral-50 rounded-xl">
+                </h2>
+                <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+                  Check everything looks good before creating
+                </p>
+              </div>
+
+              <div className="space-y-6 p-6">
+                {/* CLUB SUMMARY */}
+                <div className="space-y-3">
+                  <h3 className="text-lg font-bold text-charcoal-900 dark:text-white">
+                    Club Details
+                  </h3>
+                  <div className="space-y-3 rounded-xl bg-neutral-50 p-4 dark:bg-charcoal-700/50">
                     {clubData.logoUrl && (
-                      <div className="col-span-2 flex justify-center">
-                        <div className="w-24 h-24 rounded-xl overflow-hidden border-2 border-gold-200">
+                      <div className="flex justify-center">
+                        <div className="h-24 w-24 overflow-hidden rounded-xl border-2 border-gold-200 dark:border-gold-900/50">
                           <Image
                             src={clubData.logoUrl}
                             alt="Club Logo"
                             width={96}
                             height={96}
-                            className="w-full h-full object-cover"
+                            className="h-full w-full object-cover"
                           />
                         </div>
                       </div>
                     )}
-                    
-                    <div>
-                      <p className="text-sm text-charcoal-500">Club Name</p>
-                      <p className="font-bold text-charcoal-900">{clubData.name}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-charcoal-500">Location</p>
-                      <p className="font-bold text-charcoal-900">{clubData.city}, {clubData.country}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-charcoal-500">Founded</p>
-                      <p className="font-bold text-charcoal-900">{clubData.foundedYear}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-charcoal-500">Colors</p>
-                      <div className="flex gap-2">
-                        <div
-                          className="w-6 h-6 rounded border"
-                          style={{ backgroundColor: clubData.colors.primary }}
-                        />
-                        <div
-                          className="w-6 h-6 rounded border"
-                          style={{ backgroundColor: clubData.colors.secondary }}
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-charcoal-500 dark:text-charcoal-400">
+                          Club Name
+                        </p>
+                        <p className="font-bold text-charcoal-900 dark:text-white">
+                          {clubData.name}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-charcoal-500 dark:text-charcoal-400">
+                          Location
+                        </p>
+                        <p className="font-bold text-charcoal-900 dark:text-white">
+                          {clubData.city}, {clubData.country}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-charcoal-500 dark:text-charcoal-400">
+                          Founded
+                        </p>
+                        <p className="font-bold text-charcoal-900 dark:text-white">
+                          {clubData.foundedYear}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-charcoal-500 dark:text-charcoal-400">
+                          Colors
+                        </p>
+                        <div className="flex gap-2">
+                          <div
+                            className="h-6 w-6 rounded border border-neutral-300 dark:border-charcoal-600"
+                            style={{ backgroundColor: clubData.colors.primary }}
+                          />
+                          <div
+                            className="h-6 w-6 rounded border border-neutral-300 dark:border-charcoal-600"
+                            style={{ backgroundColor: clubData.colors.secondary }}
+                          />
+                        </div>
                       </div>
                     </div>
+                    {clubData.description && (
+                      <div className="border-t border-neutral-200 pt-3 dark:border-charcoal-600">
+                        <p className="text-sm text-charcoal-500 dark:text-charcoal-400">
+                          Description
+                        </p>
+                        <p className="text-charcoal-900 dark:text-white">
+                          {clubData.description}
+                        </p>
+                      </div>
+                    )}
                   </div>
-
-                  {clubData.description && (
-                    <div className="p-4 bg-neutral-50 rounded-xl">
-                      <p className="text-sm text-charcoal-500 mb-2">Description</p>
-                      <p className="text-charcoal-900">{clubData.description}</p>
-                    </div>
-                  )}
                 </div>
 
-                {/* First Team Summary */}
+                {/* TEAM SUMMARY */}
                 {createFirstTeam && (
-                  <div className="space-y-4 pt-4 border-t">
-                    <h3 className="font-bold text-charcoal-900 text-lg">First Team</h3>
-                    
-                    <div className="grid grid-cols-3 gap-4 p-4 bg-gold-50 rounded-xl border border-gold-200">
+                  <div className="space-y-3 border-t border-neutral-200 pt-6 dark:border-charcoal-700">
+                    <h3 className="text-lg font-bold text-charcoal-900 dark:text-white">
+                      First Team
+                    </h3>
+                    <div className="grid grid-cols-3 gap-4 rounded-xl border border-gold-200 bg-gold-50 p-4 dark:border-gold-900/50 dark:bg-gold-900/20">
                       <div>
-                        <p className="text-sm text-charcoal-500">Team Name</p>
-                        <p className="font-bold text-charcoal-900">{teamData.name}</p>
+                        <p className="text-sm text-charcoal-500 dark:text-charcoal-400">
+                          Team Name
+                        </p>
+                        <p className="font-bold text-charcoal-900 dark:text-white">
+                          {teamData.name}
+                        </p>
                       </div>
                       <div>
-                        <p className="text-sm text-charcoal-500">Age Group</p>
-                        <Badge>{teamData.ageGroup}</Badge>
+                        <p className="text-sm text-charcoal-500 dark:text-charcoal-400">
+                          Age Group
+                        </p>
+                        <p className="inline-block rounded-full bg-gold-100 px-3 py-1 text-xs font-semibold text-gold-700 dark:bg-gold-900/30 dark:text-gold-400">
+                          {AGE_GROUPS.find((g) => g.value === teamData.ageGroup)?.label}
+                        </p>
                       </div>
                       <div>
-                        <p className="text-sm text-charcoal-500">Category</p>
-                        <Badge variant="outline">{teamData.category.replace('_', ' ')}</Badge>
+                        <p className="text-sm text-charcoal-500 dark:text-charcoal-400">
+                          Category
+                        </p>
+                        <p className="inline-block rounded-full border border-gold-200 bg-white px-3 py-1 text-xs font-semibold text-gold-700 dark:border-gold-900/50 dark:bg-charcoal-800 dark:text-gold-400">
+                          {TEAM_CATEGORIES.find((c) => c.value === teamData.category)?.label}
+                        </p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Your Role */}
-                <div className="p-4 bg-gradient-to-r from-gold-50 to-orange-50 rounded-xl border border-gold-200">
+                {/* OWNER INFO */}
+                <div className="rounded-xl border border-gold-200 bg-gradient-to-r from-gold-50 to-orange-50 p-4 dark:border-gold-900/50 dark:from-gold-900/20 dark:to-orange-900/20">
                   <div className="flex items-center gap-3">
-                    <Trophy className="w-8 h-8 text-gold-600" />
+                    <Trophy className="h-8 w-8 text-gold-600 dark:text-gold-400" />
                     <div>
-                      <p className="font-bold text-charcoal-900">You will be the Club Owner</p>
-                      <p className="text-sm text-charcoal-600">
+                      <p className="font-bold text-charcoal-900 dark:text-white">
+                        You will be the Club Owner
+                      </p>
+                      <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
                         Full control over club settings, teams, and member invitations
                       </p>
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             <div className="flex justify-between">
-              <Button variant="outline" onClick={() => setStep(2)}>
-                <ArrowLeft className="w-4 h-4 mr-2" />
+              <button
+                onClick={() => setStep(2)}
+                className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-6 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700"
+              >
+                <ArrowLeft className="h-4 w-4" />
                 Back
-              </Button>
-              <Button
+              </button>
+              <button
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white px-8"
+                className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-8 py-3 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600 disabled:cursor-not-allowed disabled:opacity-50 dark:from-gold-600 dark:to-orange-500 dark:hover:from-gold-700 dark:hover:to-orange-600"
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     Creating Club...
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="w-4 h-4 mr-2" />
+                    <CheckCircle className="h-4 w-4" />
                     Create Club
                   </>
                 )}
-              </Button>
+              </button>
             </div>
           </div>
         )}
       </div>
+
+      {/* TOAST CONTAINER */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

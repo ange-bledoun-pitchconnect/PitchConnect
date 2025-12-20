@@ -1,11 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+/**
+ * PitchConnect Coach Timesheet Create Page - v2.0 ENHANCED
+ * Location: ./src/app/dashboard/coach/timesheets/create/page.tsx
+ * 
+ * Features:
+ * ✅ Two entry modes: Session-linked or Manual entry
+ * ✅ Load completed training sessions from API
+ * ✅ Auto-populate hours from selected session
+ * ✅ Manual entry with custom description
+ * ✅ Date selection (max: today)
+ * ✅ Dynamic hourly rate from coach profile
+ * ✅ Real-time earnings calculation
+ * ✅ Custom toast notifications (zero dependencies)
+ * ✅ Loading states and error handling
+ * ✅ Dark mode support
+ * ✅ Responsive design
+ * ✅ Schema-aligned data models
+ * ✅ Comprehensive validation
+ */
+
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import Link from 'next/link';
 import {
   ArrowLeft,
   Clock,
@@ -14,8 +31,13 @@ import {
   DollarSign,
   Calendar,
   FileText,
+  AlertCircle,
+  X,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+
+// ============================================================================
+// TYPES - SCHEMA-ALIGNED
+// ============================================================================
 
 interface TrainingSession {
   id: string;
@@ -27,12 +49,133 @@ interface TrainingSession {
   };
 }
 
+interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
+// ============================================================================
+// TOAST COMPONENT (No External Dependency)
+// ============================================================================
+
+const Toast = ({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onClose: () => void;
+}) => {
+  const baseClasses =
+    'fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 z-50';
+
+  const typeClasses = {
+    success:
+      'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400',
+    error:
+      'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400',
+    info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400',
+  };
+
+  const icons = {
+    success: <CheckCircle className="h-5 w-5 flex-shrink-0" />,
+    error: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+    info: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+  };
+
+  return (
+    <div className={`${baseClasses} ${typeClasses[type]}`}>
+      {icons[type]}
+      <p className="text-sm font-medium">{message}</p>
+      <button onClick={onClose} className="ml-2 hover:opacity-70">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
+const ToastContainer = ({
+  toasts,
+  onRemove,
+}: {
+  toasts: ToastMessage[];
+  onRemove: (id: string) => void;
+}) => (
+  <div className="fixed bottom-4 right-4 z-50 space-y-2">
+    {toasts.map((toast) => (
+      <Toast
+        key={toast.id}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => onRemove(toast.id)}
+      />
+    ))}
+  </div>
+);
+
+// ============================================================================
+// ENTRY TYPE SELECTOR
+// ============================================================================
+
+const EntryTypeSelector = ({
+  isManual,
+  onTypeChange,
+}: {
+  isManual: boolean;
+  onTypeChange: (manual: boolean) => void;
+}) => {
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      <button
+        type="button"
+        onClick={() => onTypeChange(false)}
+        className={`rounded-xl border-2 p-4 transition-all ${
+          !isManual
+            ? 'border-green-500 bg-green-50 dark:border-green-400 dark:bg-green-900/20'
+            : 'border-neutral-200 hover:border-neutral-300 dark:border-charcoal-700 dark:hover:border-charcoal-600'
+        }`}
+      >
+        <Calendar className={`mx-auto mb-2 h-8 w-8 ${!isManual ? 'text-green-600 dark:text-green-400' : 'text-charcoal-400 dark:text-charcoal-500'}`} />
+        <p className="text-sm font-semibold text-charcoal-900 dark:text-white">From Session</p>
+        <p className="mt-1 text-xs text-charcoal-600 dark:text-charcoal-400">
+          Link to training session
+        </p>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onTypeChange(true)}
+        className={`rounded-xl border-2 p-4 transition-all ${
+          isManual
+            ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20'
+            : 'border-neutral-200 hover:border-neutral-300 dark:border-charcoal-700 dark:hover:border-charcoal-600'
+        }`}
+      >
+        <FileText className={`mx-auto mb-2 h-8 w-8 ${isManual ? 'text-blue-600 dark:text-blue-400' : 'text-charcoal-400 dark:text-charcoal-500'}`} />
+        <p className="text-sm font-semibold text-charcoal-900 dark:text-white">Manual Entry</p>
+        <p className="mt-1 text-xs text-charcoal-600 dark:text-charcoal-400">
+          Enter details manually
+        </p>
+      </button>
+    </div>
+  );
+};
+
+// ============================================================================
+// MAIN PAGE COMPONENT
+// ============================================================================
+
 export default function CreateTimesheetPage() {
   const router = useRouter();
+
+  // State Management
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+  const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [hourlyRate, setHourlyRate] = useState(25);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const [formData, setFormData] = useState({
     sessionId: '',
@@ -42,9 +185,28 @@ export default function CreateTimesheetPage() {
     manualEntry: false,
   });
 
+  // Toast utility
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ========================================================================
+  // DATA FETCHING
+  // ========================================================================
+
   useEffect(() => {
-    fetchSessions();
-    fetchCoachRate();
+    const initializeData = async () => {
+      await Promise.all([fetchSessions(), fetchCoachRate()]);
+    };
+    initializeData();
   }, []);
 
   const fetchSessions = async () => {
@@ -53,10 +215,10 @@ export default function CreateTimesheetPage() {
       if (!response.ok) throw new Error('Failed to fetch sessions');
 
       const data = await response.json();
-      setSessions(data.sessions);
+      setSessions(data.sessions || []);
     } catch (error) {
       console.error('Error fetching sessions:', error);
-      toast.error('Failed to load training sessions');
+      showToast('Failed to load training sessions', 'error');
     } finally {
       setIsLoadingSessions(false);
     }
@@ -71,24 +233,57 @@ export default function CreateTimesheetPage() {
       setHourlyRate(data.hourlyRate || 25);
     } catch (error) {
       console.error('Error fetching coach rate:', error);
+      showToast('Could not load hourly rate, using default', 'info');
     }
+  };
+
+  // ========================================================================
+  // FORM HANDLERS
+  // ========================================================================
+
+  const handleEntryTypeChange = (manual: boolean) => {
+    setFormData({
+      ...formData,
+      manualEntry: manual,
+      sessionId: '',
+      description: '',
+    });
+  };
+
+  const handleSessionChange = (sessionId: string) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (session) {
+      setFormData({
+        ...formData,
+        sessionId,
+        date: new Date(session.date).toISOString().split('T')[0],
+        hours: (session.duration / 60).toFixed(2),
+      });
+    }
+  };
+
+  const calculateTotal = () => {
+    const hours = parseFloat(formData.hours) || 0;
+    return (hours * hourlyRate).toFixed(2);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.hours || parseFloat(formData.hours) <= 0) {
-      toast.error('Please enter valid hours');
+    // Validation
+    const hours = parseFloat(formData.hours);
+    if (!formData.hours || hours <= 0 || hours > 24) {
+      showToast('Please enter valid hours (0-24)', 'error');
       return;
     }
 
     if (!formData.manualEntry && !formData.sessionId) {
-      toast.error('Please select a training session');
+      showToast('Please select a training session', 'error');
       return;
     }
 
-    if (formData.manualEntry && !formData.description) {
-      toast.error('Please add a description for manual entry');
+    if (formData.manualEntry && !formData.description.trim()) {
+      showToast('Please add a description for manual entry', 'error');
       return;
     }
 
@@ -102,255 +297,279 @@ export default function CreateTimesheetPage() {
           sessionId: formData.manualEntry ? null : formData.sessionId,
           date: formData.date,
           hours: parseFloat(formData.hours),
-          description: formData.manualEntry ? formData.description : null,
+          description: formData.manualEntry ? formData.description.trim() : null,
           hourlyRate: hourlyRate,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create timesheet');
+        throw new Error(errorData.error || errorData.message || 'Failed to create timesheet');
       }
 
       const data = await response.json();
-      toast.success('⏰ Timesheet entry created successfully!');
+      showToast('⏰ Timesheet entry created successfully!', 'success');
 
+      // Redirect after a short delay
       setTimeout(() => {
         router.push('/dashboard/coach/timesheets');
-      }, 1000);
+      }, 1200);
     } catch (error) {
-      console.error('Create timesheet error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create timesheet');
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to create timesheet. Please try again.';
+      showToast(errorMessage, 'error');
+      console.error('Timesheet creation error:', error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const calculateTotal = () => {
-    const hours = parseFloat(formData.hours) || 0;
-    return (hours * hourlyRate).toFixed(2);
-  };
+  // ========================================================================
+  // RENDER
+  // ========================================================================
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-green-50/10 to-blue-50/10 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-green-50/10 to-blue-50/10 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-3xl">
+        {/* HEADER */}
         <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/dashboard/coach/timesheets')}
-            className="mb-4"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Timesheets
-          </Button>
+          <Link href="/dashboard/coach/timesheets">
+            <button className="mb-4 flex items-center gap-2 rounded-lg px-4 py-2 text-charcoal-700 transition-colors hover:bg-neutral-200 hover:text-charcoal-900 dark:text-charcoal-300 dark:hover:bg-charcoal-700 dark:hover:text-white">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Timesheets
+            </button>
+          </Link>
 
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-blue-400 rounded-2xl flex items-center justify-center shadow-lg">
-              <Clock className="w-8 h-8 text-white" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 to-blue-400 shadow-lg">
+              <Clock className="h-8 w-8 text-white" />
             </div>
             <div>
-              <h1 className="text-4xl font-bold text-charcoal-900">Add Time Entry</h1>
-              <p className="text-charcoal-600">Log your coaching hours</p>
+              <h1 className="text-4xl font-bold text-charcoal-900 dark:text-white">Add Time Entry</h1>
+              <p className="text-charcoal-600 dark:text-charcoal-400">Log your coaching hours</p>
             </div>
           </div>
         </div>
 
+        {/* FORM */}
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Entry Type */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Entry Type</CardTitle>
-              <CardDescription>Choose how to log your time</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, manualEntry: false })}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    !formData.manualEntry
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-neutral-200 hover:border-neutral-300'
-                  }`}
-                >
-                  <Calendar className="w-8 h-8 mx-auto mb-2 text-green-600" />
-                  <p className="font-semibold text-charcoal-900">From Session</p>
-                  <p className="text-xs text-charcoal-600 mt-1">Link to training session</p>
-                </button>
+          {/* ENTRY TYPE SELECTION */}
+          <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+            <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+              <h2 className="text-xl font-bold text-charcoal-900 dark:text-white">Entry Type</h2>
+              <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+                Choose how to log your time
+              </p>
+            </div>
+            <div className="p-6">
+              <EntryTypeSelector
+                isManual={formData.manualEntry}
+                onTypeChange={handleEntryTypeChange}
+              />
+            </div>
+          </div>
 
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, manualEntry: true, sessionId: '' })}
-                  className={`p-4 rounded-lg border-2 transition-all ${
-                    formData.manualEntry
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-neutral-200 hover:border-neutral-300'
-                  }`}
-                >
-                  <FileText className="w-8 h-8 mx-auto mb-2 text-blue-600" />
-                  <p className="font-semibold text-charcoal-900">Manual Entry</p>
-                  <p className="text-xs text-charcoal-600 mt-1">Enter details manually</p>
-                </button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Session or Description */}
-          <Card>
-            <CardHeader>
-              <CardTitle>
+          {/* SESSION OR DESCRIPTION */}
+          <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+            <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+              <h2 className="text-xl font-bold text-charcoal-900 dark:text-white">
                 {formData.manualEntry ? 'Description' : 'Select Training Session'}
-              </CardTitle>
-              <CardDescription>
+              </h2>
+              <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
                 {formData.manualEntry
                   ? 'Describe the work performed'
                   : 'Choose a completed training session'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+              </p>
+            </div>
+
+            <div className="p-6">
               {formData.manualEntry ? (
                 <div className="space-y-2">
-                  <Label htmlFor="description">
+                  <label
+                    htmlFor="description"
+                    className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                  >
                     Description <span className="text-red-500">*</span>
-                  </Label>
+                  </label>
                   <textarea
                     id="description"
                     value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="e.g., Individual coaching session with U16 player"
-                    className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 min-h-24"
-                    required
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                    placeholder="e.g., Individual coaching session with U16 player, tactical session with first team"
+                    rows={4}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 transition-all focus:border-green-500 focus:ring-2 focus:ring-green-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white dark:placeholder-charcoal-500"
                   />
+                  <p className="text-xs text-charcoal-500 dark:text-charcoal-500">
+                    {formData.description.length}/300 characters
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <Label htmlFor="session">
+                  <label
+                    htmlFor="session"
+                    className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                  >
                     Training Session <span className="text-red-500">*</span>
-                  </Label>
+                  </label>
                   {isLoadingSessions ? (
                     <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-6 h-6 animate-spin text-green-500" />
+                      <Loader2 className="h-6 w-6 animate-spin text-green-500" />
+                    </div>
+                  ) : sessions.length === 0 ? (
+                    <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-900/50 dark:bg-yellow-900/20">
+                      <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                        No completed training sessions found. Please create a training session first or use Manual Entry.
+                      </p>
                     </div>
                   ) : (
                     <select
                       id="session"
                       value={formData.sessionId}
-                      onChange={(e) => {
-                        const session = sessions.find((s) => s.id === e.target.value);
-                        setFormData({
-                          ...formData,
-                          sessionId: e.target.value,
-                          date: session ? new Date(session.date).toISOString().split('T')[0] : formData.date,
-                          hours: session ? (session.duration / 60).toString() : formData.hours,
-                        });
-                      }}
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                      onChange={(e) => handleSessionChange(e.target.value)}
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 transition-all focus:border-green-500 focus:ring-2 focus:ring-green-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white"
                       required
                     >
                       <option value="">Select a session...</option>
                       {sessions.map((session) => (
                         <option key={session.id} value={session.id}>
-                          {new Date(session.date).toLocaleDateString('en-GB')} - {session.focus} ({session.team.name}) - {session.duration} mins
+                          {new Date(session.date).toLocaleDateString('en-GB')} -{' '}
+                          {session.focus} ({session.team.name}) -{' '}
+                          {(session.duration / 60).toFixed(2)} hours
                         </option>
                       ))}
                     </select>
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          {/* Date and Hours */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Time Details</CardTitle>
-              <CardDescription>Enter date and hours worked</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Date */}
+          {/* TIME DETAILS */}
+          <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+            <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+              <h2 className="text-xl font-bold text-charcoal-900 dark:text-white">Time Details</h2>
+              <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+                Enter date and hours worked
+              </p>
+            </div>
+
+            <div className="space-y-6 p-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* DATE */}
                 <div className="space-y-2">
-                  <Label htmlFor="date">
+                  <label
+                    htmlFor="date"
+                    className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                  >
                     Date <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
+                  </label>
+                  <input
                     id="date"
                     type="date"
                     value={formData.date}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                     max={new Date().toISOString().split('T')[0]}
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 transition-all focus:border-green-500 focus:ring-2 focus:ring-green-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white"
                     required
                   />
                 </div>
 
-                {/* Hours */}
+                {/* HOURS */}
                 <div className="space-y-2">
-                  <Label htmlFor="hours">
+                  <label
+                    htmlFor="hours"
+                    className="block text-sm font-semibold text-charcoal-700 dark:text-charcoal-300"
+                  >
                     Hours Worked <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
+                  </label>
+                  <input
                     id="hours"
                     type="number"
                     step="0.25"
-                    min="0"
+                    min="0.25"
                     max="24"
                     value={formData.hours}
                     onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
                     placeholder="e.g., 2.5"
+                    className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 text-charcoal-900 placeholder-charcoal-400 transition-all focus:border-green-500 focus:ring-2 focus:ring-green-500/20 dark:border-charcoal-700 dark:bg-charcoal-700 dark:text-white dark:placeholder-charcoal-500"
                     required
                   />
                 </div>
               </div>
 
-              {/* Rate Display */}
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center justify-between">
+              {/* RATE DISPLAY */}
+              <div className="rounded-xl border border-green-200 bg-gradient-to-br from-green-50 to-blue-50 p-4 dark:border-green-900/50 dark:from-green-900/20 dark:to-blue-900/20">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-3">
-                    <DollarSign className="w-8 h-8 text-blue-600" />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-500/20 dark:bg-green-500/10">
+                      <DollarSign className="h-6 w-6 text-green-600 dark:text-green-400" />
+                    </div>
                     <div>
-                      <p className="text-sm text-charcoal-600">Your Hourly Rate</p>
-                      <p className="text-2xl font-bold text-blue-600">£{hourlyRate}/hour</p>
+                      <p className="text-xs font-semibold text-charcoal-600 dark:text-charcoal-400">
+                        HOURLY RATE
+                      </p>
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                        £{hourlyRate.toFixed(2)}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-charcoal-600">Total Amount</p>
-                    <p className="text-3xl font-bold text-green-600">£{calculateTotal()}</p>
+                  <div className="border-l border-green-200 pl-4 dark:border-green-900/50 md:border-l">
+                    <p className="text-xs font-semibold text-charcoal-600 dark:text-charcoal-400">
+                      TOTAL EARNINGS
+                    </p>
+                    <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                      £{calculateTotal()}
+                    </p>
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          {/* Submit */}
+          {/* ACTIONS */}
           <div className="flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.push('/dashboard/coach/timesheets')}
-            >
-              Cancel
-            </Button>
-            <Button
+            <Link href="/dashboard/coach/timesheets">
+              <button
+                type="button"
+                className="rounded-lg border border-neutral-200 bg-white px-6 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700"
+              >
+                Cancel
+              </button>
+            </Link>
+            <button
               type="submit"
               disabled={isSubmitting}
-              className="bg-gradient-to-r from-green-500 to-blue-400 hover:from-green-600 hover:to-blue-500 text-white"
+              className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-600 to-blue-500 px-6 py-2 font-semibold text-white transition-all hover:from-green-700 hover:to-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:from-green-600 dark:to-blue-500 dark:hover:from-green-700 dark:hover:to-blue-600"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Creating...
                 </>
               ) : (
                 <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
+                  <CheckCircle className="h-4 w-4" />
                   Submit Timesheet
                 </>
               )}
-            </Button>
+            </button>
           </div>
         </form>
+
+        {/* HELPFUL TIPS */}
+        <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-900/20">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
+            <span className="font-semibold">💡 Tip:</span> Link entries to training sessions for
+            automatic hour calculation. Use manual entry for other coaching activities like
+            individual mentoring or video analysis.
+          </p>
+        </div>
       </div>
+
+      {/* TOAST CONTAINER */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

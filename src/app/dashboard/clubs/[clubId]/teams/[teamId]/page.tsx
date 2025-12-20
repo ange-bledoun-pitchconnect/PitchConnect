@@ -1,10 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+/**
+ * PitchConnect Team Details Management Page - v2.0 ENHANCED
+ * Location: ./src/app/dashboard/clubs/[clubId]/teams/[teamId]/page.tsx
+ * 
+ * Features:
+ * ✅ Team overview with detailed statistics
+ * ✅ Team members roster management (add/remove/change roles)
+ * ✅ Member role assignments (Manager, Coach, Player, Staff)
+ * ✅ Member status tracking (Active, Inactive, Invited)
+ * ✅ Quick stats cards (Managers, Coaches, Players, Staff)
+ * ✅ Member avatars with fallback initials
+ * ✅ Dropdown menu for member actions
+ * ✅ Custom toast notifications (zero dependencies)
+ * ✅ Add member modal integration
+ * ✅ Dark mode support
+ * ✅ Responsive design
+ * ✅ Schema-aligned data models
+ * ✅ Comprehensive error handling
+ */
+
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 import {
   ArrowLeft,
   Users,
@@ -17,27 +35,27 @@ import {
   Trophy,
   Edit,
   MoreVertical,
+  AlertCircle,
+  CheckCircle,
+  X,
 } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import AddMemberModal from '@/components/teams/AddMemberModal';
-import toast from 'react-hot-toast';
+
+// ============================================================================
+// TYPES - SCHEMA-ALIGNED
+// ============================================================================
 
 interface TeamMember {
   id: string;
-  role: string;
-  status: string;
+  role: 'MANAGER' | 'COACH' | 'PLAYER' | 'STAFF';
+  status: 'ACTIVE' | 'INACTIVE' | 'INVITED';
   joinedAt: string;
   user: {
     id: string;
     email: string;
     firstName: string;
     lastName: string;
-    avatar: string | null;
+    avatar?: string | null;
   };
 }
 
@@ -45,14 +63,311 @@ interface Team {
   id: string;
   name: string;
   clubId: string;
-  ageGroup: string;
-  category: string;
-  status: string;
+  ageGroup?: string;
+  category?: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  sport?: string;
+  description?: string;
   members: TeamMember[];
-  _count: {
+  _count?: {
     members: number;
+    players?: number;
   };
 }
+
+interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
+// ============================================================================
+// ROLE LABELS & COLORS - FROM PRISMA SCHEMA
+// ============================================================================
+
+const ROLE_LABELS: Record<string, string> = {
+  MANAGER: 'Manager',
+  COACH: 'Coach',
+  PLAYER: 'Player',
+  STAFF: 'Staff',
+};
+
+const ROLE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  MANAGER: {
+    bg: 'bg-purple-100',
+    text: 'text-purple-700',
+    border: 'border-purple-300',
+  },
+  COACH: {
+    bg: 'bg-blue-100',
+    text: 'text-blue-700',
+    border: 'border-blue-300',
+  },
+  PLAYER: {
+    bg: 'bg-green-100',
+    text: 'text-green-700',
+    border: 'border-green-300',
+  },
+  STAFF: {
+    bg: 'bg-orange-100',
+    text: 'text-orange-700',
+    border: 'border-orange-300',
+  },
+};
+
+const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  ACTIVE: {
+    bg: 'bg-green-50',
+    text: 'text-green-700',
+  },
+  INACTIVE: {
+    bg: 'bg-gray-50',
+    text: 'text-gray-700',
+  },
+  INVITED: {
+    bg: 'bg-blue-50',
+    text: 'text-blue-700',
+  },
+};
+
+// ============================================================================
+// TOAST COMPONENT (No External Dependency)
+// ============================================================================
+
+const Toast = ({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onClose: () => void;
+}) => {
+  const baseClasses =
+    'fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 z-50';
+
+  const typeClasses = {
+    success:
+      'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400',
+    error:
+      'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400',
+    info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400',
+  };
+
+  const icons = {
+    success: <CheckCircle className="h-5 w-5 flex-shrink-0" />,
+    error: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+    info: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+  };
+
+  return (
+    <div className={`${baseClasses} ${typeClasses[type]}`}>
+      {icons[type]}
+      <p className="text-sm font-medium">{message}</p>
+      <button onClick={onClose} className="ml-2 hover:opacity-70">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
+const ToastContainer = ({
+  toasts,
+  onRemove,
+}: {
+  toasts: ToastMessage[];
+  onRemove: (id: string) => void;
+}) => (
+  <div className="fixed bottom-4 right-4 z-50 space-y-2">
+    {toasts.map((toast) => (
+      <Toast
+        key={toast.id}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => onRemove(toast.id)}
+      />
+    ))}
+  </div>
+);
+
+// ============================================================================
+// BADGE COMPONENT
+// ============================================================================
+
+const Badge = ({
+  children,
+  variant = 'default',
+  className = '',
+}: {
+  children: React.ReactNode;
+  variant?: 'default' | 'outline' | 'success' | 'warning';
+  className?: string;
+}) => {
+  const variants = {
+    default: 'bg-neutral-100 text-charcoal-700 dark:bg-charcoal-700 dark:text-charcoal-300',
+    outline:
+      'border border-neutral-200 bg-white text-charcoal-700 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300',
+    success: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  };
+
+  return (
+    <span
+      className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${variants[variant]} ${className}`}
+    >
+      {children}
+    </span>
+  );
+};
+
+// ============================================================================
+// AVATAR COMPONENT
+// ============================================================================
+
+const MemberAvatar = ({
+  avatar,
+  firstName,
+  lastName,
+}: {
+  avatar?: string | null;
+  firstName: string;
+  lastName: string;
+}) => {
+  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+
+  if (avatar) {
+    return (
+      <img
+        src={avatar}
+        alt={`${firstName} ${lastName}`}
+        className="h-12 w-12 rounded-full object-cover flex-shrink-0"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gold-500 to-orange-500 font-bold text-white shadow-md">
+      {initials}
+    </div>
+  );
+};
+
+// ============================================================================
+// DROPDOWN MENU COMPONENT
+// ============================================================================
+
+const DropdownMenu = ({
+  memberId,
+  memberName,
+  onChangeRole,
+  onRemove,
+}: {
+  memberId: string;
+  memberName: string;
+  onChangeRole: (memberId: string, role: string) => void;
+  onRemove: (memberId: string, memberName: string) => void;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="rounded-lg p-2 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+      >
+        <MoreVertical className="h-4 w-4 text-charcoal-600 dark:text-charcoal-400" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-charcoal-700 dark:bg-charcoal-800">
+          <button
+            onClick={() => {
+              onChangeRole(memberId, 'MANAGER');
+              setIsOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+          >
+            <Edit className="h-4 w-4" />
+            Make Manager
+          </button>
+          <button
+            onClick={() => {
+              onChangeRole(memberId, 'COACH');
+              setIsOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+          >
+            <Edit className="h-4 w-4" />
+            Make Coach
+          </button>
+          <button
+            onClick={() => {
+              onChangeRole(memberId, 'PLAYER');
+              setIsOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+          >
+            <Edit className="h-4 w-4" />
+            Make Player
+          </button>
+          <button
+            onClick={() => {
+              onChangeRole(memberId, 'STAFF');
+              setIsOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-charcoal-700"
+          >
+            <Edit className="h-4 w-4" />
+            Make Staff
+          </button>
+          <div className="border-t border-neutral-200 dark:border-charcoal-700" />
+          <button
+            onClick={() => {
+              onRemove(memberId, memberName);
+              setIsOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <UserMinus className="h-4 w-4" />
+            Remove from Team
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// STAT CARD COMPONENT
+// ============================================================================
+
+const StatCard = ({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: 'purple' | 'blue' | 'green' | 'orange';
+}) => {
+  const colorClasses = {
+    purple: 'text-purple-600 dark:text-purple-400',
+    blue: 'text-blue-600 dark:text-blue-400',
+    green: 'text-green-600 dark:text-green-400',
+    orange: 'text-orange-600 dark:text-orange-400',
+  };
+
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+      <p className="mb-2 text-sm font-medium text-charcoal-600 dark:text-charcoal-400">{label}</p>
+      <p className={`text-3xl font-bold ${colorClasses[color]}`}>{value}</p>
+    </div>
+  );
+};
+
+// ============================================================================
+// MAIN PAGE COMPONENT
+// ============================================================================
 
 export default function TeamDetailsPage() {
   const router = useRouter();
@@ -60,352 +375,357 @@ export default function TeamDetailsPage() {
   const clubId = params.clubId as string;
   const teamId = params.teamId as string;
 
+  // State Management
   const [team, setTeam] = useState<Team | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [processingMemberId, setProcessingMemberId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchTeamData();
-  }, [teamId]);
+  // Toast utility
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
 
-  const fetchTeamData = async () => {
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ========================================================================
+  // DATA FETCHING
+  // ========================================================================
+
+  const fetchTeamData = useCallback(async () => {
     try {
+      setIsLoading(true);
       const response = await fetch(`/api/clubs/${clubId}/teams/${teamId}`);
-      if (!response.ok) throw new Error('Failed to fetch team');
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch team');
+      }
 
       const data = await response.json();
-      setTeam(data.team);
+      setTeam(data.team || data);
     } catch (error) {
       console.error('Error fetching team:', error);
-      toast.error('Failed to load team data');
+      showToast('Failed to load team data', 'error');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [clubId, teamId, showToast]);
+
+  useEffect(() => {
+    if (clubId && teamId) {
+      fetchTeamData();
+    }
+  }, [clubId, teamId, fetchTeamData]);
+
+  // ========================================================================
+  // REMOVE MEMBER HANDLER
+  // ========================================================================
 
   const handleRemoveMember = async (memberId: string, memberName: string) => {
-    if (!confirm(`Are you sure you want to remove ${memberName} from this team?`)) return;
+    if (!confirm(`Are you sure you want to remove ${memberName} from this team?`)) {
+      return;
+    }
 
     try {
+      setProcessingMemberId(memberId);
+
       const response = await fetch(`/api/clubs/${clubId}/teams/${teamId}/members/${memberId}`, {
         method: 'DELETE',
       });
 
-      if (!response.ok) throw new Error('Failed to remove member');
+      if (!response.ok) {
+        throw new Error('Failed to remove member');
+      }
 
-      toast.success('✅ Member removed successfully');
-      fetchTeamData();
+      setTeam((prev) =>
+        prev
+          ? { ...prev, members: prev.members.filter((m) => m.id !== memberId) }
+          : null
+      );
+
+      showToast(`${memberName} removed from team`, 'success');
     } catch (error) {
       console.error('Error removing member:', error);
-      toast.error('Failed to remove member');
+      showToast('Failed to remove member. Please try again.', 'error');
+    } finally {
+      setProcessingMemberId(null);
     }
   };
 
+  // ========================================================================
+  // CHANGE MEMBER ROLE HANDLER
+  // ========================================================================
+
   const handleChangeMemberRole = async (memberId: string, newRole: string) => {
     try {
+      setProcessingMemberId(memberId);
+
       const response = await fetch(`/api/clubs/${clubId}/teams/${teamId}/members/${memberId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
       });
 
-      if (!response.ok) throw new Error('Failed to update member role');
+      if (!response.ok) {
+        throw new Error('Failed to update member role');
+      }
 
-      toast.success('✅ Member role updated');
-      fetchTeamData();
+      setTeam((prev) =>
+        prev
+          ? {
+              ...prev,
+              members: prev.members.map((m) =>
+                m.id === memberId ? { ...m, role: newRole as TeamMember['role'] } : m
+              ),
+            }
+          : null
+      );
+
+      showToast(`Member role updated to ${ROLE_LABELS[newRole]}`, 'success');
     } catch (error) {
       console.error('Error updating member:', error);
-      toast.error('Failed to update member role');
+      showToast('Failed to update member role. Please try again.', 'error');
+    } finally {
+      setProcessingMemberId(null);
     }
   };
 
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case 'MANAGER':
-        return 'bg-purple-100 text-purple-700 border-purple-300';
-      case 'COACH':
-        return 'bg-blue-100 text-blue-700 border-blue-300';
-      case 'PLAYER':
-        return 'bg-green-100 text-green-700 border-green-300';
-      case 'STAFF':
-        return 'bg-orange-100 text-orange-700 border-orange-300';
-      default:
-        return 'bg-neutral-100 text-neutral-700 border-neutral-300';
-    }
-  };
-
-  const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-  };
+  // ========================================================================
+  // LOADING STATE
+  // ========================================================================
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-gold-500 mx-auto mb-4" />
-          <p className="text-charcoal-600">Loading team...</p>
+          <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-gold-600 dark:text-gold-500" />
+          <p className="font-medium text-charcoal-600 dark:text-charcoal-400">Loading team...</p>
         </div>
       </div>
     );
   }
+
+  // ========================================================================
+  // NOT FOUND STATE
+  // ========================================================================
 
   if (!team) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800">
         <div className="text-center">
-          <Trophy className="w-16 h-16 text-charcoal-300 mx-auto mb-4" />
-          <p className="text-xl font-semibold text-charcoal-900 mb-2">Team not found</p>
-          <p className="text-charcoal-600 mb-6">
+          <Trophy className="mx-auto mb-4 h-16 w-16 text-charcoal-300 dark:text-charcoal-600" />
+          <p className="mb-2 text-xl font-semibold text-charcoal-900 dark:text-white">
+            Team not found
+          </p>
+          <p className="mb-6 text-charcoal-600 dark:text-charcoal-400">
             The team you're looking for doesn't exist or you don't have access
           </p>
-          <Button
-            onClick={() => router.push(`/dashboard/clubs/${clubId}`)}
-            className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Club
-          </Button>
+          <Link href={`/dashboard/clubs/${clubId}`}>
+            <button className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-6 py-2 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Club
+            </button>
+          </Link>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => router.push(`/dashboard/clubs/${clubId}`)}
-            className="mb-4 hover:bg-gold-50"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Club
-          </Button>
+  // ========================================================================
+  // CALCULATIONS
+  // ========================================================================
 
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+  const memberStats = {
+    managers: team.members.filter((m) => m.role === 'MANAGER').length,
+    coaches: team.members.filter((m) => m.role === 'COACH').length,
+    players: team.members.filter((m) => m.role === 'PLAYER').length,
+    staff: team.members.filter((m) => m.role === 'STAFF').length,
+  };
+
+  // ========================================================================
+  // RENDER
+  // ========================================================================
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-7xl">
+        {/* HEADER */}
+        <div className="mb-8">
+          <Link href={`/dashboard/clubs/${clubId}`}>
+            <button className="mb-4 flex items-center gap-2 rounded-lg px-4 py-2 text-charcoal-700 transition-colors hover:bg-neutral-200 hover:text-charcoal-900 dark:text-charcoal-300 dark:hover:bg-charcoal-700 dark:hover:text-white">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Club
+            </button>
+          </Link>
+
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            {/* TEAM INFO */}
             <div className="flex items-center gap-6">
-              <div className="w-20 h-20 bg-gradient-to-br from-gold-500 to-orange-400 rounded-2xl flex items-center justify-center shadow-lg">
-                <Trophy className="w-10 h-10 text-white" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-gold-500 to-orange-500 shadow-lg">
+                <Trophy className="h-10 w-10 text-white" />
               </div>
 
               <div>
-                <div className="flex flex-wrap items-center gap-3 mb-2">
-                  <h1 className="text-3xl lg:text-4xl font-bold text-charcoal-900">
+                <div className="mb-2 flex flex-wrap items-center gap-3">
+                  <h1 className="text-3xl font-bold text-charcoal-900 dark:text-white lg:text-4xl">
                     {team.name}
                   </h1>
-                  <Badge className="bg-gold-100 text-gold-700 border-gold-300">
-                    {team.ageGroup}
-                  </Badge>
-                  <Badge variant="outline">{team.category.replace('_', ' ')}</Badge>
-                  <Badge
-                    variant={team.status === 'ACTIVE' ? 'default' : 'secondary'}
-                    className={
-                      team.status === 'ACTIVE' ? 'bg-green-100 text-green-700 border-green-300' : ''
-                    }
-                  >
-                    {team.status}
-                  </Badge>
+                  {team.ageGroup && (
+                    <Badge variant="default" className="bg-gold-100 text-gold-700">
+                      {team.ageGroup}
+                    </Badge>
+                  )}
+                  {team.category && (
+                    <Badge variant="outline">{team.category.replace(/_/g, ' ')}</Badge>
+                  )}
+                  {team.status && (
+                    <Badge
+                      variant={team.status === 'ACTIVE' ? 'success' : 'default'}
+                      className={
+                        team.status === 'ACTIVE'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : ''
+                      }
+                    >
+                      {team.status}
+                    </Badge>
+                  )}
                 </div>
-                <p className="text-charcoal-600 flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  {team._count.members} {team._count.members === 1 ? 'member' : 'members'}
+                <p className="flex items-center gap-2 text-charcoal-600 dark:text-charcoal-400">
+                  <Users className="h-4 w-4" />
+                  {team.members.length} {team.members.length === 1 ? 'member' : 'members'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <Button
+            {/* ACTION BUTTONS */}
+            <div className="flex gap-3">
+              <button
                 onClick={() => setShowInviteModal(true)}
-                className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white shadow-md"
+                className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-4 py-2 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600 shadow-md"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="h-4 w-4" />
                 Add Member
-              </Button>
-              <Button variant="outline" className="hover:bg-gold-50">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </Button>
+              </button>
+              <button className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700">
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Settings</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Team Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-charcoal-600 mb-1">Managers</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {team.members.filter((m) => m.role === 'MANAGER').length}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-charcoal-600 mb-1">Coaches</p>
-                <p className="text-2xl font-bold text-blue-600">
-                  {team.members.filter((m) => m.role === 'COACH').length}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-charcoal-600 mb-1">Players</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {team.members.filter((m) => m.role === 'PLAYER').length}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-charcoal-600 mb-1">Staff</p>
-                <p className="text-2xl font-bold text-orange-600">
-                  {team.members.filter((m) => m.role === 'STAFF').length}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+        {/* STAT CARDS */}
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-4">
+          <StatCard label="Managers" value={memberStats.managers} color="purple" />
+          <StatCard label="Coaches" value={memberStats.coaches} color="blue" />
+          <StatCard label="Players" value={memberStats.players} color="green" />
+          <StatCard label="Staff" value={memberStats.staff} color="orange" />
         </div>
 
-        {/* Team Members */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-gold-500" />
+        {/* TEAM MEMBERS SECTION */}
+        <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+          <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+            <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
+              <Users className="h-5 w-5 text-gold-600 dark:text-gold-400" />
               Team Members
-            </CardTitle>
-            <CardDescription>Manage your team roster and member roles</CardDescription>
-          </CardHeader>
-          <CardContent>
+            </h2>
+            <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+              Manage your team roster and member roles
+            </p>
+          </div>
+
+          <div className="p-6">
             {team.members.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="w-16 h-16 text-charcoal-300 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-charcoal-900 mb-2">No members yet</h3>
-                <p className="text-charcoal-600 mb-6">Add members to build your team</p>
-                <Button
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Users className="mb-4 h-16 w-16 text-charcoal-300 dark:text-charcoal-600" />
+                <h3 className="mb-2 text-lg font-semibold text-charcoal-900 dark:text-white">
+                  No members yet
+                </h3>
+                <p className="mb-6 text-charcoal-600 dark:text-charcoal-400">
+                  Add members to build your team
+                </p>
+                <button
                   onClick={() => setShowInviteModal(true)}
-                  className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white"
+                  className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-6 py-2 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
+                  <Plus className="h-4 w-4" />
                   Add First Member
-                </Button>
+                </button>
               </div>
             ) : (
               <div className="space-y-3">
                 {team.members.map((member) => (
                   <div
                     key={member.id}
-                    className="flex items-center justify-between p-4 border border-neutral-200 rounded-xl hover:border-gold-300 hover:shadow-md transition-all"
+                    className="flex items-center justify-between rounded-xl border border-neutral-200 p-4 transition-all hover:border-gold-300 hover:shadow-md dark:border-charcoal-700 dark:hover:border-gold-500"
                   >
-                    <div className="flex items-center gap-4">
-                      {/* Avatar */}
-                      <div className="w-12 h-12 bg-gradient-to-br from-gold-100 to-orange-100 rounded-full flex items-center justify-center font-bold text-gold-700">
-                        {member.user.avatar ? (
-                          <img
-                            src={member.user.avatar}
-                            alt={`${member.user.firstName} ${member.user.lastName}`}
-                            className="w-full h-full rounded-full object-cover"
-                          />
-                        ) : (
-                          getInitials(member.user.firstName, member.user.lastName)
-                        )}
-                      </div>
+                    {/* MEMBER INFO */}
+                    <div className="flex flex-1 items-center gap-4">
+                      <MemberAvatar
+                        avatar={member.user.avatar}
+                        firstName={member.user.firstName}
+                        lastName={member.user.lastName}
+                      />
 
-                      {/* Member Info */}
-                      <div>
-                        <p className="font-semibold text-charcoal-900">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-charcoal-900 dark:text-white">
                           {member.user.firstName} {member.user.lastName}
                         </p>
-                        <div className="flex items-center gap-2 text-sm text-charcoal-600">
-                          <Mail className="w-3 h-3" />
-                          {member.user.email}
-                        </div>
-                        <p className="text-xs text-charcoal-500 mt-1">
-                          Joined {new Date(member.joinedAt).toLocaleDateString()}
+                        <p className="flex items-center gap-2 text-sm text-charcoal-600 dark:text-charcoal-400">
+                          <Mail className="h-3 w-3 flex-shrink-0" />
+                          <span className="truncate">{member.user.email}</span>
+                        </p>
+                        <p className="text-xs text-charcoal-500 dark:text-charcoal-500">
+                          Joined{' '}
+                          {new Date(member.joinedAt).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
                         </p>
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-3">
-                      <Badge className={getRoleBadgeColor(member.role)}>{member.role}</Badge>
+                    {/* BADGES & ACTIONS */}
+                    <div className="flex flex-shrink-0 items-center gap-3">
+                      <Badge
+                        variant="default"
+                        className={`${ROLE_COLORS[member.role].bg} ${ROLE_COLORS[member.role].text} border ${ROLE_COLORS[member.role].border}`}
+                      >
+                        {ROLE_LABELS[member.role]}
+                      </Badge>
+
                       <Badge
                         variant="outline"
-                        className={
-                          member.status === 'ACTIVE'
-                            ? 'bg-green-50 text-green-700 border-green-300'
-                            : ''
-                        }
+                        className={`${STATUS_COLORS[member.status].bg} ${STATUS_COLORS[member.status].text}`}
                       >
                         {member.status}
                       </Badge>
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleChangeMemberRole(member.id, 'MANAGER')}
-                          >
-                            <Edit className="w-4 h-4 mr-2" />
-                            Make Manager
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleChangeMemberRole(member.id, 'COACH')}
-                          >
-                            <Edit className="w-4 h-4 mr-2" />
-                            Make Coach
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleChangeMemberRole(member.id, 'PLAYER')}
-                          >
-                            <Edit className="w-4 h-4 mr-2" />
-                            Make Player
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleChangeMemberRole(member.id, 'STAFF')}
-                          >
-                            <Edit className="w-4 h-4 mr-2" />
-                            Make Staff
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              handleRemoveMember(
-                                member.id,
-                                `${member.user.firstName} ${member.user.lastName}`
-                              )
-                            }
-                            className="text-red-600"
-                          >
-                            <UserMinus className="w-4 h-4 mr-2" />
-                            Remove from Team
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <DropdownMenu
+                        memberId={member.id}
+                        memberName={`${member.user.firstName} ${member.user.lastName}`}
+                        onChangeRole={handleChangeMemberRole}
+                        onRemove={handleRemoveMember}
+                      />
                     </div>
                   </div>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
-      {/* Add Member Modal */}
+      {/* ADD MEMBER MODAL */}
       {showInviteModal && (
         <AddMemberModal
           isOpen={showInviteModal}
@@ -415,6 +735,9 @@ export default function TeamDetailsPage() {
           onSuccess={fetchTeamData}
         />
       )}
+
+      {/* TOAST CONTAINER */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
