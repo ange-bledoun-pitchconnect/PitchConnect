@@ -5,7 +5,8 @@
  * ============================================================================
  * ENTERPRISE FEATURES
  * ============================================================================
- * ✅ Removed pino dependency (native implementation)
+ * ✅ ZERO external dependencies (removed uuid)
+ * ✅ Native crypto UUID generation
  * ✅ Structured logging with JSON support
  * ✅ Request tracking and correlation IDs
  * ✅ Performance monitoring and metrics
@@ -27,7 +28,48 @@
  * ✅ Production-ready code
  */
 
-import { v4 as uuidv4 } from 'uuid';
+// ============================================================================
+// UUID GENERATION - ZERO DEPENDENCIES
+// ============================================================================
+
+/**
+ * Generate a v4 UUID using native crypto (no external dependencies)
+ * Compatible with browser and Node.js environments
+ */
+function generateUUID(): string {
+  // Use crypto.randomUUID() if available (Node.js 15.7.0+, modern browsers)
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  // Fallback for older environments
+  const arr = new Uint8Array(16);
+
+  // Get random values
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(arr);
+  } else {
+    // Last resort fallback (should rarely be needed)
+    for (let i = 0; i < 16; i++) {
+      arr[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  // Set version (4) and variant (RFC 4122) bits
+  arr[6] = (arr[6] & 0x0f) | 0x40;
+  arr[8] = (arr[8] & 0x3f) | 0x80;
+
+  // Convert to hex string with dashes
+  const hex = Array.from(arr, (byte) => byte.toString(16).padStart(2, '0')).join('');
+
+  return [
+    hex.substring(0, 8),
+    hex.substring(8, 12),
+    hex.substring(12, 16),
+    hex.substring(16, 20),
+    hex.substring(20, 32),
+  ].join('-');
+}
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -104,18 +146,21 @@ const SENSITIVE_FIELDS = [
   'refreshToken',
   'bearerToken',
   'authorization',
+  'authorizationToken',
+  'sessionId',
 ];
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 const isProduction = process.env.NODE_ENV === 'production';
+const isStaging = process.env.NODE_ENV === 'staging';
 
 // ============================================================================
 // LOGGER CONFIGURATION
 // ============================================================================
 
 const defaultConfig: LoggerConfig = {
-  level: process.env.LOG_LEVEL ? (process.env.LOG_LEVEL as LogLevel) : isDevelopment ? 'debug' : 'info',
-  environment: (process.env.NODE_ENV as any) || 'development',
+  level: (process.env.LOG_LEVEL as LogLevel) || (isDevelopment ? 'debug' : 'info'),
+  environment: (process.env.NODE_ENV as 'development' | 'staging' | 'production') || 'development',
   service: 'pitchconnect',
   version: process.env.APP_VERSION || '1.0.0',
   enableConsole: true,
@@ -137,40 +182,45 @@ export function maskSensitiveData(
 ): Record<string, any> {
   if (!data || typeof data !== 'object') return data;
 
-  const masked = JSON.parse(JSON.stringify(data));
+  try {
+    const masked = JSON.parse(JSON.stringify(data));
 
-  function maskObject(obj: any, depth = 0): any {
-    if (depth > 10) return obj; // Prevent infinite recursion
+    function maskObject(obj: any, depth = 0): any {
+      if (depth > 10) return obj; // Prevent infinite recursion
 
-    if (Array.isArray(obj)) {
-      return obj.map((item) => maskObject(item, depth + 1));
-    }
-
-    if (obj !== null && typeof obj === 'object') {
-      const result: any = {};
-
-      for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-          const lowerKey = key.toLowerCase();
-          const shouldMask = fieldsToMask.some((field) =>
-            lowerKey.includes(field.toLowerCase())
-          );
-
-          if (shouldMask) {
-            result[key] = '***REDACTED***';
-          } else {
-            result[key] = maskObject(obj[key], depth + 1);
-          }
-        }
+      if (Array.isArray(obj)) {
+        return obj.map((item) => maskObject(item, depth + 1));
       }
 
-      return result;
+      if (obj !== null && typeof obj === 'object') {
+        const result: any = {};
+
+        for (const key in obj) {
+          if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            const lowerKey = key.toLowerCase();
+            const shouldMask = fieldsToMask.some((field) =>
+              lowerKey.includes(field.toLowerCase())
+            );
+
+            if (shouldMask) {
+              result[key] = '***REDACTED***';
+            } else {
+              result[key] = maskObject(obj[key], depth + 1);
+            }
+          }
+        }
+
+        return result;
+      }
+
+      return obj;
     }
 
-    return obj;
+    return maskObject(masked);
+  } catch (error) {
+    // If masking fails, return original data with redaction notice
+    return { ...data, _maskingError: 'Failed to mask sensitive data' };
   }
-
-  return maskObject(masked);
 }
 
 /**
@@ -185,24 +235,36 @@ function formatConsoleLog(entry: LogEntry, isDev: boolean): string {
     fatal: '🔴',
   };
 
-  const timestamp = isDev ? new Date(entry.timestamp).toLocaleTimeString() : entry.timestamp;
+  const levelColors: Record<LogLevel, string> = {
+    debug: '\x1b[36m', // Cyan
+    info: '\x1b[32m', // Green
+    warn: '\x1b[33m', // Yellow
+    error: '\x1b[31m', // Red
+    fatal: '\x1b[35m', // Magenta
+  };
+
+  const reset = '\x1b[0m';
+
+  const timestamp = isDev
+    ? new Date(entry.timestamp).toLocaleTimeString()
+    : entry.timestamp;
   const emoji = levelEmoji[entry.level];
   const level = entry.level.toUpperCase().padEnd(5);
 
-  let output = `${emoji} ${timestamp} [${level}]`;
+  let output = `${emoji} ${timestamp} ${levelColors[entry.level]}[${level}]${reset}`;
 
   if (entry.requestId) {
-    output += ` [${entry.requestId.substring(0, 8)}]`;
+    output += ` ${levelColors[entry.level]}[${entry.requestId.substring(0, 8)}]${reset}`;
   }
 
   if (entry.module) {
-    output += ` [${entry.module}]`;
+    output += ` ${levelColors[entry.level]}[${entry.module}]${reset}`;
   }
 
   output += ` ${entry.message}`;
 
   if (entry.duration) {
-    output += ` (${entry.duration})`;
+    output += ` ⏱️ ${entry.duration}`;
   }
 
   if (entry.data && Object.keys(entry.data).length > 0) {
@@ -210,7 +272,7 @@ function formatConsoleLog(entry: LogEntry, isDev: boolean): string {
   }
 
   if (entry.error) {
-    output += `\nError: ${entry.error.message}`;
+    output += `\n${levelColors['error']}Error: ${entry.error.message}${reset}`;
     if (isDev && entry.error.stack) {
       output += `\n${entry.error.stack}`;
     }
@@ -275,6 +337,14 @@ class LogBuffer {
       entry.message.toLowerCase().includes(lowerQuery)
     );
   }
+
+  getByModule(moduleName: string): LogEntry[] {
+    return this.buffer.filter((entry) => entry.module === moduleName);
+  }
+
+  getErrorLogs(): LogEntry[] {
+    return this.buffer.filter((entry) => entry.level === 'error' || entry.level === 'fatal');
+  }
 }
 
 // ============================================================================
@@ -287,9 +357,11 @@ class Logger {
   private correlationId: string | null = null;
   private requestContextStack: Map<string, RequestMetadata> = new Map();
   private performanceMetrics: PerformanceMetric[] = [];
+  private moduleName?: string;
 
-  constructor(config: Partial<LoggerConfig> = {}) {
+  constructor(config: Partial<LoggerConfig> = {}, moduleName?: string) {
     this.config = { ...defaultConfig, ...config };
+    this.moduleName = moduleName;
   }
 
   /**
@@ -310,7 +382,7 @@ class Logger {
    * Create a child logger with module context
    */
   createChild(moduleName: string): Logger {
-    const child = new Logger(this.config);
+    const child = new Logger(this.config, moduleName);
     child.correlationId = this.correlationId;
     child.buffer = this.buffer; // Share buffer
     return child;
@@ -340,7 +412,7 @@ class Logger {
       level,
       message,
       requestId: this.correlationId || undefined,
-      module,
+      module: module || this.moduleName,
       data: maskedData,
       metadata: {
         environment: this.config.environment,
@@ -386,10 +458,10 @@ class Logger {
    */
   private writeToFile(entry: LogEntry): void {
     // In production, you would write to a file system or log aggregation service
-    // For now, we'll use console for file output in Node.js
+    // For now, logs are stored in buffer and can be exported
     if (entry.level === 'error' || entry.level === 'fatal') {
       const jsonLog = formatJsonLog(entry);
-      // In real implementation, write to file or send to logging service
+      // In real implementation, write to file or send to logging service (e.g., Sentry, DataDog)
     }
   }
 
@@ -438,9 +510,12 @@ class Logger {
   /**
    * Get all logs
    */
-  getLogs(filter?: { level?: LogLevel; requestId?: string }): LogEntry[] {
+  getLogs(filter?: { level?: LogLevel; requestId?: string; module?: string }): LogEntry[] {
     if (filter?.requestId) {
       return this.buffer.getByRequestId(filter.requestId);
+    }
+    if (filter?.module) {
+      return this.buffer.getByModule(filter.module);
     }
     if (filter?.level) {
       return this.buffer.getByLevel(filter.level);
@@ -501,9 +576,9 @@ export class RequestLogger {
     ipAddress?: string,
     userAgent?: string
   ) {
-    this.logger = new Logger(defaultConfig);
+    this.logger = new Logger(defaultConfig, 'RequestLogger');
     this.metadata = {
-      requestId: uuidv4(),
+      requestId: generateUUID(), // Using native UUID generation
       method,
       path,
       userId: userId || 'anonymous',
@@ -597,7 +672,7 @@ export class RequestLogger {
 // SINGLETON LOGGER INSTANCE
 // ============================================================================
 
-export const logger = new Logger(defaultConfig);
+export const logger = new Logger(defaultConfig, 'PitchConnect');
 
 // ============================================================================
 // ERROR LOGGING FUNCTIONS
@@ -624,11 +699,13 @@ export function logError(
  */
 export function logValidationError(
   fields: Record<string, string[]>,
-  context: string
+  context: string,
+  userId?: string
 ): void {
   logger.warn('Validation failed', {
     context,
     validationErrors: fields,
+    userId,
   });
 }
 
@@ -656,7 +733,8 @@ export function logDatabaseQuery(
       duration: `${Math.round(duration)}ms`,
       rowsAffected,
       ...(error && { errorMessage: error.message }),
-    }
+    },
+    'Database'
   );
 
   logger.addMetric({
@@ -682,13 +760,18 @@ export function logApiCall(
 
   const logMethod = isError ? logger.warn : logger.info;
 
-  logMethod.call(logger, `API call to ${endpoint}`, {
-    endpoint,
-    method,
-    statusCode,
-    duration: `${Math.round(duration)}ms`,
-    responseSize,
-  });
+  logMethod.call(
+    logger,
+    `API call to ${endpoint}`,
+    {
+      endpoint,
+      method,
+      statusCode,
+      duration: `${Math.round(duration)}ms`,
+      responseSize,
+    },
+    'API'
+  );
 
   logger.addMetric({
     name: `api_call_${method}_${endpoint}`,
@@ -706,11 +789,15 @@ export function logCacheOperation(
   key: string,
   duration: number
 ): void {
-  logger.debug(`Cache ${operation}`, {
-    operation,
-    key: key.substring(0, 100), // Truncate long keys
-    duration: `${Math.round(duration)}ms`,
-  });
+  logger.debug(
+    `Cache ${operation}`,
+    {
+      operation,
+      key: key.substring(0, 100), // Truncate long keys
+      duration: `${Math.round(duration)}ms`,
+    },
+    'Cache'
+  );
 
   logger.addMetric({
     name: `cache_${operation}`,
@@ -735,12 +822,17 @@ export function logAuthEvent(
   const level = success ? 'info' : 'warn';
   const logMethod = success ? logger.info : logger.warn;
 
-  logMethod.call(logger, `Authentication: ${action}`, {
-    action,
-    userId,
-    success,
-    reason,
-  });
+  logMethod.call(
+    logger,
+    `Authentication: ${action}`,
+    {
+      action,
+      userId,
+      success,
+      reason,
+    },
+    'Auth'
+  );
 }
 
 /**
@@ -755,13 +847,18 @@ export function logAuthorizationCheck(
 ): void {
   const logMethod = !allowed ? logger.warn : logger.debug;
 
-  logMethod.call(logger, `Authorization check: ${action} on ${resource}`, {
-    userId,
-    resource,
-    action,
-    allowed,
-    reason,
-  });
+  logMethod.call(
+    logger,
+    `Authorization check: ${action} on ${resource}`,
+    {
+      userId,
+      resource,
+      action,
+      allowed,
+      reason,
+    },
+    'Authorization'
+  );
 }
 
 /**
@@ -773,12 +870,16 @@ export function logSecurityEvent(
   details: Record<string, any>,
   ipAddress?: string
 ): void {
-  logger.warn(`Security event: ${event}`, {
-    event,
-    userId,
-    ipAddress,
-    details,
-  });
+  logger.warn(
+    `Security event: ${event}`,
+    {
+      event,
+      userId,
+      ipAddress,
+      details,
+    },
+    'Security'
+  );
 }
 
 // ============================================================================
@@ -795,13 +896,17 @@ export function logBusinessEvent(
   userId: string,
   details?: Record<string, any>
 ): void {
-  logger.info(`Business event: ${event}`, {
-    event,
-    entityType,
-    entityId,
-    userId,
-    details,
-  });
+  logger.info(
+    `Business event: ${event}`,
+    {
+      event,
+      entityType,
+      entityId,
+      userId,
+      details,
+    },
+    'Business'
+  );
 }
 
 /**
@@ -817,14 +922,19 @@ export function logPaymentEvent(
 ): void {
   const logMethod = event === 'PAYMENT_FAILED' ? logger.warn : logger.info;
 
-  logMethod.call(logger, `Payment event: ${event}`, {
-    event,
-    transactionId,
-    userId,
-    amount,
-    currency,
-    reason,
-  });
+  logMethod.call(
+    logger,
+    `Payment event: ${event}`,
+    {
+      event,
+      transactionId,
+      userId,
+      amount,
+      currency,
+      reason,
+    },
+    'Payment'
+  );
 }
 
 /**
@@ -837,13 +947,17 @@ export function logDataChange(
   userId: string,
   changes: Record<string, any>
 ): void {
-  logger.info(`Data change: ${action} ${entityType}`, {
-    action,
-    entityType,
-    entityId,
-    userId,
-    changes,
-  });
+  logger.info(
+    `Data change: ${action} ${entityType}`,
+    {
+      action,
+      entityType,
+      entityId,
+      userId,
+      changes,
+    },
+    'Audit'
+  );
 }
 
 // ============================================================================
@@ -857,6 +971,7 @@ export function logSystemStartup(): void {
   logger.info('Application started', {
     environment: process.env.NODE_ENV,
     nodeVersion: typeof process !== 'undefined' ? process.version : 'N/A',
+    timestamp: new Date().toISOString(),
   });
 }
 
@@ -866,6 +981,7 @@ export function logSystemStartup(): void {
 export function logSystemShutdown(reason: string): void {
   logger.info('Application shutting down', {
     reason,
+    timestamp: new Date().toISOString(),
   });
 }
 
@@ -876,9 +992,15 @@ export function logHealthCheck(services: Record<string, boolean>): void {
   const allHealthy = Object.values(services).every((s) => s);
   const logMethod = allHealthy ? logger.debug : logger.warn;
 
-  logMethod.call(logger, 'Health check', {
-    services,
-  });
+  logMethod.call(
+    logger,
+    'Health check',
+    {
+      services,
+      timestamp: new Date().toISOString(),
+    },
+    'Health'
+  );
 }
 
 // ============================================================================
@@ -905,10 +1027,14 @@ export function withPerformanceLogging<T extends (...args: any[]) => Promise<any
       const result = await fn(...args);
       const duration = performance.now() - startTime;
 
-      logger.debug(`Function executed: ${fnName}`, {
-        function: fnName,
-        duration: `${Math.round(duration)}ms`,
-      });
+      logger.debug(
+        `Function executed: ${fnName}`,
+        {
+          function: fnName,
+          duration: `${Math.round(duration)}ms`,
+        },
+        'Performance'
+      );
 
       logger.addMetric({
         name: `function_${fnName}`,
@@ -921,10 +1047,15 @@ export function withPerformanceLogging<T extends (...args: any[]) => Promise<any
       const duration = performance.now() - startTime;
       const err = error instanceof Error ? error : new Error(String(error));
 
-      logger.error(`Function failed: ${fnName}`, err, {
-        function: fnName,
-        duration: `${Math.round(duration)}ms`,
-      });
+      logger.error(
+        `Function failed: ${fnName}`,
+        err,
+        {
+          function: fnName,
+          duration: `${Math.round(duration)}ms`,
+        },
+        'Performance'
+      );
 
       logger.addMetric({
         name: `function_${fnName}`,
@@ -944,12 +1075,17 @@ export function getLoggerStats(): {
   totalLogs: number;
   errorCount: number;
   warnCount: number;
+  infoCount: number;
+  debugCount: number;
   averageMetric: Record<string, number>;
   uptime: number;
+  environment: string;
 } {
   const logs = logger.getLogs();
   const errors = logs.filter((l) => l.level === 'error' || l.level === 'fatal');
   const warnings = logs.filter((l) => l.level === 'warn');
+  const infos = logs.filter((l) => l.level === 'info');
+  const debugs = logs.filter((l) => l.level === 'debug');
   const metrics = logger.getMetrics();
 
   const averageMetric: Record<string, number> = {};
@@ -966,9 +1102,37 @@ export function getLoggerStats(): {
     totalLogs: logs.length,
     errorCount: errors.length,
     warnCount: warnings.length,
+    infoCount: infos.length,
+    debugCount: debugs.length,
     averageMetric,
     uptime: typeof process !== 'undefined' ? process.uptime() * 1000 : 0,
+    environment: defaultConfig.environment,
   };
+}
+
+/**
+ * Export logs as JSON (for debugging/analysis)
+ */
+export function exportLogsAsJSON(): string {
+  const logs = logger.getLogs();
+  const stats = getLoggerStats();
+
+  return JSON.stringify(
+    {
+      metadata: stats,
+      timestamp: new Date().toISOString(),
+      logs,
+    },
+    null,
+    2
+  );
+}
+
+/**
+ * Export error logs specifically
+ */
+export function exportErrorLogs(): LogEntry[] {
+  return logger.getBuffer().getErrorLogs();
 }
 
 // ============================================================================
@@ -978,6 +1142,7 @@ export function getLoggerStats(): {
 export default {
   logger,
   RequestLogger,
+  generateUUID,
   logError,
   logValidationError,
   logDatabaseQuery,
@@ -996,4 +1161,6 @@ export default {
   createModuleLogger,
   withPerformanceLogging,
   getLoggerStats,
+  exportLogsAsJSON,
+  exportErrorLogs,
 };
