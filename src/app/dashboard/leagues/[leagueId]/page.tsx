@@ -1,10 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+/**
+ * PitchConnect League Dashboard Page - v2.0 ENHANCED
+ * Location: ./src/app/dashboard/leagues/[leagueId]/page.tsx
+ *
+ * Features:
+ * ✅ Comprehensive league overview dashboard
+ * ✅ Quick stats: teams, fixtures, format, registration status
+ * ✅ Points system display with bonus points
+ * ✅ League standings table (top 10)
+ * ✅ Teams grid with club information
+ * ✅ Quick navigation to manage, analytics, teams
+ * ✅ Delete league functionality with confirmation
+ * ✅ Custom toast notifications (zero dependencies)
+ * ✅ Empty states with call-to-action
+ * ✅ Dark mode support
+ * ✅ Responsive design
+ * ✅ Schema-aligned data models
+ * ✅ Loading and error states
+ */
+
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 import {
   ArrowLeft,
   Trophy,
@@ -15,22 +33,23 @@ import {
   Loader2,
   Shield,
   TrendingUp,
-  Edit,
-  Trash2,
   Globe,
   Lock,
   EyeOff,
   Target,
   Star,
-  Award,
   CheckCircle,
   XCircle,
   BarChart3,
-  Activity,
-  Zap,
+  Trash2,
+  AlertCircle,
+  Check,
+  X,
 } from 'lucide-react';
-import Link from 'next/link';
-import toast from 'react-hot-toast';
+
+// ============================================================================
+// TYPES - SCHEMA-ALIGNED
+// ============================================================================
 
 interface League {
   id: string;
@@ -67,8 +86,28 @@ interface League {
     standings: number;
     invitations: number;
   };
-  teams: any[];
-  standings: any[];
+  teams: Array<{
+    id: string;
+    name: string;
+    ageGroup?: string;
+    category?: string;
+    joinedAt?: string;
+    club?: {
+      name: string;
+    };
+  }>;
+  standings: Array<{
+    id: string;
+    position: number;
+    teamId: string;
+    teamName: string;
+    played: number;
+    won: number;
+    drawn: number;
+    lost: number;
+    goalDifference: number;
+    points: number;
+  }>;
   fixtures: any[];
   admin: {
     user: {
@@ -79,67 +118,367 @@ interface League {
   };
 }
 
+interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
+// ============================================================================
+// TOAST COMPONENT (No External Dependency)
+// ============================================================================
+
+const Toast = ({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onClose: () => void;
+}) => {
+  const baseClasses =
+    'fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 z-50';
+
+  const typeClasses = {
+    success:
+      'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400',
+    error:
+      'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400',
+    info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400',
+  };
+
+  const icons = {
+    success: <Check className="h-5 w-5 flex-shrink-0" />,
+    error: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+    info: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
+  };
+
+  return (
+    <div className={`${baseClasses} ${typeClasses[type]}`}>
+      {icons[type]}
+      <p className="text-sm font-medium">{message}</p>
+      <button onClick={onClose} className="ml-2 hover:opacity-70">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+};
+
+const ToastContainer = ({
+  toasts,
+  onRemove,
+}: {
+  toasts: ToastMessage[];
+  onRemove: (id: string) => void;
+}) => (
+  <div className="fixed bottom-4 right-4 z-50 space-y-2">
+    {toasts.map((toast) => (
+      <Toast
+        key={toast.id}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => onRemove(toast.id)}
+      />
+    ))}
+  </div>
+);
+
+// ============================================================================
+// STAT CARD COMPONENT
+// ============================================================================
+
+const StatCard = ({
+  label,
+  value,
+  subtext,
+  icon: Icon,
+  color,
+  href,
+}: {
+  label: string;
+  value: string | number;
+  subtext?: string;
+  icon: React.ElementType;
+  color: 'gold' | 'blue' | 'purple' | 'green' | 'red';
+  href?: string;
+}) => {
+  const colorMap = {
+    gold: 'bg-gold-100 dark:bg-gold-900/30 text-gold-600 dark:text-gold-400',
+    blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+    purple: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
+    green: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
+    red: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+  };
+
+  const cardClasses =
+    'rounded-lg border border-neutral-200 bg-white p-6 shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800 transition-all hover:shadow-md dark:hover:shadow-charcoal-900/30';
+
+  const content = (
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="mb-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+          {label}
+        </p>
+        <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
+          {value}
+        </p>
+        {subtext && (
+          <p className="mt-1 text-xs text-charcoal-500 dark:text-charcoal-500">
+            {subtext}
+          </p>
+        )}
+      </div>
+      <div className={`rounded-xl p-3 ${colorMap[color]}`}>
+        <Icon className="h-6 w-6" />
+      </div>
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link href={href}>
+        <div className={cardClasses}>{content}</div>
+      </Link>
+    );
+  }
+
+  return <div className={cardClasses}>{content}</div>;
+};
+
+// ============================================================================
+// STANDINGS TABLE COMPONENT
+// ============================================================================
+
+const StandingsTable = ({ standings }: { standings: League['standings'] }) => {
+  if (standings.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <TrendingUp className="mx-auto mb-4 h-16 w-16 text-charcoal-300 dark:text-charcoal-600" />
+        <h3 className="mb-2 text-xl font-semibold text-charcoal-900 dark:text-white">
+          No standings yet
+        </h3>
+        <p className="mb-6 text-charcoal-600 dark:text-charcoal-400">
+          Add teams to generate league standings
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-neutral-200 dark:border-charcoal-700">
+            <th className="px-4 py-3 text-left text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+              Pos
+            </th>
+            <th className="px-4 py-3 text-left text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+              Team
+            </th>
+            <th className="px-4 py-3 text-center text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+              P
+            </th>
+            <th className="px-4 py-3 text-center text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+              W
+            </th>
+            <th className="px-4 py-3 text-center text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+              D
+            </th>
+            <th className="px-4 py-3 text-center text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+              L
+            </th>
+            <th className="px-4 py-3 text-center text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+              GD
+            </th>
+            <th className="px-4 py-3 text-center text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
+              Pts
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {standings.slice(0, 10).map((standing) => (
+            <tr
+              key={standing.id}
+              className="border-b border-neutral-100 transition-colors hover:bg-gold-50 dark:border-charcoal-700 dark:hover:bg-charcoal-700/50"
+            >
+              <td className="px-4 py-3 text-charcoal-900 dark:text-white font-bold">
+                {standing.position}
+              </td>
+              <td className="px-4 py-3">
+                <span className="font-semibold text-charcoal-900 dark:text-white">
+                  {standing.teamName || `Team ${standing.teamId.slice(0, 8)}`}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-center text-charcoal-700 dark:text-charcoal-300">
+                {standing.played}
+              </td>
+              <td className="px-4 py-3 text-center text-charcoal-700 dark:text-charcoal-300">
+                {standing.won}
+              </td>
+              <td className="px-4 py-3 text-center text-charcoal-700 dark:text-charcoal-300">
+                {standing.drawn}
+              </td>
+              <td className="px-4 py-3 text-center text-charcoal-700 dark:text-charcoal-300">
+                {standing.lost}
+              </td>
+              <td className="px-4 py-3 text-center text-charcoal-700 dark:text-charcoal-300">
+                {standing.goalDifference > 0 ? '+' : ''}
+                {standing.goalDifference}
+              </td>
+              <td className="px-4 py-3 text-center font-bold text-gold-600 dark:text-gold-400">
+                {standing.points}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// ============================================================================
+// TEAM CARD COMPONENT
+// ============================================================================
+
+const TeamCard = ({
+  team,
+}: {
+  team: League['teams'][number];
+}) => {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-neutral-50 shadow-sm transition-all hover:shadow-md dark:border-charcoal-700 dark:bg-charcoal-700">
+      <div className="p-6">
+        <div className="mb-3 flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-gold-100 to-orange-100 dark:from-gold-900/30 dark:to-orange-900/30">
+            <Shield className="h-6 w-6 text-gold-600 dark:text-gold-400" />
+          </div>
+          <div>
+            <p className="font-bold text-charcoal-900 dark:text-white">
+              {team.name}
+            </p>
+            <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+              {team.club?.name || 'N/A'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="inline-block rounded-full border border-neutral-300 bg-white px-3 py-1 text-charcoal-700 dark:border-charcoal-600 dark:bg-charcoal-600 dark:text-charcoal-300">
+            {team.ageGroup || team.category || 'N/A'}
+          </span>
+          <span className="text-charcoal-600 dark:text-charcoal-400">
+            {team.joinedAt
+              ? new Date(team.joinedAt).toLocaleDateString('en-GB')
+              : 'N/A'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// MAIN PAGE COMPONENT
+// ============================================================================
+
 export default function LeagueDashboardPage() {
   const router = useRouter();
   const params = useParams();
-  const id = params.leagueId as string;
+  const leagueId = params.leagueId as string;
 
+  // State Management
   const [league, setLeague] = useState<League | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Toast utility
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+      const id = Math.random().toString(36).substr(2, 9);
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 4000);
+    },
+    []
+  );
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ========================================================================
+  // DATA FETCHING
+  // ========================================================================
 
   useEffect(() => {
     fetchLeagueData();
-  }, [id]);
+  }, [leagueId]);
 
   const fetchLeagueData = async () => {
     try {
-      const response = await fetch(`/api/leagues/${id}`);
+      setIsLoading(true);
+      const response = await fetch(`/api/leagues/${leagueId}`);
       if (!response.ok) throw new Error('Failed to fetch league');
 
       const data = await response.json();
       setLeague(data);
     } catch (error) {
       console.error('Error fetching league:', error);
-      toast.error('Failed to load league data');
+      showToast('Failed to load league data', 'error');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ========================================================================
+  // HANDLERS
+  // ========================================================================
+
   const handleDeleteLeague = async () => {
-    if (!confirm(`Are you sure you want to delete "${league?.name}"? This action cannot be undone.`)) {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete "${league?.name}"? This action cannot be undone.`
+      )
+    ) {
       return;
     }
 
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/leagues/${id}`, {
+      const response = await fetch(`/api/leagues/${leagueId}`, {
         method: 'DELETE',
       });
 
       if (!response.ok) throw new Error('Failed to delete league');
 
-      toast.success('League deleted successfully');
-      router.push('/dashboard/leagues');
+      showToast('✅ League deleted successfully', 'success');
+      setTimeout(() => {
+        router.push('/dashboard/leagues');
+      }, 1000);
     } catch (error) {
       console.error('Error deleting league:', error);
-      toast.error('Failed to delete league');
+      showToast('Failed to delete league', 'error');
     } finally {
       setIsDeleting(false);
     }
   };
 
+  // ========================================================================
+  // HELPERS
+  // ========================================================================
+
   const getVisibilityIcon = (visibility: string) => {
     switch (visibility) {
       case 'PUBLIC':
-        return <Globe className="w-4 h-4" />;
+        return <Globe className="h-4 w-4" />;
       case 'PRIVATE':
-        return <Lock className="w-4 h-4" />;
+        return <Lock className="h-4 w-4" />;
       case 'UNLISTED':
-        return <EyeOff className="w-4 h-4" />;
+        return <EyeOff className="h-4 w-4" />;
       default:
-        return <Globe className="w-4 h-4" />;
+        return <Globe className="h-4 w-4" />;
     }
   };
 
@@ -156,428 +495,330 @@ export default function LeagueDashboardPage() {
     }
   };
 
+  // ========================================================================
+  // LOADING STATE
+  // ========================================================================
+
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-gold-500 mx-auto mb-4" />
-          <p className="text-charcoal-600 dark:text-charcoal-400">Loading league...</p>
+          <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-gold-500" />
+          <p className="text-charcoal-600 dark:text-charcoal-400">
+            Loading league...
+          </p>
         </div>
       </div>
     );
   }
+
+  // ========================================================================
+  // EMPTY STATE
+  // ========================================================================
 
   if (!league) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
         <div className="text-center">
-          <Trophy className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
-          <p className="text-xl font-semibold text-charcoal-900 dark:text-white mb-2">League not found</p>
-          <p className="text-charcoal-600 dark:text-charcoal-400 mb-6">The league you're looking for doesn't exist</p>
-          <Button 
-            onClick={() => router.push('/dashboard/leagues')} 
-            className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white"
+          <Trophy className="mx-auto mb-4 h-16 w-16 text-charcoal-300 dark:text-charcoal-600" />
+          <p className="mb-2 text-xl font-semibold text-charcoal-900 dark:text-white">
+            League not found
+          </p>
+          <p className="mb-6 text-charcoal-600 dark:text-charcoal-400">
+            The league you're looking for doesn't exist
+          </p>
+          <button
+            onClick={() => router.push('/dashboard/leagues')}
+            className="rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-6 py-2 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600"
           >
             Go to Leagues
-          </Button>
+          </button>
         </div>
       </div>
     );
   }
 
+  // ========================================================================
+  // CALCULATIONS
+  // ========================================================================
+
   const totalTeams = league._count?.teams || league.teams.length || 0;
   const totalFixtures = league._count?.fixtures || league.fixtures.length || 0;
-  const totalStandings = league._count?.standings || league.standings.length || 0;
   const pendingInvitations = league._count?.invitations || 0;
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 transition-colors duration-200 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/dashboard/leagues')}
-            className="mb-4 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Leagues
-          </Button>
+  // ========================================================================
+  // RENDER
+  // ========================================================================
 
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-orange-50/10 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-7xl">
+        {/* HEADER */}
+        <div className="mb-8">
+          <Link href="/dashboard/leagues">
+            <button className="mb-4 flex items-center gap-2 rounded-lg px-4 py-2 text-charcoal-700 transition-colors hover:bg-neutral-100 hover:text-charcoal-900 dark:text-charcoal-300 dark:hover:bg-charcoal-700 dark:hover:text-white">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Leagues
+            </button>
+          </Link>
+
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex items-center gap-6">
-              <div className="w-24 h-24 bg-gradient-to-br from-gold-500 to-orange-400 rounded-2xl flex items-center justify-center shadow-lg">
-                <Trophy className="w-12 h-12 text-white" />
+              <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-gold-500 to-orange-400 shadow-lg">
+                <Trophy className="h-12 w-12 text-white" />
               </div>
 
               <div>
-                <div className="flex flex-wrap items-center gap-3 mb-2">
-                  <h1 className="text-3xl lg:text-4xl font-bold text-charcoal-900 dark:text-white">
+                <div className="mb-2 flex flex-wrap items-center gap-3">
+                  <h1 className="text-3xl font-bold text-charcoal-900 dark:text-white lg:text-4xl">
                     {league.name}
                   </h1>
-                  <Badge className="bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-300 border-gold-300 dark:border-gold-600">
+                  <span className="inline-block rounded-full bg-gold-100 px-3 py-1 text-xs font-semibold text-gold-700 dark:bg-gold-900/30 dark:text-gold-300">
                     {league.code}
-                  </Badge>
-                  <Badge variant="outline" className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300">
+                  </span>
+                  <span className="inline-block rounded-full border border-neutral-300 px-3 py-1 text-xs font-semibold text-charcoal-700 dark:border-charcoal-600 dark:text-charcoal-300">
                     {league.season}/{league.season + 1}
-                  </Badge>
-                  <Badge className={getStatusColor(league.status)}>
+                  </span>
+                  <span
+                    className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
+                      league.status
+                    )}`}
+                  >
                     {league.status}
-                  </Badge>
+                  </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-charcoal-600 dark:text-charcoal-400 flex items-center gap-2">
+                  <p className="flex items-center gap-2 text-charcoal-600 dark:text-charcoal-400">
                     {getVisibilityIcon(league.visibility)}
                     {league.visibility}
                   </p>
-                  <span className="text-charcoal-400 dark:text-charcoal-600">•</span>
-                  <p className="text-charcoal-600 dark:text-charcoal-400">{league.sport}</p>
-                  <span className="text-charcoal-400 dark:text-charcoal-600">•</span>
-                  <p className="text-charcoal-600 dark:text-charcoal-400">{league.country}</p>
+                  <span className="text-charcoal-400 dark:text-charcoal-600">
+                    •
+                  </span>
+                  <p className="text-charcoal-600 dark:text-charcoal-400">
+                    {league.sport}
+                  </p>
+                  <span className="text-charcoal-400 dark:text-charcoal-600">
+                    •
+                  </span>
+                  <p className="text-charcoal-600 dark:text-charcoal-400">
+                    {league.country}
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
-              <Link href={`/dashboard/leagues/${id}/teams`}>
-                <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
-                  <Plus className="w-4 h-4 mr-2" />
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href={`/dashboard/leagues/${leagueId}/teams`}>
+                <button className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-4 py-2 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600">
+                  <Plus className="h-4 w-4" />
                   Manage Teams
-                </Button>
+                </button>
               </Link>
-              <Link href={`/dashboard/leagues/${id}/manage`}>
-                <Button 
-                  variant="outline" 
-                  className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
-                >
-                  <Settings className="w-4 h-4 mr-2" />
+              <Link href={`/dashboard/leagues/${leagueId}/manage`}>
+                <button className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700">
+                  <Settings className="h-4 w-4" />
                   Manage
-                </Button>
+                </button>
               </Link>
-              <Link href={`/dashboard/leagues/${id}/analytics`}>
-                <Button 
-                  variant="outline" 
-                  className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
-                >
-                  <BarChart3 className="w-4 h-4 mr-2" />
+              <Link href={`/dashboard/leagues/${leagueId}/analytics`}>
+                <button className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700">
+                  <BarChart3 className="h-4 w-4" />
                   Analytics
-                </Button>
+                </button>
               </Link>
-              <Button
-                variant="outline"
+              <button
                 onClick={handleDeleteLeague}
                 disabled={isDeleting}
-                className="border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 font-semibold text-red-600 transition-all hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-700 dark:bg-charcoal-800 dark:text-red-400 dark:hover:bg-red-900/20"
               >
                 {isDeleting ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Trash2 className="w-4 h-4 mr-2" />
+                  <Trash2 className="h-4 w-4" />
                 )}
                 Delete
-              </Button>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Stats Cards - ENHANCED */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          {/* Total Teams */}
-          <Link href={`/dashboard/leagues/${id}/teams`}>
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 cursor-pointer hover:shadow-lg dark:hover:shadow-charcoal-900/30 hover:border-gold-300 dark:hover:border-gold-600 transition-all h-full">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-1">Teams</p>
-                    <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-                      {totalTeams}
-                    </p>
-                    {league.configuration && (
-                      <p className="text-xs text-charcoal-500 dark:text-charcoal-500 mt-1">
-                        Max: {league.configuration.maxTeams || '∞'}
-                      </p>
-                    )}
-                  </div>
-                  <div className="w-12 h-12 bg-gold-100 dark:bg-gold-900/30 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Shield className="w-6 h-6 text-gold-600 dark:text-gold-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          {/* Total Fixtures */}
-          <Link href={`/dashboard/leagues/${id}/standings`}>
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 cursor-pointer hover:shadow-lg dark:hover:shadow-charcoal-900/30 hover:border-blue-300 dark:hover:border-blue-600 transition-all h-full">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-1">Fixtures</p>
-                    <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-                      {totalFixtures}
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center hover:scale-110 transition-transform">
-                    <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          {/* League Format */}
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 h-full">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-1">Format</p>
-                  <p className="text-lg font-bold text-charcoal-900 dark:text-white">
-                    {league.format.replace(/_/g, ' ')}
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center">
-                  <Target className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Registration Status */}
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 h-full">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-1">Registration</p>
-                  <p className="text-lg font-bold text-charcoal-900 dark:text-white">
-                    {league.configuration?.registrationOpen ? 'Open' : 'Closed'}
-                  </p>
-                  {pendingInvitations > 0 && (
-                    <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                      {pendingInvitations} pending
-                    </p>
-                  )}
-                </div>
-                <div
-                  className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                    league.configuration?.registrationOpen
-                      ? 'bg-green-100 dark:bg-green-900/30'
-                      : 'bg-red-100 dark:bg-red-900/30'
-                  }`}
-                >
-                  {league.configuration?.registrationOpen ? (
-                    <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-                  ) : (
-                    <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* STAT CARDS */}
+        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
+          <StatCard
+            label="Teams"
+            value={totalTeams}
+            subtext={
+              league.configuration
+                ? `Max: ${league.configuration.maxTeams || '∞'}`
+                : undefined
+            }
+            icon={Shield}
+            color="gold"
+            href={`/dashboard/leagues/${leagueId}/teams`}
+          />
+          <StatCard
+            label="Fixtures"
+            value={totalFixtures}
+            icon={Calendar}
+            color="blue"
+            href={`/dashboard/leagues/${leagueId}/fixtures`}
+          />
+          <StatCard
+            label="Format"
+            value={league.format.replace(/_/g, ' ')}
+            icon={Target}
+            color="purple"
+          />
+          <StatCard
+            label="Registration"
+            value={league.configuration?.registrationOpen ? 'Open' : 'Closed'}
+            subtext={
+              pendingInvitations > 0
+                ? `${pendingInvitations} pending`
+                : undefined
+            }
+            icon={
+              league.configuration?.registrationOpen
+                ? CheckCircle
+                : XCircle
+            }
+            color={
+              league.configuration?.registrationOpen ? 'green' : 'red'
+            }
+          />
         </div>
 
-        {/* Points System */}
-        <Card className="mb-8 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-              <Trophy className="w-5 h-5 text-gold-500" />
+        {/* POINTS SYSTEM */}
+        <div className="mb-8 rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+          <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+            <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
+              <Trophy className="h-5 w-5 text-gold-500" />
               Points System
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+            </h2>
+          </div>
+          <div className="p-6">
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                  <span className="text-lg font-bold text-green-700 dark:text-green-300">{league.pointsWin}</span>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
+                  <span className="text-lg font-bold text-green-700 dark:text-green-300">
+                    {league.pointsWin}
+                  </span>
                 </div>
-                <span className="text-sm text-charcoal-600 dark:text-charcoal-400">Win</span>
+                <span className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                  Win
+                </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
-                  <span className="text-lg font-bold text-orange-700 dark:text-orange-300">{league.pointsDraw}</span>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+                  <span className="text-lg font-bold text-orange-700 dark:text-orange-300">
+                    {league.pointsDraw}
+                  </span>
                 </div>
-                <span className="text-sm text-charcoal-600 dark:text-charcoal-400">Draw</span>
+                <span className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                  Draw
+                </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center">
-                  <span className="text-lg font-bold text-red-700 dark:text-red-300">{league.pointsLoss}</span>
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
+                  <span className="text-lg font-bold text-red-700 dark:text-red-300">
+                    {league.pointsLoss}
+                  </span>
                 </div>
-                <span className="text-sm text-charcoal-600 dark:text-charcoal-400">Loss</span>
+                <span className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                  Loss
+                </span>
               </div>
               {league.configuration?.bonusPointsEnabled && (
                 <>
-                  <span className="text-charcoal-400 dark:text-charcoal-600">•</span>
+                  <span className="text-charcoal-400 dark:text-charcoal-600">
+                    •
+                  </span>
                   <div className="flex items-center gap-2">
-                    <Star className="w-5 h-5 text-gold-500" />
+                    <Star className="h-5 w-5 text-gold-500" />
                     <span className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                      +{league.configuration.bonusPointsForGoals} per goal (Bonus)
+                      +{league.configuration.bonusPointsForGoals} per goal
+                      (Bonus)
                     </span>
                   </div>
                 </>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* League Standings */}
-        <Card className="mb-8 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                  <TrendingUp className="w-5 h-5 text-gold-500" />
-                  League Standings
-                </CardTitle>
-                <CardDescription className="text-charcoal-600 dark:text-charcoal-400">Current league table</CardDescription>
-              </div>
-              <Link href={`/dashboard/leagues/${id}/standings`}>
-                <Button 
-                  variant="outline" 
-                  className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
-                >
-                  View Full Table
-                </Button>
-              </Link>
+        {/* STANDINGS */}
+        <div className="mb-8 rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+          <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+            <div>
+              <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
+                <TrendingUp className="h-5 w-5 text-gold-500" />
+                League Standings
+              </h2>
+              <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+                Current league table
+              </p>
             </div>
-          </CardHeader>
-          <CardContent>
-            {league.standings.length === 0 ? (
-              <div className="text-center py-12">
-                <TrendingUp className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-charcoal-900 dark:text-white mb-2">
-                  No standings yet
-                </h3>
-                <p className="text-charcoal-600 dark:text-charcoal-400 mb-6">Add teams to generate league standings</p>
-                <Link href={`/dashboard/leagues/${id}/teams`}>
-                  <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Teams
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-neutral-200 dark:border-charcoal-700">
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">Pos</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">Team</th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">P</th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">W</th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">D</th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">L</th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">GD</th>
-                      <th className="text-center py-3 px-4 text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">Pts</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {league.standings.slice(0, 10).map((standing: any, index: number) => (
-                      <tr 
-                        key={standing.id} 
-                        className="border-b border-neutral-100 dark:border-charcoal-700 hover:bg-gold-50 dark:hover:bg-charcoal-700/50 transition-colors"
-                      >
-                        <td className="py-3 px-4 font-bold text-charcoal-900 dark:text-white">
-                          {standing.position}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="font-semibold text-charcoal-900 dark:text-white">
-                            {standing.teamName || `Team ${standing.teamId.slice(0, 8)}`}
-                          </span>
-                        </td>
-                        <td className="text-center py-3 px-4 text-charcoal-700 dark:text-charcoal-300">{standing.played}</td>
-                        <td className="text-center py-3 px-4 text-charcoal-700 dark:text-charcoal-300">{standing.won}</td>
-                        <td className="text-center py-3 px-4 text-charcoal-700 dark:text-charcoal-300">{standing.drawn}</td>
-                        <td className="text-center py-3 px-4 text-charcoal-700 dark:text-charcoal-300">{standing.lost}</td>
-                        <td className="text-center py-3 px-4 text-charcoal-700 dark:text-charcoal-300">
-                          {standing.goalDifference > 0 ? '+' : ''}
-                          {standing.goalDifference}
-                        </td>
-                        <td className="text-center py-3 px-4 font-bold text-gold-600 dark:text-gold-400">
-                          {standing.points}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            <Link href={`/dashboard/leagues/${leagueId}/standings`}>
+              <button className="rounded-lg border border-neutral-200 bg-white px-4 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700">
+                View Full Table
+              </button>
+            </Link>
+          </div>
+          <div className="p-6">
+            <StandingsTable standings={league.standings} />
+          </div>
+        </div>
 
-        {/* Teams in League */}
-        <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-                  <Users className="w-5 h-5 text-gold-500" />
-                  Teams
-                </CardTitle>
-                <CardDescription className="text-charcoal-600 dark:text-charcoal-400">
-                  Teams participating in this league
-                </CardDescription>
-              </div>
-              <Link href={`/dashboard/leagues/${id}/teams`}>
-                <Button 
-                  variant="outline" 
-                  className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Manage Teams
-                </Button>
-              </Link>
+        {/* TEAMS */}
+        <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
+          <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
+            <div>
+              <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
+                <Users className="h-5 w-5 text-gold-500" />
+                Teams
+              </h2>
+              <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+                Teams participating in this league
+              </p>
             </div>
-          </CardHeader>
-          <CardContent>
+            <Link href={`/dashboard/leagues/${leagueId}/teams`}>
+              <button className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 font-semibold text-charcoal-700 transition-all hover:bg-neutral-100 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300 dark:hover:bg-charcoal-700">
+                <Plus className="h-4 w-4" />
+                Manage Teams
+              </button>
+            </Link>
+          </div>
+          <div className="p-6">
             {league.teams.length === 0 ? (
               <div className="text-center py-12">
-                <Users className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-charcoal-900 dark:text-white mb-2">No teams yet</h3>
-                <p className="text-charcoal-600 dark:text-charcoal-400 mb-6">
+                <Users className="mx-auto mb-4 h-16 w-16 text-charcoal-300 dark:text-charcoal-600" />
+                <h3 className="mb-2 text-xl font-semibold text-charcoal-900 dark:text-white">
+                  No teams yet
+                </h3>
+                <p className="mb-6 text-charcoal-600 dark:text-charcoal-400">
                   Add teams to start your league competition
                 </p>
-                <Link href={`/dashboard/leagues/${id}/teams`}>
-                  <Button className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white">
-                    <Plus className="w-4 h-4 mr-2" />
+                <Link href={`/dashboard/leagues/${leagueId}/teams`}>
+                  <button className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-gold-600 to-orange-500 px-6 py-2 font-semibold text-white transition-all hover:from-gold-700 hover:to-orange-600">
+                    <Plus className="h-4 w-4" />
                     Add Teams
-                  </Button>
+                  </button>
                 </Link>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {league.teams.map((team: any) => (
-                  <Card 
-                    key={team.id} 
-                    className="bg-neutral-50 dark:bg-charcoal-700 border-neutral-200 dark:border-charcoal-600 hover:shadow-lg dark:hover:shadow-charcoal-900/30 transition-all"
-                  >
-                    <CardContent className="pt-6">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-gold-100 to-orange-100 dark:from-gold-900/30 dark:to-orange-900/30 rounded-xl flex items-center justify-center">
-                          <Shield className="w-6 h-6 text-gold-600 dark:text-gold-400" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-charcoal-900 dark:text-white">{team.name}</p>
-                          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{team.club?.name || 'N/A'}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <Badge 
-                          variant="outline" 
-                          className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300"
-                        >
-                          {team.ageGroup || team.category}
-                        </Badge>
-                        <span className="text-charcoal-600 dark:text-charcoal-400">
-                          Joined {team.joinedAt ? new Date(team.joinedAt).toLocaleDateString() : 'N/A'}
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {league.teams.map((team) => (
+                  <TeamCard key={team.id} team={team} />
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
+
+      {/* TOAST CONTAINER */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }
