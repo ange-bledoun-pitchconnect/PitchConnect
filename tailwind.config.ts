@@ -1,49 +1,91 @@
+/**
+ * 🌟 PITCHCONNECT - Tailwind CSS Configuration
+ * Path: /tailwind.config.ts
+ *
+ * ============================================================================
+ * WORLD-CLASS TAILWIND CONFIGURATION
+ * ============================================================================
+ * ✅ Custom color system (Gold, Orange, Purple, Charcoal)
+ * ✅ Sports-focused animations & utilities
+ * ✅ Dark mode support (class-based)
+ * ✅ Responsive design (xs to 3xl breakpoints)
+ * ✅ Performance optimized
+ * ✅ Production-ready plugins
+ *
+ * ============================================================================
+ * REMOVED: @tailwindcss/container-queries (optional, not critical)
+ * KEPT: @tailwindcss/forms, @tailwindcss/typography
+ * ============================================================================
+ * STATUS: PRODUCTION READY ⚽🏆
+ * ============================================================================
+ */
+
 import type { Config } from 'tailwindcss'
 import plugin from 'tailwindcss/plugin'
 import defaultTheme from 'tailwindcss/defaultTheme'
 
 const config: Config = {
+  // ============================================================================
+  // DARK MODE CONFIGURATION
+  // ============================================================================
   darkMode: ['class'],
+
+  // ============================================================================
+  // CONTENT PATHS - What files to scan for Tailwind classes
+  // ============================================================================
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
     './src/hooks/**/*.{js,ts,jsx,tsx,mdx}',
     './src/layouts/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/screens/**/*.{js,ts,jsx,tsx,mdx}',
   ],
 
+  // ============================================================================
+  // THEME CONFIGURATION - Custom design system
+  // ============================================================================
   theme: {
     extend: {
+      // ====================================================================
+      // RESPONSIVE BREAKPOINTS - Mobile-first approach
+      // ====================================================================
       screens: {
-        'xs': '320px',
-        'sm': '640px',
-        'md': '768px',
-        'lg': '1024px',
-        'xl': '1280px',
-        '2xl': '1536px',
-        '3xl': '1920px',
+        'xs': '320px',   // Small phones
+        'sm': '640px',   // Large phones
+        'md': '768px',   // Tablets
+        'lg': '1024px',  // Laptops
+        'xl': '1280px',  // Desktops
+        '2xl': '1536px', // Large displays
+        '3xl': '1920px', // Ultra-wide displays
       },
 
+      // ====================================================================
+      // CUSTOM COLOR PALETTE - Sports-focused branding
+      // ====================================================================
       colors: {
+        // Gold - Primary brand color
         gold: {
           '50': '#FFFCF5',
           '100': '#FFF9EB',
           '200': '#FEF0C7',
           '300': '#FDE68A',
           '400': '#FCD34D',
-          '500': '#D4AF37',
+          '500': '#D4AF37',   // Primary gold
           '600': '#B8860B',
           '700': '#9A7410',
           '800': '#7C5E0F',
           '900': '#654B0D',
           'DEFAULT': '#D4AF37',
         },
+
+        // Orange - Secondary brand color
         orange: {
           '50': '#FFF7ED',
           '100': '#FFEDD5',
           '200': '#FED7AA',
           '300': '#FDBA74',
-          '400': '#FF6B35',
+          '400': '#FF6B35',   // Secondary orange
           '500': '#F97316',
           '600': '#EA580C',
           '700': '#C2410C',
@@ -51,19 +93,23 @@ const config: Config = {
           '900': '#7C2D12',
           'DEFAULT': '#FF6B35',
         },
+
+        // Purple - Accent color
         purple: {
           '50': '#FAF5FF',
           '100': '#F3E8FF',
           '200': '#E9D5FF',
           '300': '#D8B4FE',
           '400': '#C084FC',
-          '500': '#A855F7',
+          '500': '#A855F7',   // Accent purple
           '600': '#9333EA',
           '700': '#7E22CE',
           '800': '#6B21A8',
           '900': '#581C87',
           'DEFAULT': '#A855F7',
         },
+
+        // Charcoal - Dark neutral
         charcoal: {
           '50': '#F9FAFB',
           '100': '#F3F4F6',
@@ -73,11 +119,13 @@ const config: Config = {
           '500': '#6B7280',
           '600': '#4B5563',
           '700': '#374151',
-          '800': '#1F2937',
+          '800': '#1F2937',   // Dark background
           '900': '#111827',
           '950': '#030712',
           'DEFAULT': '#1F2937',
         },
+
+        // Neutral - Light neutral
         neutral: {
           '0': '#FFFFFF',
           '50': '#FAFAFA',
@@ -92,6 +140,8 @@ const config: Config = {
           '900': '#171717',
           'DEFAULT': '#F5F5F5',
         },
+
+        // Status colors - Semantic meaning
         success: {
           'light': '#10B981',
           'DEFAULT': '#059669',
@@ -112,6 +162,8 @@ const config: Config = {
           'DEFAULT': '#3B82F6',
           'dark': '#2563EB',
         },
+
+        // Sports-specific colors
         injury: {
           'light': '#FCA5A5',
           'DEFAULT': '#EF4444',
@@ -132,6 +184,8 @@ const config: Config = {
           'DEFAULT': '#8B5CF6',
           'dark': '#7C3AED',
         },
+
+        // CSS Custom Properties (for dynamic theming)
         background: 'hsl(var(--background) / <alpha-value>)',
         foreground: 'hsl(var(--foreground) / <alpha-value>)',
         card: {
@@ -174,6 +228,9 @@ const config: Config = {
         },
       },
 
+      // ====================================================================
+      // TYPOGRAPHY - Font families and sizing
+      // ====================================================================
       fontFamily: {
         'sans': ['var(--font-inter)', ...defaultTheme.fontFamily.sans],
         'mono': defaultTheme.fontFamily.mono,
@@ -194,6 +251,9 @@ const config: Config = {
         '7xl': ['4.5rem', { lineHeight: '5.625rem', letterSpacing: '-0.04em' }],
       },
 
+      // ====================================================================
+      // BACKGROUNDS - Gradients for visual interest
+      // ====================================================================
       backgroundImage: {
         'gradient-gold': 'linear-gradient(135deg, #D4AF37 0%, #F59E0B 100%)',
         'gradient-orange': 'linear-gradient(135deg, #FF6B35 0%, #F97316 100%)',
@@ -206,6 +266,9 @@ const config: Config = {
         'gradient-recovery': 'linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%)',
       },
 
+      // ====================================================================
+      // SHADOWS - Depth and elevation
+      // ====================================================================
       boxShadow: {
         'sm': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
         'DEFAULT': '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
@@ -222,6 +285,9 @@ const config: Config = {
         'performance': '0 10px 25px -5px rgba(59, 130, 246, 0.2)',
       },
 
+      // ====================================================================
+      // ANIMATIONS - Smooth transitions
+      // ====================================================================
       animation: {
         'fade-in': 'fadeIn 300ms ease-in-out forwards',
         'fade-out': 'fadeOut 300ms ease-in-out forwards',
@@ -239,6 +305,9 @@ const config: Config = {
         'spin-slow': 'spin 3s linear infinite',
       },
 
+      // ====================================================================
+      // KEYFRAMES - Animation definitions
+      // ====================================================================
       keyframes: {
         fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
         fadeOut: { '0%': { opacity: '1' }, '100%': { opacity: '0' } },
@@ -255,6 +324,9 @@ const config: Config = {
         bounceSm: { '0%, 100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-4px)' } },
       },
 
+      // ====================================================================
+      // SPACING - Custom spacing scale
+      // ====================================================================
       spacing: {
         '128': '32rem',
         '144': '36rem',
@@ -263,6 +335,9 @@ const config: Config = {
         '192': '48rem',
       },
 
+      // ====================================================================
+      // BORDER RADIUS - Consistent rounding
+      // ====================================================================
       borderRadius: {
         '4xl': '2rem',
         'lg': 'var(--radius)',
@@ -270,6 +345,9 @@ const config: Config = {
         'sm': 'calc(var(--radius) - 4px)',
       },
 
+      // ====================================================================
+      // CONTAINER - Responsive container padding
+      // ====================================================================
       container: {
         center: true,
         padding: {
@@ -283,6 +361,9 @@ const config: Config = {
         },
       },
 
+      // ====================================================================
+      // TRANSITIONS - Smooth state changes
+      // ====================================================================
       transitionDuration: {
         '50': '50ms',
         '100': '100ms',
@@ -294,6 +375,9 @@ const config: Config = {
         '500': '500ms',
       },
 
+      // ====================================================================
+      // Z-INDEX - Layering system
+      // ====================================================================
       zIndex: {
         '0': '0',
         '10': '10',
@@ -309,6 +393,9 @@ const config: Config = {
         'max': '9999',
       },
 
+      // ====================================================================
+      // ASPECT RATIO - Video & media dimensions
+      // ====================================================================
       aspectRatio: {
         'video': '16 / 9',
         'square': '1 / 1',
@@ -317,13 +404,20 @@ const config: Config = {
     },
   },
 
+  // ============================================================================
+  // PLUGINS - Extend Tailwind functionality
+  // ============================================================================
   plugins: [
+    // Official Tailwind plugins
     require('@tailwindcss/forms'),
     require('@tailwindcss/typography'),
-    require('@tailwindcss/container-queries'),
-
+    
+    // Custom utilities using Tailwind plugin API
     plugin(function ({ addUtilities, theme }) {
       addUtilities({
+        // ================================================================
+        // PLAYER CARD - Reusable card component style
+        // ================================================================
         '.player-card': {
           'position': 'relative',
           'overflow': 'hidden',
@@ -331,6 +425,10 @@ const config: Config = {
           'boxShadow': theme('boxShadow.md'),
           'transition': 'all 300ms',
         },
+
+        // ================================================================
+        // STAT BADGE - For displaying player statistics
+        // ================================================================
         '.stat-badge': {
           'display': 'inline-flex',
           'alignItems': 'center',
@@ -340,8 +438,41 @@ const config: Config = {
           'borderRadius': theme('borderRadius.full'),
           'fontWeight': '600',
         },
+
+        // ================================================================
+        // LOADING ANIMATION - Shimmer effect for skeleton screens
+        // ================================================================
         '.shimmer-loading': {
           'animation': 'shimmer 2s infinite',
+        },
+
+        // ================================================================
+        // GLASS EFFECT - Frosted glass appearance (modern UI)
+        // ================================================================
+        '.glass-effect': {
+          'backgroundColor': 'rgba(255, 255, 255, 0.1)',
+          'backdropFilter': 'blur(10px)',
+          'border': '1px solid rgba(255, 255, 255, 0.2)',
+        },
+
+        // ================================================================
+        // GRADIENT TEXT - Colorful text effect
+        // ================================================================
+        '.gradient-text': {
+          'backgroundImage': 'linear-gradient(135deg, #D4AF37 0%, #FF6B35 50%, #A855F7 100%)',
+          'backgroundClip': 'text',
+          'WebkitBackgroundClip': 'text',
+          'WebkitTextFillColor': 'transparent',
+        },
+
+        // ================================================================
+        // FOCUS RING - Accessible focus state
+        // ================================================================
+        '.focus-ring': {
+          '&:focus-visible': {
+            'outline': 'none',
+            'boxShadow': `0 0 0 3px ${theme('colors.gold.500')}`,
+          },
         },
       })
     }),
