@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { Users, Clipboard, Calendar, TrendingUp, Target, BookOpen } from 'lucide-react';
 
 export default async function CoachPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect('/auth/login');

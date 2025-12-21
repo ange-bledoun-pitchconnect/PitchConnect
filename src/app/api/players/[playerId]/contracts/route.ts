@@ -17,9 +17,9 @@ export async function GET_CONTRACTS(
   try {
     logger.info(`[${requestId}] GET /api/players/${params.playerId}/contracts - Start`);
 
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
+    const session = await auth();
+    if (!session) {
+      return Response.json(
         { success: false, error: 'Unauthorized', code: 'AUTH_REQUIRED' },
         { status: 401, headers: { 'X-Request-ID': requestId } }
       );

@@ -140,11 +140,11 @@ export async function POST(
     // 1. AUTHENTICATION
     // ========================================================================
 
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session) {
       console.warn('Unauthorized notification read attempt - no session', { requestId });
-      return NextResponse.json(
+      return Response.json(
         {
           success: false,
           error: 'Authentication required',

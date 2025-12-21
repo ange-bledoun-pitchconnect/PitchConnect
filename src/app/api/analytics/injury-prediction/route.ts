@@ -11,10 +11,10 @@ import { predictInjuryRisk } from '@/lib/analytics/injury-predictor';
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
-      return NextResponse.json(
+    if (!session) {
+      return Response.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );

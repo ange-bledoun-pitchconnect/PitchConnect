@@ -153,10 +153,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<CreateTea
 
   try {
     // 1. Authentication check
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
+    if (!session) {
+      return Response.json(
         {
           success: false,
           error: 'Unauthorized - Authentication required',
@@ -431,7 +431,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<TeamsListR
 
   try {
     // 1. Authentication check
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.id) {
       return NextResponse.json(

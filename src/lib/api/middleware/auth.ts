@@ -58,7 +58,7 @@ export async function requireAuth(
   options?: { throwIfMissing?: boolean }
 ): Promise<SessionUser> {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.email) {
       throw new UnauthorizedError('No active session found');

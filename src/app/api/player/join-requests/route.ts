@@ -6,10 +6,10 @@ import prisma from '@/lib/prisma';
 // CREATE JOIN REQUEST
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Get user
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return Response.json({ error: 'User not found' }, { status: 404 });
     }
 
     const body = await request.json();
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
 // GET USER'S JOIN REQUESTS
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -2,8 +2,7 @@
 // Path: src/app/api/matches/[matchId]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, ForbiddenError, BadRequestError } from '@/lib/api/errors';
 import { logAuditAction } from '@/lib/api/audit';
@@ -107,7 +106,7 @@ export async function GET(request: NextRequest, { params }: MatchParams): Promis
     logger.info(`[${requestId}] GET /api/matches/${params.matchId} - Start`);
 
     // 1. AUTHORIZATION
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'AUTH_REQUIRED' } as ErrorResponse,
@@ -386,7 +385,7 @@ export async function PATCH(request: NextRequest, { params }: MatchParams): Prom
     logger.info(`[${requestId}] PATCH /api/matches/${params.matchId} - Start`);
 
     // 1. AUTHORIZATION
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'AUTH_REQUIRED' } as ErrorResponse,

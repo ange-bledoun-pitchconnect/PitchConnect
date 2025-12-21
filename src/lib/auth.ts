@@ -5,34 +5,39 @@
  * ============================================================================
  * WORLD-CLASS FEATURES
  * ============================================================================
- * ✅ NextAuth.js v5 Compatible
+ * ✅ NextAuth.js v5 Compatible (FIXED - No v4 imports)
  * ✅ Zero bcryptjs dependency (native Node.js crypto)
  * ✅ JWT handling without external libraries
  * ✅ Role-based access control (RBAC) with granular permissions
  * ✅ Session management and validation
- * ✅ Password hashing with PBKDF2
+ * ✅ Password hashing with PBKDF2 (100,000 iterations)
  * ✅ Two-factor authentication ready
  * ✅ Email validation & sanitization
- * ✅ Audit logging
- * ✅ Permission inheritance
- * ✅ GDPR-compliant
- * ✅ Production-ready code
- * ✅ NextAuth v5 Server Actions
- * ✅ Prisma Integration
+ * ✅ Audit logging integration
+ * ✅ Permission inheritance & hierarchy
+ * ✅ GDPR-compliant with data redaction
+ * ✅ Production-ready security
+ * ✅ NextAuth v5 Server Actions support
+ * ✅ Prisma Integration (type-safe)
+ * ✅ Timing-safe password comparisons
+ * ✅ Comprehensive error handling
+ * ✅ Sports-specific roles (Manager, Coach, Scout, Player, etc.)
  * ============================================================================
  */
 
 import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
-import type { NextAuthOptions } from 'next-auth';
-import Credentials from 'next-auth/providers/credentials';
+import type { NextAuthConfig } from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logging';
+import { logAuthenticationEvent, logSecurityIncident } from '@/lib/api/audit';
 
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
 
-type UserRole =
+export type UserRole =
   | 'SUPERADMIN'
   | 'ADMIN'
   | 'CLUB_OWNER'
@@ -45,7 +50,7 @@ type UserRole =
   | 'PLAYER'
   | 'PARENT';
 
-type PermissionName =
+export type PermissionName =
   | 'manage_users'
   | 'manage_teams'
   | 'manage_leagues'
@@ -77,7 +82,7 @@ type PermissionName =
   | 'manage_injuries'
   | 'view_reports';
 
-interface User {
+export interface User {
   id: string;
   email: string;
   firstName: string;
@@ -94,9 +99,10 @@ interface User {
   updatedAt: Date;
   isSuperAdmin: boolean;
   emailVerifiedAt?: Date | null;
+  lastLoginAt?: Date | null;
 }
 
-interface Session {
+export interface Session {
   userId: string;
   token: string;
   expiresAt: Date;
@@ -106,12 +112,12 @@ interface Session {
   permissions: PermissionName[];
 }
 
-interface PasswordValidationResult {
+export interface PasswordValidationResult {
   valid: boolean;
   errors: string[];
 }
 
-interface TokenPayload {
+export interface TokenPayload {
   userId: string;
   email: string;
   roles: UserRole[];
@@ -120,10 +126,23 @@ interface TokenPayload {
   sub: string;
 }
 
-interface PasswordHash {
+export interface PasswordHash {
   hash: string;
   salt: string;
   iterations: number;
+}
+
+export interface AuthResult {
+  success: boolean;
+  user?: User;
+  session?: Session;
+  error?: string;
+}
+
+export interface PermissionCheckResult {
+  hasPermission: boolean;
+  requiredPermission: PermissionName;
+  userPermissions: PermissionName[];
 }
 
 // ============================================================================
@@ -136,15 +155,13 @@ const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 128;
 
 const JWT_ALGORITHM = 'HS256';
-const JWT_SECRET = process.env.JWT_SECRET || 'development-secret-key-change-in-production';
-const JWT_EXPIRY = 24 * 60 * 60 * 1000;
-
-const SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1000;
+const JWT_SECRET = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET;
+const JWT_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
-const ROLE_HIERARCHY: Record<UserRole, number> = {
+export const ROLE_HIERARCHY: Record<UserRole, number> = {
   SUPERADMIN: 100,
   ADMIN: 90,
   CLUB_OWNER: 80,
@@ -158,7 +175,7 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
   PARENT: 20,
 };
 
-const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
+export const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
   SUPERADMIN: [
     'manage_users',
     'manage_teams',
@@ -278,44 +295,61 @@ const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'manage_profile',
     'view_match_stats',
   ],
-  PARENT: [
-    'view_child_profile',
-    'view_match_stats',
-  ],
+  PARENT: ['view_child_profile', 'view_match_stats'],
 };
+
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
+const DISPOSABLE_EMAIL_DOMAINS = [
+  'tempmail.com',
+  'throwaway.email',
+  '10minutemail.com',
+  'guerrillamail.com',
+  'mailinator.com',
+  'temp-mail.org',
+  'yopmail.com',
+  'maildrop.cc',
+  'temp-mail.io',
+  'mailnesia.com',
+  'sharklasers.com',
+];
 
 // ============================================================================
 // CUSTOM ERROR CLASSES
 // ============================================================================
 
-class AuthenticationError extends Error {
+export class AuthenticationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AuthenticationError';
+    Object.setPrototypeOf(this, AuthenticationError.prototype);
   }
 }
 
-class AuthorizationError extends Error {
+export class AuthorizationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AuthorizationError';
+    Object.setPrototypeOf(this, AuthorizationError.prototype);
   }
 }
 
-class PasswordValidationError extends Error {
+export class PasswordValidationError extends Error {
   public readonly errors: string[];
 
   constructor(errors: string[]) {
     super(`Password validation failed: ${errors.join(', ')}`);
     this.name = 'PasswordValidationError';
     this.errors = errors;
+    Object.setPrototypeOf(this, PasswordValidationError.prototype);
   }
 }
 
-class TokenError extends Error {
+export class TokenError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'TokenError';
+    Object.setPrototypeOf(this, TokenError.prototype);
   }
 }
 
@@ -361,19 +395,8 @@ export function sanitizeEmail(email: string): string {
 }
 
 export function isDisposableEmail(email: string): boolean {
-  const disposableDomains = [
-    'tempmail.com',
-    'throwaway.email',
-    '10minutemail.com',
-    'guerrillamail.com',
-    'mailinator.com',
-    'temp-mail.org',
-    'yopmail.com',
-    'maildrop.cc',
-  ];
-
   const domain = email.split('@')[1]?.toLowerCase() || '';
-  return disposableDomains.includes(domain);
+  return DISPOSABLE_EMAIL_DOMAINS.includes(domain);
 }
 
 // ============================================================================
@@ -426,7 +449,6 @@ export function hashPassword(password: string): PasswordHash {
     }
 
     const salt = generateRandomBytes(PASSWORD_SALT_LENGTH);
-
     const hash = pbkdf2Sync(password, salt, PASSWORD_HASH_ITERATIONS, 64, 'sha256');
 
     logger.debug('Password hashed successfully');
@@ -437,18 +459,14 @@ export function hashPassword(password: string): PasswordHash {
       iterations: PASSWORD_HASH_ITERATIONS,
     };
   } catch (error) {
-    logger.error('Password hashing failed', {}, error as Error);
+    logger.error('Password hashing failed', error as Error);
     throw error instanceof PasswordValidationError
       ? error
       : new Error('Failed to hash password');
   }
 }
 
-export function verifyPassword(
-  password: string,
-  storedHash: string,
-  salt?: string
-): boolean {
+export function verifyPassword(password: string, storedHash: string, salt?: string): boolean {
   try {
     if (!password || !storedHash) {
       logger.warn('Missing password or hash for verification');
@@ -472,9 +490,7 @@ export function verifyPassword(
     }
 
     const saltBuffer = Buffer.from(hashSalt, 'hex');
-    const computedHash = pbkdf2Sync(password, saltBuffer, iterations, 64, 'sha256').toString(
-      'hex'
-    );
+    const computedHash = pbkdf2Sync(password, saltBuffer, iterations, 64, 'sha256').toString('hex');
 
     const isValid = timingSafeCompare(computedHash, hash);
 
@@ -484,7 +500,7 @@ export function verifyPassword(
 
     return isValid;
   } catch (error) {
-    logger.error('Password verification error', {}, error as Error);
+    logger.error('Password verification error', error as Error);
     return false;
   }
 }
@@ -514,11 +530,12 @@ export function generateSecurePassword(): string {
 // JWT TOKEN MANAGEMENT
 // ============================================================================
 
-export function createJWT(
-  payload: Record<string, any>,
-  expiryMs: number = JWT_EXPIRY
-): string {
+export function createJWT(payload: Record<string, any>, expiryMs: number = JWT_EXPIRY): string {
   try {
+    if (!JWT_SECRET) {
+      throw new TokenError('JWT_SECRET is not configured');
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const exp = now + Math.floor(expiryMs / 1000);
 
@@ -528,27 +545,29 @@ export function createJWT(
       exp,
     };
 
-    const header = Buffer.from(
-      JSON.stringify({ alg: JWT_ALGORITHM, typ: 'JWT' })
-    ).toString('base64url');
+    const header = Buffer.from(JSON.stringify({ alg: JWT_ALGORITHM, typ: 'JWT' })).toString(
+      'base64url'
+    );
 
     const body = Buffer.from(JSON.stringify(tokenPayload)).toString('base64url');
 
     const message = `${header}.${body}`;
 
-    const signature = createHmac('sha256', JWT_SECRET)
-      .update(message)
-      .digest('base64url');
+    const signature = createHmac('sha256', JWT_SECRET).update(message).digest('base64url');
 
     return `${message}.${signature}`;
   } catch (error) {
-    logger.error('JWT creation failed', {}, error as Error);
+    logger.error('JWT creation failed', error as Error);
     throw new TokenError('Failed to create token');
   }
 }
 
 export function verifyJWT(token: string): TokenPayload | null {
   try {
+    if (!JWT_SECRET) {
+      throw new TokenError('JWT_SECRET is not configured');
+    }
+
     const parts = token.split('.');
 
     if (parts.length !== 3) {
@@ -576,9 +595,10 @@ export function verifyJWT(token: string): TokenPayload | null {
     return decoded;
   } catch (error) {
     if (error instanceof TokenError) {
-      throw error;
+      logger.debug('Token verification failed', { error: error.message });
+      return null;
     }
-    logger.error('JWT verification failed', {}, error as Error);
+    logger.error('JWT verification failed', error as Error);
     return null;
   }
 }
@@ -591,11 +611,13 @@ export function decodeToken(token: string): TokenPayload | null {
       return null;
     }
 
-    const decoded = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as TokenPayload;
+    const decoded = JSON.parse(
+      Buffer.from(parts[1], 'base64url').toString('utf8')
+    ) as TokenPayload;
 
     return decoded;
   } catch (error) {
-    logger.error('Failed to decode token', {}, error as Error);
+    logger.error('Failed to decode token', error as Error);
     return null;
   }
 }
@@ -610,7 +632,7 @@ export function isTokenExpired(token: string): boolean {
     const now = Math.floor(Date.now() / 1000);
     return decoded.exp < now;
   } catch (error) {
-    logger.error('Failed to check token expiration', {}, error as Error);
+    logger.error('Failed to check token expiration', error as Error);
     return true;
   }
 }
@@ -619,7 +641,7 @@ export function isTokenExpired(token: string): boolean {
 // SESSION MANAGEMENT
 // ============================================================================
 
-class SessionManager {
+export class SessionManager {
   private sessions = new Map<string, Session>();
 
   createSession(userId: string, user: User, roles: UserRole[]): Session {
@@ -652,7 +674,7 @@ class SessionManager {
 
     if (new Date() > session.expiresAt) {
       this.sessions.delete(token);
-      logger.debug('Session expired and removed', { token });
+      logger.debug('Session expired and removed', { token: token.substring(0, 8) });
       return null;
     }
 
@@ -661,7 +683,7 @@ class SessionManager {
 
   invalidateSession(token: string): void {
     this.sessions.delete(token);
-    logger.info('Session invalidated', { token });
+    logger.info('Session invalidated', { token: token.substring(0, 8) });
   }
 
   invalidateUserSessions(userId: string): void {
@@ -739,7 +761,9 @@ export function getUserPermissions(userRoles: UserRole[]): PermissionName[] {
   const permissions = new Set<PermissionName>();
 
   if (userRoles.includes('SUPERADMIN')) {
-    return Object.values(ROLE_PERMISSIONS).flat() as PermissionName[];
+    return Object.values(ROLE_PERMISSIONS)
+      .flat()
+      .filter((v, i, a) => a.indexOf(v) === i) as PermissionName[];
   }
 
   for (const role of userRoles) {
@@ -756,74 +780,186 @@ export function requirePermission(userRoles: UserRole[], permission: PermissionN
   }
 }
 
+export function checkPermission(
+  userRoles: UserRole[],
+  permission: PermissionName
+): PermissionCheckResult {
+  const hasPermissionFlag = hasPermission(userRoles, permission);
+  return {
+    hasPermission: hasPermissionFlag,
+    requiredPermission: permission,
+    userPermissions: getUserPermissions(userRoles),
+  };
+}
+
 export function isSuperAdmin(userRoles: UserRole[]): boolean {
   return userRoles.includes('SUPERADMIN');
 }
 
+export function canManageUser(userRoles: UserRole[], targetRoles: UserRole[]): boolean {
+  const userLevel = getUserPermissionLevel(userRoles);
+  const targetLevel = getUserPermissionLevel(targetRoles);
+  return userLevel > targetLevel;
+}
+
+export function canManageRole(userRoles: UserRole[], targetRole: UserRole): boolean {
+  const userLevel = getUserPermissionLevel(userRoles);
+  const targetLevel = ROLE_HIERARCHY[targetRole] || 0;
+  return userLevel > targetLevel;
+}
+
 // ============================================================================
-// AUTHENTICATION FLOW - NextAuth.js v5
+// LOGIN ATTEMPT TRACKING (Brute Force Protection)
 // ============================================================================
 
-export const authOptions: NextAuthOptions = {
+const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
+
+export function recordLoginAttempt(email: string): void {
+  const now = Date.now();
+  const existing = loginAttempts.get(email);
+
+  if (existing && now - existing.firstAttempt < LOGIN_ATTEMPT_WINDOW) {
+    existing.count++;
+  } else {
+    loginAttempts.set(email, { count: 1, firstAttempt: now });
+  }
+}
+
+export function getLoginAttempts(email: string): number {
+  const attempt = loginAttempts.get(email);
+  if (!attempt) return 0;
+
+  const now = Date.now();
+  if (now - attempt.firstAttempt > LOGIN_ATTEMPT_WINDOW) {
+    loginAttempts.delete(email);
+    return 0;
+  }
+
+  return attempt.count;
+}
+
+export function resetLoginAttempts(email: string): void {
+  loginAttempts.delete(email);
+}
+
+export function isAccountLocked(email: string): boolean {
+  return getLoginAttempts(email) >= MAX_LOGIN_ATTEMPTS;
+}
+
+// ============================================================================
+// NEXTAUTH V5 CONFIGURATION
+// ============================================================================
+
+export const authConfig: NextAuthConfig = {
   providers: [
-    Credentials({
+    CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        email: { label: 'Email', type: 'email' },
+        email: { label: 'Email', type: 'email', placeholder: 'your@email.com' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         try {
           if (!credentials?.email || !credentials?.password) {
+            logger.warn('Login attempt without credentials');
             throw new AuthenticationError('Email and password required');
           }
 
           const email = sanitizeEmail(credentials.email);
 
+          // Check if account is locked
+          if (isAccountLocked(email)) {
+            logger.warn('Login attempt on locked account', { email });
+            await logSecurityIncident(email, {
+              eventType: 'RATE_LIMIT_EXCEEDED',
+              details: 'Too many failed login attempts',
+              ipAddress: req?.ip,
+              userAgent: req?.headers.get('user-agent') || undefined,
+            });
+            throw new AuthenticationError('Account temporarily locked due to too many failed attempts');
+          }
+
           if (!isValidEmail(email)) {
+            logger.warn('Login attempt with invalid email format', { email });
+            recordLoginAttempt(email);
             throw new AuthenticationError('Invalid email format');
+          }
+
+          if (isDisposableEmail(email)) {
+            logger.warn('Login attempt with disposable email', { email });
+            recordLoginAttempt(email);
+            throw new AuthenticationError('Disposable email addresses not allowed');
           }
 
           const user = await prisma.user.findUnique({
             where: { email },
             include: {
-              roles: true,
-              profile: true,
+              roles: {
+                select: { name: true },
+              },
+              profile: {
+                select: { avatar: true },
+              },
             },
           });
 
           if (!user) {
-            logger.warn('User not found', { email });
+            logger.warn('Login attempt with non-existent email', { email });
+            recordLoginAttempt(email);
             throw new AuthenticationError('Invalid credentials');
           }
 
           if (user.status !== 'ACTIVE') {
-            logger.warn('User account inactive', { userId: user.id });
+            logger.warn('Login attempt with inactive account', {
+              userId: user.id,
+              status: user.status,
+            });
+            recordLoginAttempt(email);
             throw new AuthenticationError('Account is inactive');
           }
 
           const isPasswordValid = verifyPassword(credentials.password, user.password);
           if (!isPasswordValid) {
-            logger.warn('Invalid password', { userId: user.id });
+            logger.warn('Login attempt with invalid password', { userId: user.id });
+            recordLoginAttempt(email);
             throw new AuthenticationError('Invalid credentials');
           }
 
-          logger.info('User authenticated successfully', { userId: user.id });
+          // Reset login attempts on successful auth
+          resetLoginAttempts(email);
+
+          // Update last login
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          });
+
+          // Log successful authentication
+          await logAuthenticationEvent(user.id, 'LOGIN_SUCCESS', {
+            ipAddress: req?.ip,
+            userAgent: req?.headers.get('user-agent') || undefined,
+          });
+
+          logger.info('User authenticated successfully', { userId: user.id, email });
 
           return {
             id: user.id,
             email: user.email,
-            name: user.firstName + ' ' + user.lastName,
-            image: user.profile?.avatar,
+            name: `${user.firstName} ${user.lastName}`,
+            image: user.profile?.avatar || undefined,
           };
         } catch (error) {
           if (error instanceof AuthenticationError) {
             throw new Error(error.message);
           }
-          logger.error('Authentication error', {}, error as Error);
+          logger.error('Authentication error', error as Error);
           throw new Error('Authentication failed');
         }
       },
+    }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     }),
   ],
 
@@ -834,16 +970,22 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
+        token.sub = user.id;
+        token.email = user.email;
+
         const dbUser = await prisma.user.findUnique({
           where: { id: user.id },
-          include: { roles: true },
+          include: {
+            roles: {
+              select: { name: true },
+            },
+          },
         });
 
         if (dbUser) {
           token.userId = dbUser.id;
-          token.email = dbUser.email;
           token.roles = dbUser.roles.map((r) => r.name as UserRole);
           token.isSuperAdmin = dbUser.roles.some((r) => r.name === 'SUPERADMIN');
         }
@@ -854,36 +996,82 @@ export const authOptions: NextAuthOptions = {
 
     async session({ session, token }) {
       if (session.user && token) {
-        (session as any).userId = token.userId as string;
         session.user.email = token.email as string;
-        const roles = (token.roles as UserRole[]) || [];
-        (session as any).roles = roles;
-        (session as any).permissions = getUserPermissions(roles);
+        (session as any).userId = token.sub;
+        (session as any).roles = (token.roles as UserRole[]) || [];
+        (session as any).permissions = getUserPermissions((token.roles as UserRole[]) || []);
+        (session as any).isSuperAdmin = token.isSuperAdmin;
       }
 
       return session;
+    },
+
+    async signIn({ user, account, profile, email, credentials }) {
+      try {
+        if (!user?.id) {
+          return false;
+        }
+
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { status: true },
+        });
+
+        if (!dbUser || dbUser.status !== 'ACTIVE') {
+          return false;
+        }
+
+        logger.info('User signed in', { userId: user.id, provider: account?.provider });
+        return true;
+      } catch (error) {
+        logger.error('Sign in callback error', error as Error);
+        return false;
+      }
+    },
+
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`;
+      } else if (new URL(url).origin === baseUrl) {
+        return url;
+      }
+      return baseUrl;
     },
   },
 
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60,
-    updateAge: 24 * 60 * 60,
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // 24 hours
   },
 
   jwt: {
     secret: JWT_SECRET,
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
   events: {
-    async signIn({ user }) {
-      logger.info('User signed in', { userId: user.id });
+    async signIn({ user, account, isNewUser }) {
+      logger.info('Sign in event', {
+        userId: user?.id,
+        provider: account?.provider,
+        isNewUser,
+      });
     },
+
     async signOut({ token }) {
-      logger.info('User signed out', { userId: token.sub });
+      if (token?.sub) {
+        await logAuthenticationEvent(token.sub, 'LOGOUT');
+      }
+      logger.info('Sign out event', { userId: token?.sub });
+    },
+
+    async session({ session, token }) {
+      logger.debug('Session event', { userId: token?.sub });
     },
   },
+
+  debug: process.env.NODE_ENV === 'development',
 };
 
 // ============================================================================
@@ -895,8 +1083,12 @@ export async function getCurrentUser(userId: string): Promise<User | null> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
-        roles: true,
-        profile: true,
+        roles: {
+          select: { name: true },
+        },
+        profile: {
+          select: { avatar: true },
+        },
       },
     });
 
@@ -909,7 +1101,7 @@ export async function getCurrentUser(userId: string): Promise<User | null> {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
-      fullName: user.firstName + ' ' + user.lastName,
+      fullName: `${user.firstName} ${user.lastName}`,
       avatar: user.profile?.avatar,
       roles: user.roles.map((r) => r.name as UserRole),
       status: user.status,
@@ -921,66 +1113,59 @@ export async function getCurrentUser(userId: string): Promise<User | null> {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       isSuperAdmin: user.roles.some((r) => r.name === 'SUPERADMIN'),
+      lastLoginAt: user.lastLoginAt,
     };
   } catch (error) {
-    logger.error('Failed to get current user', { userId }, error as Error);
+    logger.error('Failed to get current user', error as Error, { userId });
     return null;
   }
 }
 
-export async function getSession(): Promise<Session | null> {
+export async function validateUserAccess(
+  userId: string,
+  requiredPermission: PermissionName
+): Promise<boolean> {
   try {
-    const { auth } = await import('@/auth');
-    const session = await auth();
-    return session as Session | null;
+    const user = await getCurrentUser(userId);
+    if (!user) {
+      return false;
+    }
+
+    return hasPermission(user.roles, requiredPermission);
   } catch (error) {
-    logger.debug('Failed to get session', {}, error as Error);
-    return null;
+    logger.error('Failed to validate user access', error as Error, { userId });
+    return false;
   }
 }
-
-export async function getServerSession(): Promise<Session | null> {
-  try {
-    const { auth } = await import('@/auth');
-    return await auth();
-  } catch (error) {
-    logger.error('Failed to get server session', {}, error as Error);
-    return null;
-  }
-}
-
-export const auth = async () => {
-  try {
-    const { auth: nextAuth } = await import('@/auth');
-    return await nextAuth();
-  } catch (error) {
-    logger.error('Auth error', {}, error as Error);
-    return null;
-  }
-};
 
 // ============================================================================
-// AUTHORIZATION HELPERS
+// AUTHORIZATION HELPERS (NextAuth v5 compatible)
 // ============================================================================
 
-export async function requireAuth(): Promise<Session> {
-  const session = await getServerSession();
+export async function getSession() {
+  const { auth } = await import('@/auth');
+  return await auth();
+}
 
-  if (!session || !session.userId) {
+export async function requireAuth() {
+  const session = await getSession();
+
+  if (!session || !(session as any).userId) {
     throw new AuthenticationError('Authentication required');
   }
 
   return session;
 }
 
-export async function verifySuperAdmin(): Promise<User> {
+export async function verifySuperAdmin() {
   const session = await requireAuth();
 
-  if (!session.roles || !session.roles.includes('SUPERADMIN')) {
+  const roles = (session as any).roles as UserRole[];
+  if (!roles || !roles.includes('SUPERADMIN')) {
     throw new AuthorizationError('Superadmin access required');
   }
 
-  const user = await getCurrentUser(session.userId);
+  const user = await getCurrentUser((session as any).userId);
   if (!user) {
     throw new AuthenticationError('User not found');
   }
@@ -988,11 +1173,23 @@ export async function verifySuperAdmin(): Promise<User> {
   return user;
 }
 
-export async function verifyPermission(permission: PermissionName): Promise<Session> {
+export async function verifyPermission(permission: PermissionName) {
   const session = await requireAuth();
 
-  if (!session.roles || !hasPermission(session.roles, permission)) {
+  const roles = (session as any).roles as UserRole[];
+  if (!hasPermission(roles, permission)) {
     throw new AuthorizationError(`Permission required: ${permission}`);
+  }
+
+  return session;
+}
+
+export async function verifyRole(requiredRole: UserRole) {
+  const session = await requireAuth();
+
+  const roles = (session as any).roles as UserRole[];
+  if (!roles.includes(requiredRole)) {
+    throw new AuthorizationError(`Role required: ${requiredRole}`);
   }
 
   return session;
@@ -1026,23 +1223,61 @@ export function getActiveSessionsCount(): number {
   return sessionManager.getCount();
 }
 
+export function clearAllSessions(): void {
+  sessionManager.clear();
+}
+
 // ============================================================================
-// EXPORTS
+// BATCH OPERATIONS
 // ============================================================================
 
-export {
-  AuthenticationError,
-  AuthorizationError,
-  PasswordValidationError,
-  TokenError,
-  SessionManager,
-  ROLE_HIERARCHY,
-  ROLE_PERMISSIONS,
-  type User,
-  type UserRole,
-  type PermissionName,
-  type Session,
-  type TokenPayload,
-  type PasswordHash,
-  type PasswordValidationResult,
+export async function batchVerifyPermissions(
+  userId: string,
+  permissions: PermissionName[]
+): Promise<Record<PermissionName, boolean>> {
+  try {
+    const user = await getCurrentUser(userId);
+    if (!user) {
+      return permissions.reduce(
+        (acc, perm) => {
+          acc[perm] = false;
+          return acc;
+        },
+        {} as Record<PermissionName, boolean>
+      );
+    }
+
+    return permissions.reduce(
+      (acc, perm) => {
+        acc[perm] = hasPermission(user.roles, perm);
+        return acc;
+      },
+      {} as Record<PermissionName, boolean>
+    );
+  } catch (error) {
+    logger.error('Failed to batch verify permissions', error as Error, { userId });
+    return permissions.reduce(
+      (acc, perm) => {
+        acc[perm] = false;
+        return acc;
+      },
+      {} as Record<PermissionName, boolean>
+    );
+  }
+}
+
+// ============================================================================
+// TYPE EXPORTS
+// ============================================================================
+
+export type {
+  UserRole,
+  PermissionName,
+  User,
+  Session,
+  PasswordValidationResult,
+  TokenPayload,
+  PasswordHash,
+  AuthResult,
+  PermissionCheckResult,
 };

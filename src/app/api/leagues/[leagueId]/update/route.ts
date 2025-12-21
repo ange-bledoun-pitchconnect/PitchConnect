@@ -1,7 +1,6 @@
 // File: src/app/api/leagues/[leagueId]/update/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { BadRequestError, ForbiddenError, NotFoundError, UnauthorizedError } from '@/lib/api/errors';
 import { createAuditLog } from '@/lib/api/audit';
@@ -25,7 +24,7 @@ export async function PATCH(
 
   try {
     // 1. Authorization
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       throw new UnauthorizedError('Authentication required');
     }

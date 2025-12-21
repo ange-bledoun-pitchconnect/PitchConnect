@@ -154,10 +154,10 @@ export async function GET(
 
   try {
     // 1. Authentication check
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
+    if (!session) {
+      return Response.json(
         {
           success: false,
           error: 'Unauthorized - Authentication required',
@@ -411,7 +411,7 @@ export async function PATCH(
 
   try {
     // 1. Authentication check
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.id) {
       return NextResponse.json(

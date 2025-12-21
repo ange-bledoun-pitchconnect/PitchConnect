@@ -7,7 +7,7 @@ export default async function LeagueAdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const roles = (session?.user?.roles as string[]) || [];
 
   // Check if user has LEAGUE_ADMIN role or is SuperAdmin

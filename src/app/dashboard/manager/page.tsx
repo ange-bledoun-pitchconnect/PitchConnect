@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { Building2, Users, DollarSign, FileText, Calendar, TrendingUp } from 'lucide-react';
 
 export default async function ManagerPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect('/auth/login');

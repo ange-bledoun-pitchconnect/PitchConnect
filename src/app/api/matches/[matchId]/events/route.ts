@@ -2,8 +2,7 @@
 // Path: src/app/api/matches/[matchId]/events/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, BadRequestError } from '@/lib/api/errors';
 import { logAuditAction } from '@/lib/api/audit';
@@ -124,7 +123,7 @@ export async function GET(
     logger.info(`[${requestId}] GET /api/matches/${params.matchId}/events - Start`);
 
     // 1. AUTHORIZATION
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'AUTH_REQUIRED' } as ErrorResponse,
@@ -312,7 +311,7 @@ export async function POST(
     logger.info(`[${requestId}] POST /api/matches/${params.matchId}/events - Start`);
 
     // 1. AUTHORIZATION
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized', code: 'AUTH_REQUIRED' } as ErrorResponse,

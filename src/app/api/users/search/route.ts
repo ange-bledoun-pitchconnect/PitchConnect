@@ -130,10 +130,10 @@ export async function GET(req: NextRequest): Promise<
     // AUTHENTICATION
     // ========================================================================
 
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
+    if (!session) {
+      return Response.json(
         {
           success: false,
           error: 'Unauthorized',

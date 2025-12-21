@@ -21,9 +21,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; playerId: string } }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const session = await auth();
+  if (!session) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
@@ -108,7 +108,7 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; playerId: string } }
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -205,7 +205,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; playerId: string } }
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

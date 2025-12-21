@@ -89,10 +89,10 @@ export async function GET(request: NextRequest) {
     // 1. AUTHENTICATION & AUTHORIZATION
     // ========================================================================
 
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
-      return NextResponse.json(
+    if (!session) {
+      return Response.json(
         { error: 'Unauthorized - No session found' },
         { status: 401 }
       );

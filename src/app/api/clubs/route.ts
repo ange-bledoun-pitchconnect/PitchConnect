@@ -1,7 +1,6 @@
 // File: src/app/api/clubs/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { BadRequestError, ForbiddenError, UnauthorizedError } from '@/lib/api/errors';
 import { ok, error as errorResponse } from '@/lib/api/responses';
@@ -106,7 +105,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     // 1. Authorization Check
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       throw new UnauthorizedError('Authentication required');
     }
@@ -288,7 +287,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     // 1. Authentication check
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       throw new UnauthorizedError('Authentication required');
     }

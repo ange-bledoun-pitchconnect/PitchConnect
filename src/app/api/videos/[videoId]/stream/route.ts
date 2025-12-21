@@ -13,7 +13,7 @@ export async function GET(
   { params }: { params: { videoId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     const video = await prisma.video.findUnique({
       where: { id: params.videoId },

@@ -93,10 +93,10 @@ export async function POST(request: NextRequest) {
     // AUTHENTICATION
     // ========================================================================
 
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
-      return NextResponse.json(
+    if (!session) {
+      return Response.json(
         {
           success: false,
           message: 'Unauthorized',

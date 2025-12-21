@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { Trophy, Users, Calendar, TrendingUp } from 'lucide-react';
 
 export default async function DashboardOverviewPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect('/auth/login');

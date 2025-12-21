@@ -86,7 +86,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const requestId = crypto.randomUUID();
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return createErrorResponse('UNAUTHORIZED', 'Authentication required', 401, requestId);
     }
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const requestId = crypto.randomUUID();
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return createErrorResponse('UNAUTHORIZED', 'Authentication required', 401, requestId);
     }
@@ -238,7 +238,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
   const requestId = crypto.randomUUID();
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return createErrorResponse('UNAUTHORIZED', 'Authentication required', 401, requestId);
     }
@@ -319,7 +319,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
   const requestId = crypto.randomUUID();
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return createErrorResponse('UNAUTHORIZED', 'Authentication required', 401, requestId);
     }

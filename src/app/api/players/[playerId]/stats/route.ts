@@ -4,8 +4,7 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/api/logger';
 
@@ -20,9 +19,9 @@ export async function GET(request: NextRequest, { params }: StatsParams): Promis
   try {
     logger.info(`[${requestId}] GET /api/players/${params.playerId}/stats - Start`);
 
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
+    const session = await auth();
+    if (!session) {
+      return Response.json(
         { success: false, error: 'Unauthorized', code: 'AUTH_REQUIRED' },
         { status: 401, headers: { 'X-Request-ID': requestId } }
       );

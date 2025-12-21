@@ -27,10 +27,10 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; announcementId: string } }
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
-  if (!session?.user?.id) {
-    return NextResponse.json(
+  if (!session) {
+    return Response.json(
       { error: 'Unauthorized' },
       { status: 401 }
     );
@@ -119,7 +119,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: { clubId: string; teamId: string; announcementId: string } }
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user?.id) {
     return NextResponse.json(

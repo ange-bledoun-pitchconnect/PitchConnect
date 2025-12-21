@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { Trophy, Users, Calendar, BarChart3, TrendingUp, Shield } from 'lucide-react';
 
 export default async function LeagueAdminPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect('/auth/login');

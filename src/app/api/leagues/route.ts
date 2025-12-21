@@ -149,9 +149,9 @@ export async function GET(request: NextRequest): Promise<NextResponse<LeagueList
 
   try {
     // 1. Authentication check
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json(
+    const session = await auth();
+    if (!session) {
+      return Response.json(
         {
           success: false,
           error: 'Unauthorized - Authentication required',
@@ -395,7 +395,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<CreateLea
 
   try {
     // 1. Authentication check
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.id) {
       return NextResponse.json(

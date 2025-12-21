@@ -332,11 +332,11 @@ export async function GET(req: NextRequest): Promise<NextResponse<LogsResponse |
     // 1. AUTHENTICATION
     // ========================================================================
 
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session) {
       console.warn('Unauthorized logs access - no session', { requestId });
-      return NextResponse.json(
+      return Response.json(
         {
           success: false,
           error: 'Authentication required',

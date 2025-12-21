@@ -24,10 +24,10 @@ export async function PATCH(
   { params }: { params: { notificationId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
-      return NextResponse.json(
+    if (!session) {
+      return Response.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
@@ -175,7 +175,7 @@ export async function DELETE(
   { params }: { params: { notificationId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.email) {
       return NextResponse.json(

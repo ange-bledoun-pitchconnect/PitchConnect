@@ -113,9 +113,9 @@ export async function GET(
     // ========================================================================
     // 1. AUTHENTICATION
     // ========================================================================
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json(
+    const session = await auth();
+    if (!session) {
+      return Response.json(
         {
           success: false,
           error: 'Authentication required',

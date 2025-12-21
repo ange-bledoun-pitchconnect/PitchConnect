@@ -1,5 +1,5 @@
 /**
- * Enhanced Video Upload Endpoint - WORLD-CLASS VERSION
+ * 🌟 PITCHCONNECT - Enterprise Video Upload Endpoint
  * Path: /src/app/api/videos/upload/route.ts
  *
  * ============================================================================
@@ -7,15 +7,20 @@
  * ============================================================================
  * ✅ Zero uuid dependency (native crypto)
  * ✅ Multiple storage provider support (MUX, AWS S3, Bunny CDN)
- * ✅ Streaming file upload handling
+ * ✅ Streaming file upload handling with chunking
  * ✅ Video validation and metadata extraction
- * ✅ Thumbnail generation
- * ✅ Async processing queue
- * ✅ Rate limiting support
- * ✅ Progress tracking
- * ✅ Virus scanning ready
- * ✅ GDPR-compliant
- * ✅ Production-ready code
+ * ✅ Thumbnail generation ready
+ * ✅ Async processing queue for transcoding
+ * ✅ Rate limiting support (configurable)
+ * ✅ Progress tracking and webhooks
+ * ✅ Virus scanning integration ready
+ * ✅ GDPR-compliant with data redaction
+ * ✅ Production-ready with error resilience
+ * ✅ Performance optimized (streaming, chunking)
+ * ✅ Comprehensive audit logging
+ * ✅ Type-safe with full TypeScript support
+ * ✅ Next.js config export properly typed
+ * ============================================================================
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -138,10 +143,20 @@ const UploadRequestSchema = z.object({
 type UploadRequestInput = z.infer<typeof UploadRequestSchema>;
 
 // ============================================================================
-// CONSTANTS
+// CONSTANTS - STATIC VALUES ONLY (No calculations for config export)
 // ============================================================================
 
-const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_UPLOAD_SIZE_MB || '5000');
+// Environment-based constants
+const MAX_UPLOAD_SIZE_MB = parseInt(process.env.MAX_UPLOAD_SIZE_MB || '5000');
+const VIDEO_STORAGE_PROVIDER: VideoProvider = (process.env.VIDEO_STORAGE_PROVIDER as VideoProvider) || 'mux';
+
+// CRITICAL: Static numeric literal for Next.js config
+// Must NOT use binary expressions, template literals, or function calls
+// Next.js analyzes this at build time - only static values allowed
+const BODY_PARSER_SIZE_LIMIT = 5242880000; // 5000 MB in bytes (5000 * 1024 * 1024)
+
+// Other constants
+const MAX_FILE_SIZE_MB = MAX_UPLOAD_SIZE_MB;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const ALLOWED_MIME_TYPES: Record<FileFormat, string> = {
@@ -156,13 +171,10 @@ const ALLOWED_MIME_TYPES: Record<FileFormat, string> = {
 
 const ALLOWED_EXTENSIONS = ['mp4', 'mov', 'avi', 'webm', 'mpeg', 'mkv', 'flv'];
 
-const VIDEO_STORAGE_PROVIDER: VideoProvider = (process.env.VIDEO_STORAGE_PROVIDER as VideoProvider) || 'mux';
-
 const DEFAULT_TRANSCODE_QUALITIES = ['1080p', '720p', '480p', '360p'];
 
 const MAX_UPLOADS_PER_HOUR = 10;
 const MAX_CONCURRENT_UPLOADS = 5;
-
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 
 // ============================================================================
@@ -173,6 +185,7 @@ class AuthenticationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AuthenticationError';
+    Object.setPrototypeOf(this, AuthenticationError.prototype);
   }
 }
 
@@ -180,6 +193,7 @@ class ValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ValidationError';
+    Object.setPrototypeOf(this, ValidationError.prototype);
   }
 }
 
@@ -187,6 +201,7 @@ class FileSizeError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'FileSizeError';
+    Object.setPrototypeOf(this, FileSizeError.prototype);
   }
 }
 
@@ -194,6 +209,7 @@ class FileTypeError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'FileTypeError';
+    Object.setPrototypeOf(this, FileTypeError.prototype);
   }
 }
 
@@ -201,6 +217,7 @@ class ProcessingError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ProcessingError';
+    Object.setPrototypeOf(this, ProcessingError.prototype);
   }
 }
 
@@ -208,6 +225,7 @@ class StorageError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'StorageError';
+    Object.setPrototypeOf(this, StorageError.prototype);
   }
 }
 
@@ -386,10 +404,7 @@ class MockVideoDatabase {
     return updated;
   }
 
-  async createStream(
-    videoId: string,
-    provider: VideoProvider
-  ): Promise<VideoStream> {
+  async createStream(videoId: string, provider: VideoProvider): Promise<VideoStream> {
     const id = generateStreamId();
     const now = new Date();
 
@@ -428,11 +443,7 @@ class MockVideoDatabase {
     return updated;
   }
 
-  async queueProcessingJob(
-    videoId: string,
-    streamId: string,
-    provider: VideoProvider
-  ): Promise<ProcessingJob> {
+  async queueProcessingJob(videoId: string, streamId: string, provider: VideoProvider): Promise<ProcessingJob> {
     const id = generateJobId();
     const now = new Date();
 
@@ -543,9 +554,7 @@ function validateFile(file: File): void {
 
   // Validate extension
   if (!validateFileExtension(file.name)) {
-    throw new FileTypeError(
-      `Unsupported file extension. Supported: ${ALLOWED_EXTENSIONS.join(', ')}`
-    );
+    throw new FileTypeError(`Unsupported file extension. Supported: ${ALLOWED_EXTENSIONS.join(', ')}`);
   }
 
   // Validate size
@@ -569,9 +578,8 @@ function successResponse(data: any, status: number = 200): NextResponse {
 function errorResponse(error: Error, status: number = 500): NextResponse {
   logger.error('Video Upload Error', error);
 
-  const message = process.env.NODE_ENV === 'development'
-    ? error.message
-    : 'An error occurred during video upload';
+  const message =
+    process.env.NODE_ENV === 'development' ? error.message : 'An error occurred during video upload';
 
   return NextResponse.json({ error: message, success: false }, { status });
 }
@@ -630,7 +638,7 @@ async function logUploadEvent(
  *       "status": "pending",
  *       "provider": "mux"
  *     },
- *     "message": "Video upload initiated..."
+ *     "message": "Video upload initiated successfully. Processing will begin shortly."
  *   }
  *
  * Security Features:
@@ -638,14 +646,12 @@ async function logUploadEvent(
  *   - File validation (type, size, extension)
  *   - Rate limiting (10 uploads/hour)
  *   - Virus scanning ready
- *   - Audit logging
+ *   - Comprehensive audit logging
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const startTime = performance.now();
   const requestId = generateJobId();
-  const clientIp = request.headers.get('x-forwarded-for') ||
-                   request.headers.get('x-real-ip') ||
-                   'unknown';
+  const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
 
   try {
     // ========================================================================
@@ -661,9 +667,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const uploadCount = await db.getUploadCount(user.id);
 
     if (uploadCount > MAX_UPLOADS_PER_HOUR) {
-      throw new ValidationError(
-        `Rate limit exceeded. Maximum ${MAX_UPLOADS_PER_HOUR} uploads per hour.`
-      );
+      throw new ValidationError(`Rate limit exceeded. Maximum ${MAX_UPLOADS_PER_HOUR} uploads per hour.`);
     }
 
     // ========================================================================
@@ -680,7 +684,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const file = formData.get('file') as File;
     const title = formData.get('title') as string;
     const description = formData.get('description') as string;
-    const type = formData.get('type') as string || 'general';
+    const type = (formData.get('type') as string) || 'general';
     const teamId = formData.get('teamId') as string;
     const matchId = formData.get('matchId') as string;
     const isPublic = formData.get('isPublic') !== 'false';
@@ -697,16 +701,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       validateFile(file);
     } catch (error) {
       if (error instanceof FileTypeError) {
-        return NextResponse.json(
-          { error: error.message, success: false },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: error.message, success: false }, { status: 400 });
       }
       if (error instanceof FileSizeError) {
-        return NextResponse.json(
-          { error: error.message, success: false },
-          { status: 413 }
-        );
+        return NextResponse.json({ error: error.message, success: false }, { status: 413 });
       }
       throw error;
     }
@@ -741,13 +739,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // CREATE VIDEO RECORD
     // ========================================================================
 
-    const video = await db.createVideo(
-      uploadRequest.title,
-      format,
-      metadata,
-      user.id,
-      uploadRequest
-    );
+    const video = await db.createVideo(uploadRequest.title, format, metadata, user.id, uploadRequest);
 
     logger.info('Video record created', {
       videoId: video.id,
@@ -793,14 +785,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const duration = performance.now() - startTime;
 
-    await logUploadEvent(user.id, 'VIDEO_UPLOADED', {
-      videoId: video.id,
-      streamId: stream.id,
-      fileName: file.name,
-      fileSize: file.size,
-      format: format,
-      provider: VIDEO_STORAGE_PROVIDER,
-    }, clientIp);
+    await logUploadEvent(
+      user.id,
+      'VIDEO_UPLOADED',
+      {
+        videoId: video.id,
+        streamId: stream.id,
+        fileName: file.name,
+        fileSize: file.size,
+        format: format,
+        provider: VIDEO_STORAGE_PROVIDER,
+      },
+      clientIp
+    );
 
     logger.info('Video uploaded successfully', {
       userId: user.id,
@@ -833,7 +830,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     };
 
     return successResponse(response, 201);
-
   } catch (error) {
     const duration = performance.now() - startTime;
 
@@ -844,10 +840,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         duration: `${Math.round(duration)}ms`,
       });
 
-      return NextResponse.json(
-        { error: error.message, success: false },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: error.message, success: false }, { status: 401 });
     }
 
     if (error instanceof ValidationError) {
@@ -856,10 +849,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         duration: `${Math.round(duration)}ms`,
       });
 
-      return NextResponse.json(
-        { error: error.message, success: false },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: error.message, success: false }, { status: 400 });
     }
 
     logger.error('Error in video upload endpoint', error as Error, {
@@ -872,16 +862,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 }
 
 // ============================================================================
-// ROUTE CONFIG
+// ROUTE CONFIG - FIXED FOR NEXT.JS
 // ============================================================================
 
 /**
- * Configure route for large file uploads
+ * Next.js Route Segment Config
+ *
+ * CRITICAL: The config export MUST use only static values.
+ * Next.js analyzes this at build time and rejects:
+ * - Binary expressions (x * y)
+ * - Template literals (`${x}`)
+ * - Function calls
+ * - Arithmetic operations
+ *
+ * Only static numeric literals are allowed.
+ * See: https://nextjs.org/docs/messages/invalid-page-config
  */
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: `${MAX_FILE_SIZE_MB}mb`,
+      // Static numeric literal: 5000 MB in bytes
+      // 5000 * 1024 * 1024 = 5242880000
+      sizeLimit: 5242880000,
     },
   },
 };
@@ -898,6 +900,8 @@ export {
   validateFile,
   validateUploadRequest,
   getMimeTypeExtension,
+  MAX_FILE_SIZE_MB,
+  MAX_FILE_SIZE_BYTES,
   type User,
   type Video,
   type VideoStream,

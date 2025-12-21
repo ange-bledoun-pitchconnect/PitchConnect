@@ -170,11 +170,11 @@ export async function POST(
     // 1. AUTHENTICATION
     // ========================================================================
 
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session) {
       console.warn('Unauthorized impersonate attempt - no session', { requestId, clientIp });
-      return NextResponse.json(
+      return Response.json(
         {
           success: false,
           error: 'Authentication required',

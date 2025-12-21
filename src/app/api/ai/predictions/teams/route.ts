@@ -24,10 +24,10 @@ import { errorResponse } from '@/lib/api/responses';
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.id) {
-      return NextResponse.json(
+    if (!session) {
+      return Response.json(
         { error: 'Unauthorized', message: 'Authentication required' },
         { status: 401 }
       );

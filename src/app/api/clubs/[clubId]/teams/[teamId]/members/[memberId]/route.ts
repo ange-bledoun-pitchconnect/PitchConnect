@@ -8,10 +8,10 @@ export async function DELETE(
   { params }: { params: { clubId: string; teamId: string; memberId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { teamId, memberId } = params;
@@ -82,7 +82,7 @@ export async function PATCH(
   { params }: { params: { clubId: string; teamId: string; memberId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -24,8 +24,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { SubscriptionTier } from '@prisma/client';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/auth';
 
 // ============================================================================
 // TYPES
@@ -179,7 +178,7 @@ export async function validateSuperAdminAccess(
  */
 export async function checkSuperAdminSession() {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.id) {
       throw new Error('Unauthorized: No session found');

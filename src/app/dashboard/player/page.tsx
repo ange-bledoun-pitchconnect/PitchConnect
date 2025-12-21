@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { Trophy, Target, Calendar, TrendingUp, Award, Activity, Users, Search } from 'lucide-react';
 
 export default async function PlayerPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
 
   if (!session?.user) {
     redirect('/auth/login');

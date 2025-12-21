@@ -383,11 +383,11 @@ export async function GET(
     // 1. AUTHENTICATION
     // ========================================================================
 
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session) {
       console.warn('Unauthorized superadmin feed access - no session', { requestId });
-      return NextResponse.json(
+      return Response.json(
         {
           success: false,
           error: 'Authentication required',

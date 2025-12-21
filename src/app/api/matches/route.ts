@@ -3,8 +3,7 @@
 // Complete endpoint for POST /api/matches and GET /api/matches
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, ForbiddenError, BadRequestError, ValidationError } from '@/lib/api/errors';
 import { logAuditAction } from '@/lib/api/audit';
@@ -131,7 +130,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     logger.info(`[${requestId}] GET /api/matches - Start`);
 
     // 1. AUTHORIZATION CHECK
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         {
@@ -349,7 +348,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     logger.info(`[${requestId}] POST /api/matches - Start`);
 
     // 1. AUTHORIZATION CHECK
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
         {
