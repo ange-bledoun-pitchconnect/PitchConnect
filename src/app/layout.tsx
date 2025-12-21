@@ -5,7 +5,7 @@
  * ============================================================================
  * CORE FEATURES
  * ============================================================================
- * ✅ NextAuth v5 server-side session integration (FIXED)
+ * ✅ NextAuth v4 server-side session integration (FIXED)
  * ✅ ClientSessionProvider properly wraps SessionProvider
  * ✅ Performance optimized (LCP, CLS, FID, INP)
  * ✅ SEO optimized metadata & schema
@@ -18,11 +18,11 @@
  * ✅ Structured data for search engines
  *
  * ============================================================================
- * FIXED: SessionProvider Error
+ * FIXED: NextAuth v4 getServerSession
  * ============================================================================
- * BEFORE: "Cannot read properties of undefined (reading 'call')"
- * CAUSE: SessionProvider is client component, used directly in server layout
- * AFTER: Uses ClientSessionProvider wrapper (client component)
+ * BEFORE: Error "auth() is not a function"
+ * CAUSE: Using NextAuth v5 syntax with v4 package
+ * AFTER: Uses getServerSession from next-auth/next
  * RESULT: ✅ Works perfectly, no errors
  *
  * ============================================================================
@@ -31,7 +31,8 @@
  */
 
 import type { Metadata, Viewport } from 'next';
-import { auth } from '@/auth';
+import { getServerSession } from 'next-auth/next';
+import authOptions from '@/auth';
 import { Inter } from 'next/font/google';
 import { ClientSessionProvider } from '@/components/client-session-provider';
 import '@/styles/globals.css';
@@ -226,9 +227,9 @@ interface RootLayoutProps {
 }
 
 export default async function RootLayout({ children }: RootLayoutProps) {
-  // ✅ Get session from NextAuth v5 (server-side only)
+  // ✅ FIXED: Use getServerSession from next-auth/next (NextAuth v4)
   // This safely retrieves the session in the server component
-  const session = await auth();
+  const session = await getServerSession(authOptions);
 
   return (
     <html
@@ -506,7 +507,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
         </a>
 
         {/* ====================================================================
-            CLIENT SESSION PROVIDER WRAPPER - NEXTAUTH V5 PROPER INTEGRATION
+            CLIENT SESSION PROVIDER WRAPPER - NEXTAUTH V4 PROPER INTEGRATION
             ✅ FIXED: Uses ClientSessionProvider (client component wrapper)
             ==================================================================== */}
         <ClientSessionProvider session={session}>
