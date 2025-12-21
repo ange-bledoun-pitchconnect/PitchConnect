@@ -1,13 +1,14 @@
 /**
- * 🌟 PITCHCONNECT - NextAuth v4 Instance
+ * 🌟 PITCHCONNECT - NextAuth v5 Instance
  * Path: /src/auth.ts
  *
  * ============================================================================
- * NEXTAUTH V4 CONFIGURATION (not v5)
+ * NEXTAUTH V5 CONFIGURATION - React 19 Compatible
  * ============================================================================
- * ✅ Fully compatible with next-auth 4.24.13
- * ✅ Works with Next.js 15.5.9
- * ✅ Compatible with app directory structure
+ * ✅ Fully compatible with NextAuth v5
+ * ✅ React 19 RC support
+ * ✅ Next.js 15.5.9 compatible
+ * ✅ App directory native
  * ✅ Full TypeScript support
  * ✅ Production-ready security using PBKDF2
  *
@@ -16,11 +17,11 @@
  * ============================================================================
  */
 
-import { NextAuthOptions } from 'next-auth';
-import { getServerSession } from 'next-auth';
+import NextAuth, { type NextAuthConfig } from 'next-auth';
 import Google from 'next-auth/providers/google';
 import GitHub from 'next-auth/providers/github';
 import Credentials from 'next-auth/providers/credentials';
+import { type DefaultSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { crypto } from 'node:crypto';
 import { timingSafeEqual } from 'node:crypto';
@@ -137,7 +138,7 @@ export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'BANNED';
 
 declare module 'next-auth' {
   interface Session {
-    user?: {
+    user: {
       id: string;
       role: UserRole;
       roles: UserRole[];
@@ -147,10 +148,7 @@ declare module 'next-auth' {
       teamId?: string;
       isVerified: boolean;
       tier: 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE';
-      email?: string;
-      name?: string;
-      image?: string;
-    };
+    } & DefaultSession['user'];
   }
 
   interface User {
@@ -180,17 +178,14 @@ declare module 'next-auth/jwt' {
 }
 
 // ============================================================================
-// NEXTAUTH OPTIONS - PRODUCTION GRADE FOR V4
+// NEXTAUTH CONFIGURATION - PRODUCTION GRADE
 // ============================================================================
 
-export const authOptions: NextAuthOptions = {
-  // ========================================================================
-  // PROVIDERS
-  // ========================================================================
+const authConfig = {
   providers: [
-    // ====================================================================
+    // ========================================================================
     // GOOGLE OAUTH - Enterprise SSO
-    // ====================================================================
+    // ========================================================================
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
@@ -204,20 +199,46 @@ export const authOptions: NextAuthOptions = {
             'openid profile email https://www.googleapis.com/auth/calendar.readonly',
         },
       },
+      profile: async (profile) => {
+        return {
+          id: profile.sub,
+          name: profile.name || `${profile.given_name} ${profile.family_name}`,
+          email: profile.email,
+          image: profile.picture,
+          role: 'PLAYER' as UserRole,
+          roles: ['PLAYER'] as UserRole[],
+          status: 'ACTIVE' as UserStatus,
+          isVerified: profile.email_verified || false,
+          tier: 'FREE' as const,
+        };
+      },
     }),
 
-    // ====================================================================
+    // ========================================================================
     // GITHUB OAUTH - Developer-friendly SSO
-    // ====================================================================
+    // ========================================================================
     GitHub({
       clientId: process.env.GITHUB_CLIENT_ID || '',
       clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
       allowDangerousEmailAccountLinking: false,
+      profile: async (profile) => {
+        return {
+          id: profile.id.toString(),
+          name: profile.name || profile.login,
+          email: profile.email,
+          image: profile.avatar_url,
+          role: 'PLAYER' as UserRole,
+          roles: ['PLAYER'] as UserRole[],
+          status: 'ACTIVE' as UserStatus,
+          isVerified: true,
+          tier: 'FREE' as const,
+        };
+      },
     }),
 
-    // ====================================================================
+    // ========================================================================
     // CREDENTIALS PROVIDER - Email/Password Authentication
-    // ====================================================================
+    // ========================================================================
     Credentials({
       id: 'credentials',
       name: 'Credentials',
@@ -300,18 +321,42 @@ export const authOptions: NextAuthOptions = {
   },
 
   // ========================================================================
+  // SESSION CONFIGURATION
+  // ========================================================================
+  session: {
+    strategy: 'jwt',
+    maxAge: 24 * 60 * 60, // 24 hours
+    updateAge: 60 * 60, // Update JWT every hour
+    generateSessionToken: () => {
+      return crypto.randomUUID();
+    },
+  },
+
+  // ========================================================================
+  // JWT CONFIGURATION
+  // ========================================================================
+  jwt: {
+    secret: process.env.NEXTAUTH_SECRET,
+    maxAge: 24 * 60 * 60, // 24 hours
+  },
+
+  // ========================================================================
   // CALLBACKS - CORE AUTH LOGIC
   // ========================================================================
   callbacks: {
     /**
      * SIGN IN CALLBACK
      * Called on every sign in (after credentials or OAuth verified)
+     * Determines whether user is allowed to sign in
      */
     async signIn({ user, account, profile, email, credentials }) {
       try {
+        // Allow any authenticated user to sign in
+        // Additional checks (2FA, email verification) can be added here
         if (user?.email) {
           return true;
         }
+
         return false;
       } catch (error) {
         console.error('[SignIn Callback Error]', error);
@@ -322,6 +367,7 @@ export const authOptions: NextAuthOptions = {
     /**
      * JWT CALLBACK
      * Called whenever JWT is created or updated
+     * This is where we enrich the token with user data
      */
     async jwt({ token, user, account, trigger, session }) {
       try {
@@ -356,6 +402,7 @@ export const authOptions: NextAuthOptions = {
             }
           } catch (err) {
             console.error('[DB Fetch Error in JWT]', err);
+            // Don't fail auth if DB is temporarily unavailable
             token.permissions = getPermissionsForRoles(token.roles || []);
           }
         }
@@ -382,6 +429,7 @@ export const authOptions: NextAuthOptions = {
     /**
      * SESSION CALLBACK
      * Called on every session check
+     * Returns data that should be exposed to the client
      */
     async session({ session, token }) {
       try {
@@ -406,44 +454,34 @@ export const authOptions: NextAuthOptions = {
 
     /**
      * REDIRECT CALLBACK
+     * Called after sign in/sign out to determine redirect destination
      */
     async redirect({ url, baseUrl }) {
+      // Allow relative URLs
       if (url.startsWith('/')) {
         return `${baseUrl}${url}`;
       }
 
+      // Allow same origin URLs
       try {
         const urlObj = new URL(url);
         if (urlObj.origin === baseUrl) {
           return url;
         }
       } catch {
-        // Invalid URL
+        // Invalid URL, fall through
       }
 
+      // Default to base URL
       return baseUrl;
     },
-  },
-
-  // ========================================================================
-  // SESSION & JWT CONFIGURATION
-  // ========================================================================
-  session: {
-    strategy: 'jwt',
-    maxAge: 24 * 60 * 60, // 24 hours
-    updateAge: 60 * 60, // Update JWT every hour
-  },
-
-  jwt: {
-    secret: process.env.NEXTAUTH_SECRET,
-    maxAge: 24 * 60 * 60, // 24 hours
   },
 
   // ========================================================================
   // EVENTS - AUDIT LOGGING & MONITORING
   // ========================================================================
   events: {
-    async signIn({ user, account, isNewUser, profile }) {
+    async signIn({ user, account, isNewUser }) {
       console.log('[Auth Event] User signed in', {
         userId: user?.id,
         email: user?.email,
@@ -452,23 +490,23 @@ export const authOptions: NextAuthOptions = {
         timestamp: new Date().toISOString(),
       });
 
+      // Log to audit table if user exists (non-blocking)
       if (user?.id) {
         try {
-          await prisma.auditLog
-            .create({
-              data: {
-                userId: user.id,
-                action: 'LOGIN_ATTEMPT',
-                entity: 'User',
-                entityId: user.id,
-                severity: 'INFO',
-              },
-            })
-            .catch((err) => {
-              console.error('[Audit Log Error]', err);
-            });
+          await prisma.auditLog.create({
+            data: {
+              userId: user.id,
+              action: 'LOGIN_ATTEMPT',
+              entity: 'User',
+              entityId: user.id,
+              severity: 'INFO',
+            },
+          }).catch((err) => {
+            console.error('[Audit Log Error]', err);
+            // Don't fail auth if audit log fails
+          });
         } catch (err) {
-          // Silently fail
+          // Silently fail - don't interrupt authentication
         }
       }
     },
@@ -479,23 +517,22 @@ export const authOptions: NextAuthOptions = {
         timestamp: new Date().toISOString(),
       });
 
+      // Log logout event (non-blocking)
       if (token?.sub) {
         try {
-          await prisma.auditLog
-            .create({
-              data: {
-                userId: token.sub,
-                action: 'LOGOUT',
-                entity: 'User',
-                entityId: token.sub,
-                severity: 'INFO',
-              },
-            })
-            .catch((err) => {
-              console.error('[Audit Log Error]', err);
-            });
+          await prisma.auditLog.create({
+            data: {
+              userId: token.sub,
+              action: 'LOGOUT',
+              entity: 'User',
+              entityId: token.sub,
+              severity: 'INFO',
+            },
+          }).catch((err) => {
+            console.error('[Audit Log Error]', err);
+          });
         } catch (err) {
-          // Silently fail
+          // Silently fail - don't interrupt logout
         }
       }
     },
@@ -503,18 +540,26 @@ export const authOptions: NextAuthOptions = {
     async error({ error }) {
       console.error('[Auth Error Event]', {
         error: error?.message || String(error),
+        code: error?.code,
         timestamp: new Date().toISOString(),
       });
+    },
+
+    async session({ session, newSession, trigger }) {
+      if (trigger === 'update' && newSession) {
+        console.log('[Auth Event] Session updated', {
+          userId: session.user?.id,
+          timestamp: new Date().toISOString(),
+        });
+      }
     },
   },
 
   // ========================================================================
   // DEVELOPMENT MODE
   // ========================================================================
-  debug:
-    process.env.NODE_ENV === 'development' &&
-    process.env.NEXTAUTH_DEBUG === 'true',
-};
+  debug: process.env.NODE_ENV === 'development' && process.env.NEXTAUTH_DEBUG === 'true',
+} satisfies NextAuthConfig;
 
 // ============================================================================
 // HELPER FUNCTION - GET PERMISSIONS FOR ROLES
@@ -586,11 +631,12 @@ function getPermissionsForRoles(roles: UserRole[]): PermissionName[] {
 }
 
 // ============================================================================
-// EXPORT NEXTAUTH CONFIGURATION & UTILITIES
+// EXPORT NEXTAUTH INSTANCE & UTILITIES
 // ============================================================================
+
+export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 
 // Export password utilities for use in sign-up, password reset
 export { hashPassword, verifyPassword };
 
-// Export auth config
-export default authOptions;
+export default authConfig;
