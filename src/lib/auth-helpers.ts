@@ -1,30 +1,43 @@
 /**
- * Auth Helpers Module
- * Path: /src/lib/auth-helpers.ts
- * 
- * Core Features:
- * - Password hashing and verification with bcryptjs
- * - User retrieval with roles and related data
- * - Role management and checking utilities
- * - User display name formatting
- * - String manipulation utilities
- * 
- * Schema Aligned: Uses Prisma User, Player, Coach, Club, League models
- * Authentication: Handles password security and role-based access
- * 
- * Business Logic:
- * - Hash passwords securely for storage
- * - Verify passwords during authentication
- * - Fetch user with complete role and relation data
- * - Determine primary role from role array
- * - Check user permissions based on roles
+ * 🌟 PITCHCONNECT - Enhanced Auth Helpers Module
+ * Path: /lib/auth-helpers.ts
+ *
+ * ============================================================================
+ * CORE FEATURES
+ * ============================================================================
+ * ✅ NextAuth v5 integration (replacing old auth system)
+ * ✅ Server Component & Server Action support
+ * ✅ Password hashing with bcryptjs (legacy support)
+ * ✅ User retrieval with complete role & relation data
+ * ✅ Advanced role management and permission checking
+ * ✅ User display formatting and utilities
+ * ✅ Dashboard routing by role
+ * ✅ Full TypeScript support with strict typing
+ * ✅ Error handling and logging
+ * ✅ Performance optimized queries
+ *
+ * ============================================================================
+ * SCHEMA ALIGNMENT
+ * ============================================================================
+ * Models: User, Player, Coach, Club, League, Subscription, UserPreferences
+ * Roles: SUPERADMIN, LEAGUE_ADMIN, CLUB_MANAGER, CLUB_OWNER, COACH, 
+ *        PLAYER, PLAYER_PRO, PARENT, REFEREE, TREASURER, SCOUT, ANALYST
+ *
+ * ============================================================================
+ * MIGRATION NOTE
+ * ============================================================================
+ * This replaces the old next-auth v4 implementation
+ * Works seamlessly with the new NextAuth v5 configuration in /auth.ts
+ * Supports both legacy password-based and new OAuth flows
  */
 
+import { auth } from '@/auth';
 import { PrismaClient } from '@prisma/client';
 import { hash, compare } from 'bcryptjs';
+import { redirect } from 'next/navigation';
 
 // ============================================================================
-// CONSTANTS
+// CONSTANTS & TYPES
 // ============================================================================
 
 const HASH_ROUNDS = 12;
@@ -35,8 +48,8 @@ const ROLE_PRIORITY = [
   'CLUB_MANAGER',
   'CLUB_OWNER',
   'COACH',
-  'PLAYER',
   'PLAYER_PRO',
+  'PLAYER',
   'PARENT',
   'REFEREE',
   'TREASURER',
@@ -49,27 +62,399 @@ const ERROR_MESSAGES = {
   verifyFailed: 'Password verification failed',
   userNotFound: 'User not found',
   roleCheckFailed: 'Role checking failed',
+  unauthorized: 'Unauthorized: Authentication required',
+  forbidden: 'Forbidden: Insufficient permissions',
+  invalidInput: 'Invalid input provided',
+} as const;
+
+// Define proper TypeScript types
+export type UserRole = typeof ROLE_PRIORITY[number];
+
+export interface UserWithRoles {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phoneNumber?: string;
+  avatar?: string;
+  roles: UserRole[];
+  isSuperAdmin: boolean;
+  emailVerified: boolean;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  playerProfile?: {
+    id: string;
+    position?: string;
+    preferredFoot?: string;
+    height?: number;
+    weight?: number;
+    dateOfBirth?: Date;
+    shirtNumber?: number;
+    nationality?: string;
+    photo?: string;
+  } | null;
+  coachProfile?: {
+    id: string;
+    coachType?: string;
+    yearsExperience?: number;
+    qualifications?: string[];
+    specializations?: string[];
+    certifications?: string[];
+  } | null;
+  subscription?: {
+    id: string;
+    tier: string;
+    status: string;
+    currentPeriodEnd?: Date;
+  } | null;
+  preferences?: {
+    id: string;
+    theme: string;
+    language: string;
+    timezone: string;
+    notificationsEmail: boolean;
+  } | null;
+}
+
+// ============================================================================
+// PRISMA CLIENT (Singleton)
+// ============================================================================
+
+const prismaClientSingleton = () => {
+  return new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+  });
 };
 
-// ============================================================================
-// PRISMA CLIENT
-// ============================================================================
+type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>;
 
-const prisma = new PrismaClient();
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClientSingleton | undefined;
+};
+
+export const prisma = globalForPrisma.prisma ?? prismaClientSingleton();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
 
 // ============================================================================
-// PASSWORD UTILITIES
+// NEXTAUTH V5 SESSION HELPERS (Server Components & Actions)
 // ============================================================================
 
 /**
- * Hash a password using bcryptjs
- * 
- * @param password - Plain text password to hash
+ * 🔐 Get current authenticated user from NextAuth v5 session
+ * Safe to use in Server Components and Server Actions
+ *
+ * @returns User object or null if not authenticated
+ * @throws Never throws - returns null on failure
+ *
+ * @example
+ * // Server Component
+ * const user = await getCurrentUser();
+ * if (!user) return <SignInButton />;
+ */
+export async function getCurrentUser() {
+  try {
+    const session = await auth();
+    return session?.user || null;
+  } catch (error) {
+    console.error('❌ Error getting current user:', error);
+    return null;
+  }
+}
+
+/**
+ * 🔐 Get current session from NextAuth v5
+ * Safe to use in Server Components and Server Actions
+ *
+ * @returns Full session object or null
+ *
+ * @example
+ * const session = await getCurrentSession();
+ * const accessToken = session?.accessToken;
+ */
+export async function getCurrentSession() {
+  try {
+    const session = await auth();
+    return session || null;
+  } catch (error) {
+    console.error('❌ Error getting session:', error);
+    return null;
+  }
+}
+
+/**
+ * 🔐 Check if user is currently authenticated
+ *
+ * @returns True if authenticated, false otherwise
+ *
+ * @example
+ * if (await isAuthenticated()) {
+ *   // Show protected content
+ * }
+ */
+export async function isAuthenticated(): Promise<boolean> {
+  const user = await getCurrentUser();
+  return !!user;
+}
+
+/**
+ * 🔐 Require authentication - redirect if not authenticated
+ * Ideal for Server Components that need auth
+ *
+ * @throws Redirects to /auth/login if not authenticated
+ * @returns User object (guaranteed)
+ *
+ * @example
+ * // Server Component
+ * const user = await requireAuth();
+ * // User is guaranteed to exist here
+ */
+export async function requireAuth() {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect('/auth/login');
+  }
+  return user;
+}
+
+/**
+ * 🔐 Throw-on-fail version for Server Actions
+ * Use this when you need to throw instead of redirect
+ *
+ * @throws Error if not authenticated
+ * @returns User object (guaranteed)
+ *
+ * @example
+ * // Server Action
+ * 'use server';
+ * export async function myAction() {
+ *   const user = await requireAuthThrow();
+ *   // User guaranteed here
+ * }
+ */
+export async function requireAuthThrow() {
+  const user = await getCurrentUser();
+  if (!user) {
+    throw new Error(ERROR_MESSAGES.unauthorized);
+  }
+  return user;
+}
+
+// ============================================================================
+// ROLE CHECKING (NextAuth v5 Session-based)
+// ============================================================================
+
+/**
+ * ✅ Check if current user has a specific role
+ * Safe for Server Components and Server Actions
+ *
+ * @param requiredRole - Role to check for
+ * @returns True if user has role, false otherwise
+ *
+ * @example
+ * if (await hasRole('ADMIN')) {
+ *   // Show admin content
+ * }
+ */
+export async function hasRole(requiredRole: UserRole): Promise<boolean> {
+  try {
+    const user = await getCurrentUser();
+    if (!user?.roles) return false;
+    return user.roles.includes(requiredRole);
+  } catch (error) {
+    console.error('❌ Error checking role:', error);
+    return false;
+  }
+}
+
+/**
+ * ✅ Check if current user has ANY of the specified roles
+ *
+ * @param requiredRoles - Array of roles to check for
+ * @returns True if user has at least one role
+ *
+ * @example
+ * if (await hasAnyRole(['COACH', 'MANAGER'])) {
+ *   // Show coach/manager content
+ * }
+ */
+export async function hasAnyRole(requiredRoles: UserRole[]): Promise<boolean> {
+  try {
+    const user = await getCurrentUser();
+    if (!user?.roles || requiredRoles.length === 0) return false;
+    return requiredRoles.some((role) => user.roles.includes(role));
+  } catch (error) {
+    console.error('❌ Error checking any role:', error);
+    return false;
+  }
+}
+
+/**
+ * ✅ Check if current user has ALL of the specified roles
+ *
+ * @param requiredRoles - Array of roles all must exist
+ * @returns True if user has all roles
+ *
+ * @example
+ * if (await hasAllRoles(['COACH', 'SUPERADMIN'])) {
+ *   // User is both coach AND superadmin
+ * }
+ */
+export async function hasAllRoles(requiredRoles: UserRole[]): Promise<boolean> {
+  try {
+    const user = await getCurrentUser();
+    if (!user?.roles || requiredRoles.length === 0) return false;
+    return requiredRoles.every((role) => user.roles.includes(role));
+  } catch (error) {
+    console.error('❌ Error checking all roles:', error);
+    return false;
+  }
+}
+
+/**
+ * 🛡️ Require a specific role - throws error if not authorized
+ * Use in Server Actions for strict access control
+ *
+ * @param requiredRole - Role required
+ * @throws Error if user lacks role
+ * @returns User object (guaranteed)
+ *
+ * @example
+ * 'use server';
+ * export async function adminOnly() {
+ *   const user = await requireRole('SUPERADMIN');
+ *   // User guaranteed to be SUPERADMIN here
+ * }
+ */
+export async function requireRole(requiredRole: UserRole) {
+  const user = await getCurrentUser();
+  if (!user) {
+    throw new Error(ERROR_MESSAGES.unauthorized);
+  }
+  if (!user.roles?.includes(requiredRole)) {
+    throw new Error(`${ERROR_MESSAGES.forbidden} - Role '${requiredRole}' required`);
+  }
+  return user;
+}
+
+/**
+ * 🛡️ Require ANY of the specified roles
+ *
+ * @param requiredRoles - Roles required (any one)
+ * @throws Error if user lacks all roles
+ * @returns User object (guaranteed)
+ */
+export async function requireAnyRole(requiredRoles: UserRole[]) {
+  const user = await getCurrentUser();
+  if (!user) {
+    throw new Error(ERROR_MESSAGES.unauthorized);
+  }
+  if (!requiredRoles.some((role) => user.roles?.includes(role))) {
+    throw new Error(`${ERROR_MESSAGES.forbidden} - One of [${requiredRoles.join(', ')}] required`);
+  }
+  return user;
+}
+
+/**
+ * 🛡️ Require ALL of the specified roles
+ *
+ * @param requiredRoles - Roles all required
+ * @throws Error if user lacks any role
+ * @returns User object (guaranteed)
+ */
+export async function requireAllRoles(requiredRoles: UserRole[]) {
+  const user = await getCurrentUser();
+  if (!user) {
+    throw new Error(ERROR_MESSAGES.unauthorized);
+  }
+  if (!requiredRoles.every((role) => user.roles?.includes(role))) {
+    throw new Error(`${ERROR_MESSAGES.forbidden} - All of [${requiredRoles.join(', ')}] required`);
+  }
+  return user;
+}
+
+// ============================================================================
+// REDIRECT HELPERS (Server Components)
+// ============================================================================
+
+/**
+ * 🔄 Redirect if not authenticated
+ * Use in Server Components
+ *
+ * @throws Redirects to /auth/login if not authenticated
+ *
+ * @example
+ * export default async function ProtectedPage() {
+ *   await redirectIfUnauthenticated();
+ *   // If we reach here, user is authenticated
+ * }
+ */
+export async function redirectIfUnauthenticated(): Promise<void> {
+  const isAuth = await isAuthenticated();
+  if (!isAuth) {
+    redirect('/auth/login');
+  }
+}
+
+/**
+ * 🔄 Redirect if user lacks a specific role
+ *
+ * @param requiredRole - Role required
+ * @param redirectPath - Where to redirect (default: /dashboard)
+ *
+ * @example
+ * export default async function AdminPage() {
+ *   await redirectIfNoRole('SUPERADMIN', '/unauthorized');
+ *   // Safe to render admin content
+ * }
+ */
+export async function redirectIfNoRole(
+  requiredRole: UserRole,
+  redirectPath: string = '/dashboard'
+): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user?.roles?.includes(requiredRole)) {
+    redirect(redirectPath);
+  }
+}
+
+/**
+ * 🔄 Redirect if user lacks ANY of the required roles
+ *
+ * @param requiredRoles - Roles to check
+ * @param redirectPath - Where to redirect
+ */
+export async function redirectIfNoAnyRole(
+  requiredRoles: UserRole[],
+  redirectPath: string = '/dashboard'
+): Promise<void> {
+  const user = await getCurrentUser();
+  if (!requiredRoles.some((role) => user?.roles?.includes(role))) {
+    redirect(redirectPath);
+  }
+}
+
+// ============================================================================
+// LEGACY PASSWORD UTILITIES (For database migration period)
+// ============================================================================
+
+/**
+ * 🔐 Hash password using bcryptjs
+ * Only needed for legacy password-based auth during migration
+ * New OAuth flows don't need this
+ *
+ * @param password - Plain text password
  * @returns Hashed password
  * @throws Error if hashing fails
  */
 export async function hashPassword(password: string): Promise<string> {
   try {
+    if (!password || typeof password !== 'string') {
+      throw new Error(ERROR_MESSAGES.invalidInput);
+    }
     const hashedPassword = await hash(password, HASH_ROUNDS);
     console.log('✅ Password hashed successfully');
     return hashedPassword;
@@ -80,18 +465,21 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 /**
- * Verify a password against a hash
- * 
+ * 🔐 Verify password against hash
+ * Only needed for legacy password-based auth
+ *
  * @param password - Plain text password to verify
- * @param hashed - Hashed password to compare against
- * @returns True if password matches, false otherwise
- * @throws Error if verification fails
+ * @param hashed - Hashed password to compare
+ * @returns True if password matches
  */
 export async function verifyPassword(
   password: string,
   hashed: string
 ): Promise<boolean> {
   try {
+    if (!password || !hashed) {
+      throw new Error(ERROR_MESSAGES.invalidInput);
+    }
     const isValid = await compare(password, hashed);
     return isValid;
   } catch (error) {
@@ -101,18 +489,22 @@ export async function verifyPassword(
 }
 
 // ============================================================================
-// USER QUERIES
+// USER QUERIES (Database access)
 // ============================================================================
 
 /**
- * Get user by email with roles and related data
- * Includes player profile, coach profile, club/league admin data
- * 
+ * 📊 Get user by email with all roles and relations
+ * Used during login or user lookups
+ *
  * @param email - User email address
- * @returns User object with relations, or null if not found
+ * @returns Full user object with relations, or null if not found
  */
-export async function getUserWithRole(email: string) {
+export async function getUserWithRole(email: string): Promise<UserWithRoles | null> {
   try {
+    if (!email || typeof email !== 'string') {
+      throw new Error(ERROR_MESSAGES.invalidInput);
+    }
+
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
@@ -125,12 +517,11 @@ export async function getUserWithRole(email: string) {
         roles: true,
         isSuperAdmin: true,
         emailVerified: true,
-        password: true,
         status: true,
         createdAt: true,
         updatedAt: true,
-        
-        // Player profile relation
+
+        // Player profile
         playerProfile: {
           select: {
             id: true,
@@ -144,8 +535,8 @@ export async function getUserWithRole(email: string) {
             photo: true,
           },
         },
-        
-        // Coach profile relation
+
+        // Coach profile
         coachProfile: {
           select: {
             id: true,
@@ -156,75 +547,8 @@ export async function getUserWithRole(email: string) {
             certifications: true,
           },
         },
-        
-        // Club Manager relation
-        clubManager: {
-          select: {
-            id: true,
-            createdAt: true,
-          },
-        },
-        
-        // Club Owner relation
-        clubOwner: {
-          select: {
-            id: true,
-            canManageTeams: true,
-            canManageTreasury: true,
-            canViewAnalytics: true,
-            canManageMembers: true,
-          },
-        },
-        
-        // League Admin relation
-        leagueAdmin: {
-          select: {
-            id: true,
-            createdAt: true,
-          },
-        },
-        
-        // Referee relation
-        refereeProfile: {
-          select: {
-            id: true,
-            licenseNumber: true,
-            licenseLevel: true,
-            yearsOfExperience: true,
-            specialization: true,
-          },
-        },
-        
-        // Scout relation
-        scoutProfile: {
-          select: {
-            id: true,
-            specialization: true,
-            region: true,
-            yearsExperience: true,
-          },
-        },
-        
-        // Analyst relation
-        analyticsProfile: {
-          select: {
-            id: true,
-            specialization: true,
-            tools: true,
-          },
-        },
-        
-        // Treasurer relation
-        treasurerProfile: {
-          select: {
-            id: true,
-            clubId: true,
-            canViewFinancials: true,
-            canApprovePayments: true,
-          },
-        },
-        
-        // Subscription info
+
+        // Subscription
         subscription: {
           select: {
             id: true,
@@ -233,7 +557,7 @@ export async function getUserWithRole(email: string) {
             currentPeriodEnd: true,
           },
         },
-        
+
         // Preferences
         preferences: {
           select: {
@@ -252,21 +576,25 @@ export async function getUserWithRole(email: string) {
       console.log('⚠️ User not found:', email);
     }
 
-    return user;
+    return user as UserWithRoles | null;
   } catch (error) {
     console.error('❌ Error fetching user:', error);
-    throw new Error(ERROR_MESSAGES.userNotFound);
+    return null;
   }
 }
 
 /**
- * Get user by ID with roles and related data
- * 
+ * 📊 Get user by ID with all relations
+ *
  * @param userId - User ID
- * @returns User object with relations, or null if not found
+ * @returns Full user object or null if not found
  */
-export async function getUserByIdWithRole(userId: string) {
+export async function getUserByIdWithRole(userId: string): Promise<UserWithRoles | null> {
   try {
+    if (!userId || typeof userId !== 'string') {
+      throw new Error(ERROR_MESSAGES.invalidInput);
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -282,8 +610,7 @@ export async function getUserByIdWithRole(userId: string) {
         status: true,
         createdAt: true,
         updatedAt: true,
-        
-        // Player profile
+
         playerProfile: {
           select: {
             id: true,
@@ -294,8 +621,7 @@ export async function getUserByIdWithRole(userId: string) {
             shirtNumber: true,
           },
         },
-        
-        // Coach profile
+
         coachProfile: {
           select: {
             id: true,
@@ -303,22 +629,7 @@ export async function getUserByIdWithRole(userId: string) {
             yearsExperience: true,
           },
         },
-        
-        // Club Manager relation
-        clubManager: {
-          select: {
-            id: true,
-          },
-        },
-        
-        // League Admin relation
-        leagueAdmin: {
-          select: {
-            id: true,
-          },
-        },
-        
-        // Subscription
+
         subscription: {
           select: {
             tier: true,
@@ -328,25 +639,30 @@ export async function getUserByIdWithRole(userId: string) {
       },
     });
 
-    return user;
+    return user as UserWithRoles | null;
   } catch (error) {
     console.error('❌ Error fetching user by ID:', error);
-    throw new Error(`User with ID ${userId} not found`);
+    return null;
   }
 }
 
 /**
- * Check if user email exists
- * 
+ * 📊 Check if user exists by email
+ *
  * @param email - User email
  * @returns True if user exists
  */
 export async function userExists(email: string): Promise<boolean> {
   try {
+    if (!email || typeof email !== 'string') {
+      return false;
+    }
+
     const user = await prisma.user.findUnique({
       where: { email },
       select: { id: true },
     });
+
     return !!user;
   } catch (error) {
     console.error('❌ Error checking user existence:', error);
@@ -355,16 +671,20 @@ export async function userExists(email: string): Promise<boolean> {
 }
 
 // ============================================================================
-// ROLE UTILITIES
+// ROLE UTILITIES (Non-async, for use anywhere)
 // ============================================================================
 
 /**
- * Get user's primary role based on priority order
- * 
+ * 🎯 Get user's primary role from role array
+ *
  * @param roles - Array of user roles
- * @returns Primary role string
+ * @returns Highest priority role
+ *
+ * @example
+ * const primaryRole = getPrimaryRole(['COACH', 'PLAYER']);
+ * // Returns 'COACH' (higher priority than PLAYER)
  */
-export function getPrimaryRole(roles: string[]): string {
+export function getPrimaryRole(roles: UserRole[] | undefined): UserRole {
   try {
     if (!roles || roles.length === 0) {
       return 'PLAYER';
@@ -373,11 +693,10 @@ export function getPrimaryRole(roles: string[]): string {
     for (const role of ROLE_PRIORITY) {
       if (roles.includes(role)) {
         console.log('✅ Primary role determined:', role);
-        return role;
+        return role as UserRole;
       }
     }
 
-    // Fallback to first role if no priority match
     console.log('⚠️ Using fallback role:', roles[0]);
     return roles[0];
   } catch (error) {
@@ -387,13 +706,16 @@ export function getPrimaryRole(roles: string[]): string {
 }
 
 /**
- * Check if user has a specific role
- * 
+ * ✅ Check if roles array includes a specific role (synchronous)
+ *
  * @param roles - Array of user roles
- * @param requiredRole - Role to check for
- * @returns True if user has the role
+ * @param requiredRole - Role to check
+ * @returns True if role exists
  */
-export function hasRole(roles: string[] | undefined, requiredRole: string): boolean {
+export function hasRoleSync(
+  roles: UserRole[] | undefined,
+  requiredRole: UserRole
+): boolean {
   try {
     if (!roles || !Array.isArray(roles)) {
       return false;
@@ -406,15 +728,15 @@ export function hasRole(roles: string[] | undefined, requiredRole: string): bool
 }
 
 /**
- * Check if user has any of the specified roles
- * 
- * @param roles - Array of user roles
- * @param requiredRoles - Array of roles to check for
- * @returns True if user has at least one of the required roles
+ * ✅ Check if roles include ANY of the specified roles (synchronous)
+ *
+ * @param roles - User roles
+ * @param requiredRoles - Roles to check
+ * @returns True if any role matches
  */
-export function hasAnyRole(
-  roles: string[] | undefined,
-  requiredRoles: string[]
+export function hasAnyRoleSync(
+  roles: UserRole[] | undefined,
+  requiredRoles: UserRole[]
 ): boolean {
   try {
     if (!roles || !Array.isArray(roles) || requiredRoles.length === 0) {
@@ -428,15 +750,15 @@ export function hasAnyRole(
 }
 
 /**
- * Check if user has all of the specified roles
- * 
- * @param roles - Array of user roles
- * @param requiredRoles - Array of roles to check for
- * @returns True if user has all of the required roles
+ * ✅ Check if roles include ALL of the specified roles (synchronous)
+ *
+ * @param roles - User roles
+ * @param requiredRoles - Roles to check
+ * @returns True if all roles match
  */
-export function hasAllRoles(
-  roles: string[] | undefined,
-  requiredRoles: string[]
+export function hasAllRolesSync(
+  roles: UserRole[] | undefined,
+  requiredRoles: UserRole[]
 ): boolean {
   try {
     if (!roles || !Array.isArray(roles) || requiredRoles.length === 0) {
@@ -450,76 +772,75 @@ export function hasAllRoles(
 }
 
 /**
- * Check if user is a SuperAdmin
- * 
- * @param isSuperAdmin - SuperAdmin flag from user
- * @returns True if user is a SuperAdmin
+ * 🎖️ Check if user is SuperAdmin
+ *
+ * @param isSuperAdmin - SuperAdmin flag
+ * @returns True if SuperAdmin
  */
 export function isSuperAdmin(isSuperAdmin: boolean | undefined): boolean {
   return isSuperAdmin === true;
 }
 
 /**
- * Get all accessible roles for a user (for role switching)
- * 
- * @param roles - Array of user roles
- * @param isSuperAdmin - SuperAdmin flag
- * @returns Array of accessible role keys
+ * 🎯 Get all accessible roles for user (for role switcher UI)
+ *
+ * @param roles - User roles
+ * @param isSuperAdmin - SuperAdmin status
+ * @returns Array of accessible roles
  */
 export function getAccessibleRoles(
-  roles: string[] | undefined,
+  roles: UserRole[] | undefined,
   isSuperAdmin: boolean | undefined
-): string[] {
-  const accessible = ['PLAYER']; // Everyone can see player dashboard
+): UserRole[] {
+  const accessible: UserRole[] = ['PLAYER'];
 
   if (isSuperAdmin) {
     accessible.push('SUPERADMIN');
   }
 
   if (roles && Array.isArray(roles)) {
-    const roleSet = new Set(roles);
-    if (roleSet.has('LEAGUE_ADMIN')) accessible.push('LEAGUE_ADMIN');
-    if (roleSet.has('CLUB_MANAGER')) accessible.push('CLUB_MANAGER');
-    if (roleSet.has('CLUB_OWNER')) accessible.push('CLUB_OWNER');
-    if (roleSet.has('COACH')) accessible.push('COACH');
-    if (roleSet.has('REFEREE')) accessible.push('REFEREE');
-    if (roleSet.has('SCOUT')) accessible.push('SCOUT');
-    if (roleSet.has('TREASURER')) accessible.push('TREASURER');
+    roles.forEach((role) => {
+      if (!accessible.includes(role)) {
+        accessible.push(role);
+      }
+    });
   }
 
   return accessible;
 }
 
 /**
- * Get dashboard route for primary role
- * 
+ * 🗺️ Get dashboard route based on primary role
+ *
  * @param role - Primary role
  * @returns Dashboard route path
  */
-export function getRoleDashboardRoute(role: string): string {
+export function getRoleDashboardRoute(role: UserRole | string): string {
   const routeMap: Record<string, string> = {
     SUPERADMIN: '/dashboard/superadmin',
     LEAGUE_ADMIN: '/dashboard/league-admin',
-    CLUB_MANAGER: '/dashboard/manager',
-    CLUB_OWNER: '/dashboard/manager',
+    CLUB_MANAGER: '/dashboard/club-manager',
+    CLUB_OWNER: '/dashboard/club-owner',
     COACH: '/dashboard/coach',
     PLAYER: '/dashboard/player',
-    PLAYER_PRO: '/dashboard/player',
+    PLAYER_PRO: '/dashboard/player-pro',
+    PARENT: '/dashboard/parent',
     REFEREE: '/dashboard/referee',
-    SCOUT: '/dashboard/scout',
     TREASURER: '/dashboard/treasurer',
+    SCOUT: '/dashboard/scout',
+    ANALYST: '/dashboard/analyst',
   };
-  
-  return routeMap[role] || '/dashboard/player';
+
+  return routeMap[role as string] || '/dashboard/player';
 }
 
 // ============================================================================
-// STRING UTILITIES
+// STRING & DISPLAY UTILITIES
 // ============================================================================
 
 /**
- * Capitalize first letter of a string
- * 
+ * 📝 Capitalize first letter of string
+ *
  * @param str - String to capitalize
  * @returns Capitalized string
  */
@@ -536,20 +857,20 @@ export function capitalize(str: string): string {
 }
 
 /**
- * Get user display name from firstName and lastName
- * 
- * @param user - User object with firstName and lastName
- * @returns Full name string
+ * 👤 Get user display name
+ *
+ * @param user - User object
+ * @returns Full name (e.g., "John Doe")
  */
 export function getUserDisplayName(user: {
-  firstName: string;
-  lastName: string;
-}): string {
+  firstName?: string;
+  lastName?: string;
+} | null): string {
   try {
     if (!user || !user.firstName || !user.lastName) {
       return 'Unknown User';
     }
-    return `${user.firstName.trim()} ${user.lastName.trim()}`;
+    return `${user.firstName.trim()} ${user.lastName.trim()}`.trim();
   } catch (error) {
     console.error('❌ Error getting display name:', error);
     return 'Unknown User';
@@ -557,15 +878,15 @@ export function getUserDisplayName(user: {
 }
 
 /**
- * Get user initials from firstName and lastName
- * 
- * @param user - User object with firstName and lastName
- * @returns Initials (e.g., "JD" for John Doe)
+ * 👤 Get user initials (for avatars)
+ *
+ * @param user - User object
+ * @returns Initials (e.g., "JD")
  */
 export function getUserInitials(user: {
-  firstName: string;
-  lastName: string;
-}): string {
+  firstName?: string;
+  lastName?: string;
+} | null): string {
   try {
     if (!user || !user.firstName || !user.lastName) {
       return 'U';
@@ -578,10 +899,10 @@ export function getUserInitials(user: {
 }
 
 /**
- * Format role string for display
- * 
- * @param role - Role string (e.g., "CLUB_MANAGER")
- * @returns Formatted display string (e.g., "Club Manager")
+ * 🏷️ Format role string for display
+ *
+ * @param role - Role (e.g., "CLUB_MANAGER")
+ * @returns Display string (e.g., "Club Manager")
  */
 export function formatRole(role: string): string {
   try {
@@ -599,30 +920,92 @@ export function formatRole(role: string): string {
 }
 
 /**
- * Get role color for UI badges
- * 
+ * 🎨 Get Tailwind color classes for role badge
+ *
  * @param role - Role string
- * @returns Tailwind color classes
+ * @returns Object with bg and text Tailwind classes
  */
-export function getRoleColor(role: string): { bg: string; text: string } {
-  const colorMap: Record<string, { bg: string; text: string }> = {
-    SUPERADMIN: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400' },
-    LEAGUE_ADMIN: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400' },
-    CLUB_MANAGER: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400' },
-    CLUB_OWNER: { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-400' },
-    COACH: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400' },
-    PLAYER: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400' },
-    PLAYER_PRO: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' },
-    REFEREE: { bg: 'bg-pink-100 dark:bg-pink-900/30', text: 'text-pink-700 dark:text-pink-400' },
-    SCOUT: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400' },
-    TREASURER: { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400' },
+export function getRoleColor(
+  role: string
+): { bg: string; text: string; icon: string } {
+  const colorMap: Record<
+    string,
+    { bg: string; text: string; icon: string }
+  > = {
+    SUPERADMIN: {
+      bg: 'bg-red-100 dark:bg-red-900/30',
+      text: 'text-red-700 dark:text-red-400',
+      icon: '⭐',
+    },
+    LEAGUE_ADMIN: {
+      bg: 'bg-blue-100 dark:bg-blue-900/30',
+      text: 'text-blue-700 dark:text-blue-400',
+      icon: '🏛️',
+    },
+    CLUB_MANAGER: {
+      bg: 'bg-purple-100 dark:bg-purple-900/30',
+      text: 'text-purple-700 dark:text-purple-400',
+      icon: '⚙️',
+    },
+    CLUB_OWNER: {
+      bg: 'bg-indigo-100 dark:bg-indigo-900/30',
+      text: 'text-indigo-700 dark:text-indigo-400',
+      icon: '👑',
+    },
+    COACH: {
+      bg: 'bg-green-100 dark:bg-green-900/30',
+      text: 'text-green-700 dark:text-green-400',
+      icon: '🎯',
+    },
+    PLAYER: {
+      bg: 'bg-yellow-100 dark:bg-yellow-900/30',
+      text: 'text-yellow-700 dark:text-yellow-400',
+      icon: '⚽',
+    },
+    PLAYER_PRO: {
+      bg: 'bg-orange-100 dark:bg-orange-900/30',
+      text: 'text-orange-700 dark:text-orange-400',
+      icon: '🏆',
+    },
+    PARENT: {
+      bg: 'bg-pink-100 dark:bg-pink-900/30',
+      text: 'text-pink-700 dark:text-pink-400',
+      icon: '👨‍👧',
+    },
+    REFEREE: {
+      bg: 'bg-slate-100 dark:bg-slate-900/30',
+      text: 'text-slate-700 dark:text-slate-400',
+      icon: '🏁',
+    },
+    TREASURER: {
+      bg: 'bg-cyan-100 dark:bg-cyan-900/30',
+      text: 'text-cyan-700 dark:text-cyan-400',
+      icon: '💰',
+    },
+    SCOUT: {
+      bg: 'bg-teal-100 dark:bg-teal-900/30',
+      text: 'text-teal-700 dark:text-teal-400',
+      icon: '🔍',
+    },
+    ANALYST: {
+      bg: 'bg-violet-100 dark:bg-violet-900/30',
+      text: 'text-violet-700 dark:text-violet-400',
+      icon: '📊',
+    },
   };
 
-  return colorMap[role] || { bg: 'bg-gray-100 dark:bg-gray-900/30', text: 'text-gray-700 dark:text-gray-400' };
+  return (
+    colorMap[role] || {
+      bg: 'bg-gray-100 dark:bg-gray-900/30',
+      text: 'text-gray-700 dark:text-gray-400',
+      icon: '❓',
+    }
+  );
 }
 
 // ============================================================================
-// EXPORT PRISMA CLIENT
+// EXPORTS
 // ============================================================================
 
 export { prisma };
+export type { UserRole, UserWithRoles };
