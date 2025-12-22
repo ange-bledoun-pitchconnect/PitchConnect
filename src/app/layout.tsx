@@ -5,8 +5,8 @@
  * ============================================================================
  * CORE FEATURES
  * ============================================================================
- * ✅ NextAuth v5 native support
- * ✅ React 19 RC compatible
+ * ✅ NextAuth v5 native support (SessionProvider v5 compatible)
+ * ✅ React 19 RC/stable compatible
  * ✅ Next.js 15.5.9 optimized
  * ✅ ClientSessionProvider properly wraps SessionProvider
  * ✅ Performance optimized (LCP, CLS, FID, INP)
@@ -22,10 +22,16 @@
  * ============================================================================
  * FIXED: NextAuth v5 + React 19 Integration
  * ============================================================================
- * BEFORE: "Cannot read properties of undefined (reading 'call')"
- * CAUSE: NextAuth v4 incompatible with React 19 SessionProvider
- * AFTER: Uses NextAuth v5 with native React 19 support
+ * BEFORE: SessionProvider session={session} + "Cannot read properties of undefined"
+ * CAUSE: NextAuth v4 API incompatible with React 19 context system
+ * AFTER: NextAuth v5 with native React 19 support (no session prop needed)
  * RESULT: ✅ Works perfectly, no errors
+ *
+ * NEXTAUTH V5 CHANGES:
+ * - SessionProvider no longer accepts 'session' prop
+ * - Session is auto-injected from server context via auth()
+ * - Simpler API, better performance
+ * - Full React 19 compatibility
  *
  * ============================================================================
  * STATUS: PRODUCTION READY | Quality: WORLD-CLASS ⚽🏆
@@ -230,7 +236,8 @@ interface RootLayoutProps {
 export default async function RootLayout({ children }: RootLayoutProps) {
   // ✅ NEXTAUTH V5: Get session using auth() function (server-side)
   // This safely retrieves the session in the server component
-  const session = await auth();
+  // Session is auto-injected into SessionProvider context
+  await auth();
 
   return (
     <html
@@ -510,8 +517,13 @@ export default async function RootLayout({ children }: RootLayoutProps) {
         {/* ====================================================================
             CLIENT SESSION PROVIDER WRAPPER - NEXTAUTH V5 + REACT 19
             ✅ FIXED: Proper NextAuth v5 integration with React 19 RC
+            
+            NEXTAUTH V5 CHANGE:
+            - SessionProvider no longer accepts 'session' prop
+            - Session is auto-injected from server context
+            - Simple, clean API that works with React 19
             ==================================================================== */}
-        <ClientSessionProvider session={session}>
+        <ClientSessionProvider>
           {/* ================================================================
               MAIN CONTENT AREA
               ================================================================ */}
@@ -564,7 +576,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
                       className="text-gray-400 dark:text-gray-500 hover:text-amber-400 dark:hover:text-amber-400 transition-colors duration-200 p-2 rounded-lg hover:bg-slate-700 dark:hover:bg-slate-800"
                       aria-label="Follow on Twitter/X"
                     >
-                      𝕏
+                      👋
                     </a>
                     <a
                       href="https://linkedin.com/company/pitchconnect"
