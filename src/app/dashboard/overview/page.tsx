@@ -1,10 +1,13 @@
+'use server';
+
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { authOptions } from '@/auth';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { Trophy, Users, Calendar, TrendingUp } from 'lucide-react';
 
 export default async function DashboardOverviewPage() {
-  const session = await auth();
+  const session = await getServerSession(authOptions);
 
   if (!session?.user) {
     redirect('/auth/login');
@@ -28,7 +31,7 @@ export default async function DashboardOverviewPage() {
       </div>
 
       {/* User Profile Card */}
-      <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6 mb-8">
+      <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6 mb-8 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
         <div className="flex items-start justify-between mb-4">
           <div>
             <h2 className="text-xl font-semibold text-charcoal-900 dark:text-white mb-2">
@@ -82,7 +85,7 @@ export default async function DashboardOverviewPage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6">
+        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-1">Active Roles</p>
@@ -96,7 +99,7 @@ export default async function DashboardOverviewPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6">
+        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-1">Teams</p>
@@ -108,7 +111,7 @@ export default async function DashboardOverviewPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6">
+        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-1">Matches</p>
@@ -120,7 +123,7 @@ export default async function DashboardOverviewPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6">
+        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-6 transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-1">Activity</p>
@@ -145,9 +148,9 @@ export default async function DashboardOverviewPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* SuperAdmin Dashboard */}
           {user.isSuperAdmin && (
-            <a
+            <Link
               href="/dashboard/superadmin"
-              className="group bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-6 hover:shadow-lg hover:border-blue-400 dark:hover:border-blue-600 transition-all"
+              className="group block bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-blue-400 dark:hover:border-blue-600 no-underline"
             >
               <div className="text-4xl mb-3">🛠️</div>
               <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
@@ -156,14 +159,14 @@ export default async function DashboardOverviewPage() {
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
                 Manage users, settings, and system configuration
               </p>
-            </a>
+            </Link>
           )}
 
           {/* League Admin Dashboard */}
           {roles.includes('LEAGUE_ADMIN') && (
-            <a
+            <Link
               href="/dashboard/league-admin"
-              className="group bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-2 border-green-200 dark:border-green-800 rounded-xl p-6 hover:shadow-lg hover:border-green-400 dark:hover:border-green-600 transition-all"
+              className="group block bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-2 border-green-200 dark:border-green-800 rounded-xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-green-400 dark:hover:border-green-600 no-underline"
             >
               <div className="text-4xl mb-3">⚽</div>
               <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">
@@ -172,14 +175,14 @@ export default async function DashboardOverviewPage() {
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
                 Manage leagues, teams, and fixtures
               </p>
-            </a>
+            </Link>
           )}
 
           {/* Player Dashboard */}
           {roles.includes('PLAYER') && (
-            <a
+            <Link
               href="/dashboard/player"
-              className="group bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border-2 border-purple-200 dark:border-purple-800 rounded-xl p-6 hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 transition-all"
+              className="group block bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border-2 border-purple-200 dark:border-purple-800 rounded-xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-purple-400 dark:hover:border-purple-600 no-underline"
             >
               <div className="text-4xl mb-3">👤</div>
               <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
@@ -188,14 +191,14 @@ export default async function DashboardOverviewPage() {
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
                 View stats, matches, and team information
               </p>
-            </a>
+            </Link>
           )}
 
           {/* Coach Dashboard */}
           {roles.includes('COACH') && (
-            <a
+            <Link
               href="/dashboard/coach"
-              className="group bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border-2 border-orange-200 dark:border-orange-800 rounded-xl p-6 hover:shadow-lg hover:border-orange-400 dark:hover:border-orange-600 transition-all"
+              className="group block bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border-2 border-orange-200 dark:border-orange-800 rounded-xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-orange-400 dark:hover:border-orange-600 no-underline"
             >
               <div className="text-4xl mb-3">📋</div>
               <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
@@ -204,14 +207,14 @@ export default async function DashboardOverviewPage() {
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
                 Manage squad, training, and tactics
               </p>
-            </a>
+            </Link>
           )}
 
           {/* Manager Dashboard */}
           {(roles.includes('MANAGER') || roles.includes('CLUB_MANAGER')) && (
-            <a
+            <Link
               href="/dashboard/manager"
-              className="group bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-900/20 dark:to-pink-800/20 border-2 border-pink-200 dark:border-pink-800 rounded-xl p-6 hover:shadow-lg hover:border-pink-400 dark:hover:border-pink-600 transition-all"
+              className="group block bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-900/20 dark:to-pink-800/20 border-2 border-pink-200 dark:border-pink-800 rounded-xl p-6 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-pink-400 dark:hover:border-pink-600 no-underline"
             >
               <div className="text-4xl mb-3">👔</div>
               <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
@@ -220,7 +223,7 @@ export default async function DashboardOverviewPage() {
               <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
                 Manage operations, finances, and admin
               </p>
-            </a>
+            </Link>
           )}
         </div>
       </div>
