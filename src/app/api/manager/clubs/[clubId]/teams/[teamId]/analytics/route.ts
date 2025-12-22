@@ -1,6 +1,16 @@
 /**
- * 🌟 PITCHCONNECT - Team Analytics API
+ * 🌟 PITCHCONNECT - Team Analytics API (NextAuth v5)
  * Path: /src/app/api/manager/clubs/[clubId]/teams/[teamId]/analytics/route.ts
+ *
+ * ============================================================================
+ * MIGRATION NOTES
+ * ============================================================================
+ * ✅ Updated from NextAuth v4 (getServerSession, authOptions)
+ * ✅ Now uses NextAuth v5 auth() function
+ * ✅ Simplified imports - removed authOptions dependency
+ * ✅ Maintains all analytics functionality
+ * ✅ Type-safe session handling
+ * ✅ Production-ready
  *
  * ============================================================================
  * ENDPOINT: GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics
@@ -88,14 +98,16 @@
  * ============================================================================
  */
 
-import { getServerSession } from 'next-auth/next';
+
+import { auth } from '@/lib/auth';
 import { NextRequest, NextResponse } from 'next/server';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+
 
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
+
 
 interface TeamStatistics {
   totalMatches: number;
@@ -113,6 +125,7 @@ interface TeamStatistics {
   cleanSheets: number;
   avgAppearances: number;
 }
+
 
 interface PlayerStatistic {
   playerId: string;
@@ -133,6 +146,7 @@ interface PlayerStatistic {
   avgPerformanceRating: number;
 }
 
+
 interface AnalyticsResponse {
   success: true;
   data: {
@@ -146,6 +160,7 @@ interface AnalyticsResponse {
   timestamp: string;
 }
 
+
 interface ErrorResponse {
   success: false;
   error: string;
@@ -153,9 +168,11 @@ interface ErrorResponse {
   timestamp: string;
 }
 
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
+
 
 /**
  * Safe percentage calculation
@@ -165,6 +182,7 @@ function calculatePercentage(value: number, total: number): number {
   return parseFloat(((value / total) * 100).toFixed(2));
 }
 
+
 /**
  * Safe average calculation
  */
@@ -173,12 +191,14 @@ function calculateAverage(sum: number, count: number, decimals: number = 2): num
   return parseFloat((sum / count).toFixed(decimals));
 }
 
+
 /**
  * Format response timestamp
  */
 function getTimestamp(): string {
   return new Date().toISOString();
 }
+
 
 /**
  * Log analytics request
@@ -198,9 +218,11 @@ function logAnalyticsRequest(
   });
 }
 
+
 // ============================================================================
 // ROUTE HANDLER
 // ============================================================================
+
 
 /**
  * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics
@@ -213,10 +235,12 @@ export async function GET(
 ): Promise<NextResponse<AnalyticsResponse | ErrorResponse>> {
   try {
     // ========================================================================
-    // AUTHENTICATION
+    // AUTHENTICATION - NextAuth v5 with auth()
     // ========================================================================
 
-    const session = await getServerSession(authOptions);
+
+    const session = await auth();
+
 
     if (!session || !session.user) {
       return NextResponse.json(
@@ -230,13 +254,17 @@ export async function GET(
       );
     }
 
+
     const userId = session.user.id;
+
 
     // ========================================================================
     // PARAMETERS
     // ========================================================================
 
+
     const { clubId, teamId } = params;
+
 
     if (!clubId || !teamId) {
       return NextResponse.json(
@@ -250,9 +278,11 @@ export async function GET(
       );
     }
 
+
     // ========================================================================
     // AUTHORIZATION - VERIFY CLUB OWNERSHIP
     // ========================================================================
+
 
     const club = await prisma.club.findUnique({
       where: { id: clubId },
@@ -261,6 +291,7 @@ export async function GET(
         ownerId: true,
       },
     });
+
 
     if (!club) {
       logAnalyticsRequest(clubId, teamId, userId, 404);
@@ -275,6 +306,7 @@ export async function GET(
       );
     }
 
+
     if (club.ownerId !== userId) {
       logAnalyticsRequest(clubId, teamId, userId, 403);
       return NextResponse.json(
@@ -288,9 +320,11 @@ export async function GET(
       );
     }
 
+
     // ========================================================================
     // VERIFY TEAM EXISTS AND BELONGS TO CLUB
     // ========================================================================
+
 
     const team = await prisma.team.findUnique({
       where: { id: teamId },
@@ -300,6 +334,7 @@ export async function GET(
         clubId: true,
       },
     });
+
 
     if (!team || team.clubId !== clubId) {
       logAnalyticsRequest(clubId, teamId, userId, 404);
@@ -314,9 +349,11 @@ export async function GET(
       );
     }
 
+
     // ========================================================================
     // FETCH FINISHED MATCHES FOR TEAM
     // ========================================================================
+
 
     const matches = await prisma.match.findMany({
       where: {
@@ -346,9 +383,11 @@ export async function GET(
       orderBy: { date: 'desc' },
     });
 
+
     // ========================================================================
     // CALCULATE TEAM STATISTICS
     // ========================================================================
+
 
     let wins = 0;
     let draws = 0;
@@ -357,18 +396,22 @@ export async function GET(
     let totalGoalsAgainst = 0;
     let cleanSheets = 0;
 
+
     matches.forEach((match) => {
       const isHome = match.homeTeamId === teamId;
       const teamScore = isHome ? match.homeGoals : match.awayGoals;
       const opponentScore = isHome ? match.awayGoals : match.homeGoals;
+
 
       // Skip matches without final scores
       if (teamScore === null || opponentScore === null) {
         return;
       }
 
+
       totalGoalsFor += teamScore;
       totalGoalsAgainst += opponentScore;
+
 
       if (teamScore > opponentScore) {
         wins += 1;
@@ -378,13 +421,16 @@ export async function GET(
         losses += 1;
       }
 
+
       // Track clean sheets
       if (opponentScore === 0) {
         cleanSheets += 1;
       }
     });
 
+
     const completedMatches = wins + draws + losses;
+
 
     const teamStats: TeamStatistics = {
       totalMatches: completedMatches,
@@ -403,9 +449,11 @@ export async function GET(
       avgAppearances: 0, // Will be calculated with player stats
     };
 
+
     // ========================================================================
     // FETCH TEAM MEMBERS AND PLAYER STATISTICS
     // ========================================================================
+
 
     const teamMembers = await prisma.teamMember.findMany({
       where: {
@@ -423,9 +471,11 @@ export async function GET(
       },
     });
 
+
     // ========================================================================
     // CALCULATE PLAYER STATISTICS
     // ========================================================================
+
 
     const playerStatsPromises = teamMembers.map(async (member) => {
       const playerProfile = await prisma.player.findUnique({
@@ -437,9 +487,11 @@ export async function GET(
         },
       });
 
+
       if (!playerProfile) {
         return null;
       }
+
 
       // Get all match events (goals, assists, cards)
       const playerEvents = await prisma.matchEvent.findMany({
@@ -454,10 +506,12 @@ export async function GET(
         },
       });
 
+
       const goals = playerEvents.filter((e) => e.type === 'GOAL').length;
       const assists = playerEvents.filter((e) => e.type === 'ASSIST').length;
       const yellowCards = playerEvents.filter((e) => e.type === 'YELLOW_CARD').length;
       const redCards = playerEvents.filter((e) => e.type === 'RED_CARD').length;
+
 
       // Get match attendance records
       const matchAttendances = await prisma.matchAttendance.findMany({
@@ -472,6 +526,7 @@ export async function GET(
         },
       });
 
+
       const totalAppearances = matchAttendances.length;
       const startingAppearances = matchAttendances.filter(
         (ma) => ma.status === 'STARTING_LINEUP'
@@ -480,15 +535,18 @@ export async function GET(
         (ma) => ma.status === 'SUBSTITUTE'
       ).length;
 
+
       const totalMinutesPlayed = matchAttendances.reduce(
         (sum, ma) => sum + (ma.minutesPlayed || 0),
         0
       );
 
+
       // Calculate performance rating average
       const performanceRatings = matchAttendances
         .filter((ma) => ma.performanceRating !== null)
         .map((ma) => ma.performanceRating as number);
+
 
       const avgPerformanceRating = calculateAverage(
         performanceRatings.reduce((a, b) => a + b, 0),
@@ -496,9 +554,11 @@ export async function GET(
         2
       );
 
+
       // Calculate per-game averages
       const goalsPerGame = calculateAverage(goals, totalAppearances);
       const assistsPerGame = calculateAverage(assists, totalAppearances);
+
 
       return {
         playerId: playerProfile.id,
@@ -520,24 +580,30 @@ export async function GET(
       };
     });
 
+
     const playerStats = (
       await Promise.all(playerStatsPromises)
     )
       .filter((p): p is PlayerStatistic => p !== null)
       .sort((a, b) => b.goals - a.goals); // Sort by goals descending
 
+
     // ========================================================================
     // FINALIZE TEAM STATISTICS
     // ========================================================================
 
+
     const totalPlayerAppearances = playerStats.reduce((sum, p) => sum + p.appearances, 0);
     teamStats.avgAppearances = calculateAverage(totalPlayerAppearances, playerStats.length);
+
 
     // ========================================================================
     // LOG REQUEST AND RETURN RESPONSE
     // ========================================================================
 
+
     logAnalyticsRequest(clubId, teamId, userId, 200);
+
 
     const response: AnalyticsResponse = {
       success: true,
@@ -552,6 +618,7 @@ export async function GET(
       timestamp: getTimestamp(),
     };
 
+
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('[Analytics API Error]', {
@@ -559,6 +626,7 @@ export async function GET(
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
     });
+
 
     return NextResponse.json(
       {
@@ -576,10 +644,13 @@ export async function GET(
   }
 }
 
+
 // ============================================================================
 // EXPORTS FOR TESTING
 // ============================================================================
 
+
 export { calculatePercentage, calculateAverage };
+
 
 export type { TeamStatistics, PlayerStatistic, AnalyticsResponse };

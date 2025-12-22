@@ -5,7 +5,7 @@
  * ============================================================================
  * ENTERPRISE FEATURES
  * ============================================================================
- * ✅ Removed @tanstack/react-query dependency (custom fetch logic)
+ * ✅ Uses getSocketManager for centralized socket management
  * ✅ Real-time match data with WebSocket
  * ✅ Live match events streaming
  * ✅ Score and stats updates
@@ -22,20 +22,22 @@
  * ✅ Production-ready code
  */
 
+
 'use client';
+
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import axios, { AxiosError } from 'axios';
 import {
-  getSocket,
-  subscribeToMatch,
-  unsubscribeFromMatch,
+  getSocketManager,
   type MatchEvent,
 } from '@/lib/socket';
+
 
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
+
 
 export interface Team {
   id: string;
@@ -43,6 +45,7 @@ export interface Team {
   logo?: string;
   formation?: string;
 }
+
 
 export interface LiveMatchData {
   matchId: string;
@@ -80,10 +83,12 @@ export interface LiveMatchData {
   lastUpdate: Date;
 }
 
+
 export interface MatchEventWithTimestamp extends MatchEvent {
   timestamp: Date;
   id: string;
 }
+
 
 interface UseRealTimeMatchOptions {
   enabled?: boolean;
@@ -92,6 +97,7 @@ interface UseRealTimeMatchOptions {
   maxReconnectAttempts?: number;
 }
 
+
 interface MatchState {
   data: Partial<LiveMatchData>;
   isLoading: boolean;
@@ -99,17 +105,21 @@ interface MatchState {
   isFetching: boolean;
 }
 
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
+
 
 const DEFAULT_MAX_EVENTS = 100;
 const DEFAULT_RECONNECT_INTERVAL = 5000;
 const DEFAULT_MAX_RECONNECT_ATTEMPTS = 5;
 
+
 // ============================================================================
 // HOOKS
 // ============================================================================
+
 
 /**
  * Hook for real-time match data with WebSocket
@@ -132,9 +142,11 @@ export function useRealTimeMatch(
     isFetching: false,
   });
 
+
   const [events, setEvents] = useState<MatchEventWithTimestamp[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+
 
   // Refs for cleanup and connection management
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -142,9 +154,11 @@ export function useRealTimeMatch(
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMountedRef = useRef(true);
 
+
   // =========================================================================
   // INITIAL DATA FETCH
   // =========================================================================
+
 
   /**
    * Fetch initial match data
@@ -152,13 +166,16 @@ export function useRealTimeMatch(
   const fetchInitialData = useCallback(async () => {
     if (!enabled || !isMountedRef.current) return;
 
+
     abortControllerRef.current = new AbortController();
     setMatchState((prev) => ({ ...prev, isLoading: true, isFetching: true }));
+
 
     try {
       const response = await axios.get(`/api/matches/${matchId}`, {
         signal: abortControllerRef.current.signal,
       });
+
 
       if (isMountedRef.current) {
         setMatchState({
@@ -187,9 +204,11 @@ export function useRealTimeMatch(
     }
   }, [matchId, enabled]);
 
+
   // =========================================================================
   // WEBSOCKET CONNECTION
   // =========================================================================
+
 
   /**
    * Handle socket connection
@@ -201,12 +220,14 @@ export function useRealTimeMatch(
     }
   }, []);
 
+
   /**
    * Handle socket disconnection
    */
   const handleDisconnect = useCallback(() => {
     if (isMountedRef.current) {
       setIsConnected(false);
+
 
       // Attempt reconnection
       if (reconnectAttempts < maxReconnectAttempts) {
@@ -217,26 +238,32 @@ export function useRealTimeMatch(
     }
   }, [reconnectAttempts, maxReconnectAttempts, reconnectInterval]);
 
+
   /**
    * Initialize WebSocket connection
    */
   useEffect(() => {
     if (!enabled) return;
 
-    const socket = getSocket();
 
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
+    const socketManager = getSocketManager();
+
+
+    socketManager.on('connect', handleConnect);
+    socketManager.on('disconnect', handleDisconnect);
+
 
     return () => {
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
+      socketManager.off('connect', handleConnect);
+      socketManager.off('disconnect', handleDisconnect);
     };
   }, [enabled, handleConnect, handleDisconnect]);
+
 
   // =========================================================================
   // MATCH EVENT HANDLING
   // =========================================================================
+
 
   /**
    * Update live data based on event type
@@ -244,6 +271,7 @@ export function useRealTimeMatch(
   const updateLiveData = useCallback((event: MatchEvent) => {
     setMatchState((prev) => {
       const updated = { ...prev.data };
+
 
       switch (event.type) {
         case 'goal':
@@ -254,6 +282,7 @@ export function useRealTimeMatch(
           }
           break;
 
+
         case 'stats':
           updated.possession = event.possession || updated.possession;
           updated.shots = event.shots || updated.shots;
@@ -263,6 +292,7 @@ export function useRealTimeMatch(
           updated.cornerKicks = event.cornerKicks || updated.cornerKicks;
           break;
 
+
         case 'minute':
           updated.minute = event.minute || updated.minute;
           if (event.addedTime) {
@@ -270,23 +300,29 @@ export function useRealTimeMatch(
           }
           break;
 
+
         case 'status':
           updated.status = event.status || updated.status;
           break;
+
 
         case 'substitution':
           // Handle substitution event
           break;
 
+
         case 'card':
           // Handle yellow/red card event
           break;
+
 
         default:
           break;
       }
 
+
       updated.lastUpdate = new Date();
+
 
       return {
         ...prev,
@@ -295,6 +331,7 @@ export function useRealTimeMatch(
     });
   }, []);
 
+
   /**
    * Handle incoming match events
    */
@@ -302,11 +339,13 @@ export function useRealTimeMatch(
     (event: MatchEvent) => {
       if (!isMountedRef.current) return;
 
+
       const eventWithTimestamp: MatchEventWithTimestamp = {
         ...event,
         timestamp: new Date(),
         id: `${event.type}-${Date.now()}-${Math.random()}`,
       };
+
 
       // Add event to history
       setEvents((prev) => {
@@ -314,29 +353,36 @@ export function useRealTimeMatch(
         return updated.slice(0, maxEvents);
       });
 
+
       // Update live data
       updateLiveData(event);
     },
     [maxEvents, updateLiveData]
   );
 
+
   /**
-   * Subscribe to match events
+   * Subscribe to match events using centralized socket manager
    */
   useEffect(() => {
     if (!enabled || !matchId) return;
 
-    unsubscribeRef.current = subscribeToMatch(matchId, handleMatchEvent);
+
+    const socketManager = getSocketManager();
+    unsubscribeRef.current = socketManager.subscribeToMatch(matchId, handleMatchEvent);
+
 
     return () => {
       unsubscribeRef.current?.();
-      unsubscribeFromMatch(matchId);
+      socketManager.unsubscribeFromMatch(matchId);
     };
   }, [matchId, enabled, handleMatchEvent]);
+
 
   // =========================================================================
   // INITIAL DATA LOAD
   // =========================================================================
+
 
   /**
    * Fetch initial data on mount
@@ -344,14 +390,17 @@ export function useRealTimeMatch(
   useEffect(() => {
     fetchInitialData();
 
+
     return () => {
       abortControllerRef.current?.abort();
     };
   }, [fetchInitialData]);
 
+
   // =========================================================================
   // CLEANUP
   // =========================================================================
+
 
   /**
    * Cleanup on unmount
@@ -367,20 +416,23 @@ export function useRealTimeMatch(
     };
   }, []);
 
+
   // =========================================================================
   // PUBLIC API
   // =========================================================================
+
 
   /**
    * Emit a custom event to the match
    */
   const emitEvent = useCallback(
     (event: MatchEvent) => {
-      const socket = getSocket();
-      socket.emit('match:event', { matchId, event });
+      const socketManager = getSocketManager();
+      socketManager.emit('match:event', { matchId, event });
     },
     [matchId]
   );
+
 
   /**
    * Manually refetch match data
@@ -389,12 +441,14 @@ export function useRealTimeMatch(
     fetchInitialData();
   }, [fetchInitialData]);
 
+
   /**
    * Clear event history
    */
   const clearEvents = useCallback(() => {
     setEvents([]);
   }, []);
+
 
   /**
    * Get events of a specific type
@@ -406,6 +460,7 @@ export function useRealTimeMatch(
     [events]
   );
 
+
   /**
    * Get events for a specific team
    */
@@ -416,10 +471,12 @@ export function useRealTimeMatch(
     [events]
   );
 
+
   return {
     // Match data
     liveData: matchState.data as LiveMatchData,
     events,
+
 
     // States
     isConnected,
@@ -427,8 +484,10 @@ export function useRealTimeMatch(
     error: matchState.error,
     isFetching: matchState.isFetching,
 
+
     // Connection
     reconnectAttempts,
+
 
     // Event management
     emitEvent,
@@ -436,10 +495,12 @@ export function useRealTimeMatch(
     getEventsByType,
     getEventsByTeam,
 
+
     // Data management
     refetch,
   };
 }
+
 
 /**
  * Hook for match timeline/commentary
@@ -454,10 +515,12 @@ export interface MatchTimelineEntry {
   timestamp: Date;
 }
 
+
 interface UseMatchTimelineOptions {
   matchId: string;
   maxEntries?: number;
 }
+
 
 export function useMatchTimeline({
   matchId,
@@ -466,11 +529,13 @@ export function useMatchTimeline({
   const [timeline, setTimeline] = useState<MatchTimelineEntry[]>([]);
   const { events } = useRealTimeMatch(matchId);
 
+
   // Build timeline from events
   useEffect(() => {
     const entries: MatchTimelineEntry[] = events.map((event) => {
       let type: MatchTimelineEntry['type'] = 'commentary';
       let description = '';
+
 
       switch (event.type) {
         case 'goal':
@@ -489,6 +554,7 @@ export function useMatchTimeline({
           description = event.description || 'Event';
       }
 
+
       return {
         id: event.id || `${event.type}-${event.timestamp}`,
         minute: event.minute || 0,
@@ -500,8 +566,10 @@ export function useMatchTimeline({
       };
     });
 
+
     setTimeline(entries.slice(0, maxEntries));
   }, [events, maxEntries]);
+
 
   return {
     timeline,
@@ -509,6 +577,7 @@ export function useMatchTimeline({
     lastEvent: timeline[0] || null,
   };
 }
+
 
 /**
  * Hook for match statistics
@@ -536,9 +605,11 @@ export interface MatchStats {
   };
 }
 
+
 interface UseMatchStatsOptions {
   matchId: string;
 }
+
 
 export function useMatchStats({ matchId }: UseMatchStatsOptions) {
   const [stats, setStats] = useState<MatchStats>({
@@ -564,7 +635,9 @@ export function useMatchStats({ matchId }: UseMatchStatsOptions) {
     },
   });
 
+
   const { events } = useRealTimeMatch(matchId);
+
 
   // Calculate stats from events
   useEffect(() => {
@@ -591,8 +664,10 @@ export function useMatchStats({ matchId }: UseMatchStatsOptions) {
       },
     };
 
+
     events.forEach((event) => {
       const team = event.team === 'home' ? 'homeTeam' : 'awayTeam';
+
 
       switch (event.type) {
         case 'stats':
@@ -606,6 +681,7 @@ export function useMatchStats({ matchId }: UseMatchStatsOptions) {
             event.cornerKicks?.away || newStats[team].cornerKicks;
           break;
 
+
         case 'card':
           if (event.cardType === 'yellow') {
             newStats[team].yellowCards++;
@@ -614,13 +690,16 @@ export function useMatchStats({ matchId }: UseMatchStatsOptions) {
           }
           break;
 
+
         default:
           break;
       }
     });
 
+
     setStats(newStats);
   }, [events]);
+
 
   return stats;
 }
