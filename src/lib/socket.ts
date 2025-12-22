@@ -1439,10 +1439,8 @@ export function resetSocket(): void {
 }
 
 // ============================================================================
-// EXPORTS
+// TYPE EXPORTS
 // ============================================================================
-
-export { SocketManager, SOCKET_EVENTS };
 
 export type {
   SocketEvent,
@@ -1463,6 +1461,8 @@ export type {
 // ============================================================================
 
 export default {
+  SocketManager,
+  SOCKET_EVENTS,
   initializeSocket,
   getSocketManager,
   connectSocket,
