@@ -1,5 +1,5 @@
 import { Socket } from 'socket.io';
-import { getSocket } from '../server';
+import { getSocketManager } from '@/lib/socket';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/api/utils/logger';
 
@@ -23,8 +23,8 @@ interface StatusChangePayload {
 }
 
 export function setupMatchNamespace() {
-  const io = getSocket();
-  const matchNsp = io.of('/matches');
+  const io = getSocketManager();
+  const matchNsp = io.on('/matches');
 
   matchNsp.on('connection', (socket: Socket) => {
     console.log(`[Matches] User connected: ${socket.data.userId}`);
