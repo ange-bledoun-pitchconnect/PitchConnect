@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { success, error, notFound, unauthorized, badRequest } from '@/lib/api/responses';
+import { success, serverError, notFound, unauthorized, badRequest } from '@/lib/api/responses';
 import { ApiError } from '@/lib/api/errors';
 import prisma from '@/lib/prisma';
 
@@ -93,7 +93,7 @@ export async function POST(
       ]) as any;
     }
 
-    return error('Market value analysis failed', 500, 'INTERNAL_ERROR') as any;
+    return serverError('Market value analysis failed') as any;
   }
 }
 
