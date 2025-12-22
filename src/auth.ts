@@ -275,7 +275,7 @@ crypto.pbkdf2(password, salt, iterations, 64, algorithm, (err, derived) => {
 if (err) reject(err);
 
 // Format: algorithm:iterations:salt:hash
-const hash = pbkdf2:${algorithm}:${iterations}:${salt}:${derived.toString('hex')};
+const hash = `pbkdf2:${algorithm}:${iterations}:${salt}:${derived.toString('hex')}`;
 resolve(hash);
 });
 });
@@ -305,16 +305,15 @@ resolve(false);
 return;
 }
 
-text
- const computedHash = derived.toString('hex');
+const computedHash = derived.toString('hex');
 
- try {
-   // Use timing-safe comparison to prevent timing attacks
-   timingSafeEqual(Buffer.from(computedHash), Buffer.from(storedHash));
-   resolve(true);
- } catch {
-   resolve(false);
- }
+try {
+// Use timing-safe comparison to prevent timing attacks
+timingSafeEqual(Buffer.from(computedHash), Buffer.from(storedHash));
+resolve(true);
+} catch {
+resolve(false);
+}
 });
 } catch (error) {
 console.error('[Password Verification Error]', error);
@@ -344,8 +343,7 @@ Store 2FA verification requirement in session
 const pendingMFAVerification = new Map<
 string,
 { userId: string; email: string; expiresAt: number }
-
-();
+>();
 
 /**
 
@@ -564,7 +562,7 @@ scope:
 profile: async (profile) => {
 return {
 id: profile.sub,
-name: profile.name || ${profile.given_name} ${profile.family_name},
+name: profile.name || `${profile.given_name} ${profile.family_name}`,
 email: profile.email,
 image: profile.picture,
 role: 'PLAYER' as UserRole,
@@ -576,235 +574,234 @@ tier: 'FREE' as const,
 },
 }),
 
-text
 // ========================================================================
 // GITHUB OAUTH - Developer-friendly SSO
 // ========================================================================
 GitHub({
-  clientId: process.env.GITHUB_CLIENT_ID || '',
-  clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
-  allowDangerousEmailAccountLinking: false,
-  profile: async (profile) => {
-    return {
-      id: profile.id.toString(),
-      name: profile.name || profile.login,
-      email: profile.email,
-      image: profile.avatar_url,
-      role: 'PLAYER' as UserRole,
-      roles: ['PLAYER'] as UserRole[],
-      status: 'ACTIVE' as UserStatus,
-      isVerified: true,
-      tier: 'FREE' as const,
-    };
-  },
+clientId: process.env.GITHUB_CLIENT_ID || '',
+clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+allowDangerousEmailAccountLinking: false,
+profile: async (profile) => {
+return {
+id: profile.id.toString(),
+name: profile.name || profile.login,
+email: profile.email,
+image: profile.avatar_url,
+role: 'PLAYER' as UserRole,
+roles: ['PLAYER'] as UserRole[],
+status: 'ACTIVE' as UserStatus,
+isVerified: true,
+tier: 'FREE' as const,
+};
+},
 }),
 
 // ========================================================================
 // CREDENTIALS PROVIDER - Email/Password Authentication
 // ========================================================================
 Credentials({
-  id: 'credentials',
-  name: 'Credentials',
-  credentials: {
-    email: { label: 'Email', type: 'email', placeholder: 'email@example.com' },
-    password: { label: 'Password', type: 'password' },
-  },
-  async authorize(credentials, req) {
-    try {
-      if (!credentials?.email || !credentials?.password) {
-        const context = extractSecurityContext(req, false, 'Missing credentials');
-        console.warn('[Auth Security] Missing credentials', context);
-        throw new AuthenticationError('Missing email or password');
-      }
+id: 'credentials',
+name: 'Credentials',
+credentials: {
+email: { label: 'Email', type: 'email', placeholder: 'email@example.com' },
+password: { label: 'Password', type: 'password' },
+},
+async authorize(credentials, req) {
+try {
+if (!credentials?.email || !credentials?.password) {
+const context = extractSecurityContext(req, false, 'Missing credentials');
+console.warn('[Auth Security] Missing credentials', context);
+throw new AuthenticationError('Missing email or password');
+}
 
-      const email = sanitizeEmail(credentials.email as string);
+const email = sanitizeEmail(credentials.email as string);
 
-      // ================================================================
-      // CHECK RATE LIMITING FIRST
-      // ================================================================
-      if (isAccountLockedOut(email)) {
-        const attemptCount = getLoginAttemptCount(email);
-        const context = extractSecurityContext(
-          req,
-          false,
-          'Account locked out'
-        );
-        console.warn('[Auth Security] Account locked due to too many attempts', {
-          email,
-          attempts: attemptCount,
-          ...context,
-        });
-        throw new RateLimitError(
-          'Too many failed login attempts. Account locked for 15 minutes.'
-        );
-      }
+// ================================================================
+// CHECK RATE LIMITING FIRST
+// ================================================================
+if (isAccountLockedOut(email)) {
+const attemptCount = getLoginAttemptCount(email);
+const context = extractSecurityContext(
+req,
+false,
+'Account locked out'
+);
+console.warn('[Auth Security] Account locked due to too many attempts', {
+email,
+attempts: attemptCount,
+...context,
+});
+throw new RateLimitError(
+'Too many failed login attempts. Account locked for 15 minutes.'
+);
+}
 
-      // ================================================================
-      // VALIDATE EMAIL FORMAT
-      // ================================================================
-      if (!isValidEmail(email)) {
-        recordFailedLoginAttempt(email);
-        const context = extractSecurityContext(req, false, 'Invalid email format');
-        console.warn('[Auth Security] Invalid email format', {
-          email,
-          ...context,
-        });
-        throw new AuthenticationError('Invalid email format');
-      }
+// ================================================================
+// VALIDATE EMAIL FORMAT
+// ================================================================
+if (!isValidEmail(email)) {
+recordFailedLoginAttempt(email);
+const context = extractSecurityContext(req, false, 'Invalid email format');
+console.warn('[Auth Security] Invalid email format', {
+email,
+...context,
+});
+throw new AuthenticationError('Invalid email format');
+}
 
-      // ================================================================
-      // CHECK FOR DISPOSABLE EMAIL
-      // ================================================================
-      if (isDisposableEmail(email)) {
-        recordFailedLoginAttempt(email);
-        const context = extractSecurityContext(req, false, 'Disposable email');
-        console.warn('[Auth Security] Disposable email attempt', {
-          email,
-          ...context,
-        });
-        throw new AuthenticationError('Disposable email addresses are not allowed');
-      }
+// ================================================================
+// CHECK FOR DISPOSABLE EMAIL
+// ================================================================
+if (isDisposableEmail(email)) {
+recordFailedLoginAttempt(email);
+const context = extractSecurityContext(req, false, 'Disposable email');
+console.warn('[Auth Security] Disposable email attempt', {
+email,
+...context,
+});
+throw new AuthenticationError('Disposable email addresses are not allowed');
+}
 
-      // ================================================================
-      // FETCH USER FROM DATABASE
-      // ================================================================
-      const user = await prisma.user.findUnique({
-        where: { email },
-        select: {
-          id: true,
-          email: true,
-          password: true,
-          firstName: true,
-          lastName: true,
-          avatar: true,
-          status: true,
-          roles: true,
-          accountTier: true,
-          emailVerified: true,
-        },
-      });
+// ================================================================
+// FETCH USER FROM DATABASE
+// ================================================================
+const user = await prisma.user.findUnique({
+where: { email },
+select: {
+id: true,
+email: true,
+password: true,
+firstName: true,
+lastName: true,
+avatar: true,
+status: true,
+roles: true,
+accountTier: true,
+emailVerified: true,
+},
+});
 
-      if (!user || !user.password) {
-        recordFailedLoginAttempt(email);
-        const context = extractSecurityContext(
-          req,
-          false,
-          'User not found or no password'
-        );
-        console.warn('[Auth Security] User not found or has no password', context);
-        throw new AuthenticationError('Invalid credentials');
-      }
+if (!user || !user.password) {
+recordFailedLoginAttempt(email);
+const context = extractSecurityContext(
+req,
+false,
+'User not found or no password'
+);
+console.warn('[Auth Security] User not found or has no password', context);
+throw new AuthenticationError('Invalid credentials');
+}
 
-      // ================================================================
-      // VERIFY PASSWORD USING TIMING-SAFE COMPARISON
-      // ================================================================
-      const isPasswordValid = await verifyPassword(
-        credentials.password as string,
-        user.password
-      );
+// ================================================================
+// VERIFY PASSWORD USING TIMING-SAFE COMPARISON
+// ================================================================
+const isPasswordValid = await verifyPassword(
+credentials.password as string,
+user.password
+);
 
-      if (!isPasswordValid) {
-        recordFailedLoginAttempt(email);
-        const attemptCount = getLoginAttemptCount(email);
-        const context = extractSecurityContext(req, false, 'Invalid password');
-        console.warn('[Auth Security] Invalid password attempt', {
-          email,
-          attempts: attemptCount,
-          ...context,
-        });
-        throw new AuthenticationError('Invalid credentials');
-      }
+if (!isPasswordValid) {
+recordFailedLoginAttempt(email);
+const attemptCount = getLoginAttemptCount(email);
+const context = extractSecurityContext(req, false, 'Invalid password');
+console.warn('[Auth Security] Invalid password attempt', {
+email,
+attempts: attemptCount,
+...context,
+});
+throw new AuthenticationError('Invalid credentials');
+}
 
-      // ================================================================
-      // CHECK IF USER IS ACTIVE
-      // ================================================================
-      if (user.status !== 'ACTIVE') {
-        recordFailedLoginAttempt(email);
-        const context = extractSecurityContext(req, false, `Account ${user.status}`);
-        console.warn('[Auth Security] Inactive account login attempt', {
-          email,
-          status: user.status,
-          ...context,
-        });
-        throw new AuthenticationError(
-          `Account is ${user.status.toLowerCase()}. Please contact support.`
-        );
-      }
+// ================================================================
+// CHECK IF USER IS ACTIVE
+// ================================================================
+if (user.status !== 'ACTIVE') {
+recordFailedLoginAttempt(email);
+const context = extractSecurityContext(req, false, `Account ${user.status}`);
+console.warn('[Auth Security] Inactive account login attempt', {
+email,
+status: user.status,
+...context,
+});
+throw new AuthenticationError(
+`Account is ${user.status.toLowerCase()}. Please contact support.`
+);
+}
 
-      // ================================================================
-      // SUCCESS - Reset login attempts
-      // ================================================================
-      resetLoginAttempts(email);
+// ================================================================
+// SUCCESS - Reset login attempts
+// ================================================================
+resetLoginAttempts(email);
 
-      // ================================================================
-      // UPDATE LAST LOGIN IN DATABASE
-      // ================================================================
-      try {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date() },
-        });
-      } catch (err) {
-        console.error('[Auth] Failed to update last login', err);
-        // Don't fail auth if this fails
-      }
+// ================================================================
+// UPDATE LAST LOGIN IN DATABASE
+// ================================================================
+try {
+await prisma.user.update({
+where: { id: user.id },
+data: { lastLoginAt: new Date() },
+});
+} catch (err) {
+console.error('[Auth] Failed to update last login', err);
+// Don't fail auth if this fails
+}
 
-      // ================================================================
-      // LOG SUCCESSFUL AUTHENTICATION
-      // ================================================================
-      const context = extractSecurityContext(req, true, 'Authentication successful');
-      console.log('[Auth Event] User authenticated successfully', {
-        userId: user.id,
-        email,
-        ...context,
-      });
+// ================================================================
+// LOG SUCCESSFUL AUTHENTICATION
+// ================================================================
+const context = extractSecurityContext(req, true, 'Authentication successful');
+console.log('[Auth Event] User authenticated successfully', {
+userId: user.id,
+email,
+...context,
+});
 
-      // Log to audit table if available
-      try {
-        await prisma.auditLog?.create({
-          data: {
-            userId: user.id,
-            action: 'LOGIN_SUCCESS',
-            entity: 'User',
-            entityId: user.id,
-            severity: 'INFO',
-            metadata: {
-              ipAddress: context.ipAddress,
-              userAgent: context.userAgent,
-            },
-          },
-        }).catch((err) => {
-          console.error('[Audit Log Error]', err);
-        });
-      } catch (err) {
-        // Silently fail - don't interrupt authentication
-      }
+// Log to audit table if available
+try {
+await prisma.auditLog?.create({
+data: {
+userId: user.id,
+action: 'LOGIN_SUCCESS',
+entity: 'User',
+entityId: user.id,
+severity: 'INFO',
+metadata: {
+ipAddress: context.ipAddress,
+userAgent: context.userAgent,
+},
+},
+}).catch((err) => {
+console.error('[Audit Log Error]', err);
+});
+} catch (err) {
+// Silently fail - don't interrupt authentication
+}
 
-      // ================================================================
-      // RETURN AUTHENTICATED USER
-      // ================================================================
-      return {
-        id: user.id,
-        email: user.email,
-        name: `${user.firstName} ${user.lastName}`.trim(),
-        image: user.avatar || undefined,
-        role: (user.roles?. || 'PLAYER') as UserRole,
-        roles: (user.roles || ['PLAYER']) as UserRole[],
-        status: user.status as UserStatus,
-        isVerified: !!user.emailVerified,
-        tier: user.accountTier as 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE',
-      };
-    } catch (error) {
-      if (error instanceof RateLimitError) {
-        console.error('[Credentials Auth Error - Rate Limited]', error.message);
-      } else if (error instanceof AuthenticationError) {
-        console.error('[Credentials Auth Error]', error.message);
-      } else {
-        console.error('[Credentials Auth Error]', error);
-      }
-      return null;
-    }
-  },
+// ================================================================
+// RETURN AUTHENTICATED USER
+// ================================================================
+return {
+id: user.id,
+email: user.email,
+name: `${user.firstName} ${user.lastName}`.trim(),
+image: user.avatar || undefined,
+role: (user.roles?.[0] || 'PLAYER') as UserRole,
+roles: (user.roles || ['PLAYER']) as UserRole[],
+status: user.status as UserStatus,
+isVerified: !!user.emailVerified,
+tier: user.accountTier as 'FREE' | 'PRO' | 'PREMIUM' | 'ENTERPRISE',
+};
+} catch (error) {
+if (error instanceof RateLimitError) {
+console.error('[Credentials Auth Error - Rate Limited]', error.message);
+} else if (error instanceof AuthenticationError) {
+console.error('[Credentials Auth Error]', error.message);
+} else {
+console.error('[Credentials Auth Error]', error);
+}
+return null;
+}
+},
 }),
 ],
 
@@ -855,161 +852,160 @@ if (user?.email) {
 return true;
 }
 
-text
-    return false;
-  } catch (error) {
-    console.error('[SignIn Callback Error]', error);
-    return false;
-  }
+return false;
+} catch (error) {
+console.error('[SignIn Callback Error]', error);
+return false;
+}
 },
 
 /**
- * JWT CALLBACK - Enhanced with timeout & refresh
- * Called whenever JWT is created or updated
- */
+* JWT CALLBACK - Enhanced with timeout & refresh
+* Called whenever JWT is created or updated
+*/
 async jwt({ token, user, account, trigger, session }) {
-  try {
-    const now = Math.floor(Date.now() / 1000);
+try {
+const now = Math.floor(Date.now() / 1000);
 
-    // ================================================================
-    // INITIAL SIGN IN - Set user data from authentication provider
-    // ================================================================
-    if (user) {
-      token.id = user.id;
-      token.email = user.email || '';
-      token.role = user.role || 'PLAYER';
-      token.roles = user.roles || ['PLAYER'];
-      token.status = user.status || 'ACTIVE';
-      token.isVerified = user.isVerified || false;
-      token.tier = user.tier || 'FREE';
-      token.iat = now;
-      token.exp = now + 24 * 60 * 60; // 24 hours
+// ================================================================
+// INITIAL SIGN IN - Set user data from authentication provider
+// ================================================================
+if (user) {
+token.id = user.id;
+token.email = user.email || '';
+token.role = user.role || 'PLAYER';
+token.roles = user.roles || ['PLAYER'];
+token.status = user.status || 'ACTIVE';
+token.isVerified = user.isVerified || false;
+token.tier = user.tier || 'FREE';
+token.iat = now;
+token.exp = now + 24 * 60 * 60; // 24 hours
 
-      // Fetch additional permissions from database
-      try {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: {
-            id: true,
-            roles: true,
-            status: true,
-            clubMemberships: {
-              select: { clubId: true, role: true },
-              take: 1,
-            },
-          },
-        });
+// Fetch additional permissions from database
+try {
+const dbUser = await prisma.user.findUnique({
+where: { id: user.id },
+select: {
+id: true,
+roles: true,
+status: true,
+clubMemberships: {
+select: { clubId: true, role: true },
+take: 1,
+},
+},
+});
 
-        if (dbUser) {
-          token.clubId = dbUser.clubMemberships?.?.clubId;
-          token.permissions = getPermissionsForRoles(dbUser.roles || []);
-        }
-      } catch (err) {
-        console.error('[DB Fetch Error in JWT]', err);
-        // Don't fail auth if DB is temporarily unavailable
-        token.permissions = getPermissionsForRoles(token.roles || []);
-      }
-    }
+if (dbUser) {
+token.clubId = dbUser.clubMemberships?.[0]?.clubId;
+token.permissions = getPermissionsForRoles(dbUser.roles || []);
+}
+} catch (err) {
+console.error('[DB Fetch Error in JWT]', err);
+// Don't fail auth if DB is temporarily unavailable
+token.permissions = getPermissionsForRoles(token.roles || []);
+}
+}
 
-    // ================================================================
-    // CHECK IF TOKEN NEEDS REFRESH (after 1 hour use)
-    // ================================================================
-    if (token.iat && now - token.iat > 60 * 60) {
-      token.iat = now;
-      token.exp = now + 24 * 60 * 60;
+// ================================================================
+// CHECK IF TOKEN NEEDS REFRESH (after 1 hour use)
+// ================================================================
+if (token.iat && now - token.iat > 60 * 60) {
+token.iat = now;
+token.exp = now + 24 * 60 * 60;
 
-      // Refresh user data from database
-      try {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: token.id },
-          select: {
-            status: true,
-            roles: true,
-          },
-        });
+// Refresh user data from database
+try {
+const dbUser = await prisma.user.findUnique({
+where: { id: token.id },
+select: {
+status: true,
+roles: true,
+},
+});
 
-        if (dbUser) {
-          token.status = dbUser.status;
-          token.roles = (dbUser.roles || ['PLAYER']) as UserRole[];
-          token.permissions = getPermissionsForRoles(dbUser.roles || []);
-        } else {
-          // User deleted - mark token as invalid
-          console.warn('[Auth] User no longer exists', { userId: token.id });
-          return token;
-        }
-      } catch (err) {
-        console.error('[Token Refresh Error]', err);
-        // Don't fail - keep existing data
-      }
-    }
+if (dbUser) {
+token.status = dbUser.status;
+token.roles = (dbUser.roles || ['PLAYER']) as UserRole[];
+token.permissions = getPermissionsForRoles(dbUser.roles || []);
+} else {
+// User deleted - mark token as invalid
+console.warn('[Auth] User no longer exists', { userId: token.id });
+return token;
+}
+} catch (err) {
+console.error('[Token Refresh Error]', err);
+// Don't fail - keep existing data
+}
+}
 
-    // ================================================================
-    // HANDLE SESSION UPDATE TRIGGER
-    // ================================================================
-    if (trigger === 'update' && session?.user) {
-      token.role = (session.user as any).role || token.role;
-      token.roles = (session.user as any).roles || token.roles;
-      token.status = (session.user as any).status || token.status;
-      token.isVerified = (session.user as any).isVerified ?? token.isVerified;
-      token.tier = (session.user as any).tier || token.tier;
-      token.permissions = getPermissionsForRoles((session.user as any).roles || []);
-    }
+// ================================================================
+// HANDLE SESSION UPDATE TRIGGER
+// ================================================================
+if (trigger === 'update' && session?.user) {
+token.role = (session.user as any).role || token.role;
+token.roles = (session.user as any).roles || token.roles;
+token.status = (session.user as any).status || token.status;
+token.isVerified = (session.user as any).isVerified ?? token.isVerified;
+token.tier = (session.user as any).tier || token.tier;
+token.permissions = getPermissionsForRoles((session.user as any).roles || []);
+}
 
-    return token;
-  } catch (error) {
-    console.error('[JWT Callback Error]', error);
-    return token;
-  }
+return token;
+} catch (error) {
+console.error('[JWT Callback Error]', error);
+return token;
+}
 },
 
 /**
- * SESSION CALLBACK
- * Called on every session check
- * Returns data that should be exposed to the client
- */
+* SESSION CALLBACK
+* Called on every session check
+* Returns data that should be exposed to the client
+*/
 async session({ session, token }) {
-  try {
-    if (session.user) {
-      session.user.id = token.id;
-      session.user.role = (token.role as UserRole) || 'PLAYER';
-      session.user.roles = (token.roles as UserRole[]) || ['PLAYER'];
-      session.user.permissions = (token.permissions as PermissionName[]) || [];
-      session.user.status = (token.status as UserStatus) || 'ACTIVE';
-      session.user.isVerified = token.isVerified || false;
-      session.user.tier = (token.tier as any) || 'FREE';
-      session.user.clubId = token.clubId;
-      session.user.teamId = token.teamId;
-    }
+try {
+if (session.user) {
+session.user.id = token.id;
+session.user.role = (token.role as UserRole) || 'PLAYER';
+session.user.roles = (token.roles as UserRole[]) || ['PLAYER'];
+session.user.permissions = (token.permissions as PermissionName[]) || [];
+session.user.status = (token.status as UserStatus) || 'ACTIVE';
+session.user.isVerified = token.isVerified || false;
+session.user.tier = (token.tier as any) || 'FREE';
+session.user.clubId = token.clubId;
+session.user.teamId = token.teamId;
+}
 
-    return session;
-  } catch (error) {
-    console.error('[Session Callback Error]', error);
-    return session;
-  }
+return session;
+} catch (error) {
+console.error('[Session Callback Error]', error);
+return session;
+}
 },
 
 /**
- * REDIRECT CALLBACK
- * Called after sign in/sign out to determine redirect destination
- */
+* REDIRECT CALLBACK
+* Called after sign in/sign out to determine redirect destination
+*/
 async redirect({ url, baseUrl }) {
-  // Allow relative URLs
-  if (url.startsWith('/')) {
-    return `${baseUrl}${url}`;
-  }
+// Allow relative URLs
+if (url.startsWith('/')) {
+return `${baseUrl}${url}`;
+}
 
-  // Allow same origin URLs
-  try {
-    const urlObj = new URL(url);
-    if (urlObj.origin === baseUrl) {
-      return url;
-    }
-  } catch {
-    // Invalid URL, fall through
-  }
+// Allow same origin URLs
+try {
+const urlObj = new URL(url);
+if (urlObj.origin === baseUrl) {
+return url;
+}
+} catch {
+// Invalid URL, fall through
+}
 
-  // Default to base URL
-  return baseUrl;
+// Default to base URL
+return baseUrl;
 },
 },
 
@@ -1026,73 +1022,72 @@ isNewUser,
 timestamp: new Date().toISOString(),
 });
 
-text
-  // Log to audit table if user exists (non-blocking)
-  if (user?.id) {
-    try {
-      await prisma.auditLog?.create({
-        data: {
-          userId: user.id,
-          action: 'LOGIN_SUCCESS',
-          entity: 'User',
-          entityId: user.id,
-          severity: 'INFO',
-          metadata: {
-            provider: account?.provider || 'credentials',
-            isNewUser,
-          },
-        },
-      }).catch((err) => {
-        console.error('[Audit Log Error]', err);
-        // Don't fail auth if audit log fails
-      });
-    } catch (err) {
-      // Silently fail - don't interrupt authentication
-    }
-  }
+// Log to audit table if user exists (non-blocking)
+if (user?.id) {
+try {
+await prisma.auditLog?.create({
+data: {
+userId: user.id,
+action: 'LOGIN_SUCCESS',
+entity: 'User',
+entityId: user.id,
+severity: 'INFO',
+metadata: {
+provider: account?.provider || 'credentials',
+isNewUser,
+},
+},
+}).catch((err) => {
+console.error('[Audit Log Error]', err);
+// Don't fail auth if audit log fails
+});
+} catch (err) {
+// Silently fail - don't interrupt authentication
+}
+}
 },
 
 async signOut({ token }) {
-  console.log('[Auth Event] User signed out', {
-    userId: token?.sub,
-    timestamp: new Date().toISOString(),
-  });
+console.log('[Auth Event] User signed out', {
+userId: token?.sub,
+timestamp: new Date().toISOString(),
+});
 
-  // Log logout event (non-blocking)
-  if (token?.sub) {
-    try {
-      await prisma.auditLog?.create({
-        data: {
-          userId: token.sub,
-          action: 'LOGOUT',
-          entity: 'User',
-          entityId: token.sub,
-          severity: 'INFO',
-        },
-      }).catch((err) => {
-        console.error('[Audit Log Error]', err);
-      });
-    } catch (err) {
-      // Silently fail - don't interrupt logout
-    }
-  }
+// Log logout event (non-blocking)
+if (token?.sub) {
+try {
+await prisma.auditLog?.create({
+data: {
+userId: token.sub,
+action: 'LOGOUT',
+entity: 'User',
+entityId: token.sub,
+severity: 'INFO',
+},
+}).catch((err) => {
+console.error('[Audit Log Error]', err);
+});
+} catch (err) {
+// Silently fail - don't interrupt logout
+}
+}
 },
 
 async error({ error }) {
-  console.error('[Auth Error Event]', {
-    error: error?.message || String(error),
-    code: error?.code,
-    timestamp: new Date().toISOString(),
-  });
+console.error('[Auth Error Event]', {
+error: error?.message || String(error),
+code: error?.code,
+timestamp: new Date().toISOString(),
+});
 },
 
 async session({ session, newSession, trigger }) {
-  if (trigger === 'update' && newSession) {
-    console.log('[Auth Event] Session updated', {
-      userId: session.user?.id,
-      timestamp: new Date().toISOString(),
-    });
-  }
+if (trigger === 'update' && newSession) {
+console.log('[Auth Event] Session updated', {
+userId: session.user?.id,
+timestamp: new Date().toISOString(),
+});
+}
 },
 },
 
@@ -1127,4 +1122,3 @@ getLoginAttemptCount,
 };
 
 export default authConfig;
-
