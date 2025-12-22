@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { getServerSession } from 'next-auth'
 import { Providers } from '@/app/providers'
 import '@/styles/globals.css'
 
@@ -41,15 +42,21 @@ export const metadata: Metadata = {
 // ROOT LAYOUT
 // ============================================================================
 
-export default function RootLayout({
+export default async function RootLayout({
   children
 }: {
   children: React.ReactNode
 }) {
+  // Get session from server
+  const session = await getServerSession()
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <Providers>{children}</Providers>
+        {/* Pass session to client component */}
+        <Providers session={session}>
+          {children}
+        </Providers>
       </body>
     </html>
   )
