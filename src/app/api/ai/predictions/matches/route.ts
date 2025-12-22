@@ -15,7 +15,7 @@
 import { auth } from '@/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { errorResponse } from '@/lib/api/responses';
+import { serverError } from '@/lib/api/responses';
 import { logger } from '@/lib/logging';
 
 /**
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         timestamp: new Date().toISOString(),
       });
 
-      return Response.json(
+      return NextResponse.json(
         { error: 'Unauthorized', message: 'Authentication required' },
         { status: 401 }
       );
@@ -413,15 +413,23 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
     logger.error(
       'Match prediction engine error',
       error instanceof Error ? error : new Error(String(error)),
       {
         endpoint: '/api/ai/predictions/matches',
+        errorMessage,
         timestamp: new Date().toISOString(),
       }
     );
 
-    return errorResponse(error as Error);
+    // Use serverError helper from responses.ts which accepts a string message
+    return serverError(
+      `Prediction engine error: ${errorMessage}`,
+      { requestId }
+    );
   }
 }
