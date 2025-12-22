@@ -73,8 +73,8 @@
     "redis:cli": "redis-cli",
     "redis:test": "npm run test:redis",
     "redis:stop": "redis-cli SHUTDOWN",
-    "clean": "rm -rf .next node_modules dist coverage .turbo .eslintcache",
-    "clean:cache": "rm -rf .next .turbo .eslintcache",
+    "clean": "rimraf .next node_modules dist coverage .turbo .eslintcache",
+    "clean:cache": "rimraf .next .turbo .eslintcache",
     "clean:all": "npm run clean && npm install",
     "reinstall": "npm run clean:all",
     "pre-commit": "lint-staged",
@@ -89,7 +89,7 @@
     "setup:fresh": "npm install && npx prisma generate && npm run build",
     "env:validate": "node -e \"require('dotenv').config(); console.log('✓ Environment validated')\"",
     "db:health": "npx prisma db execute --stdin <<< \"SELECT 1\"",
-    "cache:clear": "rm -rf .next .turbo node_modules/.cache",
+    "cache:clear": "rimraf .next .turbo node_modules/.cache",
     "optimize": "npm run build && npm run analyze"
   },
   "dependencies": {
@@ -223,7 +223,8 @@
     "ts-jest": "^29.1.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "rimraf": "^6.0.1"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
