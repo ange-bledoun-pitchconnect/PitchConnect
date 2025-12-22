@@ -1,5 +1,5 @@
 import { Socket } from 'socket.io';
-import { getSocket } from '../server';
+import { getSocketManager } from '@/lib/socket';
 
 interface NotificationPayload {
   type: string;
@@ -10,8 +10,8 @@ interface NotificationPayload {
 }
 
 export function setupNotificationsNamespace() {
-  const io = getSocket();
-  const notifNsp = io.of('/notifications');
+  const io = getSocketManager();
+  const notifNsp = io.on('/notifications');
 
   notifNsp.on('connection', (socket: Socket) => {
     console.log(`[Notifications] User connected: ${socket.data.userId}`);
@@ -49,8 +49,8 @@ export async function sendNotification(
   userId: string,
   payload: NotificationPayload
 ): Promise<void> {
-  const io = getSocket();
-  io.of('/notifications').to(`user:${userId}`).emit('notification', {
+  const io = getSocketManager();
+  io.on('/notifications').to(`user:${userId}`).emit('notification', {
     ...payload,
     timestamp: new Date().toISOString(),
   });
