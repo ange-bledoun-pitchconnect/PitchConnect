@@ -1,28 +1,30 @@
-'use client';
-
-import { SessionProvider } from 'next-auth/react';
-import type React from 'react';
-
 /**
- * Client Session Provider Wrapper
- * Wraps the app with SessionProvider for NextAuth v5
- *
- * NextAuth v5 Changes:
- * - SessionProvider no longer accepts 'session' prop
- * - Session is auto-injected from server context
- * - Simpler API that just works with React 19
+ * 🌟 PITCHCONNECT - Client Session Provider
+ * Path: /src/components/client-session-provider.tsx
+ * 
+ * ⚠️  DEPRECATED - This wrapper is no longer needed!
+ * 
+ * NextAuth v5 doesn't require wrapping SessionProvider in another component.
+ * The Providers component (src/app/providers.tsx) handles SessionProvider directly.
+ * 
+ * This file is kept for reference but should NOT be used.
+ * Use Providers component instead.
  */
 
-interface ClientSessionProviderProps {
-  children: React.ReactNode;
-}
+'use client';
 
+import React from 'react';
+
+/**
+ * @deprecated Use Providers component from src/app/providers.tsx instead
+ * 
+ * NextAuth v5 handles session injection directly without needing this wrapper.
+ */
 export function ClientSessionProvider({
   children,
-}: ClientSessionProviderProps) {
-  return (
-    <SessionProvider basePath="/api/auth" refetchInterval={0}>
-      {children}
-    </SessionProvider>
-  );
+}: {
+  children: React.ReactNode;
+}) {
+  // Just pass through - SessionProvider is in Providers component now
+  return <>{children}</>;
 }

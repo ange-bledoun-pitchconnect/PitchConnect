@@ -1,82 +1,47 @@
-import * as React from 'react';
+/**
+ * 🌟 PITCHCONNECT - Card Component (Base - FIXED Hover Effects)
+ * Path: /src/components/ui/card.tsx
+ *
+ * Reusable card component with proper hover effects.
+ * Used as base for StatCard, PlayerCard, etc.
+ */
+
+import React from 'react';
 import { cn } from '@/lib/utils';
 
-const Card = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      'rounded-lg border border-border bg-card text-card-foreground shadow-sm transition-shadow hover:shadow-md',
-      className,
-    )}
-    {...props}
-  />
-));
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  hoverable?: boolean;
+  variant?: 'default' | 'elevated' | 'outlined';
+}
+
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, hoverable = false, variant = 'default', ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          // Base styles
+          'rounded-lg border bg-white dark:bg-charcoal-800',
+
+          // Variant styles
+          variant === 'default' && 'border-gray-200 dark:border-charcoal-700',
+          variant === 'elevated' &&
+            'border-gray-100 shadow-md dark:border-charcoal-700 dark:shadow-xl',
+          variant === 'outlined' &&
+            'border-2 border-gray-200 dark:border-charcoal-600',
+
+          // Hover effects if hoverable
+          hoverable &&
+            'transition-all duration-300 ease-out cursor-pointer hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-xl',
+
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+);
+
 Card.displayName = 'Card';
 
-const CardHeader = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn('flex flex-col space-y-1.5 border-b border-border p-6', className)}
-    {...props}
-  />
-));
-CardHeader.displayName = 'CardHeader';
-
-const CardTitle = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <h2
-    ref={ref}
-    className={cn('font-semibold leading-none tracking-tight', className)}
-    {...props}
-  />
-));
-CardTitle.displayName = 'CardTitle';
-
-const CardDescription = React.forwardRef<
-  HTMLParagraphElement,
-  React.HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => (
-  <p
-    ref={ref}
-    className={cn('text-sm text-muted-foreground', className)}
-    {...props}
-  />
-));
-CardDescription.displayName = 'CardDescription';
-
-const CardContent = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('p-6 pt-4', className)} {...props} />
-));
-CardContent.displayName = 'CardContent';
-
-const CardFooter = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn('flex items-center border-t border-border p-6 pt-4', className)}
-    {...props}
-  />
-));
-CardFooter.displayName = 'CardFooter';
-
-export {
-  Card,
-  CardHeader,
-  CardFooter,
-  CardTitle,
-  CardDescription,
-  CardContent,
-};
+export { Card };
