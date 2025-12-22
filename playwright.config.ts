@@ -94,7 +94,7 @@ export default defineConfig({
     ['list'],
 
     /* Blob reporter for storage */
-    ...(IS_CI ? [[('blob' as const), { outputFile: 'test-results/e2e-results.blob' }]] : []),
+    ...(IS_CI ? [['blob', { outputFile: 'test-results/e2e-results.blob' }]] : []),
   ],
 
   // =========================================================================
@@ -127,9 +127,6 @@ export default defineConfig({
 
     /* Device scale factor */
     deviceScaleFactor: 1,
-
-    /* Disable animations for consistent tests */
-    reducedMotion: 'reduce',
 
     /* Extra HTTP headers */
     extraHTTPHeaders: {

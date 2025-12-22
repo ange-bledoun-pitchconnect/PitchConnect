@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { auth } from '@/auth';
 
 
 const ML_SERVICE_URL = process.env.PYTHON_ML_SERVICE_URL || 'http://localhost:5000';

@@ -1,8 +1,8 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { ApiResponse } from '@/lib/api/responses';
+import { auth } from '@/auth';
+import { success, error, notFound, unauthorized, badRequest } from '@/lib/api/responses';
 import { ApiError } from '@/lib/api/errors';
 import prisma from '@/lib/prisma';
 
@@ -41,25 +41,21 @@ interface PlayerMarketValue {
 
 export async function POST(
   req: NextRequest,
-): Promise<NextResponse<ApiResponse<PlayerMarketValue | PlayerMarketValue[]>>> {
+): Promise<NextResponse<any>> {
   try {
     // Authentication check
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json(
-        ApiError.unauthorized('Authentication required'),
-        { status: 401 },
-      );
+      return unauthorized('Authentication required') as any;
     }
 
     const body: MarketValueRequest = await req.json();
 
     // Validation
     if (!body.sport || !['football', 'netball', 'rugby'].includes(body.sport)) {
-      return NextResponse.json(
-        ApiError.validation('Valid sport is required'),
-        { status: 400 },
-      );
+      return badRequest('Valid sport is required', [
+        { field: 'sport', message: 'Must be football, netball, or rugby' }
+      ]) as any;
     }
 
     // Get single player or team players
@@ -71,16 +67,10 @@ export async function POST(
       );
 
       if (!valuation) {
-        return NextResponse.json(
-          ApiError.notFound('Player not found'),
-          { status: 404 },
-        );
+        return notFound('Player not found') as any;
       }
 
-      return NextResponse.json(
-        ApiResponse.success(valuation, 'Player valuation calculated'),
-        { status: 200 },
-      );
+      return success(valuation, 'Player valuation calculated', 200) as any;
     } else if (body.teamId) {
       const valuations = await calculateTeamMarketValues(
         body.teamId,
@@ -88,30 +78,22 @@ export async function POST(
         session.user.id,
       );
 
-      return NextResponse.json(
-        ApiResponse.success(valuations, 'Team valuations calculated'),
-        { status: 200 },
-      );
+      return success(valuations, 'Team valuations calculated', 200) as any;
     } else {
-      return NextResponse.json(
-        ApiError.validation('Either playerId or teamId is required'),
-        { status: 400 },
-      );
+      return badRequest('Either playerId or teamId is required', [
+        { field: 'body', message: 'Provide playerId or teamId' }
+      ]) as any;
     }
-  } catch (error) {
-    console.error('Market value analysis error:', error);
+  } catch (err) {
+    console.error('Market value analysis error:', err);
 
-    if (error instanceof SyntaxError) {
-      return NextResponse.json(
-        ApiError.badRequest('Invalid request body'),
-        { status: 400 },
-      );
+    if (err instanceof SyntaxError) {
+      return badRequest('Invalid request body', [
+        { field: 'body', message: 'JSON parsing failed' }
+      ]) as any;
     }
 
-    return NextResponse.json(
-      ApiError.internal('Market value analysis failed'),
-      { status: 500 },
-    );
+    return error('Market value analysis failed', 500, 'INTERNAL_ERROR') as any;
   }
 }
 
@@ -166,10 +148,7 @@ async function calculatePlayerMarketValue(
   const trend = calculateTrend(player.stats);
 
   // Get comparable players
-  const comparables = await getComparablePlayers(
-    player,
-    sport,
-  );
+  const comparables = await getComparablePlayers(player, sport);
 
   return {
     playerId: player.id,
@@ -184,11 +163,7 @@ async function calculatePlayerMarketValue(
       injuryHistory,
     },
     trend,
-    recommendations: generateMarketRecommendations(
-      currentValue,
-      trend,
-      player,
-    ),
+    recommendations: generateMarketRecommendations(currentValue, trend, player),
     comparables,
   };
 }
@@ -249,11 +224,7 @@ async function calculateTeamMarketValues(
         injuryHistory,
       },
       trend,
-      recommendations: generateMarketRecommendations(
-        currentValue,
-        trend,
-        player,
-      ),
+      recommendations: generateMarketRecommendations(currentValue, trend, player),
       comparables: [],
     });
   }
@@ -295,8 +266,7 @@ function calculatePerformanceBonus(stats: any[]): number {
 }
 
 function calculateAgeAdjustment(dateOfBirth: Date): number {
-  const age =
-    (new Date().getFullYear() - new Date(dateOfBirth).getFullYear());
+  const age = new Date().getFullYear() - new Date(dateOfBirth).getFullYear();
 
   if (age < 24) return 50000; // Young player premium
   if (age > 32) return -30000; // Older player discount
@@ -368,14 +338,10 @@ async function getComparablePlayers(
   }));
 }
 
-export async function GET(
-  req: NextRequest,
-): Promise<NextResponse<ApiResponse<{ status: string; message: string }>>> {
-  return NextResponse.json(
-    ApiResponse.success(
-      { status: 'available', message: 'Market value analysis endpoint active' },
-      'OK',
-    ),
-    { status: 200 },
-  );
+export async function GET(req: NextRequest): Promise<NextResponse<any>> {
+  return success(
+    { status: 'available', message: 'Market value analysis endpoint active' },
+    'OK',
+    200,
+  ) as any;
 }

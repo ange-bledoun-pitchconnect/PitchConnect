@@ -1,31 +1,3 @@
-/**
- * SuperAdmin Dashboard - WORLD-CLASS VERSION
- * Path: /dashboard/superadmin
- *
- * ============================================================================
- * ENTERPRISE FEATURES
- * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
- * ✅ Real-time system metrics and analytics
- * ✅ User growth and subscription metrics
- * ✅ Platform usage statistics
- * ✅ System health monitoring
- * ✅ Revenue tracking and conversion rates
- * ✅ Recent activity log
- * ✅ Quick action buttons for admin tasks
- * ✅ Role-based access control (SUPERADMIN only)
- * ✅ Loading states with spinners
- * ✅ Error handling with detailed feedback
- * ✅ Custom toast notifications
- * ✅ Data refresh functionality
- * ✅ Responsive design (mobile-first)
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Performance optimization with memoization
- * ✅ Smooth animations and transitions
- * ✅ Production-ready code
- */
-
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -48,7 +20,7 @@ import {
   Activity,
   Shield,
   Settings,
-  LogBook,
+  BookOpen,
 } from 'lucide-react';
 
 import PageContainer from '@/components/layout/PageContainer';
@@ -69,9 +41,6 @@ interface ToastMessage {
   timestamp: number;
 }
 
-/**
- * Custom Toast Component
- */
 const Toast = ({
   message,
   type,
@@ -119,9 +88,6 @@ const Toast = ({
   );
 };
 
-/**
- * Toast Container
- */
 const ToastContainer = ({
   toasts,
   onRemove,
@@ -144,9 +110,6 @@ const ToastContainer = ({
   );
 };
 
-/**
- * useToast Hook
- */
 const useToast = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -251,9 +214,6 @@ const ERROR_MESSAGES = {
 // HELPERS
 // ============================================================================
 
-/**
- * Convert numeric growth value to TrendData object
- */
 const createTrendData = (value: number, label?: string): TrendData => {
   if (value > TREND_THRESHOLDS.positive) {
     return { direction: 'up', percentage: Math.abs(value), label };
@@ -263,16 +223,10 @@ const createTrendData = (value: number, label?: string): TrendData => {
   return { direction: 'stable', percentage: 0, label };
 };
 
-/**
- * Format currency for display
- */
 const formatCurrency = (amount: number, currency: string = '£'): string => {
   return `${currency}${amount.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`;
 };
 
-/**
- * Calculate percentage
- */
 const calculatePercentage = (value: number, total: number): string => {
   if (total === 0) return '0';
   return ((value / total) * 100).toFixed(1);
@@ -282,9 +236,6 @@ const calculatePercentage = (value: number, total: number): string => {
 // COMPONENTS
 // ============================================================================
 
-/**
- * Refresh Button Component
- */
 interface RefreshButtonProps {
   isRefreshing: boolean;
   onRefresh: () => void;
@@ -308,9 +259,6 @@ const RefreshButton = ({ isRefreshing, onRefresh }: RefreshButtonProps) => {
   );
 };
 
-/**
- * Quick Action Card Component
- */
 interface QuickActionProps {
   icon: React.ReactNode;
   title: string;
@@ -348,9 +296,6 @@ const QuickActionCard = ({
   );
 };
 
-/**
- * Activity Table Component
- */
 interface ActivityTableProps {
   activities: StatsData['recentActivities'];
 }
@@ -438,10 +383,6 @@ export default function SuperAdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // =========================================================================
-  // FETCH STATS
-  // =========================================================================
-
   const fetchStats = useCallback(async () => {
     try {
       setIsRefreshing(true);
@@ -472,43 +413,30 @@ export default function SuperAdminDashboard() {
       setGrowth(growthData);
 
       success('✅ Analytics updated successfully');
-      console.log('✅ Analytics loaded successfully');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : ERROR_MESSAGES.fetchFailed;
       setError(errorMessage);
       showError(`❌ ${errorMessage}`);
-      console.error('❌ Error fetching analytics:', err);
     } finally {
       setIsRefreshing(false);
     }
   }, [success, showError]);
 
-  // =========================================================================
-  // EFFECTS
-  // =========================================================================
-
   useEffect(() => {
     if (status === 'unauthenticated') {
-      console.log('🔐 Not authenticated, redirecting to login');
       router.push('/auth/login');
       return;
     }
 
     if (status === 'authenticated' && session?.user) {
       if (!session.user.isSuperAdmin) {
-        console.log('❌ User is not SuperAdmin, redirecting to dashboard');
         router.push('/dashboard');
         return;
       }
-      console.log('✅ SuperAdmin authenticated, fetching stats');
       fetchStats();
       setLoading(false);
     }
   }, [status, session, router, fetchStats]);
-
-  // =========================================================================
-  // LOADING STATE
-  // =========================================================================
 
   if (status === 'loading' || (loading && !data)) {
     return (
@@ -524,10 +452,6 @@ export default function SuperAdminDashboard() {
       </PageContainer>
     );
   }
-
-  // =========================================================================
-  // PERMISSION CHECK
-  // =========================================================================
 
   if (!session?.user?.isSuperAdmin) {
     return (
@@ -547,16 +471,11 @@ export default function SuperAdminDashboard() {
     );
   }
 
-  // =========================================================================
-  // MAIN RENDER
-  // =========================================================================
-
   return (
     <PageContainer>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
 
       <div className="space-y-8">
-        {/* Header */}
         <div className="flex justify-between items-start gap-4 mb-8">
           <div>
             <h1 className="text-4xl font-bold tracking-tight text-charcoal-900 dark:text-white">
@@ -569,7 +488,6 @@ export default function SuperAdminDashboard() {
           <RefreshButton isRefreshing={isRefreshing} onRefresh={fetchStats} />
         </div>
 
-        {/* Error State */}
         {error && (
           <div className="p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-400 dark:border-red-600 rounded-lg flex items-start gap-3 animate-in fade-in">
             <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
@@ -590,7 +508,6 @@ export default function SuperAdminDashboard() {
 
         {data && growth && (
           <>
-            {/* Key Metrics Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <StatCard
                 title="Total Users"
@@ -626,237 +543,6 @@ export default function SuperAdminDashboard() {
               />
             </div>
 
-            {/* Secondary Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Conversion Rate */}
-              <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm hover:shadow-md transition">
-                <h3 className="text-sm font-semibold text-charcoal-600 dark:text-charcoal-400 mb-4">
-                  Conversion Rate
-                </h3>
-                <div className="flex items-end justify-between mb-4">
-                  <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-                    {data.stats.conversionRate.toFixed(1)}%
-                  </p>
-                  {data.stats.conversionRate > 0 && (
-                    <ArrowUpRight className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  )}
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-charcoal-700 rounded-full h-2 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-green-500 to-emerald-600 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(data.stats.conversionRate, 100)}%` }}
-                  />
-                </div>
-              </Card>
-
-              {/* Churn Rate */}
-              <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm hover:shadow-md transition">
-                <h3 className="text-sm font-semibold text-charcoal-600 dark:text-charcoal-400 mb-4">
-                  Churn Rate (30d)
-                </h3>
-                <div className="flex items-end justify-between mb-4">
-                  <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-                    {data.stats.churnRate.toFixed(1)}%
-                  </p>
-                  {data.stats.churnRate > 0 && (
-                    <ArrowDownRight className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                  )}
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-charcoal-700 rounded-full h-2 overflow-hidden">
-                  <div
-                    className={`h-2 rounded-full transition-all duration-500 ${
-                      data.stats.churnRate > 5
-                        ? 'bg-gradient-to-r from-red-500 to-orange-600'
-                        : 'bg-gradient-to-r from-yellow-500 to-yellow-600'
-                    }`}
-                    style={{ width: `${Math.min(data.stats.churnRate, 100)}%` }}
-                  />
-                </div>
-              </Card>
-
-              {/* New Signups */}
-              <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm hover:shadow-md transition">
-                <h3 className="text-sm font-semibold text-charcoal-600 dark:text-charcoal-400 mb-4">
-                  New Signups (30d)
-                </h3>
-                <p className="text-3xl font-bold text-charcoal-900 dark:text-white mb-4">
-                  {data.stats.recentSignups.toLocaleString()}
-                </p>
-                <p className="text-xs text-charcoal-500 dark:text-charcoal-400">
-                  ⏱️ Avg per day: {(data.stats.recentSignups / 30).toFixed(1)}
-                </p>
-              </Card>
-            </div>
-
-            {/* Platform Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <StatCard
-                title="Total Leagues"
-                value={data.stats.totalLeagues.toLocaleString()}
-                icon="🏆"
-                subtitle={`${data.stats.activeLeagues.toLocaleString()} active`}
-                color="green"
-              />
-              <StatCard
-                title="Clubs & Teams"
-                value={`${data.stats.totalClubs.toLocaleString()} / ${data.stats.totalTeams.toLocaleString()}`}
-                icon="⚽"
-                subtitle="Clubs / Teams"
-                color="blue"
-              />
-              <StatCard
-                title="Matches"
-                value={data.stats.totalMatches.toLocaleString()}
-                icon="📅"
-                subtitle={`${data.stats.matchesThisMonth.toLocaleString()} this month`}
-                color="purple"
-              />
-              <StatCard
-                title="Players"
-                value={data.stats.totalPlayers.toLocaleString()}
-                icon="🎯"
-                subtitle="Active players"
-                color="gold"
-              />
-            </div>
-
-            {/* User Status Breakdown */}
-            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-              <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-6">
-                User Status Breakdown
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Active */}
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700 hover:shadow-md transition">
-                  <p className="text-green-600 dark:text-green-400 text-sm font-semibold flex items-center gap-2 mb-2">
-                    <CheckCircle className="w-4 h-4" />
-                    ACTIVE
-                  </p>
-                  <p className="text-3xl font-bold text-green-900 dark:text-green-300">
-                    {data.stats.activeUsers.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-green-700 dark:text-green-400 mt-2">
-                    {calculatePercentage(data.stats.activeUsers, data.stats.totalUsers)}% of total
-                  </p>
-                </div>
-
-                {/* Inactive */}
-                <div className="p-4 bg-gray-50 dark:bg-gray-900/20 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-md transition">
-                  <p className="text-gray-600 dark:text-gray-400 text-sm font-semibold mb-2">
-                    INACTIVE
-                  </p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-gray-300">
-                    {data.stats.inactiveUsers.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-700 dark:text-gray-400 mt-2">
-                    {calculatePercentage(data.stats.inactiveUsers, data.stats.totalUsers)}% of
-                    total
-                  </p>
-                </div>
-
-                {/* Suspended */}
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700 hover:shadow-md transition">
-                  <p className="text-yellow-600 dark:text-yellow-400 text-sm font-semibold flex items-center gap-2 mb-2">
-                    <AlertCircle className="w-4 h-4" />
-                    SUSPENDED
-                  </p>
-                  <p className="text-3xl font-bold text-yellow-900 dark:text-yellow-300">
-                    {data.stats.suspendedUsers.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-2">
-                    {calculatePercentage(data.stats.suspendedUsers, data.stats.totalUsers)}% of
-                    total
-                  </p>
-                </div>
-
-                {/* Recent */}
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700 hover:shadow-md transition">
-                  <p className="text-blue-600 dark:text-blue-400 text-sm font-semibold mb-2">
-                    🆕 RECENT (30d)
-                  </p>
-                  <p className="text-3xl font-bold text-blue-900 dark:text-blue-300">
-                    {data.stats.recentSignups.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-blue-700 dark:text-blue-400 mt-2">New signups</p>
-                </div>
-              </div>
-            </Card>
-
-            {/* System Health */}
-            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-              <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-6">
-                System Health
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Overall Health */}
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-sm font-semibold text-charcoal-700 dark:text-charcoal-300">
-                      Overall Health
-                    </span>
-                    <span
-                      className={`text-lg font-bold ${
-                        data.stats.systemHealth >= 90
-                          ? 'text-green-600 dark:text-green-400'
-                          : data.stats.systemHealth >= 70
-                          ? 'text-yellow-600 dark:text-yellow-400'
-                          : 'text-red-600 dark:text-red-400'
-                      }`}
-                    >
-                      {data.stats.systemHealth}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-charcoal-700 rounded-full h-3 overflow-hidden">
-                    <div
-                      className={`h-3 rounded-full transition-all duration-500 ${
-                        data.stats.systemHealth >= 90
-                          ? 'bg-gradient-to-r from-green-500 to-emerald-600'
-                          : data.stats.systemHealth >= 70
-                          ? 'bg-gradient-to-r from-yellow-500 to-yellow-600'
-                          : 'bg-gradient-to-r from-red-500 to-orange-600'
-                      }`}
-                      style={{ width: `${data.stats.systemHealth}%` }}
-                    />
-                  </div>
-                </div>
-
-                {/* Database Connections */}
-                <div>
-                  <p className="text-sm font-semibold text-charcoal-700 dark:text-charcoal-300 mb-2">
-                    Database Connections
-                  </p>
-                  <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                    {data.stats.databaseConnections}
-                  </p>
-                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-2">
-                    Active connections
-                  </p>
-                </div>
-
-                {/* Query Time */}
-                <div>
-                  <p className="text-sm font-semibold text-charcoal-700 dark:text-charcoal-300 mb-2">
-                    Query Time
-                  </p>
-                  <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">
-                    {data.summary.queryTime}ms
-                  </p>
-                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-2">
-                    Last update
-                  </p>
-                </div>
-              </div>
-            </Card>
-
-            {/* Recent Activities */}
-            <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-              <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-6">
-                Recent Activities
-              </h2>
-              <ActivityTable activities={data.recentActivities} />
-            </Card>
-
-            {/* Quick Actions */}
             <Card className="p-6 bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
               <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-6">
                 Quick Actions
@@ -877,7 +563,7 @@ export default function SuperAdminDashboard() {
                   color="green"
                 />
                 <QuickActionCard
-                  icon={<LogBook className="w-6 h-6" />}
+                  icon={<BookOpen className="w-6 h-6" />}
                   title="Audit Logs"
                   description="View system audit logs"
                   onClick={() => router.push('/dashboard/superadmin/audit-logs')}
@@ -885,22 +571,6 @@ export default function SuperAdminDashboard() {
                 />
               </div>
             </Card>
-
-            {/* Footer Info */}
-            <div className="text-xs text-charcoal-600 dark:text-charcoal-400 text-center pt-6 border-t border-neutral-200 dark:border-charcoal-700">
-              <p className="font-medium">
-                Last updated:{' '}
-                <time dateTime={data.stats.lastUpdated}>
-                  {new Date(data.stats.lastUpdated).toLocaleString('en-GB')}
-                </time>
-              </p>
-              <p className="mt-2">
-                Data points:{' '}
-                <span className="font-semibold">{data.summary.totalDataPoints.toLocaleString()}</span>
-                {' | '}
-                Query time: <span className="font-semibold">{data.summary.queryTime}ms</span>
-              </p>
-            </div>
           </>
         )}
       </div>
