@@ -313,8 +313,8 @@ export default defineConfig({
   /* Snapshot path template */
   snapshotPathTemplate: '{snapshotDir}/{testFileDir}/{testFileName}-{platform}{ext}',
 
-  /* Update snapshots with --update-snapshots */
-  updateSnapshots: !!process.env.UPDATE_SNAPSHOTS,
+  /* Update snapshots with --update-snapshots flag */
+  ...(process.env.UPDATE_SNAPSHOTS && { updateSnapshots: 'all' as const }),
 });
 
 // ============================================================================
