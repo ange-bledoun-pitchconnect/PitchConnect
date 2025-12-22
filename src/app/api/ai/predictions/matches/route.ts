@@ -49,18 +49,18 @@ export async function GET(request: NextRequest) {
       include: {
         homeTeam: {
           include: {
-            players: {
-              where: { status: 'COMPLETED' },
-              orderBy: { date: 'desc' },
+            members: {
+              where: { status: 'ACTIVE', isActive: true },
+              orderBy: { joinedAt: 'desc' },
               take: 10,
             },
           },
         },
         awayTeam: {
           include: {
-            players: {
-              where: { status: 'COMPLETED' },
-              orderBy: { date: 'desc' },
+            members: {
+              where: { status: 'ACTIVE', isActive: true },
+              orderBy: { joinedAt: 'desc' },
               take: 10,
             },
           },
