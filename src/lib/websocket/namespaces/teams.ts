@@ -1,10 +1,10 @@
 import { Socket } from 'socket.io';
-import { getSocket } from '../server';
+import { getSocketManager } from '@/lib/socket';
 import { prisma } from '@/lib/prisma';
 
 export function setupTeamsNamespace() {
-  const io = getSocket();
-  const teamNsp = io.of('/teams');
+  const io = getSocketManager();
+  const teamNsp = io.on('/teams');
 
   teamNsp.on('connection', (socket: Socket) => {
     console.log(`[Teams] User connected: ${socket.data.userId}`);
