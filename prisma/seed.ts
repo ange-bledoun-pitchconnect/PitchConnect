@@ -19,7 +19,6 @@ async function main() {
         password: 'hashed_password_here',
         roles: ['SUPERADMIN'],
         status: 'ACTIVE',
-        isSuperAdmin: true,
       },
     });
 
