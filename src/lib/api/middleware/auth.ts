@@ -3,9 +3,8 @@
 // Complete authentication, role-based access, and resource permissions
 // ============================================================================
 
-import { getServerSession } from 'next-auth';
+import { auth } from '@/auth';
 import type { NextRequest } from 'next/server';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { logger } from '../logger';
 import {
