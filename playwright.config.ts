@@ -24,6 +24,7 @@
  */
 
 import { defineConfig, devices } from '@playwright/test';
+import type { ReporterDescription } from '@playwright/test';
 
 // ============================================================================
 // ENVIRONMENT VARIABLES & CONSTANTS
@@ -43,6 +44,36 @@ const GLOBAL_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 // Retry configuration
 const RETRIES = IS_CI ? 2 : 0;
 const WORKERS = IS_CI ? 1 : undefined; // Sequential on CI, parallel locally
+
+// ============================================================================
+// REPORTER CONFIGURATION
+// ============================================================================
+
+/**
+ * Build reporter array based on environment
+ * This approach avoids TypeScript issues with conditional spreads
+ */
+const reporters: ReporterDescription[] = [
+  /* HTML report with interactive view */
+  ['html', { outputFolder: 'playwright-report' }],
+
+  /* JSON report for CI integration */
+  ['json', { outputFile: 'test-results/e2e-results.json' }],
+
+  /* JUnit XML for CI systems */
+  ['junit', { outputFile: 'test-results/junit-e2e.xml' }],
+
+  /* GitHub Actions integration */
+  ['github'],
+
+  /* List reporter for quick feedback */
+  ['list'],
+];
+
+// Add blob reporter only in CI environment
+if (IS_CI) {
+  reporters.push(['blob', { outputFile: 'test-results/e2e-results.blob' }]);
+}
 
 // ============================================================================
 // CONFIGURATION
@@ -77,25 +108,7 @@ export default defineConfig({
   // REPORTING
   // =========================================================================
 
-  reporter: [
-    /* HTML report with interactive view */
-    ['html', { outputFolder: 'playwright-report' }],
-
-    /* JSON report for CI integration */
-    ['json', { outputFile: 'test-results/e2e-results.json' }],
-
-    /* JUnit XML for CI systems */
-    ['junit', { outputFile: 'test-results/junit-e2e.xml' }],
-
-    /* GitHub Actions integration */
-    ['github'],
-
-    /* List reporter for quick feedback */
-    ['list'],
-
-    /* Blob reporter for storage */
-    ...(IS_CI ? [['blob', { outputFile: 'test-results/e2e-results.blob' }]] : []),
-  ],
+  reporter: reporters,
 
   // =========================================================================
   // SHARED SETTINGS FOR ALL PROJECTS
@@ -148,8 +161,6 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        /* Chrome-specific settings */
-        launchArgs: ['--disable-blink-features=AutomationControlled'],
       },
     },
 
@@ -175,7 +186,6 @@ export default defineConfig({
       name: 'Mobile Chrome',
       use: {
         ...devices['Pixel 5'],
-        /* Mobile Chrome specific */
       },
     },
 
@@ -183,7 +193,6 @@ export default defineConfig({
       name: 'Mobile Safari',
       use: {
         ...devices['iPhone 12'],
-        /* Mobile Safari specific */
       },
     },
 
@@ -191,7 +200,6 @@ export default defineConfig({
       name: 'iPad',
       use: {
         ...devices['iPad Pro'],
-        /* iPad specific */
       },
     },
 
@@ -225,8 +233,8 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
       },
       testMatch: '**/*.smoke.spec.ts',
-      retries: 0, // No retries for smoke tests
-      workers: 1, // Sequential execution
+      retries: 0,
+      workers: 1,
     },
 
     // =====================================================================
@@ -239,8 +247,8 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
       },
       testMatch: '**/*.performance.spec.ts',
-      timeout: 60 * 1000, // Longer timeout for performance tests
-      workers: 1, // Sequential for consistent metrics
+      timeout: 60 * 1000,
+      workers: 1,
     },
 
     // =====================================================================
@@ -253,7 +261,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
       },
       testMatch: '**/*.a11y.spec.ts',
-      workers: 1, // Sequential execution
+      workers: 1,
     },
   ],
 
@@ -272,7 +280,7 @@ export default defineConfig({
     reuseExistingServer: !IS_CI,
 
     /* Timeout waiting for server to start */
-    timeout: 120 * 1000, // 2 minutes
+    timeout: 120 * 1000,
 
     /* Don't fail if process exits before tests complete */
     ignoreHTTPSErrors: true,
@@ -307,17 +315,6 @@ export default defineConfig({
 
   /* Update snapshots with --update-snapshots */
   updateSnapshots: !!process.env.UPDATE_SNAPSHOTS,
-
-  // =========================================================================
-  // DEBUGGING
-  // =========================================================================
-
-  ...(PLAYWRIGHT_DEBUG && {
-    /* Slow down test execution */
-    use: {
-      slowMo: 1000,
-    },
-  }),
 });
 
 // ============================================================================
@@ -337,6 +334,7 @@ const configSummary = {
   browsers: ['chromium', 'firefox', 'webkit', 'Mobile Chrome', 'Mobile Safari', 'iPad'],
   testTimeout: `${TEST_TIMEOUT / 1000}s`,
   globalTimeout: `${GLOBAL_TIMEOUT / 60000}m`,
+  reporters: reporters.map(r => Array.isArray(r) ? r[0] : r),
 };
 
 if (typeof console !== 'undefined') {
