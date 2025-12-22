@@ -4,7 +4,7 @@
 // GET - Generate predictive analytics for teams
 // ============================================================================
 
-import { getServerSession } from 'next-auth/next';
+import { auth } from '@/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
