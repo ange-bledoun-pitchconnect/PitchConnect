@@ -29,14 +29,13 @@ interface ProvidersProps {
  */
 export function Providers({ children, session }: ProvidersProps) {
   return (
-    <SessionProvider session={session} refetchInterval={0}>
+    <SessionProvider session={session} basePath="/api/auth" refetchInterval={0}>
       {/* 
         SessionProvider: Provides authentication context to all client components
+        basePath: Explicit path to auth API routes (next-auth v4)
         refetchInterval={0}: Disable automatic refetch (we'll handle manually)
       */}
       {children}
     </SessionProvider>
   )
 }
-
-export default Providers
