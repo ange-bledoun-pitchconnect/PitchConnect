@@ -869,6 +869,34 @@ export async function logBulkOperation(
 }
 
 // ============================================================================
+// CONVENIENCE ALIASES - For backwards compatibility
+// ============================================================================
+
+/**
+ * @deprecated Use logBulkOperation instead
+ * Log audit action
+ */
+export const logAuditAction = logBulkOperation;
+
+/**
+ * @deprecated Use logResourceUpdate instead
+ * Log resource updated
+ */
+export const logResourceUpdated = logResourceUpdate;
+
+/**
+ * @deprecated Use logResourceCreation instead
+ * Log resource created
+ */
+export const logResourceCreated = logResourceCreation;
+
+/**
+ * @deprecated Use logAuthenticationEvent instead
+ * Log auth event
+ */
+export const logAuthEvent = logAuthenticationEvent;
+
+// ============================================================================
 // AUDIT LOG QUERIES
 // ============================================================================
 
@@ -1355,6 +1383,10 @@ export default {
   logSecurityIncident,
   logDataExport,
   logBulkOperation,
+  logAuditAction,
+  logResourceUpdated,
+  logResourceCreated,
+  logAuthEvent,
   extractRequestDetails,
   getAuditLogsForEntity,
   getAuditLogsForUser,
