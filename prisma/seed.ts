@@ -69,15 +69,14 @@ async function main() {
       testClub = await prisma.club.create({
         data: {
           name: 'Arsenal FC',
-          code: 'AFC',
+          slug: 'arsenal-fc',
           city: 'London',
           country: 'United Kingdom',
           foundedYear: 1886,
+          managerId: superAdmin.id,
           ownerId: superAdmin.id,
-          primaryColor: '#EF0107',
-          secondaryColor: '#FFFFFF',
-          status: 'ACTIVE',
-          type: 'PROFESSIONAL',
+          sport: 'FOOTBALL',
+          teamType: 'PROFESSIONAL',
         },
       });
       console.log('✅ Test Club created:', testClub.name);
@@ -99,10 +98,7 @@ async function main() {
       testTeam = await prisma.team.create({
         data: {
           name: 'Arsenal - First Team',
-          code: 'AFT',
           clubId: testClub.id,
-          category: 'FIRST_TEAM',
-          status: 'ACTIVE',
         },
       });
       console.log('✅ Test Team created:', testTeam.name);
@@ -128,51 +124,26 @@ async function main() {
     console.log('✅ League Admin User created:', leagueAdminUser.email);
 
     // ============================================================================
-    // Create League Admin Profile
-    // ============================================================================
-    const leagueAdmin = await prisma.leagueAdmin.findFirst({
-      where: { userId: leagueAdminUser.id },
-    });
-
-    if (!leagueAdmin) {
-      await prisma.leagueAdmin.create({
-        data: {
-          userId: leagueAdminUser.id,
-        },
-      });
-      console.log('✅ League Admin profile created');
-    } else {
-      console.log('ℹ️  League Admin profile already exists');
-    }
-
-    // ============================================================================
     // Create Test League
     // ============================================================================
     let testLeague = await prisma.league.findFirst({
-      where: { code: 'PL2024' },
+      where: { clubId: testClub.id, name: 'Premier Test League 2024' },
     });
 
     if (!testLeague) {
-      const foundLeagueAdmin = await prisma.leagueAdmin.findFirst({
-        where: { userId: leagueAdminUser.id },
+      testLeague = await prisma.league.create({
+        data: {
+          name: 'Premier Test League 2024',
+          clubId: testClub.id,
+          season: 2024,
+          startDate: new Date('2024-08-01'),
+          endDate: new Date('2024-05-31'),
+          format: 'ROUND_ROBIN',
+          visibility: 'PRIVATE',
+          status: 'ACTIVE',
+        },
       });
-
-      if (foundLeagueAdmin) {
-        testLeague = await prisma.league.create({
-          data: {
-            name: 'Premier Test League 2024',
-            code: 'PL2024',
-            country: 'United Kingdom',
-            season: 2024,
-            adminId: foundLeagueAdmin.id,
-            pointsWin: 3,
-            pointsDraw: 1,
-            pointsLoss: 0,
-            status: 'ACTIVE',
-          },
-        });
-        console.log('✅ Test League created:', testLeague.name);
-      }
+      console.log('✅ Test League created:', testLeague.name);
     } else {
       console.log('ℹ️  Test League already exists:', testLeague.name);
     }
