@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { ErrorBoundaryProvider } from '@/app/error-boundary-provider'
 import { Providers } from '@/app/providers'
 import '@/styles/globals.css'
 
@@ -50,9 +49,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <ErrorBoundaryProvider>
-          <Providers>{children}</Providers>
-        </ErrorBoundaryProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   )
