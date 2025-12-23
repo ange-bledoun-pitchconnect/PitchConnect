@@ -1,20 +1,24 @@
 /**
- * 🌟 PITCHCONNECT - NextAuth v5 Configuration
- * Path: /src/auth.ts (CORRECT LOCATION)
+ * 🌟 PITCHCONNECT - NextAuth v4 Configuration
+ * Path: /src/auth.ts
  *
  * ============================================================================
- * AUTHENTICATION CONFIGURATION
+ * AUTHENTICATION CONFIGURATION (NextAuth v4)
  * ============================================================================
  * ✅ OAuth Providers (Google, GitHub)
- * ✅ JWT Session Strategy (Edge-compatible)
- * ✅ Role-Based Access Control (RBAC) Data Sync
+ * ✅ JWT Session Strategy
+ * ✅ Role-Based Access Control (RBAC)
  * ✅ Comprehensive Callbacks
  * ✅ Type-safe Configuration
  */
 
-import NextAuth, { type DefaultSession } from 'next-auth';
-import Google from 'next-auth/providers/google';
-import GitHub from 'next-auth/providers/github';
+import NextAuth, { type NextAuthOptions } from 'next-auth';
+import GoogleProvider from 'next-auth/providers/google';
+import GitHubProvider from 'next-auth/providers/github';
+import { PrismaAdapter } from '@auth/prisma-adapter';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 // Define User Roles type
 export type UserRole = 
@@ -35,37 +39,16 @@ export type PermissionName =
   | 'manage_users' | 'manage_club' | 'manage_team' | 'manage_players'
   | 'view_analytics' | 'manage_payments' | 'view_audit_logs';
 
-// Extend built-in session types
-declare module 'next-auth' {
-  interface Session {
-    user: {
-      id: string;
-      role: UserRole;
-      roles: UserRole[];
-      permissions: PermissionName[];
-      clubId?: string;
-      teamId?: string;
-    } & DefaultSession['user'];
-  }
-}
-
-// Extend built-in JWT types
-declare module 'next-auth/jwt' {
-  interface JWT {
-    id: string;
-    role: UserRole;
-    roles: UserRole[];
-    permissions: PermissionName[];
-    clubId?: string;
-    teamId?: string;
-  }
-}
-
 /**
- * 🔐 Main Authentication Configuration
- * NextAuth v5 with App Router
+ * 🔐 NextAuth v4 Configuration
+ * Proper configuration for NextAuth v4.24.11
  */
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const authOptions: NextAuthOptions = {
+  // ============================================================================
+  // ADAPTER
+  // ============================================================================
+  adapter: PrismaAdapter(prisma),
+
   // ============================================================================
   // PROVIDERS
   // ============================================================================
@@ -74,7 +57,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...(process.env.GOOGLE_CLIENT_ID &&
     process.env.GOOGLE_CLIENT_SECRET
       ? [
-          Google({
+          GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET,
             allowDangerousEmailAccountLinking: true,
@@ -86,7 +69,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...(process.env.GITHUB_CLIENT_ID &&
     process.env.GITHUB_CLIENT_SECRET
       ? [
-          GitHub({
+          GitHubProvider({
             clientId: process.env.GITHUB_CLIENT_ID,
             clientSecret: process.env.GITHUB_CLIENT_SECRET,
             allowDangerousEmailAccountLinking: true,
@@ -98,11 +81,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // ============================================================================
   // SESSION CONFIGURATION
   // ============================================================================
-  // NextAuth v5 uses JWT by default
-  // No need to specify strategy - it's implicit
+  // In NextAuth v4, use session.strategy
   session: {
+    strategy: 'jwt', // Use JWT strategy
     maxAge: 30 * 24 * 60 * 60, // 30 days
     updateAge: 24 * 60 * 60, // update session token every 24 hours
+  },
+
+  // ============================================================================
+  // JWT CONFIGURATION
+  // ============================================================================
+  jwt: {
+    secret: process.env.NEXTAUTH_SECRET,
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
   // ============================================================================
@@ -118,56 +109,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // ============================================================================
   callbacks: {
     /**
-     * 🎟️ JWT Callback
-     * Called whenever a JSON Web Token is created or updated.
-     * Runs on the server-side.
-     */
-    async jwt({ token, user, trigger, session }) {
-      // When user first signs in
-      if (user) {
-        token.id = user.id;
-        token.email = user.email;
-        token.name = user.name;
-        token.picture = user.image;
-
-        // ⚠️ MOCK DATA - TODO: Replace with real database calls
-        // Example: const dbUser = await db.user.findUnique({ where: { email: user.email }});
-        token.role = 'COACH' as UserRole; // Default role
-        token.roles = ['COACH', 'PLAYER'] as UserRole[];
-        token.permissions = ['manage_players', 'manage_team'] as PermissionName[];
-        token.clubId = 'club_123';
-      }
-
-      // Handle session updates (e.g., user updates profile)
-      if (trigger === 'update' && session) {
-        token = { ...token, ...session };
-      }
-
-      return token;
-    },
-
-    /**
-     * 🎫 Session Callback
-     * Called whenever a session is checked.
-     * Runs on the server-side.
-     * Passes data from JWT to the session object.
-     */
-    async session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.id;
-        session.user.role = token.role;
-        session.user.roles = token.roles;
-        session.user.permissions = token.permissions;
-        session.user.clubId = token.clubId;
-        session.user.teamId = token.teamId;
-      }
-      return session;
-    },
-
-    /**
-     * 🛡️ SignIn Callback
-     * Control whether a user is allowed to sign in.
-     * Return true to allow, false to deny.
+     * 🔗 SignIn Callback
+     * Called when user signs in.
+     * Returning true allows sign in, false denies it.
      */
     async signIn({ user, account, profile }) {
       // Allow all users with valid email for now
@@ -179,8 +123,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     /**
-     * 🔗 Redirect Callback
-     * Control where users are redirected after sign in/out
+     * 🔄 Redirect Callback
+     * Called when user is redirected after sign in/out.
      */
     async redirect({ url, baseUrl }) {
       // Allows relative callback URLs
@@ -188,6 +132,47 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Allows callback URLs on the same origin
       else if (new URL(url).origin === baseUrl) return url;
       return baseUrl;
+    },
+
+    /**
+     * 🎫 Session Callback
+     * Called whenever session is checked.
+     * In NextAuth v4, this adds custom data to the session.
+     */
+    async session({ session, token }) {
+      if (session.user) {
+        // Add custom fields to session
+        (session.user as any).id = token.sub;
+        (session.user as any).role = token.role || 'PLAYER';
+        (session.user as any).roles = token.roles || ['PLAYER'];
+        (session.user as any).permissions = token.permissions || [];
+        (session.user as any).clubId = token.clubId;
+      }
+      return session;
+    },
+
+    /**
+     * 🎟️ JWT Callback
+     * Called whenever JWT is created or updated.
+     * In NextAuth v4 with JWT strategy, this is called on sign in.
+     */
+    async jwt({ token, user, account }) {
+      // When user first signs in
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.picture = user.image;
+
+        // ⚠️ MOCK DATA - TODO: Replace with real database calls
+        // Example: const dbUser = await prisma.user.findUnique({ where: { email: user.email }});
+        token.role = 'COACH' as UserRole; // Default role
+        token.roles = ['COACH', 'PLAYER'] as UserRole[];
+        token.permissions = ['manage_players', 'manage_team'] as PermissionName[];
+        token.clubId = 'club_123';
+      }
+
+      return token;
     },
   },
 
@@ -197,8 +182,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   theme: {
     logo: '/logo.png',
     brandColor: '#00B96B', // PitchConnect Green
+    colorScheme: 'light',
   },
 
   // Enable debug in development
   debug: process.env.NODE_ENV === 'development',
-});
+
+  // Set secret for NEXTAUTH_SECRET
+  secret: process.env.NEXTAUTH_SECRET,
+};
+
+// Export handler, sign in, sign out
+export const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
