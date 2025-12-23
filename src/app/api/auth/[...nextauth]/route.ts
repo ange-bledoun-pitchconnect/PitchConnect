@@ -17,7 +17,7 @@
  * ============================================================================
  */
 
-import { handlers } from '@/src/auth';
+import { handlers } from '@/auth';
 
 // Export handlers for both GET and POST requests
 // NextAuth uses HTTP methods to handle different authentication flows
