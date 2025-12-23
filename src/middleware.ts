@@ -1,19 +1,20 @@
 /**
- * 🌟 PITCHCONNECT - Enterprise NextAuth v5 Middleware
- * Path: /src/middleware.ts (CORRECT LOCATION)
+ * 🌟 PITCHCONNECT - Lightweight Route Middleware
+ * Path: /src/middleware.ts
  *
  * ============================================================================
- * MIDDLEWARE FEATURES
+ * MIDDLEWARE FEATURES (EDGE RUNTIME COMPATIBLE)
  * ============================================================================
- * ✅ NextAuth v5 compatible
- * ✅ Role-based access control (RBAC)
- * ✅ Protected route verification
+ * ✅ Fast path matching (no auth import)
  * ✅ Public route whitelist
- * ✅ Security headers injection
- * ✅ Proper auth initialization (no duplicates)
+ * ✅ Protected route basic enforcement
+ * ✅ Lightweight for Edge Runtime
+ * ✅ Session checking via client-side methods
+ *
+ * NOTE: For session validation, use useSession() hook client-side
+ * or check session in API routes/server actions (not in middleware)
  */
 
-import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
@@ -39,92 +40,82 @@ const AUTH_ROUTES = [
   '/auth/reset-password',
   '/auth/verify-email',
   '/auth/error',
-  '/api/auth', // Important for NextAuth endpoints
+  '/auth/callback',
 ];
-
-const ADMIN_ROUTES = ['/admin'];
-const CLUB_OWNER_ROUTES = ['/club'];
-const COACH_ROUTES = ['/coaching'];
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
-function isPublicRoute(path: string) {
+function isPublicRoute(path: string): boolean {
   return PUBLIC_ROUTES.some(route => path === route || path.startsWith(route + '/'));
 }
 
-function isAuthRoute(path: string) {
+function isAuthRoute(path: string): boolean {
   return AUTH_ROUTES.some(route => path === route || path.startsWith(route + '/'));
 }
 
+function isApiRoute(path: string): boolean {
+  return path.startsWith('/api/');
+}
+
 // ============================================================================
-// MIDDLEWARE LOGIC
+// MIDDLEWARE LOGIC (EDGE COMPATIBLE)
 // ============================================================================
 
 /**
- * Auth Middleware
+ * Lightweight Middleware for Route Matching
  *
- * Features:
- * 1. Public routes - pass through without session check
- * 2. Auth routes - redirect to dashboard if already logged in
- * 3. Protected routes - require valid session
- * 4. Role-based access - enforce permissions
- * 5. Security headers - inject best-practice headers
+ * IMPORTANT: This middleware is Edge Runtime compatible and therefore:
+ * - Does NOT perform session validation
+ * - Session validation happens client-side (useSession hook)
+ * - Or server-side (API routes, Server Actions)
  *
- * Flow:
- * Request -> Middleware -> auth() wrapper -> route handler
- * auth() automatically validates JWT and injects req.auth
+ * This middleware focuses on:
+ * 1. Public routes → Allow through
+ * 2. API routes → Allow through (validation in route handler)
+ * 3. Auth routes → Allow through
+ * 4. Protected routes → Basic redirect (actual session check client-side)
  */
-export default auth((req: any) => {
+export function middleware(req: NextRequest) {
   const { nextUrl } = req;
-  const isLoggedIn = !!req.auth;
-  const userRole = req.auth?.user?.role;
   const path = nextUrl.pathname;
 
-  // 1. Allow public routes
+  // 1. Allow all API routes (validation happens in route handlers)
+  if (isApiRoute(path)) {
+    return NextResponse.next();
+  }
+
+  // 2. Allow public routes
   if (isPublicRoute(path)) {
     return NextResponse.next();
   }
 
-  // 2. Allow auth routes (login/register) - Redirect if already logged in
+  // 3. Allow auth routes
   if (isAuthRoute(path)) {
-    if (isLoggedIn) {
-      // Redirect logged-in users to dashboard
-      return NextResponse.redirect(new URL('/dashboard', nextUrl));
-    }
     return NextResponse.next();
   }
 
-  // 3. Protected Routes (Default behavior: require login)
-  if (!isLoggedIn) {
-    let callbackUrl = nextUrl.pathname;
+  // 4. For protected routes, we can't check session in Edge Runtime
+  // Instead, we use a lightweight approach:
+  // - Check for NextAuth session cookie
+  // - If missing, redirect to login
+  // - Client-side useSession hook provides fallback validation
+
+  const sessionCookie = req.cookies.get('next-auth.session-token') || 
+                       req.cookies.get('__Secure-next-auth.session-token');
+
+  if (!sessionCookie) {
+    // No session found, redirect to login
+    let callbackUrl = path;
     if (nextUrl.search) {
       callbackUrl += nextUrl.search;
     }
     const encodedCallbackUrl = encodeURIComponent(callbackUrl);
     
-    // Redirect to login with callback URL
     return NextResponse.redirect(
       new URL(`/auth/login?callbackUrl=${encodedCallbackUrl}`, nextUrl)
     );
-  }
-
-  // 4. Role-Based Access Control
-  
-  // Admin Routes
-  if (path.startsWith('/admin') && userRole !== 'SUPERADMIN' && userRole !== 'ADMIN') {
-    return NextResponse.redirect(new URL('/dashboard', nextUrl));
-  }
-
-  // Club Routes
-  if (path.startsWith('/club') && !['SUPERADMIN', 'ADMIN', 'CLUB_OWNER'].includes(userRole || '')) {
-    return NextResponse.redirect(new URL('/dashboard', nextUrl));
-  }
-
-  // Coach Routes
-  if (path.startsWith('/coaching') && !['SUPERADMIN', 'ADMIN', 'MANAGER', 'COACH'].includes(userRole || '')) {
-    return NextResponse.redirect(new URL('/dashboard', nextUrl));
   }
 
   // 5. Add Security Headers
@@ -135,7 +126,7 @@ export default auth((req: any) => {
   response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 
   return response;
-});
+}
 
 // ============================================================================
 // MATCHER CONFIGURATION
