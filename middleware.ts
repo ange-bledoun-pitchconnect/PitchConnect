@@ -10,15 +10,12 @@
  * ✅ Protected route verification
  * ✅ Public route whitelist
  * ✅ Security headers injection
+ * ✅ Proper auth initialization (no duplicates)
  */
 
-import NextAuth from 'next-auth';
+import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { config as authConfig } from './auth';
-
-// Initialize NextAuth with config
-const { auth } = NextAuth(authConfig);
 
 // ============================================================================
 // ROUTE CONFIGURATION
@@ -41,6 +38,7 @@ const AUTH_ROUTES = [
   '/auth/register',
   '/auth/reset-password',
   '/auth/verify-email',
+  '/auth/error',
   '/api/auth', // Important for NextAuth endpoints
 ];
 
@@ -64,7 +62,21 @@ function isAuthRoute(path: string) {
 // MIDDLEWARE LOGIC
 // ============================================================================
 
-export default auth((req) => {
+/**
+ * Auth Middleware
+ *
+ * Features:
+ * 1. Public routes - pass through without session check
+ * 2. Auth routes - redirect to dashboard if already logged in
+ * 3. Protected routes - require valid session
+ * 4. Role-based access - enforce permissions
+ * 5. Security headers - inject best-practice headers
+ *
+ * Flow:
+ * Request -> Middleware -> auth() wrapper -> route handler
+ * auth() automatically validates JWT and injects req.auth
+ */
+export default auth((req: any) => {
   const { nextUrl } = req;
   const isLoggedIn = !!req.auth;
   const userRole = req.auth?.user?.role;
@@ -120,6 +132,7 @@ export default auth((req) => {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 
   return response;
 });
