@@ -93,8 +93,6 @@
     "optimize": "npm run build && npm run analyze"
   },
   "dependencies": {
-    "@auth/core": "^0.41.0",
-    "@auth/prisma-adapter": "^2.11.1",
     "@datadog/browser-rum": "^6.24.1",
     "@hookform/resolvers": "^3.10.0",
     "@mux/mux-node": "^12.8.0",
@@ -218,13 +216,13 @@
     "prettier": "^3.3.3",
     "prettier-plugin-tailwindcss": "^0.6.9",
     "prisma": "^5.22.0",
+    "rimraf": "^6.0.1",
     "supertest": "^6.3.3",
     "tailwindcss": "^3.4.19",
     "ts-jest": "^29.1.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
-    "typescript": "^5.6.3",
-    "rimraf": "^6.0.1"
+    "typescript": "^5.6.3"
   },
   "prisma": {
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
