@@ -10,7 +10,7 @@
 
 import type { Metadata } from 'next'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { auth } from '@/auth'
 import { Providers } from '@/app/providers'
 import '@/styles/globals.css'
 
@@ -83,7 +83,8 @@ interface RootLayoutProps {
 export default async function RootLayout({ children }: RootLayoutProps) {
   // Fetch server session - THIS REQUIRES NEXTAUTH_SECRET to be set!
   // If you get JWT_SESSION_ERROR, verify NEXTAUTH_SECRET in .env.local
-  const session = await getServerSession(authOptions)
+  // Pass the auth function from @/auth configuration
+  const session = await getServerSession(auth)
 
   return (
     <html lang="en" suppressHydrationWarning>
