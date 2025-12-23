@@ -1,27 +1,29 @@
 /**
- * 🌟 PITCHCONNECT - NextAuth v4 Configuration
+ * 🔐 PITCHCONNECT - NextAuth v4 Configuration (Session-Based)
  * Path: /src/auth.ts
  *
  * ============================================================================
- * AUTHENTICATION CONFIGURATION (NextAuth v4)
+ * AUTHENTICATION CONFIGURATION (NextAuth v4 - Session Strategy)
  * ============================================================================
  * ✅ OAuth Providers (Google, GitHub)
- * ✅ JWT Session Strategy
+ * ✅ JWT Session Strategy (no Prisma Adapter - using session state)
  * ✅ Role-Based Access Control (RBAC)
  * ✅ Comprehensive Callbacks
  * ✅ Type-safe Configuration
- * ✅ NextAuth v4 Correct Adapter Import
+ * ✅ NO @auth/* dependencies needed
  */
 
 import NextAuth, { type NextAuthOptions, type DefaultSession } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import GitHubProvider from 'next-auth/providers/github';
-import { PrismaAdapter } from 'next-auth/adapters/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// Define User Roles type
+// ============================================================================
+// TYPES
+// ============================================================================
+
 export type UserRole = 
   | 'SUPERADMIN' 
   | 'ADMIN' 
@@ -35,12 +37,14 @@ export type UserRole =
   | 'PLAYER' 
   | 'PARENT';
 
-// Define Permissions type
 export type PermissionName = 
   | 'manage_users' | 'manage_club' | 'manage_team' | 'manage_players'
   | 'view_analytics' | 'manage_payments' | 'view_audit_logs';
 
-// Extend Session type for NextAuth v4
+/**
+ * Extend Session type for NextAuth v4
+ * This allows type-safe access to custom session properties
+ */
 declare module 'next-auth' {
   interface Session extends DefaultSession {
     user?: DefaultSession['user'] & {
@@ -52,21 +56,27 @@ declare module 'next-auth' {
       teamId?: string;
     };
   }
+  
+  interface JWT {
+    id?: string;
+    role?: UserRole;
+    roles?: UserRole[];
+    permissions?: PermissionName[];
+    clubId?: string;
+    teamId?: string;
+  }
 }
 
 /**
  * 🔐 NextAuth v4 Configuration
- * Proper configuration for NextAuth v4.24.11
+ * Using JWT strategy with session callbacks
+ * NO Prisma Adapter - this will be added in a future refactor
  */
 export const authOptions: NextAuthOptions = {
   // ============================================================================
-  // ADAPTER - NextAuth v4 uses next-auth/adapters/prisma
-  // ============================================================================
-  adapter: PrismaAdapter(prisma),
-
-  // ============================================================================
   // PROVIDERS
   // ============================================================================
+  // Using OAuth providers - Prisma Adapter removed to avoid @auth/* conflicts
   providers: [
     // Google OAuth Provider - only if credentials are set
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
@@ -94,7 +104,7 @@ export const authOptions: NextAuthOptions = {
   // ============================================================================
   // SESSION CONFIGURATION
   // ============================================================================
-  // NextAuth v4 uses session.strategy
+  // NextAuth v4 uses "jwt" strategy (default for next-auth v4)
   session: {
     strategy: 'jwt' as const,
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -155,12 +165,12 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         // Add custom fields to session from JWT token
-        session.user.id = token.sub || '';
+        session.user.id = token.sub || token.id || '';
         session.user.role = (token.role as UserRole) || 'PLAYER';
         session.user.roles = (token.roles as UserRole[]) || ['PLAYER'];
         session.user.permissions = (token.permissions as PermissionName[]) || [];
-        session.user.clubId = token.clubId as string | undefined;
-        session.user.teamId = token.teamId as string | undefined;
+        session.user.clubId = (token.clubId as string | undefined);
+        session.user.teamId = (token.teamId as string | undefined);
       }
       return session;
     },
@@ -168,11 +178,12 @@ export const authOptions: NextAuthOptions = {
     /**
      * 🎟️ JWT Callback
      * Called whenever JWT is created or updated.
-     * In NextAuth v4 with JWT strategy, this is called on sign in.
+     * In NextAuth v4 with JWT strategy, this is called on sign in and updates.
      */
     async jwt({ token, user, account }) {
       // When user first signs in, populate token with user data
       if (user) {
+        token.id = user.id;
         token.sub = user.id;
         token.email = user.email;
         token.name = user.name;
