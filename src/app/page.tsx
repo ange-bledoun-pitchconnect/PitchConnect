@@ -5,8 +5,8 @@
  * ============================================================================
  * FEATURES
  * ============================================================================
- * ✅ Fully functional Sign In & Get Started buttons
- * ✅ Proper OAuth integration with NextAuth
+ * ✅ Fully functional Sign In & Get Started buttons with proper navigation
+ * ✅ Direct routing to auth pages instead of OAuth flow initiation
  * ✅ Mobile-first responsive design
  * ✅ Accessibility compliant (WCAG 2.1)
  * ✅ Enhanced animations and interactions
@@ -17,14 +17,14 @@
  * ✅ Type-safe with TypeScript
  *
  * ============================================================================
- * STATUS: PRODUCTION READY ⚽🏆 - READY FOR TESTING
+ * STATUS: PRODUCTION READY ⚽🏆 - ROUTING FIXED
  * ============================================================================
  */
 
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { signIn, useSession } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import { useEffect, useState, useCallback } from 'react';
 import {
   Trophy,
@@ -120,18 +120,7 @@ function PricingCard({
   popular = false,
   cta,
   icon,
-}: PricingPlan & { onCTA: () => void | Promise<void>; isLoading?: boolean }) {
-  const handleCTA = async () => {
-    try {
-      await signIn('google', {
-        callbackUrl: '/dashboard',
-        redirect: true,
-      });
-    } catch (error) {
-      console.error('Sign in error:', error);
-    }
-  };
-
+}: PricingPlan) {
   return (
     <div
       className={`relative overflow-hidden rounded-2xl transition-all duration-300 ${
@@ -172,16 +161,16 @@ function PricingCard({
         </div>
 
         {/* CTA Button */}
-        <button
-          onClick={handleCTA}
-          className={`w-full rounded-lg px-6 py-3 font-semibold transition-all duration-200 mb-6 ${
+        <Link
+          href="/auth/signup"
+          className={`block w-full rounded-lg px-6 py-3 font-semibold transition-all duration-200 mb-6 text-center ${
             popular
               ? 'bg-gradient-to-r from-amber-400 to-amber-600 text-white hover:shadow-lg hover:scale-105'
               : 'border border-amber-400 text-amber-600 hover:bg-amber-50 dark:border-amber-600 dark:text-amber-400 dark:hover:bg-amber-900/20'
           }`}
         >
           {cta}
-        </button>
+        </Link>
 
         {/* Features List */}
         <div className="space-y-3 border-t border-neutral-200 pt-6 dark:border-slate-700">
@@ -207,33 +196,6 @@ function Navigation() {
   const router = useRouter();
   const { data: session } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
-
-  const handleSignIn = useCallback(async () => {
-    setIsSigningIn(true);
-    try {
-      await signIn('google', {
-        callbackUrl: '/dashboard',
-        redirect: true,
-      });
-    } catch (error) {
-      console.error('Sign in error:', error);
-      setIsSigningIn(false);
-    }
-  }, []);
-
-  const handleGetStarted = useCallback(async () => {
-    setIsSigningIn(true);
-    try {
-      await signIn('google', {
-        callbackUrl: '/dashboard',
-        redirect: true,
-      });
-    } catch (error) {
-      console.error('Sign in error:', error);
-      setIsSigningIn(false);
-    }
-  }, []);
 
   // Redirect to dashboard if already logged in
   useEffect(() => {
@@ -281,20 +243,18 @@ function Navigation() {
 
         {/* Auth Buttons */}
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleSignIn}
-            disabled={isSigningIn}
-            className="hidden px-4 py-2 font-semibold text-slate-700 transition-colors hover:text-amber-600 disabled:opacity-50 sm:block dark:text-slate-300 dark:hover:text-amber-400"
+          <Link
+            href="/auth/login"
+            className="hidden px-4 py-2 font-semibold text-slate-700 transition-colors hover:text-amber-600 sm:block dark:text-slate-300 dark:hover:text-amber-400"
           >
-            {isSigningIn ? 'Signing in...' : 'Sign In'}
-          </button>
-          <button
-            onClick={handleGetStarted}
-            disabled={isSigningIn}
-            className="rounded-lg bg-gradient-to-r from-amber-400 to-amber-600 px-6 py-2 font-semibold text-white shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-105 disabled:opacity-50"
+            Sign In
+          </Link>
+          <Link
+            href="/auth/signup"
+            className="rounded-lg bg-gradient-to-r from-amber-400 to-amber-600 px-6 py-2 font-semibold text-white shadow-lg transition-all duration-200 hover:shadow-xl hover:scale-105"
           >
-            {isSigningIn ? 'Loading...' : 'Get Started'}
-          </button>
+            Get Started
+          </Link>
         </div>
 
         {/* Mobile Menu Toggle */}
@@ -345,20 +305,10 @@ function Navigation() {
  */
 export default function LandingPage() {
   const router = useRouter();
-  const [isSigningIn, setIsSigningIn] = useState(false);
 
-  const handleGetStartedClick = useCallback(async () => {
-    setIsSigningIn(true);
-    try {
-      await signIn('google', {
-        callbackUrl: '/dashboard',
-        redirect: true,
-      });
-    } catch (error) {
-      console.error('Sign in error:', error);
-      setIsSigningIn(false);
-    }
-  }, []);
+  const handleGetStartedClick = useCallback(() => {
+    router.push('/auth/signup');
+  }, [router]);
 
   const handleViewDemo = useCallback(() => {
     router.push('/dashboard');
@@ -400,7 +350,7 @@ export default function LandingPage() {
   ];
 
   // Pricing plans data
-  const pricingPlans: (Omit<PricingPlan, 'onCTA'> & { onCTA: () => void })[] = [
+  const pricingPlans: PricingPlan[] = [
     {
       icon: <Users className="h-6 w-6" />,
       name: 'Player',
@@ -413,7 +363,6 @@ export default function LandingPage() {
         'Mobile app access',
       ],
       cta: 'Get Started Free',
-      onCTA: handleGetStartedClick,
     },
     {
       icon: <Trophy className="h-6 w-6" />,
@@ -427,7 +376,6 @@ export default function LandingPage() {
         'Player development tracking',
       ],
       cta: 'Start 14-Day Free Trial',
-      onCTA: handleGetStartedClick,
       popular: true,
     },
     {
@@ -442,7 +390,6 @@ export default function LandingPage() {
         'Financial management',
       ],
       cta: 'Start 14-Day Free Trial',
-      onCTA: handleGetStartedClick,
     },
   ];
 
@@ -501,14 +448,13 @@ export default function LandingPage() {
 
           {/* CTA Buttons */}
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <button
-              onClick={handleGetStartedClick}
-              disabled={isSigningIn}
-              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 px-8 py-4 text-lg font-bold text-white shadow-2xl transition-all duration-200 hover:shadow-3xl hover:scale-105 disabled:opacity-50 sm:w-auto"
+            <Link
+              href="/auth/signup"
+              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 px-8 py-4 text-lg font-bold text-white shadow-2xl transition-all duration-200 hover:shadow-3xl hover:scale-105 sm:w-auto"
             >
-              {isSigningIn ? 'Loading...' : 'Start Free Trial'}
+              Start Free Trial
               <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-            </button>
+            </Link>
             <button
               onClick={handleViewDemo}
               className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-neutral-300 bg-white px-8 py-4 text-lg font-bold text-slate-900 shadow-lg transition-all duration-200 hover:border-amber-400 hover:bg-neutral-50 hover:shadow-xl sm:w-auto dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:hover:border-amber-400"
@@ -585,7 +531,6 @@ export default function LandingPage() {
               <PricingCard
                 key={index}
                 {...plan}
-                onCTA={plan.onCTA}
               />
             ))}
           </div>
@@ -657,13 +602,12 @@ export default function LandingPage() {
             Join thousands of clubs already using PitchConnect. Start your free
             trial today—no credit card required.
           </p>
-          <button
-            onClick={handleGetStartedClick}
-            disabled={isSigningIn}
-            className="rounded-xl bg-white px-8 py-4 font-bold text-amber-600 shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl disabled:opacity-50"
+          <Link
+            href="/auth/signup"
+            className="inline-block rounded-xl bg-white px-8 py-4 font-bold text-amber-600 shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
           >
-            {isSigningIn ? 'Loading...' : 'Start Free Trial Now'}
-          </button>
+            Start Free Trial Now
+          </Link>
         </div>
       </section>
 
