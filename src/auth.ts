@@ -10,12 +10,13 @@
  * ✅ Role-Based Access Control (RBAC)
  * ✅ Comprehensive Callbacks
  * ✅ Type-safe Configuration
+ * ✅ NextAuth v4 Correct Adapter Import
  */
 
-import NextAuth, { type NextAuthOptions } from 'next-auth';
+import NextAuth, { type NextAuthOptions, type DefaultSession } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import GitHubProvider from 'next-auth/providers/github';
-import { PrismaAdapter } from '@auth/prisma-adapter';
+import { PrismaAdapter } from 'next-auth/adapters/prisma';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -39,13 +40,27 @@ export type PermissionName =
   | 'manage_users' | 'manage_club' | 'manage_team' | 'manage_players'
   | 'view_analytics' | 'manage_payments' | 'view_audit_logs';
 
+// Extend Session type for NextAuth v4
+declare module 'next-auth' {
+  interface Session extends DefaultSession {
+    user?: DefaultSession['user'] & {
+      id: string;
+      role: UserRole;
+      roles: UserRole[];
+      permissions: PermissionName[];
+      clubId?: string;
+      teamId?: string;
+    };
+  }
+}
+
 /**
  * 🔐 NextAuth v4 Configuration
  * Proper configuration for NextAuth v4.24.11
  */
 export const authOptions: NextAuthOptions = {
   // ============================================================================
-  // ADAPTER
+  // ADAPTER - NextAuth v4 uses next-auth/adapters/prisma
   // ============================================================================
   adapter: PrismaAdapter(prisma),
 
@@ -53,9 +68,8 @@ export const authOptions: NextAuthOptions = {
   // PROVIDERS
   // ============================================================================
   providers: [
-    // Google OAuth Provider
-    ...(process.env.GOOGLE_CLIENT_ID &&
-    process.env.GOOGLE_CLIENT_SECRET
+    // Google OAuth Provider - only if credentials are set
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? [
           GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID,
@@ -65,9 +79,8 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
 
-    // GitHub OAuth Provider
-    ...(process.env.GITHUB_CLIENT_ID &&
-    process.env.GITHUB_CLIENT_SECRET
+    // GitHub OAuth Provider - only if credentials are set
+    ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
       ? [
           GitHubProvider({
             clientId: process.env.GITHUB_CLIENT_ID,
@@ -81,9 +94,9 @@ export const authOptions: NextAuthOptions = {
   // ============================================================================
   // SESSION CONFIGURATION
   // ============================================================================
-  // In NextAuth v4, use session.strategy
+  // NextAuth v4 uses session.strategy
   session: {
-    strategy: 'jwt', // Use JWT strategy
+    strategy: 'jwt' as const,
     maxAge: 30 * 24 * 60 * 60, // 30 days
     updateAge: 24 * 60 * 60, // update session token every 24 hours
   },
@@ -141,12 +154,13 @@ export const authOptions: NextAuthOptions = {
      */
     async session({ session, token }) {
       if (session.user) {
-        // Add custom fields to session
-        (session.user as any).id = token.sub;
-        (session.user as any).role = token.role || 'PLAYER';
-        (session.user as any).roles = token.roles || ['PLAYER'];
-        (session.user as any).permissions = token.permissions || [];
-        (session.user as any).clubId = token.clubId;
+        // Add custom fields to session from JWT token
+        session.user.id = token.sub || '';
+        session.user.role = (token.role as UserRole) || 'PLAYER';
+        session.user.roles = (token.roles as UserRole[]) || ['PLAYER'];
+        session.user.permissions = (token.permissions as PermissionName[]) || [];
+        session.user.clubId = token.clubId as string | undefined;
+        session.user.teamId = token.teamId as string | undefined;
       }
       return session;
     },
@@ -157,16 +171,16 @@ export const authOptions: NextAuthOptions = {
      * In NextAuth v4 with JWT strategy, this is called on sign in.
      */
     async jwt({ token, user, account }) {
-      // When user first signs in
+      // When user first signs in, populate token with user data
       if (user) {
-        token.id = user.id;
+        token.sub = user.id;
         token.email = user.email;
         token.name = user.name;
         token.picture = user.image;
 
         // ⚠️ MOCK DATA - TODO: Replace with real database calls
         // Example: const dbUser = await prisma.user.findUnique({ where: { email: user.email }});
-        token.role = 'COACH' as UserRole; // Default role
+        token.role = 'COACH' as UserRole; // Default role for now
         token.roles = ['COACH', 'PLAYER'] as UserRole[];
         token.permissions = ['manage_players', 'manage_team'] as PermissionName[];
         token.clubId = 'club_123';
@@ -192,5 +206,8 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 };
 
-// Export handler, sign in, sign out
+// ============================================================================
+// EXPORT HANDLERS
+// ============================================================================
+// In NextAuth v4, NextAuth returns handlers for API routes
 export const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
