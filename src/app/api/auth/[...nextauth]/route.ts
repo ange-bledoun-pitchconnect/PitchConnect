@@ -1,58 +1,24 @@
-import NextAuth, { type NextAuthOptions } from 'next-auth'
-import CredentialsProvider from 'next-auth/providers/credentials'
+/**
+ * 🔐 NextAuth v5 Dynamic Route Handler
+ * Path: /src/app/api/auth/[...nextauth]/route.ts
+ *
+ * ============================================================================
+ * This file handles ALL NextAuth authentication endpoints:
+ * - /api/auth/signin
+ * - /api/auth/callback/google
+ * - /api/auth/callback/github
+ * - /api/auth/signout
+ * - /api/auth/session
+ * - /api/auth/csrf
+ * - /api/auth/providers
+ *
+ * The [...nextauth] catch-all route ensures all auth-related requests are
+ * properly routed through NextAuth middleware.
+ * ============================================================================
+ */
 
-export const authOptions: NextAuthOptions = {
-  providers: [
-    CredentialsProvider({
-      name: 'Credentials',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' }
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error('Invalid credentials')
-        }
+import { handlers } from '@/src/auth';
 
-        // TODO: Replace with your actual auth logic
-        if (credentials.email === 'test@example.com' && 
-            credentials.password === 'password') {
-          return {
-            id: '1',
-            email: credentials.email,
-            name: 'Test User',
-            role: 'admin'
-          }
-        }
-
-        throw new Error('Invalid credentials')
-      }
-    })
-  ],
-  pages: {
-    signIn: '/login',
-    error: '/auth/error'
-  },
-  session: {
-    strategy: 'jwt'
-  },
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-        token.role = (user as any).role
-      }
-      return token
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string
-        ;(session.user as any).role = token.role
-      }
-      return session
-    }
-  }
-}
-
-const handler = NextAuth(authOptions)
-export { handler as GET, handler as POST }
+// Export handlers for both GET and POST requests
+// NextAuth uses HTTP methods to handle different authentication flows
+export const { GET, POST } = handlers;
