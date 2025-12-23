@@ -1,8 +1,8 @@
 /**
- * 🔐 PITCHCONNECT - NextAuth API Route Handler
+ * 🔐 PITCHCONNECT - NextAuth v4 API Route Handler
  * Path: /src/app/api/auth/[...nextauth]/route.ts
  *
- * This file wires up NextAuth v5 to handle all auth endpoints:
+ * This file wires up NextAuth v4 to handle all auth endpoints:
  * - GET /api/auth/signin
  * - POST /api/auth/signin
  * - GET /api/auth/callback/:provider
