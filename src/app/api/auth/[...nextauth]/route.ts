@@ -1,40 +1,83 @@
 /**
- * 🔐 NextAuth v5 Dynamic Route Handler
- * Path: /src/app/api/auth/[...nextauth]/route.ts
+ * 🌟 PITCHCONNECT - NextAuth v5 Route Handler
+ * Path: src/app/api/auth/[...nextauth]/route.ts
  *
  * ============================================================================
- * This file handles ALL NextAuth authentication endpoints:
- * - /api/auth/signin
- * - /api/auth/callback/google  
- * - /api/auth/callback/github
- * - /api/auth/signout
- * - /api/auth/session
- * - /api/auth/csrf
- * - /api/auth/providers
+ * NEXTAUTH ROUTE HANDLER - PRODUCTION GRADE
+ * ============================================================================
  *
- * The [...nextauth] catch-all route ensures all auth-related requests are
- * properly routed through NextAuth middleware.
+ * This catch-all dynamic route handles ALL NextAuth authentication flows:
+ *
+ * Endpoints served by this handler:
+ * - POST   /api/auth/signin                   - Initiate sign in
+ * - GET    /api/auth/callback/[provider]      - OAuth callback handler
+ * - GET/POST /api/auth/jwt                    - JWT operations
+ * - GET    /api/auth/session                  - Get current session
+ * - GET    /api/auth/providers                - List auth providers
+ * - GET    /api/auth/error                    - Error page redirect
+ * - POST   /api/auth/signout                  - Handle sign out
+ * - POST   /api/auth/_log                     - Log events (dev mode)
+ *
+ * ============================================================================
+ * CRITICAL IMPLEMENTATION NOTES
+ * ============================================================================
+ *
+ * 1. DYNAMIC ROUTE SYNTAX
+ *    - Filename: [...nextauth] (three dots required)
+ *    - Creates catch-all route for /api/auth/[...any]
+ *    - Next.js converts [...param] to params.nextauth array
+ *
+ * 2. HANDLER EXPORT
+ *    - NextAuth() returns object with { handlers, auth, signIn, signOut }
+ *    - handlers = { GET, POST } functions
+ *    - MUST export as: export const { GET, POST } = handlers
+ *    - DO NOT rename these - NextAuth expects exact names
+ *
+ * 3. SINGLE INITIALIZATION
+ *    - handlers created ONCE in src/auth.ts
+ *    - This file ONLY re-exports them
+ *    - Do NOT call NextAuth() again here
+ *    - Prevents duplicate initialization errors
+ *
+ * 4. TIMING
+ *    - Called after middleware.ts
+ *    - Runs only for /api/auth/* routes
+ *    - Session already validated by middleware
+ *
+ * ============================================================================
+ * SECURITY CONSIDERATIONS
+ * ============================================================================
+ *
+ * - All OAuth flows validated server-side
+ * - JWT tokens encrypted with NEXTAUTH_SECRET
+ * - CSRF protection built-in
+ * - Rate limiting should be added in production
+ * - All responses sanitized
+ * - NO sensitive data in logs
+ *
  * ============================================================================
  */
 
-import { handlers, auth } from '@/auth';
+import { handlers } from '@/auth';
 
-if (!handlers) {
-  throw new Error(
-    '[NextAuth] handlers not found. Check that src/auth.ts properly exports handlers from NextAuth()'
-  );
-}
+/**
+ * GET Handler
+ *
+ * Handles:
+ * - /api/auth/session - Fetch current session
+ * - /api/auth/providers - List available providers
+ * - /api/auth/error - Error page
+ * - /api/auth/signin - Show login page
+ */
+export const GET = handlers.GET;
 
-if (!handlers.GET || !handlers.POST) {
-  throw new Error(
-    '[NextAuth] GET or POST handler missing. handlers object incomplete: ' +
-      JSON.stringify(Object.keys(handlers))
-  );
-}
-
-// Export handlers for both GET and POST requests
-// NextAuth uses HTTP methods to handle different authentication flows
-export const { GET, POST } = handlers;
-
-// Optional: Export auth for middleware if needed
-export { auth };
+/**
+ * POST Handler
+ *
+ * Handles:
+ * - /api/auth/signin - Process sign in
+ * - /api/auth/callback/[provider] - OAuth provider callback
+ * - /api/auth/signout - Process sign out
+ * - /api/auth/_log - Log events (dev only)
+ */
+export const POST = handlers.POST;
