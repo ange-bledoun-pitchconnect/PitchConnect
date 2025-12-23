@@ -12,11 +12,9 @@
  * ✅ Type-safe Configuration
  */
 
-import NextAuth from 'next-auth';
-import { type DefaultSession } from 'next-auth';
+import NextAuth, { type DefaultSession } from 'next-auth';
 import Google from 'next-auth/providers/google';
 import GitHub from 'next-auth/providers/github';
-import type { NextAuthConfig } from 'next-auth';
 
 // Define User Roles type
 export type UserRole = 
@@ -66,7 +64,7 @@ declare module 'next-auth/jwt' {
 /**
  * 🔐 Main Authentication Configuration
  */
-export const config = {
+export const authConfig = {
   theme: {
     logo: '/logo.png', // Add your logo path
     brandColor: '#00B96B', // PitchConnect Green
@@ -83,14 +81,14 @@ export const config = {
       allowDangerousEmailAccountLinking: true,
     }),
   ],
-  session: { strategy: 'jwt' },
+  session: { strategy: 'jwt' as const },
   callbacks: {
     /**
      * 🎟️ JWT Callback
      * Called whenever a JSON Web Token is created or updated.
      * This is where we persist user role/data into the token.
      */
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user, trigger, session }: any) {
       if (user) {
         // Initial sign in - populate token with user data
         token.id = user.id as string;
@@ -99,7 +97,7 @@ export const config = {
         token.picture = user.image;
 
         // ⚠️ MOCK DATA - REPLACE WITH REAL DB CALLS LATER
-        // Example: const dbUser = await db.user.findUnique({ where: { email: user.email }})
+        // Example: const dbUser = await db.user.findUnique({ where: { email: user.email }});
         token.role = 'COACH'; // Default role for now
         token.roles = ['COACH', 'PLAYER'];
         token.permissions = ['manage_players', 'manage_team'];
@@ -119,7 +117,7 @@ export const config = {
      * Called whenever a session is checked.
      * Passes data from the JWT token to the client.
      */
-    async session({ session, token }) {
+    async session({ session, token }: any) {
       if (token && session.user) {
         session.user.id = token.id;
         session.user.role = token.role;
@@ -135,7 +133,7 @@ export const config = {
      * 🛡️ SignIn Callback
      * Control who can sign in.
      */
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account, profile }: any) {
       if (!user.email) return false;
       return true;
     },
@@ -146,7 +144,7 @@ export const config = {
     verifyRequest: '/auth/verify', // Email verification page
   },
   debug: process.env.NODE_ENV === 'development',
-} satisfies NextAuthConfig;
+};
 
 // Export NextAuth handler
-export const { handlers, auth, signIn, signOut } = NextAuth(config);
+export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
