@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * PitchConnect Login Page - v2.0 ENHANCED
- * Enterprise-Grade Authentication Interface
+ * PitchConnect Login Page - v2.1 ENHANCED
+ * Enterprise-Grade Authentication Interface with Email/Password Support
  * Copy and paste this entire file to: ./src/app/auth/login/page.tsx
  */
 
-import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useCallback, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { AlertCircle, Eye, EyeOff, Loader, Trophy, Mail, Lock } from 'lucide-react';
@@ -72,6 +72,7 @@ const validateForm = (email: string, password: string) => {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -85,6 +86,20 @@ export default function LoginPage() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   }, []);
+
+  // Check for error in URL params
+  useEffect(() => {
+    const error = searchParams.get('error');
+    if (error) {
+      let errorMessage = 'An error occurred during authentication';
+      if (error === 'CredentialsSignin') {
+        errorMessage = 'Invalid email or password. Please try again.';
+      } else if (error === 'EmailNotVerified') {
+        errorMessage = 'Please verify your email before logging in.';
+      }
+      showToast(errorMessage, 'error');
+    }
+  }, [searchParams, showToast]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -108,10 +123,17 @@ export default function LoginPage() {
         });
 
         if (result?.error) {
-          const errorMessage =
-            result.error === 'CredentialsSignin'
-              ? 'Invalid email or password. Please try again.'
-              : result.error || 'Sign in failed. Please try again.';
+          // Map error codes to user-friendly messages
+          let errorMessage = 'Invalid email or password. Please try again.';
+          
+          if (result.error === 'CredentialsSignin') {
+            errorMessage = 'Invalid email or password. Please try again.';
+          } else if (result.error === 'EmailNotVerified') {
+            errorMessage = 'Please verify your email before logging in.';
+          } else if (result.error === 'AccessDenied') {
+            errorMessage = 'Your account has been suspended. Please contact support.';
+          }
+          
           setErrors({ form: errorMessage });
           showToast(errorMessage, 'error');
         } else if (result?.ok) {
@@ -126,7 +148,7 @@ export default function LoginPage() {
               }),
             });
           } catch {
-            // Silently fail
+            // Silently fail analytics
           }
 
           showToast('Welcome back! Redirecting...', 'success');
@@ -166,7 +188,7 @@ export default function LoginPage() {
 
   // Restore remembered email
   const [isHydrated, setIsHydrated] = useState(false);
-  if (!isHydrated) {
+  useEffect(() => {
     try {
       const rememberMePreference = localStorage.getItem('rememberMe');
       if (rememberMePreference) {
@@ -180,16 +202,18 @@ export default function LoginPage() {
     } catch {
       setIsHydrated(true);
     }
-  }
+  }, [email]);
+
+  if (!isHydrated) return null;
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-white via-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800">
       {/* LEFT SIDE - BRANDING (Desktop only) */}
-      <div className="hidden flex-1 bg-gradient-to-br from-gold-500 via-gold-400 to-orange-400 p-12 text-white lg:flex lg:flex-col lg:justify-between">
+      <div className="hidden flex-1 bg-gradient-to-br from-amber-400 via-amber-300 to-orange-400 p-12 text-white lg:flex lg:flex-col lg:justify-between">
         <div>
           <div className="mb-8 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-lg">
-              <Trophy className="h-7 w-7 text-gold-500" />
+              <Trophy className="h-7 w-7 text-amber-500" />
             </div>
             <div>
               <h1 className="text-2xl font-bold">PitchConnect</h1>
@@ -246,7 +270,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           {/* Logo (Mobile Only) */}
           <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-gold-500 to-orange-400 shadow-lg">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-400 shadow-lg">
               <Trophy className="h-6 w-6 text-white" />
             </div>
             <div>
@@ -300,7 +324,7 @@ export default function LoginPage() {
                   className={`w-full rounded-lg border bg-white px-4 py-3 pl-10 text-charcoal-900 placeholder-charcoal-400 transition-all duration-200 focus:outline-none focus:ring-2 dark:bg-charcoal-800 dark:text-white dark:placeholder-charcoal-500 ${
                     errors.email
                       ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20 dark:border-red-700'
-                      : 'border-neutral-200 focus:border-gold-500 focus:ring-gold-500/20 dark:border-charcoal-700'
+                      : 'border-neutral-200 focus:border-amber-500 focus:ring-amber-500/20 dark:border-charcoal-700'
                   }`}
                   disabled={isLoading}
                 />
@@ -316,7 +340,7 @@ export default function LoginPage() {
                 </label>
                 <Link
                   href="/auth/forgot-password"
-                  className="text-sm font-medium text-gold-600 transition-colors hover:text-gold-700 dark:text-gold-400 dark:hover:text-gold-300"
+                  className="text-sm font-medium text-amber-600 transition-colors hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
                 >
                   Forgot?
                 </Link>
@@ -336,7 +360,7 @@ export default function LoginPage() {
                   className={`w-full rounded-lg border bg-white px-4 py-3 pl-10 pr-10 text-charcoal-900 placeholder-charcoal-400 transition-all duration-200 focus:outline-none focus:ring-2 dark:bg-charcoal-800 dark:text-white dark:placeholder-charcoal-500 ${
                     errors.password
                       ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20 dark:border-red-700'
-                      : 'border-neutral-200 focus:border-gold-500 focus:ring-gold-500/20 dark:border-charcoal-700'
+                      : 'border-neutral-200 focus:border-amber-500 focus:ring-amber-500/20 dark:border-charcoal-700'
                   }`}
                   disabled={isLoading}
                 />
@@ -359,7 +383,7 @@ export default function LoginPage() {
                 id="remember"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 rounded border-neutral-300 text-gold-500 focus:ring-gold-500 accent-gold-500"
+                className="h-4 w-4 rounded border-neutral-300 text-amber-500 focus:ring-amber-500 accent-amber-500"
                 disabled={isLoading}
               />
               <label htmlFor="remember" className="text-sm text-charcoal-700 dark:text-charcoal-300">
@@ -371,7 +395,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full rounded-lg bg-gradient-to-r from-gold-500 to-orange-400 px-4 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:from-gold-600 hover:to-orange-500 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full rounded-lg bg-gradient-to-r from-amber-400 to-orange-400 px-4 py-3 font-semibold text-white shadow-lg transition-all duration-200 hover:from-amber-500 hover:to-orange-500 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading && <Loader className="h-5 w-5 animate-spin" />}
               {isLoading ? 'Signing In...' : 'Sign In'}
@@ -388,6 +412,7 @@ export default function LoginPage() {
           {/* Google Button */}
           <button
             onClick={handleGoogleSignIn}
+            type="button"
             disabled={isGoogleLoading || isLoading}
             className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-3 font-semibold text-charcoal-900 transition-all duration-200 hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-white dark:hover:bg-charcoal-700"
           >
@@ -428,7 +453,7 @@ export default function LoginPage() {
             Don't have an account?{' '}
             <Link
               href="/auth/signup"
-              className="font-semibold text-gold-600 transition-colors hover:text-gold-700 dark:text-gold-400 dark:hover:text-gold-300"
+              className="font-semibold text-amber-600 transition-colors hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
             >
               Create account
             </Link>
@@ -438,11 +463,11 @@ export default function LoginPage() {
           <div className="mt-8 space-y-2 text-center text-xs text-charcoal-600 dark:text-charcoal-400">
             <p>By signing in, you agree to our</p>
             <div className="flex items-center justify-center gap-2">
-              <Link href="/legal/terms" className="text-gold-600 hover:text-gold-700 dark:text-gold-400">
+              <Link href="/legal/terms" className="text-amber-600 hover:text-amber-700 dark:text-amber-400">
                 Terms of Service
               </Link>
               <span>•</span>
-              <Link href="/legal/privacy" className="text-gold-600 hover:text-gold-700 dark:text-gold-400">
+              <Link href="/legal/privacy" className="text-amber-600 hover:text-amber-700 dark:text-amber-400">
                 Privacy Policy
               </Link>
             </div>
