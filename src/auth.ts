@@ -6,18 +6,21 @@
  * AUTHENTICATION CONFIGURATION (NextAuth v4 - Session Strategy)
  * ============================================================================
  * ✅ OAuth Providers (Google, GitHub)
- * ✅ JWT Session Strategy (no Prisma Adapter - using session state)
+ * ✅ JWT Session Strategy
  * ✅ Role-Based Access Control (RBAC)
  * ✅ Comprehensive Callbacks
  * ✅ Type-safe Configuration
- * ✅ NO @auth/* dependencies needed
+ * ✅ Proper Handler Export
  */
 
-import NextAuth, { type NextAuthOptions, type DefaultSession } from 'next-auth';
+import NextAuth, { type NextAuthConfig, type DefaultSession, type JWT } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import GitHubProvider from 'next-auth/providers/github';
 import { PrismaClient } from '@prisma/client';
 
+// ============================================================================
+// DATABASE CONNECTION
+// ============================================================================
 const prisma = new PrismaClient();
 
 // ============================================================================
@@ -38,8 +41,13 @@ export type UserRole =
   | 'PARENT';
 
 export type PermissionName = 
-  | 'manage_users' | 'manage_club' | 'manage_team' | 'manage_players'
-  | 'view_analytics' | 'manage_payments' | 'view_audit_logs';
+  | 'manage_users' 
+  | 'manage_club' 
+  | 'manage_team' 
+  | 'manage_players'
+  | 'view_analytics' 
+  | 'manage_payments' 
+  | 'view_audit_logs';
 
 /**
  * Extend Session type for NextAuth v4
@@ -70,13 +78,11 @@ declare module 'next-auth' {
 /**
  * 🔐 NextAuth v4 Configuration
  * Using JWT strategy with session callbacks
- * NO Prisma Adapter - this will be added in a future refactor
  */
-export const authOptions: NextAuthOptions = {
+const authConfig: NextAuthConfig = {
   // ============================================================================
   // PROVIDERS
   // ============================================================================
-  // Using OAuth providers - Prisma Adapter removed to avoid @auth/* conflicts
   providers: [
     // Google OAuth Provider - only if credentials are set
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
@@ -104,9 +110,8 @@ export const authOptions: NextAuthOptions = {
   // ============================================================================
   // SESSION CONFIGURATION
   // ============================================================================
-  // NextAuth v4 uses "jwt" strategy (default for next-auth v4)
   session: {
-    strategy: 'jwt' as const,
+    strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
     updateAge: 24 * 60 * 60, // update session token every 24 hours
   },
@@ -165,12 +170,12 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         // Add custom fields to session from JWT token
-        session.user.id = token.sub || token.id || '';
+        session.user.id = token.sub || (token.id as string) || '';
         session.user.role = (token.role as UserRole) || 'PLAYER';
         session.user.roles = (token.roles as UserRole[]) || ['PLAYER'];
         session.user.permissions = (token.permissions as PermissionName[]) || [];
-        session.user.clubId = (token.clubId as string | undefined);
-        session.user.teamId = (token.teamId as string | undefined);
+        session.user.clubId = token.clubId as string | undefined;
+        session.user.teamId = token.teamId as string | undefined;
       }
       return session;
     },
@@ -218,7 +223,11 @@ export const authOptions: NextAuthOptions = {
 };
 
 // ============================================================================
-// EXPORT HANDLERS
+// EXPORT HANDLERS FOR ROUTE HANDLER
 // ============================================================================
-// In NextAuth v4, NextAuth returns handlers for API routes
-export const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
+// ✅ THIS IS THE CRITICAL FIX
+// NextAuth v4 returns an object with handlers, auth, signIn, signOut
+export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+
+// Export config for type checking if needed
+export { authConfig as authOptions };
