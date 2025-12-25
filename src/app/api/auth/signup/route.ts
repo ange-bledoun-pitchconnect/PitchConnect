@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import bcryptjs from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { sendVerificationEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
 
