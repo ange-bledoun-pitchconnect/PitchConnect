@@ -2,19 +2,22 @@
  * 🔐 PITCHCONNECT - NextAuth v4 API Route Handler
  * Path: /src/app/api/auth/[...nextauth]/route.ts
  *
- * This file wires up NextAuth v4 to handle all auth endpoints:
- * - GET /api/auth/signin
- * - POST /api/auth/signin
- * - GET /api/auth/callback/:provider
- * - POST /api/auth/callback/:provider
- * - GET /api/auth/signout
- * - POST /api/auth/signout
- * - GET /api/auth/session
- * - GET /api/auth/providers
- * - POST /api/auth/_log
- * - GET /api/auth/_log
+ * ============================================================================
+ * NEXTAUTH API HANDLER
+ * ============================================================================
+ * ✅ Handles all authentication requests
+ * ✅ OAuth provider callbacks
+ * ✅ Session management endpoints
+ * ✅ Sign in/out flows
  */
 
 import { handlers } from '@/auth';
 
+// 🔐 EXPORT HANDLERS
+// NextAuth v4 provides GET and POST handlers
+// These handle all OAuth flows and authentication requests
 export const { GET, POST } = handlers;
+
+// ⚠️ CRITICAL: Tell Next.js this is a dynamic route
+// Don't cache this route since it handles real-time authentication
+export const dynamic = 'force-dynamic';
