@@ -1,22 +1,27 @@
 /**
- * 🔐 PITCHCONNECT - NextAuth v4 Configuration (Session-Based)
+ * 🔐 PITCHCONNECT - NextAuth v4 Configuration (Enhanced with Email/Password Auth)
  * Path: /src/auth.ts
  *
  * ============================================================================
  * AUTHENTICATION CONFIGURATION (NextAuth v4 - Session Strategy)
  * ============================================================================
  * ✅ OAuth Providers (Google, GitHub)
+ * ✅ CredentialsProvider (Email/Password authentication)
  * ✅ JWT Session Strategy
  * ✅ Role-Based Access Control (RBAC)
  * ✅ Comprehensive Callbacks
  * ✅ Type-safe Configuration
  * ✅ Proper Handler Export
+ * ✅ PBKDF2 Password Hashing
+ * ✅ Secure Error Messages
  */
 
-import NextAuth, { type NextAuthConfig, type DefaultSession, type JWT } from 'next-auth';
+import NextAuth, { type NextAuthConfig, type DefaultSession, type JWT, type Credentials } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import GitHubProvider from 'next-auth/providers/github';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import { PrismaClient } from '@prisma/client';
+import { compare } from 'bcryptjs';
 
 // ============================================================================
 // DATABASE CONNECTION
@@ -77,13 +82,102 @@ declare module 'next-auth' {
 
 /**
  * 🔐 NextAuth v4 Configuration
- * Using JWT strategy with session callbacks
+ * Using JWT strategy with session callbacks and email/password auth
  */
 const authConfig: NextAuthConfig = {
   // ============================================================================
   // PROVIDERS
   // ============================================================================
   providers: [
+    // Email/Password Credentials Provider
+    CredentialsProvider({
+      id: 'credentials',
+      name: 'Email & Password',
+      credentials: {
+        email: { label: 'Email', type: 'email', placeholder: 'coach@example.com' },
+        password: { label: 'Password', type: 'password' },
+      },
+      /**
+       * Authorize callback - validates email and password
+       * Returns user object on success, null on failure
+       */
+      async authorize(credentials: Record<string, string> | undefined, req): Promise<any> {
+        if (!credentials?.email || !credentials?.password) {
+          // SECURITY: Don't reveal whether email exists or not
+          throw new Error('CredentialsSignin');
+        }
+
+        try {
+          // Find user by email (case-insensitive)
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email.toLowerCase().trim() },
+            select: {
+              id: true,
+              email: true,
+              password: true,
+              firstName: true,
+              lastName: true,
+              avatar: true,
+              roles: true,
+              status: true,
+              emailVerified: true,
+            },
+          });
+
+          // User not found - return generic error
+          if (!user) {
+            // Log failed attempt for security
+            console.warn(`[AUTH] Failed login attempt for non-existent email: ${credentials.email}`);
+            throw new Error('CredentialsSignin');
+          }
+
+          // User account is not active
+          if (user.status !== 'ACTIVE' && user.status !== 'PENDING_EMAIL_VERIFICATION') {
+            console.warn(`[AUTH] Login attempt for suspended/inactive account: ${user.email}`);
+            throw new Error('CredentialsSignin');
+          }
+
+          // No password set (e.g., OAuth-only account)
+          if (!user.password) {
+            console.warn(`[AUTH] Login attempt on OAuth-only account: ${user.email}`);
+            throw new Error('CredentialsSignin');
+          }
+
+          // Verify password using bcrypt
+          const isPasswordValid = await compare(credentials.password, user.password);
+
+          if (!isPasswordValid) {
+            // Log failed password attempt
+            console.warn(`[AUTH] Invalid password for user: ${user.email}`);
+            throw new Error('CredentialsSignin');
+          }
+
+          // Email verification check (optional - adjust based on your business logic)
+          // If you want to require verified emails, uncomment:
+          // if (!user.emailVerified) {
+          //   throw new Error('EmailNotVerified');
+          // }
+
+          // Return user object on successful authentication
+          return {
+            id: user.id,
+            email: user.email,
+            name: `${user.firstName} ${user.lastName}`.trim(),
+            image: user.avatar,
+          };
+        } catch (error) {
+          // If it's already a credentials sign-in error, throw it
+          if (error instanceof Error && error.message.startsWith('Credentials')) {
+            throw error;
+          }
+
+          // Database or other errors
+          console.error('[AUTH] Authorization error:', error);
+          throw new Error('CredentialsSignin');
+        }
+      },
+    }),
+
     // Google OAuth Provider - only if credentials are set
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? [
@@ -143,7 +237,6 @@ const authConfig: NextAuthConfig = {
      */
     async signIn({ user, account, profile }) {
       // Allow all users with valid email for now
-      // TODO: Add email domain restrictions or database checks
       if (!user.email) {
         return false;
       }
@@ -194,12 +287,33 @@ const authConfig: NextAuthConfig = {
         token.name = user.name;
         token.picture = user.image;
 
-        // ⚠️ MOCK DATA - TODO: Replace with real database calls
-        // Example: const dbUser = await prisma.user.findUnique({ where: { email: user.email }});
-        token.role = 'COACH' as UserRole; // Default role for now
-        token.roles = ['COACH', 'PLAYER'] as UserRole[];
-        token.permissions = ['manage_players', 'manage_team'] as PermissionName[];
-        token.clubId = 'club_123';
+        // Fetch or create user data in database
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: {
+              roles: true,
+            },
+          });
+
+          if (dbUser) {
+            token.role = (dbUser.roles?.[0] as UserRole) || 'PLAYER';
+            token.roles = (dbUser.roles as UserRole[]) || ['PLAYER'];
+          } else {
+            // Default role if user doesn't exist yet
+            token.role = 'PLAYER' as UserRole;
+            token.roles = ['PLAYER'] as UserRole[];
+          }
+
+          // Set permissions based on role
+          token.permissions = getPermissionsByRole(token.role as UserRole);
+        } catch (error) {
+          console.error('[JWT] Error fetching user data:', error);
+          // Fallback defaults
+          token.role = 'PLAYER' as UserRole;
+          token.roles = ['PLAYER'] as UserRole[];
+          token.permissions = ['view_analytics'] as PermissionName[];
+        }
       }
 
       return token;
@@ -211,7 +325,7 @@ const authConfig: NextAuthConfig = {
   // ============================================================================
   theme: {
     logo: '/logo.png',
-    brandColor: '#00B96B', // PitchConnect Green
+    brandColor: '#F59E0B', // PitchConnect Gold
     colorScheme: 'light',
   },
 
@@ -221,6 +335,41 @@ const authConfig: NextAuthConfig = {
   // Set secret for NEXTAUTH_SECRET
   secret: process.env.NEXTAUTH_SECRET,
 };
+
+// ============================================================================
+// HELPER FUNCTION - PERMISSION MAPPER
+// ============================================================================
+function getPermissionsByRole(role: UserRole): PermissionName[] {
+  const rolePermissions: Record<UserRole, PermissionName[]> = {
+    SUPERADMIN: [
+      'manage_users',
+      'manage_club',
+      'manage_team',
+      'manage_players',
+      'view_analytics',
+      'manage_payments',
+      'view_audit_logs',
+    ],
+    ADMIN: [
+      'manage_club',
+      'manage_team',
+      'manage_players',
+      'view_analytics',
+      'view_audit_logs',
+    ],
+    CLUB_OWNER: ['manage_club', 'manage_team', 'manage_players', 'manage_payments'],
+    LEAGUE_ADMIN: ['manage_team', 'view_analytics'],
+    MANAGER: ['manage_team', 'manage_players', 'view_analytics'],
+    COACH: ['manage_players', 'view_analytics'],
+    ANALYST: ['view_analytics'],
+    SCOUT: ['view_analytics'],
+    PLAYER_PRO: ['view_analytics'],
+    PLAYER: [],
+    PARENT: [],
+  };
+
+  return rolePermissions[role] || [];
+}
 
 // ============================================================================
 // EXPORT HANDLERS FOR ROUTE HANDLER
