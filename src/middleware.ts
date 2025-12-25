@@ -36,7 +36,8 @@ const PUBLIC_ROUTES = [
 
 const AUTH_ROUTES = [
   '/auth/login',
-  '/auth/register',
+  '/auth/signup',        // ✅ ensure signup is treated as an auth route
+  '/auth/register',      // kept for backward compatibility if ever used
   '/auth/reset-password',
   '/auth/verify-email',
   '/auth/error',
@@ -48,11 +49,15 @@ const AUTH_ROUTES = [
 // ============================================================================
 
 function isPublicRoute(path: string): boolean {
-  return PUBLIC_ROUTES.some(route => path === route || path.startsWith(route + '/'));
+  return PUBLIC_ROUTES.some(
+    (route) => path === route || path.startsWith(route + '/'),
+  );
 }
 
 function isAuthRoute(path: string): boolean {
-  return AUTH_ROUTES.some(route => path === route || path.startsWith(route + '/'));
+  return AUTH_ROUTES.some(
+    (route) => path === route || path.startsWith(route + '/'),
+  );
 }
 
 function isApiRoute(path: string): boolean {
@@ -67,15 +72,15 @@ function isApiRoute(path: string): boolean {
  * Lightweight Middleware for Route Matching
  *
  * IMPORTANT: This middleware is Edge Runtime compatible and therefore:
- * - Does NOT perform session validation
+ * - Does NOT perform full session validation
  * - Session validation happens client-side (useSession hook)
- * - Or server-side (API routes, Server Actions)
+ *   or server-side (API routes, Server Actions)
  *
  * This middleware focuses on:
  * 1. Public routes → Allow through
  * 2. API routes → Allow through (validation in route handler)
  * 3. Auth routes → Allow through
- * 4. Protected routes → Basic redirect (actual session check client-side)
+ * 4. Protected routes → Basic redirect to login if no session cookie
  */
 export function middleware(req: NextRequest) {
   const { nextUrl } = req;
@@ -91,30 +96,27 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 3. Allow auth routes
+  // 3. Allow auth routes (login, signup, etc.)
   if (isAuthRoute(path)) {
     return NextResponse.next();
   }
 
-  // 4. For protected routes, we can't check session in Edge Runtime
-  // Instead, we use a lightweight approach:
-  // - Check for NextAuth session cookie
-  // - If missing, redirect to login
-  // - Client-side useSession hook provides fallback validation
-
-  const sessionCookie = req.cookies.get('next-auth.session-token') || 
-                       req.cookies.get('__Secure-next-auth.session-token');
+  // 4. For protected routes, use a lightweight cookie presence check
+  // NOTE: Actual session validation still happens elsewhere.
+  const sessionCookie =
+    req.cookies.get('next-auth.session-token') ??
+    req.cookies.get('__Secure-next-auth.session-token');
 
   if (!sessionCookie) {
-    // No session found, redirect to login
+    // No session found, redirect to login with callbackUrl
     let callbackUrl = path;
     if (nextUrl.search) {
       callbackUrl += nextUrl.search;
     }
     const encodedCallbackUrl = encodeURIComponent(callbackUrl);
-    
+
     return NextResponse.redirect(
-      new URL(`/auth/login?callbackUrl=${encodedCallbackUrl}`, nextUrl)
+      new URL(`/auth/login?callbackUrl=${encodedCallbackUrl}`, nextUrl),
     );
   }
 
@@ -123,7 +125,10 @@ export function middleware(req: NextRequest) {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-XSS-Protection', '1; mode=block');
-  response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  response.headers.set(
+    'Strict-Transport-Security',
+    'max-age=31536000; includeSubDomains',
+  );
 
   return response;
 }
