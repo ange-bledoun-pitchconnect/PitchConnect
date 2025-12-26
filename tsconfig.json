@@ -25,17 +25,13 @@
     // ========================================================================
     // 🔒 STRICT TYPE CHECKING - ENTERPRISE GRADE
     // ========================================================================
-    /* CRITICAL: All strict mode flags ENABLED for production reliability */
     "strict": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,
     "strictBindCallApply": true,
     "strictPropertyInitialization": true,
-    "strictBuiltinVariableNames": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
-    
-    /* ADDITIONAL SAFETY CHECKS */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
@@ -44,12 +40,8 @@
     "noPropertyAccessFromIndexSignature": true,
     "noUncheckedSideEffectImports": true,
     "exactOptionalPropertyTypes": true,
-    
-    /* UNREACHABLE CODE DETECTION */
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
-    
-    /* ADVANCED TYPE CHECKING */
     "useUnknownInCatchVariables": true,
 
     // ========================================================================
@@ -57,6 +49,7 @@
     // ========================================================================
     "declaration": false,
     "declarationMap": false,
+    "declarationDir": "./types",
     "sourceMap": true,
     "sourceRoot": ".",
     "mapRoot": "./",
@@ -67,6 +60,7 @@
     "incremental": true,
     "tsBuildInfoFile": "./.next/.tsbuildinfo",
     "newLine": "lf",
+    "pretty": true,
 
     // ========================================================================
     // 🔗 INTEROP & COMPATIBILITY - NEXT.JS & EXTERNAL MODULES
@@ -82,26 +76,20 @@
     // ========================================================================
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
-    "lib": ["ES2023", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
 
     // ========================================================================
     // 🎨 PATH ALIASES - CLEAN IMPORTS ALIGNED WITH SCHEMA STRUCTURE
     // ========================================================================
     "baseUrl": ".",
     "paths": {
-      /* Core app structure */
       "@/*": ["./src/*"],
       "@/app/*": ["./src/app/*"],
       "@/src/*": ["./src/*"],
-
-      /* UI & Components - Aligned with v6.0.0 schema */
       "@/components/*": ["./src/components/*"],
       "@/components/ui/*": ["./src/components/ui/*"],
       "@/components/layout/*": ["./src/components/layout/*"],
       "@/components/features/*": ["./src/components/features/*"],
       "@/components/providers/*": ["./src/components/providers/*"],
-
-      /* Features - Modular architecture per schema */
       "@/features/*": ["./src/features/*"],
       "@/features/auth/*": ["./src/features/auth/*"],
       "@/features/organisations/*": ["./src/features/organisations/*"],
@@ -114,8 +102,6 @@
       "@/features/billing/*": ["./src/features/billing/*"],
       "@/features/audit/*": ["./src/features/audit/*"],
       "@/features/webhooks/*": ["./src/features/webhooks/*"],
-
-      /* API & Integrations */
       "@/api/*": ["./src/app/api/*"],
       "@/services/*": ["./src/services/*"],
       "@/services/auth/*": ["./src/services/auth/*"],
@@ -126,15 +112,11 @@
       "@/services/billing/*": ["./src/services/billing/*"],
       "@/services/audit/*": ["./src/services/audit/*"],
       "@/services/webhooks/*": ["./src/services/webhooks/*"],
-
-      /* Custom Hooks */
       "@/hooks/*": ["./src/hooks/*"],
       "@/hooks/auth/*": ["./src/hooks/auth/*"],
       "@/hooks/teams/*": ["./src/hooks/teams/*"],
       "@/hooks/players/*": ["./src/hooks/players/*"],
       "@/hooks/matches/*": ["./src/hooks/matches/*"],
-
-      /* Libraries & Utilities */
       "@/lib/*": ["./src/lib/*"],
       "@/lib/api/*": ["./src/lib/api/*"],
       "@/lib/auth/*": ["./src/lib/auth/*"],
@@ -147,8 +129,6 @@
       "@/lib/email/*": ["./src/lib/email/*"],
       "@/lib/storage/*": ["./src/lib/storage/*"],
       "@/lib/logger/*": ["./src/lib/logger/*"],
-
-      /* Type Definitions - Aligned with Prisma models */
       "@/types/*": ["./src/types/*"],
       "@/types/api/*": ["./src/types/api/*"],
       "@/types/auth/*": ["./src/types/auth/*"],
@@ -158,35 +138,19 @@
       "@/types/players/*": ["./src/types/players/*"],
       "@/types/matches/*": ["./src/types/matches/*"],
       "@/types/billing/*": ["./src/types/billing/*"],
-
-      /* Configuration & Constants */
       "@/config/*": ["./src/config/*"],
       "@/constants/*": ["./src/lib/constants/*"],
-
-      /* Context & State Management */
       "@/context/*": ["./src/context/*"],
       "@/store/*": ["./src/store/*"],
-
-      /* Styles */
       "@/styles/*": ["./src/styles/*"],
-
-      /* Actions (Server Actions) */
       "@/actions/*": ["./src/actions/*"],
-
-      /* Prisma & Database */
       "@/prisma/*": ["./prisma/*"],
       "@/prisma/schema/*": ["./prisma/schema/*"],
-
-      /* Middleware */
       "@/middleware/*": ["./src/middleware/*"],
-
-      /* Utils & Helpers */
       "@/utils/*": ["./src/utils/*"],
       "@/utils/helpers/*": ["./src/utils/helpers/*"],
       "@/utils/validators/*": ["./src/utils/validators/*"],
       "@/utils/formatters/*": ["./src/utils/formatters/*"],
-
-      /* Testing (optional) */
       "@/__tests__/*": ["./__tests__/*"],
       "@/test/*": ["./test/*"]
     },
@@ -210,9 +174,6 @@
     // ========================================================================
     "allowJs": true,
     "checkJs": false,
-    "declaration": false,
-    "declarationDir": "./types",
-    "pretty": true,
     "suppressExcessPropertyErrors": false,
     "suppressImplicitAnyIndexErrors": false
   },
@@ -221,28 +182,19 @@
   // 📝 FILES & INCLUDES
   // ============================================================================
   "include": [
-    /* Next.js */
     "next-env.d.ts",
     ".next/types/**/*.ts",
-
-    /* Source code */
     "src/**/*",
     "src/**/*.ts",
     "src/**/*.tsx",
     "src/**/*.js",
     "src/**/*.jsx",
-
-    /* Prisma */
     "prisma/**/*",
     "prisma/**/*.ts",
-
-    /* Configuration */
     "next.config.js",
     "tailwind.config.ts",
     "jest.config.ts",
     "playwright.config.ts",
-
-    /* Scripts */
     "scripts/**/*.ts"
   ],
 
