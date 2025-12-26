@@ -1,75 +1,278 @@
 {
   "compilerOptions": {
-    /* Language and Environment */
-    "target": "ES2022",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // ========================================================================
+    // 🎯 LANGUAGE & ENVIRONMENT - ES2023 MODERN SYNTAX
+    // ========================================================================
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "jsx": "preserve",
+    "jsxImportSource": "react",
+    "useDefineForClassFields": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
 
-    /* Modules */
+    // ========================================================================
+    // 📦 MODULE SYSTEM - ESM WITH BUNDLER RESOLUTION
+    // ========================================================================
     "module": "ESNext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "allowImportingTsExtensions": false,
+    "resolvePackageJsonExports": true,
+    "resolvePackageJsonImports": true,
+    "allowImportingTsExtensions": true,
+    "noResolve": false,
 
-    /* Type Checking - RELAXED FOR PRACTICAL DEVELOPMENT */
+    // ========================================================================
+    // 🔒 STRICT TYPE CHECKING - ENTERPRISE GRADE
+    // ========================================================================
+    /* CRITICAL: All strict mode flags ENABLED for production reliability */
     "strict": true,
-    "noUncheckedIndexedAccess": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "strictBuiltinVariableNames": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    
+    /* ADDITIONAL SAFETY CHECKS */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedSideEffectImports": true,
+    "exactOptionalPropertyTypes": true,
+    
+    /* UNREACHABLE CODE DETECTION */
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
-    "exactOptionalPropertyTypes": false,
-    "noImplicitReturns": false,
-    "noPropertyAccessFromIndexSignature": false,
-    "noUncheckedSideEffectImports": false,
+    
+    /* ADVANCED TYPE CHECKING */
+    "useUnknownInCatchVariables": true,
 
-    /* Emit */
+    // ========================================================================
+    // 🔄 EMIT & OUTPUT - SOURCE MAPS & INCREMENTAL BUILDS
+    // ========================================================================
     "declaration": false,
     "declarationMap": false,
     "sourceMap": true,
+    "sourceRoot": ".",
+    "mapRoot": "./",
     "removeComments": false,
     "importHelpers": true,
     "downlevelIteration": true,
     "noEmit": true,
     "incremental": true,
+    "tsBuildInfoFile": "./.next/.tsbuildinfo",
+    "newLine": "lf",
 
-    /* Interop Constraints */
+    // ========================================================================
+    // 🔗 INTEROP & COMPATIBILITY - NEXT.JS & EXTERNAL MODULES
+    // ========================================================================
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
+    "verbatimModuleSyntax": false,
 
-    /* Skip Lib Check */
+    // ========================================================================
+    // ⚡ PERFORMANCE OPTIMIZATIONS
+    // ========================================================================
     "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
 
-    /* Next.js Specific */
-    "plugins": [{ "name": "next" }],
-
-    /* Path Mapping */
+    // ========================================================================
+    // 🎨 PATH ALIASES - CLEAN IMPORTS ALIGNED WITH SCHEMA STRUCTURE
+    // ========================================================================
     "baseUrl": ".",
     "paths": {
+      /* Core app structure */
       "@/*": ["./src/*"],
+      "@/app/*": ["./src/app/*"],
+      "@/src/*": ["./src/*"],
+
+      /* UI & Components - Aligned with v6.0.0 schema */
       "@/components/*": ["./src/components/*"],
-      "@/lib/*": ["./src/lib/*"],
-      "@/hooks/*": ["./src/hooks/*"],
-      "@/types/*": ["./src/types/*"],
-      "@/utils/*": ["./src/utils/*"],
-      "@/styles/*": ["./src/styles/*"],
-      "@/config/*": ["./src/config/*"],
+      "@/components/ui/*": ["./src/components/ui/*"],
+      "@/components/layout/*": ["./src/components/layout/*"],
+      "@/components/features/*": ["./src/components/features/*"],
+      "@/components/providers/*": ["./src/components/providers/*"],
+
+      /* Features - Modular architecture per schema */
+      "@/features/*": ["./src/features/*"],
+      "@/features/auth/*": ["./src/features/auth/*"],
+      "@/features/organisations/*": ["./src/features/organisations/*"],
+      "@/features/teams/*": ["./src/features/teams/*"],
+      "@/features/players/*": ["./src/features/players/*"],
+      "@/features/matches/*": ["./src/features/matches/*"],
+      "@/features/coaches/*": ["./src/features/coaches/*"],
+      "@/features/health/*": ["./src/features/health/*"],
+      "@/features/analytics/*": ["./src/features/analytics/*"],
+      "@/features/billing/*": ["./src/features/billing/*"],
+      "@/features/audit/*": ["./src/features/audit/*"],
+      "@/features/webhooks/*": ["./src/features/webhooks/*"],
+
+      /* API & Integrations */
       "@/api/*": ["./src/app/api/*"],
+      "@/services/*": ["./src/services/*"],
+      "@/services/auth/*": ["./src/services/auth/*"],
+      "@/services/organisations/*": ["./src/services/organisations/*"],
+      "@/services/teams/*": ["./src/services/teams/*"],
+      "@/services/players/*": ["./src/services/players/*"],
+      "@/services/matches/*": ["./src/services/matches/*"],
+      "@/services/billing/*": ["./src/services/billing/*"],
+      "@/services/audit/*": ["./src/services/audit/*"],
+      "@/services/webhooks/*": ["./src/services/webhooks/*"],
+
+      /* Custom Hooks */
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/hooks/auth/*": ["./src/hooks/auth/*"],
+      "@/hooks/teams/*": ["./src/hooks/teams/*"],
+      "@/hooks/players/*": ["./src/hooks/players/*"],
+      "@/hooks/matches/*": ["./src/hooks/matches/*"],
+
+      /* Libraries & Utilities */
+      "@/lib/*": ["./src/lib/*"],
+      "@/lib/api/*": ["./src/lib/api/*"],
+      "@/lib/auth/*": ["./src/lib/auth/*"],
+      "@/lib/validation/*": ["./src/lib/validation/*"],
+      "@/lib/utils/*": ["./src/lib/utils/*"],
+      "@/lib/constants/*": ["./src/lib/constants/*"],
+      "@/lib/database/*": ["./src/lib/database/*"],
+      "@/lib/formatters/*": ["./src/lib/formatters/*"],
+      "@/lib/cache/*": ["./src/lib/cache/*"],
+      "@/lib/email/*": ["./src/lib/email/*"],
+      "@/lib/storage/*": ["./src/lib/storage/*"],
+      "@/lib/logger/*": ["./src/lib/logger/*"],
+
+      /* Type Definitions - Aligned with Prisma models */
+      "@/types/*": ["./src/types/*"],
+      "@/types/api/*": ["./src/types/api/*"],
+      "@/types/auth/*": ["./src/types/auth/*"],
+      "@/types/models/*": ["./src/types/models/*"],
+      "@/types/organisations/*": ["./src/types/organisations/*"],
+      "@/types/teams/*": ["./src/types/teams/*"],
+      "@/types/players/*": ["./src/types/players/*"],
+      "@/types/matches/*": ["./src/types/matches/*"],
+      "@/types/billing/*": ["./src/types/billing/*"],
+
+      /* Configuration & Constants */
+      "@/config/*": ["./src/config/*"],
+      "@/constants/*": ["./src/lib/constants/*"],
+
+      /* Context & State Management */
+      "@/context/*": ["./src/context/*"],
+      "@/store/*": ["./src/store/*"],
+
+      /* Styles */
+      "@/styles/*": ["./src/styles/*"],
+
+      /* Actions (Server Actions) */
       "@/actions/*": ["./src/actions/*"],
-      "@/prisma/*": ["./prisma/*"]
+
+      /* Prisma & Database */
+      "@/prisma/*": ["./prisma/*"],
+      "@/prisma/schema/*": ["./prisma/schema/*"],
+
+      /* Middleware */
+      "@/middleware/*": ["./src/middleware/*"],
+
+      /* Utils & Helpers */
+      "@/utils/*": ["./src/utils/*"],
+      "@/utils/helpers/*": ["./src/utils/helpers/*"],
+      "@/utils/validators/*": ["./src/utils/validators/*"],
+      "@/utils/formatters/*": ["./src/utils/formatters/*"],
+
+      /* Testing (optional) */
+      "@/__tests__/*": ["./__tests__/*"],
+      "@/test/*": ["./test/*"]
     },
-    "allowJs": true
+
+    // ========================================================================
+    // 📚 EXTENDED TYPE LIBRARY DEFINITIONS
+    // ========================================================================
+    "typeRoots": ["./node_modules/@types", "./types"],
+
+    // ========================================================================
+    // 🔌 PLUGINS - NEXT.JS & PRISMA SUPPORT
+    // ========================================================================
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+
+    // ========================================================================
+    // 🛠️ ADDITIONAL COMPILER OPTIONS
+    // ========================================================================
+    "allowJs": true,
+    "checkJs": false,
+    "declaration": false,
+    "declarationDir": "./types",
+    "pretty": true,
+    "suppressExcessPropertyErrors": false,
+    "suppressImplicitAnyIndexErrors": false
   },
+
+  // ============================================================================
+  // 📝 FILES & INCLUDES
+  // ============================================================================
   "include": [
+    /* Next.js */
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
     ".next/types/**/*.ts",
+
+    /* Source code */
     "src/**/*",
-    "prisma/**/*"
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.js",
+    "src/**/*.jsx",
+
+    /* Prisma */
+    "prisma/**/*",
+    "prisma/**/*.ts",
+
+    /* Configuration */
+    "next.config.js",
+    "tailwind.config.ts",
+    "jest.config.ts",
+    "playwright.config.ts",
+
+    /* Scripts */
+    "scripts/**/*.ts"
   ],
-  "exclude": ["node_modules", ".next", "out", "dist", "build"]
+
+  // ============================================================================
+  // 🚫 FILES & EXCLUDES
+  // ============================================================================
+  "exclude": [
+    "node_modules",
+    ".next",
+    "out",
+    "dist",
+    "build",
+    ".git",
+    ".vscode",
+    ".idea",
+    "coverage",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/*.spec.tsx",
+    "**/*.test.tsx"
+  ],
+
+  // ============================================================================
+  // 🎯 TYPESCRIPT INCREMENTAL BUILD INFO
+  // ============================================================================
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs"
+    },
+    "transpileOnly": true,
+    "files": true
+  }
 }
