@@ -2058,8 +2058,11 @@ model Match {
   referee                 Referee?          @relation("matchReferee", fields: [refereeId], references: [id], onDelete: SetNull)
   events                  MatchEvent[]
   squads                  MatchSquad[]
-  attendance              MatchAttendance[]
+  playerAttendance        MatchAttendance[]
   stats                   MatchStat[]
+  
+  // Attendance metadata
+  attendance              Int?
   
   @@index([leagueId])
   @@index([homeClubId])
