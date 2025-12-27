@@ -1,0 +1,700 @@
+{
+  "config": {
+    "configFile": "C:\\Users\\Hazye\\PitchConnect V1\\playwright.config.ts",
+    "rootDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": "C:\\Users\\Hazye\\PitchConnect V1\\tests\\e2e\\global-setup.ts",
+    "globalTeardown": "C:\\Users\\Hazye\\PitchConnect V1\\tests\\e2e\\global-teardown.ts",
+    "globalTimeout": 1800000,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "environment": "local",
+      "baseUrl": "http://localhost:3000",
+      "isCI": false,
+      "timestamp": "2025-12-27T07:16:13.700Z",
+      "version": "2.0.0"
+    },
+    "preserveOutput": "failures-only",
+    "reporter": [
+      [
+        "list",
+        {
+          "printSteps": true
+        }
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "./playwright-report",
+          "open": "on-failure",
+          "host": "localhost",
+          "port": 9323
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results\\e2e-results.json"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "test-results\\junit-e2e.xml",
+          "embedAnnotationsAsProperties": true,
+          "embedAttachmentsAsProperty": "testng_attachments"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "setup",
+        "name": "setup",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.setup\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "cleanup",
+        "name": "cleanup",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.teardown\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "firefox",
+        "name": "firefox",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "webkit",
+        "name": "webkit",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "edge",
+        "name": "edge",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "mobile-chrome",
+        "name": "mobile-chrome",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "mobile-safari",
+        "name": "mobile-safari",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "tablet-ipad",
+        "name": "tablet-ipad",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "mobile-android-small",
+        "name": "mobile-android-small",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "mobile-iphone-se",
+        "name": "mobile-iphone-se",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "/.*\\.(setup|teardown|smoke|performance|a11y|api|visual|admin|coach|player)\\.ts/"
+        ],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "smoke",
+        "name": "smoke",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.smoke\\.ts/"
+        ],
+        "timeout": 20000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 1,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "critical",
+        "name": "critical",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.critical\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "performance",
+        "name": "performance",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.performance\\.ts/"
+        ],
+        "timeout": 120000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "accessibility",
+        "name": "accessibility",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.a11y\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "api",
+        "name": "api",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.api\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "visual",
+        "name": "visual",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.visual\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "dark-mode",
+        "name": "dark-mode",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.theme\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "i18n-es",
+        "name": "i18n-es",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.i18n\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "i18n-de",
+        "name": "i18n-de",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.i18n\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "geolocation",
+        "name": "geolocation",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.geo\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "admin-tests",
+        "name": "admin-tests",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.admin\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "coach-tests",
+        "name": "coach-tests",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.coach\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "player-tests",
+        "name": "player-tests",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.player\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "referee-tests",
+        "name": "referee-tests",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.referee\\.ts/"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "C:/Users/Hazye/PitchConnect V1/test-results/traces",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "environment": "local",
+          "baseUrl": "http://localhost:3000",
+          "isCI": false,
+          "timestamp": "2025-12-27T07:16:13.700Z",
+          "version": "2.0.0"
+        },
+        "id": "slow-network",
+        "name": "slow-network",
+        "testDir": "C:/Users/Hazye/PitchConnect V1/tests/e2e",
+        "testIgnore": [
+          "**/node_modules/**",
+          "**/fixtures/**",
+          "**/__snapshots__/**"
+        ],
+        "testMatch": [
+          "/.*\\.offline\\.ts/"
+        ],
+        "timeout": 90000
+      }
+    ],
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.57.0",
+    "workers": 6,
+    "webServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000,
+      "ignoreHTTPSErrors": true,
+      "stdout": "ignore",
+      "stderr": "pipe",
+      "env": {
+        "NODE_ENV": "test",
+        "NEXT_TELEMETRY_DISABLED": "1"
+      }
+    }
+  },
+  "suites": [],
+  "errors": [
+    {
+      "message": "Error: Timed out waiting 120000ms from config.webServer.",
+      "stack": "Error: Timed out waiting 120000ms from config.webServer."
+    }
+  ],
+  "stats": {
+    "startTime": "2025-12-27T07:16:13.722Z",
+    "duration": 120586.275,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

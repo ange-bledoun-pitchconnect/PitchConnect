@@ -1,36 +1,17 @@
 // ============================================================================
-// 🌟 PITCHCONNECT DATABASE SCHEMA v7.0.0 - ENTERPRISE GRADE (ENHANCED)
-// ============================================================================
-// Production-Ready | Multi-Tenant | GDPR-Compliant | Audit-Ready
-// Technology: Next.js 15 | NextAuth v5 | Prisma 5.22.0+ | PostgreSQL 14+
-// 
-// ENHANCEMENTS IN v7.0.0:
-// - Added Chat model for proper message relations
-// - Made TeamPlayer.playerId required
-// - Made LeagueTeam.teamId required (teams compete in leagues)
-// - Added Season model for historical tracking
-// - Added Transfer/Loan tracking for players
-// - Added Medical Records model
-// - Added Venue/Facility management
-// - Added Match Officials (linesmen, VAR, etc.)
-// - Added Tournament Bracket support
-// - Added Training Attendance tracking
-// - Added Player Availability Windows
-// - Added Performance Goals/Targets
-// - Added Team Announcements
-// - Added Sponsor Management
-// - Added Enhanced Video/Media handling
-// - Additional indexes for performance optimization
+// 🌟 PITCHCONNECT DATABASE SCHEMA v7.0.2 - PRISMA 6 STABLE
 // ============================================================================
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch", "fullTextIndex", "driverAdapters", "views", "postgresqlExtensions"]
+  previewFeatures = ["fullTextSearch", "views", "postgresqlExtensions"]
   binaryTargets   = ["native", "rhel-openssl-1.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
+  url       = env("DIRECT_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================================
@@ -52,9 +33,11 @@ enum UserRole {
   SCOUT
   ANALYST
   PARENT
+  GUARDIAN
   LEAGUE_ADMIN
   MEDICAL_STAFF
   MEDIA_MANAGER
+  FAN
 }
 
 enum UserStatus {
@@ -65,6 +48,7 @@ enum UserStatus {
   PENDING_VERIFICATION
   PENDING_EMAIL_VERIFICATION
   PENDING_PHONE_VERIFICATION
+  PENDING_APPROVAL
   ARCHIVED
   DELETED
 }
@@ -98,23 +82,18 @@ enum OrganisationTier {
 }
 
 enum PermissionType {
-  // User management
   USER_CREATE
   USER_READ
   USER_UPDATE
   USER_DELETE
   USER_SUSPEND
   USER_BAN
-
-  // Team management
   TEAM_CREATE
   TEAM_READ
   TEAM_UPDATE
   TEAM_DELETE
   TEAM_INVITE
   TEAM_REMOVE_MEMBER
-
-  // Match management
   MATCH_CREATE
   MATCH_READ
   MATCH_UPDATE
@@ -122,49 +101,35 @@ enum PermissionType {
   MATCH_PUBLISH
   MATCH_APPROVE_RESULT
   MATCH_RECORD_STATS
-
-  // Player management
   PLAYER_CREATE
   PLAYER_READ
   PLAYER_UPDATE
   PLAYER_DELETE
   PLAYER_VERIFY
   PLAYER_TRANSFER
-
-  // Medical
   MEDICAL_READ
   MEDICAL_CREATE
   MEDICAL_UPDATE
-
-  // Billing
   BILLING_READ
   BILLING_UPDATE
   BILLING_MANAGE_SUBSCRIPTIONS
-
-  // Analytics
   ANALYTICS_VIEW
   ANALYTICS_EXPORT
-
-  // API access
   API_ACCESS
   API_KEY_CREATE
   API_KEY_REVOKE
-
-  // Facilities
   FACILITY_MANAGE
   FACILITY_BOOK
-
-  // System
   SYSTEM_ADMIN
   AUDIT_LOG_VIEW
 }
 
 enum DataRetentionPolicy {
-  EPHEMERAL // 7 days
-  TEMPORARY // 30 days
-  STANDARD // 7 years (default)
-  PERMANENT // Forever
-  DELETED // Marked for deletion
+  EPHEMERAL
+  TEMPORARY
+  STANDARD
+  PERMANENT
+  DELETED
 }
 
 enum Sport {
@@ -183,7 +148,6 @@ enum Sport {
 }
 
 enum Position {
-  // Football/Soccer (16 positions)
   GOALKEEPER
   LEFT_BACK
   CENTER_BACK
@@ -200,8 +164,6 @@ enum Position {
   STRIKER
   CENTER_FORWARD
   SECOND_STRIKER
-
-  // Netball (7 positions)
   GOALKEEPER_NETBALL
   GOAL_ATTACK
   WING_ATTACK
@@ -209,8 +171,6 @@ enum Position {
   WING_DEFENSE
   GOAL_DEFENSE
   GOAL_SHOOTER
-
-  // Rugby Union (15 positions)
   PROP
   HOOKER
   LOCK
@@ -221,14 +181,10 @@ enum Position {
   INSIDE_CENTER
   OUTSIDE_CENTER
   FULLBACK
-
-  // Rugby League
   HOOKER_LEAGUE
   PROP_LEAGUE
   SECOND_ROW
   LOOSE_FORWARD
-
-  // American Football
   QUARTERBACK
   RUNNING_BACK
   WIDE_RECEIVER
@@ -245,28 +201,20 @@ enum Position {
   CORNERBACK
   PUNTER
   KICKER
-
-  // Basketball
   POINT_GUARD
   SHOOTING_GUARD
   SMALL_FORWARD
   POWER_FORWARD
   CENTER_BASKETBALL
-
-  // Cricket
   BATSMAN
   BOWLER
   ALL_ROUNDER
   FIELDER
   WICKET_KEEPER
-
-  // Hockey
   GOALTENDER
   DEFENSEMAN
   WINGER
   CENTER_HOCKEY
-
-  // Other
   UTILITY
   SUBSTITUTE
 }
@@ -749,67 +697,56 @@ model Organisation {
   id   String @id @default(cuid())
   slug String @unique @db.VarChar(63)
 
-  // Identity
   name        String
   description String? @db.Text
   logo        String?
   banner      String?
   website     String?
 
-  // Contact & Location
   email    String
   phone    String?
   country  String
-  timezone String  @default("Europe/London")
+  timezone String @default("Europe/London")
 
-  // Business
   tier          OrganisationTier @default(STARTER)
   monthlyBudget Float?
   currency      String           @default("GBP")
 
-  // Compliance
   registrationNumber      String?   @unique
   taxId                   String?   @unique
   complianceStatus        String    @default("PENDING")
   gdprCompliant           Boolean   @default(false)
   dataProcessingAgreement DateTime?
 
-  // Usage tracking
   totalUsers    Int @default(0)
   totalTeams    Int @default(0)
   totalMatches  Int @default(0)
   storageUsedMb Int @default(0)
 
-  // Feature access
   enabledFeatures String[] @default([])
   customFeatures  Json?
 
-  // Quotas
   maxUsers            Int @default(100)
   maxTeams            Int @default(10)
   maxStorageMb        Int @default(5120)
   maxApiCallsPerMonth Int @default(10000)
   maxConcurrentUsers  Int @default(50)
 
-  // Billing
   subscriptionId  String?   @unique
   billingEmail    String?
   billingCycle    String    @default("MONTHLY")
   nextBillingDate DateTime?
 
-  // Activity & audit
   lastActivityAt DateTime?
   isActive       Boolean   @default(true)
   isArchived     Boolean   @default(false)
   archivedAt     DateTime?
 
-  // Soft delete
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   owner                User                     @relation("organisationOwner", fields: [ownerId], references: [id])
   ownerId              String
   members              OrganisationMember[]
@@ -846,19 +783,15 @@ model OrganisationMember {
 
   role OrganisationRole @default(MEMBER)
 
-  // Permissions override
   customPermissions String[]
 
-  // Activity
   joinedAt  DateTime  @default(now())
   invitedBy String?
   invitedAt DateTime?
 
-  // Audit
   lastAccessAt DateTime?
   lastAccessIp String?
 
-  // Soft delete
   removedAt DateTime?
 
   organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
@@ -889,7 +822,6 @@ model OrganisationInvitation {
 
   status InvitationStatus @default(PENDING)
 
-  // Token for secure invitation link
   token String @unique @default(cuid())
 
   organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
@@ -902,22 +834,17 @@ model OrganisationInvitation {
   @@map("organisation_invitations")
 }
 
-// ============================================================================
-// 📅 SEASON MODEL - NEW
-// ============================================================================
-
 model Season {
   id             String @id @default(cuid())
   organisationId String
 
-  name      String // e.g., "2024/25"
+  name      String
   startDate DateTime
   endDate   DateTime
 
   isActive  Boolean @default(false)
   isCurrent Boolean @default(false)
 
-  // Metadata
   description String?
 
   createdAt DateTime @default(now())
@@ -935,7 +862,7 @@ model Season {
 }
 
 // ============================================================================
-// 👤 USER & AUTHENTICATION MODELS
+// 👤 USER & AUTHENTICATION MODELS (FIXED)
 // ============================================================================
 
 model User {
@@ -945,7 +872,6 @@ model User {
   phone         String?   @unique
   phoneVerified DateTime?
 
-  // Profile
   firstName   String
   lastName    String
   middleName  String?
@@ -958,31 +884,46 @@ model User {
   language    String    @default("en-GB")
   timezone    String    @default("Europe/London")
 
-  // Account
-  userType    UserType    @default(INDIVIDUAL)
-  accountTier AccountTier @default(FREE)
-  roles       UserRole[]  @default([PLAYER])
-  status      UserStatus  @default(PENDING_EMAIL_VERIFICATION)
+  userType     UserType    @default(INDIVIDUAL)
+  accountTier  AccountTier @default(FREE)
+  roles        UserRole[]  @default([PLAYER])
+  status       UserStatus  @default(PENDING_EMAIL_VERIFICATION)
+  isSuperAdmin Boolean     @default(false)
 
-  // Primary organisation context
   primaryOrganisationId String?
 
-  // Auth
-  password             String?
-  passwordChangedAt    DateTime?
-  passwordResetToken   String?
-  passwordResetExpires DateTime?
+  // =========================================================================
+  // 🔗 CLUB & TEAM ASSOCIATIONS (FIXED: Added missing fields)
+  // =========================================================================
+  clubId String?
+  teamId String?
 
-  // 2FA & Security
-  twoFactorEnabled     Boolean   @default(false)
-  twoFactorSecret      String?   @unique
+  // =========================================================================
+  // 🔐 AUTH & SECURITY (FIXED: Removed duplicates)
+  // =========================================================================
+  password            String?
+  passwordChangedAt   DateTime?
+  passwordResetToken  String?   @unique
+  passwordResetExpiry DateTime?
+
+  failedLoginAttempts Int       @default(0)
+  lastFailedLoginAt   DateTime?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+
+  loginAttempts Int       @default(0)
+  lockoutUntil  DateTime?
+
+  // =========================================================================
+  // 🔐 TWO-FACTOR AUTHENTICATION
+  // =========================================================================
+  twoFactorEnabled     Boolean  @default(false)
+  twoFactorSecret      String?  @unique
   twoFactorBackupCodes String[]
-  lastLoginAt          DateTime?
-  lastLoginIp          String?
-  loginAttempts        Int       @default(0)
-  lockoutUntil         DateTime?
 
-  // Preferences
+  // =========================================================================
+  // ⚙️ PREFERENCES
+  // =========================================================================
   emailNotificationsEnabled Boolean @default(true)
   pushNotificationsEnabled  Boolean @default(true)
   smsNotificationsEnabled   Boolean @default(false)
@@ -991,7 +932,9 @@ model User {
   showOnlineStatus          Boolean @default(true)
   profileVisibility         String  @default("PUBLIC")
 
-  // Legal & Compliance
+  // =========================================================================
+  // 📜 LEGAL & COMPLIANCE
+  // =========================================================================
   gdprConsent             Boolean   @default(false)
   gdprConsentDate         DateTime?
   dataProcessingConsent   Boolean   @default(false)
@@ -1000,81 +943,63 @@ model User {
   termsAcceptedAt         DateTime?
   privacyPolicyAcceptedAt DateTime?
 
-  // Social
   followersCount Int @default(0)
   followingCount Int @default(0)
 
-  // Soft delete
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations - Multi-org
+  // Relations
   organisationMemberships OrganisationMember[]
-  organisationsOwned      Organisation[]       @relation("organisationOwner")
-
-  // Relations - Auth
-  accounts      Account[]
-  sessions      Session[]
-  refreshTokens RefreshToken[]
-  apiKeys       ApiKey[]
-
-  // Relations - Roles
-  player      Player?
-  coach       Coach?
-  referee     Referee?
-  scout       Scout?
-  analyst     Analyst?
-  clubManager ClubManager?
-  clubOwner   ClubOwner?
-  parent      Parent?
-  treasurer   Treasurer?
-
-  // Relations - Clubs & Teams
-  clubMemberships ClubMember[]
-  managedClubs    Club[]       @relation("clubManager")
-  ownedClubs      Club[]       @relation("clubOwner")
-
-  // Relations - Communication
-  notifications     Notification[]
-  notificationPrefs NotificationPreference?
-  messages          Message[]
-  chatMembers       ChatMember[]
-  chatsCreated      Chat[]                  @relation("chatCreator")
-
-  // Relations - Social
-  socialActions SocialAction[]
-  followers     Follow[]       @relation("follower")
-  following     Follow[]       @relation("following")
-  blocks        UserBlock[]    @relation("blocker")
-  blockedBy     UserBlock[]    @relation("blocked")
-
-  // Relations - Gamification
-  achievements Achievement[] @relation("achievementUser")
-  badges       Badge[]       @relation("badgeUser")
-
-  // Relations - Billing
-  subscriptions Subscription[]
-  payments      Payment[]
-  invoices      Invoice[]
-
-  // Relations - Audit
-  auditLogsCreated AuditLog[] @relation("auditLogUser")
-
-  // Relations - Announcements
-  announcementsCreated Announcement[] @relation("announcementCreator")
-
-  // Relations - Goals
-  performanceGoals PerformanceGoal[] @relation("goalUser")
-  goalsCreated     PerformanceGoal[] @relation("goalCreator")
+  organisationsOwned      Organisation[]          @relation("organisationOwner")
+  accounts                Account[]
+  sessions                Session[]
+  refreshTokens           RefreshToken[]
+  apiKeys                 ApiKey[]
+  player                  Player?
+  coach                   Coach?
+  referee                 Referee?
+  scout                   Scout?
+  analyst                 Analyst?
+  clubManager             ClubManager?
+  clubOwner               ClubOwner?
+  parent                  Parent?
+  treasurer               Treasurer?
+  clubMemberships         ClubMember[]
+  managedClubs            Club[]                  @relation("clubManager")
+  ownedClubs              Club[]                  @relation("clubOwner")
+  notifications           Notification[]
+  notificationPrefs       NotificationPreference?
+  messages                Message[]
+  chatMembers             ChatMember[]
+  chatsCreated            Chat[]                  @relation("chatCreator")
+  socialActions           SocialAction[]
+  followers               Follow[]                @relation("follower")
+  following               Follow[]                @relation("following")
+  blocks                  UserBlock[]             @relation("blocker")
+  blockedBy               UserBlock[]             @relation("blocked")
+  achievements            Achievement[]           @relation("achievementUser")
+  badges                  Badge[]                 @relation("badgeUser")
+  subscriptions           Subscription[]
+  payments                Payment[]
+  invoices                Invoice[]
+  auditLogsCreated        AuditLog[]              @relation("auditLogUser")
+  announcementsCreated    Announcement[]          @relation("announcementCreator")
+  performanceGoals        PerformanceGoal[]       @relation("goalUser")
+  goalsCreated            PerformanceGoal[]       @relation("goalCreator")
 
   @@index([email])
   @@index([phone])
   @@index([status])
+  @@index([clubId])
+  @@index([teamId])
+  @@index([failedLoginAttempts])
   @@index([primaryOrganisationId])
   @@index([createdAt])
   @@index([lastName, firstName])
+  @@index([isSuperAdmin])
   @@map("users")
 }
 
@@ -1132,7 +1057,6 @@ model RefreshToken {
   revokedAt DateTime?
   usedAt    DateTime?
 
-  // Security context
   ipAddress String?
   userAgent String?
 
@@ -1173,9 +1097,8 @@ model ApiKey {
   expiresAt   DateTime?
   permissions String[]  @default([])
 
-  // Rate limiting
   rateLimit      Int @default(1000)
-  rateLimitReset Int @default(3600) // seconds
+  rateLimitReset Int @default(3600)
 
   createdAt DateTime  @default(now())
   revokedAt DateTime?
@@ -1191,7 +1114,7 @@ model ApiKey {
 }
 
 // ============================================================================
-// 🔐 PERMISSION & ROLE MANAGEMENT - ENTERPRISE RBAC
+// 🔐 PERMISSION & ROLE MANAGEMENT
 // ============================================================================
 
 model Role {
@@ -1202,16 +1125,13 @@ model Role {
   slug        String
   description String? @db.Text
 
-  // Classification
   isBuiltIn Boolean @default(false)
   isCustom  Boolean @default(true)
   level     Int     @default(0)
 
-  // Permissions
   permissions          String[]
   customPermissionJson Json?
 
-  // Usage
   memberCount Int @default(0)
 
   createdAt DateTime @default(now())
@@ -1267,29 +1187,24 @@ model AuditLog {
 
   action AuditActionType
 
-  // Resource tracking
   resourceType String
   resourceId   String
 
-  // What changed
   beforeState Json?
   afterState  Json?
   changes     String[]
 
-  // Context
   ipAddress String?
   userAgent String?
   sessionId String?
   requestId String?
 
-  // Metadata
   severity        String  @default("INFO")
   isCompliance    Boolean @default(false)
   requiresReview  Boolean @default(false)
   isLegalHold     Boolean @default(false)
   legalHoldReason String?
 
-  // Performance tracking
   durationMs Int?
 
   createdAt DateTime @default(now())
@@ -1314,18 +1229,14 @@ model EntityVersion {
   entityId   String
   version    Int
 
-  // Complete snapshot
   data Json
 
-  // Change metadata
   changedBy    String
   changeReason String?
   changeType   String
 
-  // Checksum for integrity
   checksum String?
 
-  // Retention policy
   retentionPolicy     DataRetentionPolicy @default(STANDARD)
   deletionScheduledAt DateTime?
   deletedAt           DateTime?
@@ -1348,12 +1259,10 @@ model ConsentLog {
   granted   Boolean
   grantedAt DateTime
 
-  // Evidence for compliance
   evidence  Json?
   ipAddress String?
   userAgent String?
 
-  // Withdrawal tracking
   withdrawnAt DateTime?
 
   @@index([userId])
@@ -1377,7 +1286,6 @@ model DataExportRequest {
   fileSize Int?
   format   String  @default("JSON")
 
-  // Progress tracking
   progress Int @default(0)
   error    String?
 
@@ -1404,7 +1312,6 @@ model DataDeletionRequest {
   verificationToken  String?   @unique
   verificationSentAt DateTime?
 
-  // Deletion details
   dataCategories String[]
   retainedData   String[]
 
@@ -1417,33 +1324,29 @@ model DataDeletionRequest {
 }
 
 // ============================================================================
-// 🏃 PLAYER MODELS - ENHANCED FOR ANALYTICS
+// 🏃 PLAYER MODELS
 // ============================================================================
 
 model Player {
   id     String @id @default(cuid())
   userId String @unique
 
-  // Physical attributes
   height            Float?
   weight            Float?
   dateOfBirth       DateTime?
   nationality       String?
   secondNationality String?
 
-  // Football specifics
   jerseyNumber      Int?
   preferredFoot     PreferredFoot?
   primaryPosition   Position?
   secondaryPosition Position?
   tertiaryPosition  Position?
 
-  // Market & contract
   marketValue      Float?
   valueLastUpdated DateTime?
   currency         String    @default("GBP")
 
-  // Status
   isActive            Boolean @default(true)
   isVerified          Boolean @default(false)
   hasCompletedProfile Boolean @default(false)
@@ -1451,7 +1354,6 @@ model Player {
   isYouth             Boolean @default(false)
   youthCategory       String?
 
-  // Ratings & performance
   overallRating    Float?    @default(0)
   formRating       Float?    @default(0)
   developmentPhase String?
@@ -1459,22 +1361,18 @@ model Player {
   injuryStatus     String?
   lastFitnessTest  DateTime?
 
-  // Availability
   availabilityStatus String @default("AVAILABLE")
 
-  // Soft delete
   deletedAt DateTime?
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   statistics         PlayerStatistic[]
   aggregateStats     PlayerAggregateStats?
-  analytics          PlayerAnalytic?         @relation("playerAnalytics")
-  insights           PlayerInsight?          @relation("playerInsights")
+  analytics          PlayerAnalytic?       @relation("playerAnalytics")
+  insights           PlayerInsight?        @relation("playerInsights")
   contracts          Contract[]
   injuries           Injury[]
   medicalRecords     MedicalRecord[]
@@ -1482,12 +1380,12 @@ model Player {
   familyLinks        PlayerFamily[]
   scoutingReports    ScoutingReport[]
   highlights         PlayerHighlight[]
-  badges             Badge[]                 @relation("badgePlayer")
-  achievements       Achievement[]           @relation("achievementPlayer")
-  transfersFrom      Transfer[]              @relation("transferFrom")
-  transfersTo        Transfer[]              @relation("transferTo")
+  badges             Badge[]               @relation("badgePlayer")
+  achievements       Achievement[]         @relation("achievementPlayer")
+  transfersFrom      Transfer[]            @relation("transferFrom")
+  transfersTo        Transfer[]            @relation("transferTo")
   availabilityWindow PlayerAvailability[]
-  performanceGoals   PerformanceGoal[]       @relation("goalPlayer")
+  performanceGoals   PerformanceGoal[]     @relation("goalPlayer")
   trainingAttendance TrainingAttendance[]
   teamPlayers        TeamPlayer[]
 
@@ -1508,7 +1406,6 @@ model PlayerStatistic {
   teamId   String?
   leagueId String?
 
-  // Core stats
   matches       Int @default(0)
   starts        Int @default(0)
   minutesPlayed Int @default(0)
@@ -1516,14 +1413,12 @@ model PlayerStatistic {
   assists       Int @default(0)
   ownGoals      Int @default(0)
 
-  // Disciplinary
   yellowCards   Int @default(0)
   secondYellows Int @default(0)
   redCards      Int @default(0)
   foulsCommited Int @default(0)
   foulsSuffered Int @default(0)
 
-  // Technical
   passes          Int    @default(0)
   passAccuracy    Float?
   keyPasses       Int    @default(0)
@@ -1535,28 +1430,23 @@ model PlayerStatistic {
   aerialDuelsWon  Int    @default(0)
   aerialDuelsLost Int    @default(0)
 
-  // Shooting
   shots         Int    @default(0)
   shotsOnTarget Int    @default(0)
   shotAccuracy  Float?
 
-  // Goalkeeper specific
   cleanSheets   Int    @default(0)
   saves         Int    @default(0)
   savePercent   Float?
   goalsConceded Int    @default(0)
   penaltySaves  Int    @default(0)
 
-  // Dribbling
   dribbles        Int    @default(0)
   dribbleSuccess  Float?
   crossesAttempt  Int    @default(0)
   crossesComplete Int    @default(0)
 
-  // Sport-specific
   sportSpecificStats Json?
 
-  // Ratings
   averageRating Float?
   highestRating Float?
   lowestRating  Float?
@@ -1579,7 +1469,6 @@ model PlayerAggregateStats {
   id       String @id @default(cuid())
   playerId String @unique
 
-  // Career totals
   totalMatches     Int @default(0)
   totalStarts      Int @default(0)
   totalGoals       Int @default(0)
@@ -1589,31 +1478,26 @@ model PlayerAggregateStats {
   totalRedCards    Int @default(0)
   totalCleanSheets Int @default(0)
 
-  // Averages
   avgGoalsPerMatch   Float @default(0)
   avgAssistsPerMatch Float @default(0)
   avgMinutesPerMatch Float @default(0)
   avgRating          Float @default(0)
 
-  // Season current
   seasonGoals   Int @default(0)
   seasonAssists Int @default(0)
   seasonMatches Int @default(0)
 
-  // Form (last 5 matches)
   formGoals   Int    @default(0)
   formAssists Int    @default(0)
   formRating  Float?
 
-  // Rankings
   positionRank Int?
   leagueRank   Int?
   clubRank     Int?
 
-  // Milestones
-  milestone100Matches  DateTime?
-  milestone50Goals     DateTime?
-  milestone100Goals    DateTime?
+  milestone100Matches DateTime?
+  milestone50Goals    DateTime?
+  milestone100Goals   DateTime?
 
   lastUpdatedAt DateTime @default(now())
   refreshedAt   DateTime @default(now())
@@ -1629,7 +1513,6 @@ model PlayerAnalytic {
   id       String @id @default(cuid())
   playerId String @unique
 
-  // Ratings
   overallRating        Float @default(0)
   formRating           Float @default(0)
   consistencyIndex     Float @default(0)
@@ -1638,35 +1521,29 @@ model PlayerAnalytic {
   fatigueLevelEstimate Float @default(0)
   workRateIndex        Float @default(0)
 
-  // Rankings
   positionRank Int?
   leagueRank   Int?
   globalRank   Int?
   ageGroupRank Int?
 
-  // Trends
   weeklyTrend  Float?
   monthlyTrend Float?
   seasonTrend  Float?
 
-  // Performance
   lastMatchRating  Float?
   last5MatchesAvg  Float?
   last10MatchesAvg Float?
   seasonAverage    Float?
 
-  // Predictions
   predictions          Json?
   predictionConfidence Float?
 
-  // Advanced metrics
   expectedGoals       Float?
   expectedAssists     Float?
   passCompletionTrend Float?
   pressureIndex       Float?
   tacticalAwareness   Float?
 
-  // Development
   strengths        String[]
   weaknesses       String[]
   developmentAreas String[]
@@ -1689,15 +1566,13 @@ model PlayerInsight {
   id       String @id @default(cuid())
   playerId String @unique
 
-  // Analysis
-  strengths        String[]
-  weaknesses       String[]
-  developmentAreas String[]
-  playingStyle     String?
-  strongFoot       String?
-  comparablePlayers String[] // Similar player profiles
+  strengths         String[]
+  weaknesses        String[]
+  developmentAreas  String[]
+  playingStyle      String?
+  strongFoot        String?
+  comparablePlayers String[]
 
-  // Attributes (0-100 scale)
   pace                 Int?
   shooting             Int?
   passing              Int?
@@ -1713,14 +1588,12 @@ model PlayerInsight {
   creativity           Int?
   workRate             Int?
 
-  // Mental attributes
   determination Int?
   concentration Int?
   decisions     Int?
   anticipation  Int?
   vision        Int?
 
-  // Guidance
   recommendations String?   @db.Text
   careerAdvice    String?   @db.Text
   lastReviewDate  DateTime?
@@ -1742,12 +1615,10 @@ model PlayerFamily {
   guardianId   String?
   relationship String
 
-  // Emergency contact info
   isEmergencyContact Boolean @default(false)
   phone              String?
   email              String?
 
-  // Permissions
   canViewMedical Boolean @default(false)
   canSignForms   Boolean @default(false)
 
@@ -1773,14 +1644,11 @@ model PlayerHighlight {
   duration      Int?
   highlightType String
 
-  // Processing status
   processingStatus TranscodingStatus @default(PENDING)
 
-  // Engagement
   viewCount Int @default(0)
   likeCount Int @default(0)
 
-  // Visibility
   isPublic   Boolean @default(true)
   isFeatured Boolean @default(false)
 
@@ -1802,7 +1670,7 @@ model PlayerAvailability {
   startDate DateTime
   endDate   DateTime
 
-  reason String // e.g., "International duty", "Personal", "Vacation"
+  reason String
   status MatchAttendanceStatus
 
   notes String?
@@ -1823,26 +1691,24 @@ model Injury {
 
   type     String
   severity InjurySeverity @default(MINOR)
-  location String // Body part
+  location String
 
   dateFrom        DateTime
   dateTo          DateTime?
   estimatedReturn DateTime?
   actualReturn    DateTime?
 
-  description String? @db.Text
+  description String?      @db.Text
   treatment   String?
   therapist   String?
   status      InjuryStatus @default(ACTIVE)
 
-  // Medical details
   diagnosedBy String?
   facility    String?
   scans       String[]
   notes       String? @db.Text
 
-  // Recovery tracking
-  recoveryProgress Int? // Percentage
+  recoveryProgress Int?
   lastAssessment   DateTime?
 
   createdAt DateTime @default(now())
@@ -1857,31 +1723,24 @@ model Injury {
   @@map("injuries")
 }
 
-// ============================================================================
-// 🏥 MEDICAL RECORDS - NEW
-// ============================================================================
-
 model MedicalRecord {
   id       String @id @default(cuid())
   playerId String
 
-  recordType String // e.g., "Physical", "Vaccination", "Blood Test", "Cardiac Screening"
+  recordType String
   date       DateTime
 
-  // Details
   results     Json?
   notes       String?  @db.Text
   provider    String?
   facility    String?
   attachments String[]
 
-  // Fitness clearance
   isClearanceRecord Boolean @default(false)
   clearanceStatus   String?
   clearanceExpiry   DateTime?
 
-  // Compliance
-  isConfidential  Boolean @default(true)
+  isConfidential   Boolean @default(true)
   accessRestricted Boolean @default(true)
 
   createdAt DateTime @default(now())
@@ -1902,7 +1761,6 @@ model Contract {
 
   position Position
 
-  // Financial
   salary           Float?
   currency         String @default("GBP")
   bonusStructure   Json?
@@ -1912,16 +1770,13 @@ model Contract {
   appearanceFee    Float?
   goalBonus        Float?
 
-  // Dates
   startDate DateTime
   endDate   DateTime?
 
-  // Terms
   contractType     String  @default("PROFESSIONAL")
   status           String  @default("ACTIVE")
   contractDocument String?
 
-  // Extensions & clauses
   extensionOption Boolean   @default(false)
   extensionDate   DateTime?
   extensionYears  Int?
@@ -1929,10 +1784,8 @@ model Contract {
   releaseClause   Float?
   matchingRights  Boolean   @default(false)
 
-  // Image rights
   imageRightsPercent Float?
 
-  // Agent
   agentName       String?
   agentEmail      String?
   agentPhone      String?
@@ -1950,44 +1803,36 @@ model Contract {
   @@map("contracts")
 }
 
-// ============================================================================
-// 🔄 TRANSFER & LOAN SYSTEM - NEW
-// ============================================================================
-
 model Transfer {
   id String @id @default(cuid())
 
-  playerId    String
-  fromClubId  String?
-  toClubId    String?
-  seasonId    String?
+  playerId   String
+  fromClubId String?
+  toClubId   String?
+  seasonId   String?
 
   type   TransferType
   status TransferStatus @default(PENDING)
 
-  // Financial
-  fee              Float?
-  feeType          String   @default("FIXED") // FIXED, RISING, UNDISCLOSED
-  currency         String   @default("GBP")
-  addOns           Json? // Performance-based add-ons
-  sellOnPercent    Float? // % of future sale
-  installments     Json? // Payment schedule
-  agentFee         Float?
+  fee           Float?
+  feeType       String   @default("FIXED")
+  currency      String   @default("GBP")
+  addOns        Json?
+  sellOnPercent Float?
+  installments  Json?
+  agentFee      Float?
 
-  // Loan specific
   loanFee          Float?
-  wageContribution Float? // % of wages paid by parent club
+  wageContribution Float?
   buyOption        Float?
   buyObligation    Float?
   recallClause     Boolean @default(false)
 
-  // Dates
   announcedAt   DateTime?
   completedAt   DateTime?
   effectiveDate DateTime
   loanEndDate   DateTime?
 
-  // Documentation
   medicalPassed  Boolean   @default(false)
   medicalDate    DateTime?
   contractSigned Boolean   @default(false)
@@ -1998,9 +1843,9 @@ model Transfer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  player     Player  @relation("transferFrom", fields: [playerId], references: [id], onDelete: Cascade)
-  toPlayer   Player? @relation("transferTo", fields: [playerId], references: [id], onDelete: Cascade, map: "transfer_to_player")
-  season     Season? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  player   Player  @relation("transferFrom", fields: [playerId], references: [id], onDelete: Cascade)
+  toPlayer Player? @relation("transferTo", fields: [playerId], references: [id], onDelete: Cascade, map: "transfer_to_player")
+  season   Season? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
 
   @@index([playerId])
   @@index([fromClubId])
@@ -2011,14 +1856,13 @@ model Transfer {
 }
 
 // ============================================================================
-// 🏆 COACH MODELS - ENHANCED FOR PAYMENTS & TIMESHEETS
+// 🏆 COACH MODELS
 // ============================================================================
 
 model Coach {
   id     String @id @default(cuid())
   userId String @unique
 
-  // Professional details
   coachType       String   @default("HEAD_COACH")
   specialization  String[]
   certifications  String[]
@@ -2026,7 +1870,6 @@ model Coach {
   qualifications  String[] @db.Text
   bio             String?  @db.Text
 
-  // Payment & contract
   hourlyRate   Float?
   dailyRate    Float?
   currency     String  @default("GBP")
@@ -2034,7 +1877,6 @@ model Coach {
   taxId        String?
   contractType String?
 
-  // Verification
   isVerified            Boolean   @default(false)
   verificationDate      DateTime?
   licenseNumber         String?   @unique
@@ -2045,18 +1887,15 @@ model Coach {
   safeguardingExpiry    DateTime?
   firstAidExpiry        DateTime?
 
-  // Performance metrics
   overallRating       Float? @default(0)
   totalPlayersCoached Int    @default(0)
   successRate         Float?
   matchesManaged      Int    @default(0)
   winRate             Float?
 
-  // Availability
   isAvailable       Boolean @default(true)
   availabilityNotes String?
 
-  // Soft delete
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2084,16 +1923,15 @@ model CoachTimesheet {
   weekStartDate DateTime
   weekEndDate   DateTime
 
-  totalHours  Float   @default(0)
-  hourlyRate  Float?
-  hourlyCost  Float?
-  totalCost   Float?
+  totalHours Float   @default(0)
+  hourlyRate Float?
+  hourlyCost Float?
+  totalCost  Float?
 
   description String?  @db.Text
   attachments String[]
 
-  // Breakdown by activity
-  breakdown Json? // { training: 10, matches: 5, admin: 2 }
+  breakdown Json?
 
   status          TimesheetStatus @default(DRAFT)
   submittedAt     DateTime?
@@ -2130,7 +1968,6 @@ model CoachPayment {
   status      PaymentStatus @default(PENDING)
   description String?
 
-  // Tax info
   taxAmount Float?
   netAmount Float?
 
@@ -2168,7 +2005,6 @@ model Referee {
   isVerified      Boolean @default(false)
   isActive        Boolean @default(true)
 
-  // Ratings
   averageRating Float?
   totalReviews  Int   @default(0)
 
@@ -2200,7 +2036,6 @@ model Scout {
   isVerified Boolean @default(false)
   isActive   Boolean @default(true)
 
-  // Performance
   playersRecommended Int @default(0)
   playersSigned      Int @default(0)
 
@@ -2322,7 +2157,7 @@ model Club {
   organisationId String?
   name           String
   slug           String  @unique
-  shortName      String? // e.g., "MUN" for Manchester United
+  shortName      String?
   description    String? @db.Text
   logo           String?
   banner         String?
@@ -2331,7 +2166,6 @@ model Club {
   phone          String?
   foundedYear    Int?
 
-  // Location
   city          String?
   state         String?
   country       String?
@@ -2339,37 +2173,31 @@ model Club {
   postcode      String?
   venue         String?
   venueCapacity Int?
-  coordinates   Json? // { lat, lng }
+  coordinates   Json?
 
-  // Sport & type
   sport    Sport
   teamType TeamType @default(AMATEUR)
 
-  // Management
   managerId String
   ownerId   String?
 
-  // Colours
   primaryColor   String?
   secondaryColor String?
 
-  // Status
   isVerified       Boolean @default(false)
   isPublic         Boolean @default(true)
   acceptingPlayers Boolean @default(true)
+  status           String  @default("ACTIVE")
 
-  // Metrics
   followerCount Int @default(0)
   joinedMembers Int @default(0)
 
-  // Social
   twitter   String?
   facebook  String?
   instagram String?
   youtube   String?
   tiktok    String?
 
-  // Soft delete
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2397,6 +2225,7 @@ model Club {
   @@index([isPublic])
   @@index([city])
   @@index([country])
+  @@index([status])
   @@map("clubs")
 }
 
@@ -2413,11 +2242,10 @@ model ClubMember {
   isActive  Boolean   @default(true)
   isCaptain Boolean   @default(false)
 
-  salary       Float?
-  currency     String  @default("GBP")
-  contractEnd  DateTime?
+  salary      Float?
+  currency    String    @default("GBP")
+  contractEnd DateTime?
 
-  // Permissions
   canManageRoster  Boolean @default(false)
   canManageMatches Boolean @default(false)
   canManageBilling Boolean @default(false)
@@ -2445,9 +2273,9 @@ model Team {
   description String? @db.Text
   logo        String?
   ageGroup    String?
-  gender      String? // MALE, FEMALE, MIXED
+  gender      String?
+  status      String  @default("ACTIVE")
 
-  // Capacity
   minPlayers Int?
   maxPlayers Int?
 
@@ -2465,19 +2293,20 @@ model Team {
   @@unique([clubId, name])
   @@index([clubId])
   @@index([ageGroup])
+  @@index([status])
   @@map("teams")
 }
 
 model TeamPlayer {
   id       String @id @default(cuid())
   teamId   String
-  playerId String // FIXED: Now required
+  playerId String
 
-  position     Position?
-  jerseyNumber Int?
-  isActive     Boolean   @default(true)
-  isCaptain    Boolean   @default(false)
-  isViceCaptain Boolean  @default(false)
+  position      Position?
+  jerseyNumber  Int?
+  isActive      Boolean   @default(true)
+  isCaptain     Boolean   @default(false)
+  isViceCaptain Boolean   @default(false)
 
   joinedAt DateTime  @default(now())
   leftAt   DateTime?
@@ -2502,8 +2331,7 @@ model TeamFormation {
   description String?
   diagram     Json?
 
-  // Player positions within formation
-  positions Json? // { GK: "playerId", LB: "playerId", ... }
+  positions Json?
 
   isDefault Boolean @default(false)
 
@@ -2542,10 +2370,8 @@ model League {
   maxTeams        Int?
   teamsRegistered Int  @default(0)
 
-  // Tiebreakers
   tiebreakers String[] @default(["GOAL_DIFFERENCE", "GOALS_FOR", "HEAD_TO_HEAD"])
 
-  // Points system
   pointsForWin  Int @default(3)
   pointsForDraw Int @default(1)
   pointsForLoss Int @default(0)
@@ -2576,7 +2402,7 @@ model League {
 model LeagueTeam {
   id       String @id @default(cuid())
   leagueId String
-  teamId   String // FIXED: Now required
+  teamId   String
 
   joinedAt   DateTime  @default(now())
   leftAt     DateTime?
@@ -2607,10 +2433,8 @@ model LeagueStanding {
   goalDifference Int @default(0)
   points         Int @default(0)
 
-  // Form (last 5: W, D, L)
   form String?
 
-  // Home/Away split
   homeWins   Int @default(0)
   homeDraws  Int @default(0)
   homeLosses Int @default(0)
@@ -2641,8 +2465,8 @@ model LeagueAggregateStats {
   draws               Int   @default(0)
   totalYellowCards    Int   @default(0)
   totalRedCards       Int   @default(0)
-  biggestWin          Json? // { home: 5, away: 0, matchId: "..." }
-  highestScoringMatch Json? // { home: 4, away: 3, matchId: "..." }
+  biggestWin          Json?
+  highestScoringMatch Json?
 
   lastUpdatedAt DateTime @default(now())
 
@@ -2652,30 +2476,23 @@ model LeagueAggregateStats {
   @@map("league_aggregate_stats")
 }
 
-// ============================================================================
-// 🏆 TOURNAMENT BRACKET - NEW
-// ============================================================================
-
 model TournamentBracket {
   id       String @id @default(cuid())
   leagueId String
 
-  round     Int // 1 = Final, 2 = Semi, 4 = Quarter, etc.
-  position  Int // Position within the round
-  matchId   String?
+  round    Int
+  position Int
+  matchId  String?
 
-  // Teams
-  homeTeamId   String?
-  awayTeamId   String?
-  homeScore    Int?
-  awayScore    Int?
-  winnerId     String?
+  homeTeamId String?
+  awayTeamId String?
+  homeScore  Int?
+  awayScore  Int?
+  winnerId   String?
 
-  // Source (where teams come from)
   homeSourceBracketId String?
   awaySourceBracketId String?
 
-  // Timing
   scheduledAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2705,15 +2522,13 @@ model Match {
   kickOffTime DateTime
   status      MatchStatus @default(SCHEDULED)
 
-  venue     String?
-  venueId   String?
-  pitch     String? // e.g., "Pitch 1", "Main Stadium"
+  venue   String?
+  venueId String?
+  pitch   String?
 
-  // Weather conditions
   weather     String?
   temperature Int?
 
-  // Score
   homeScore         Int?
   awayScore         Int?
   homeHalftimeScore Int?
@@ -2721,31 +2536,25 @@ model Match {
   homePenalties     Int?
   awayPenalties     Int?
 
-  // Extra time scores
   homeExtraTimeScore Int?
   awayExtraTimeScore Int?
 
-  // Attendance
   attendance Int?
   capacity   Int?
 
-  // Duration
   actualDuration   Int?
   injuryTimeFirst  Int?
   injuryTimeSecond Int?
 
-  // Approval
   resultApprovalStatus ResultApprovalStatus @default(PENDING)
   approvedBy           String?
   approvedAt           DateTime?
   disputeReason        String?
 
-  // Metadata
-  isHighlighted Boolean @default(false)
-  isFeatured    Boolean @default(false)
+  isHighlighted  Boolean @default(false)
+  isFeatured     Boolean @default(false)
   isNeutralVenue Boolean @default(false)
 
-  // Broadcast
   isBroadcasted Boolean @default(false)
   broadcastUrl  String?
 
@@ -2779,7 +2588,6 @@ model MatchOfficial {
 
   role MatchOfficialRole
 
-  // Ratings
   performanceRating Float?
   notes             String?
 
@@ -2802,20 +2610,17 @@ model MatchEvent {
 
   eventType       MatchEventType
   minute          Int
-  secondaryMinute Int? // For stoppage time
-  period          String? // FIRST_HALF, SECOND_HALF, EXTRA_TIME, PENALTIES
+  secondaryMinute Int?
+  period          String?
 
-  // For substitutions
-  relatedPlayerId String? // Player coming off
+  relatedPlayerId String?
 
-  // For goals
   assistPlayerId String?
-  goalType       String? // OPEN_PLAY, PENALTY, FREE_KICK, HEADER, OWN_GOAL
+  goalType       String?
 
-  // For cards
   cardReason String?
 
-  details Json?
+  details        Json?
   videoTimestamp Int?
 
   createdAt DateTime @default(now())
@@ -2841,7 +2646,6 @@ model MatchSquad {
 
   status MatchAttendanceStatus @default(NOT_SELECTED)
 
-  // For substitutes
   substituteOrder Int?
 
   createdAt DateTime @default(now())
@@ -2868,11 +2672,10 @@ model MatchAttendance {
   minutesPlayed Int?
   rating        Float?
 
-  // Performance
-  goals        Int @default(0)
-  assists      Int @default(0)
-  yellowCards  Int @default(0)
-  redCard      Boolean @default(false)
+  goals       Int     @default(0)
+  assists     Int     @default(0)
+  yellowCards Int     @default(0)
+  redCard     Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2893,51 +2696,42 @@ model MatchStat {
   playerId String?
   teamId   String?
 
-  // Core stats
-  goals         Int    @default(0)
-  assists       Int    @default(0)
-  minutesPlayed Int    @default(0)
+  goals         Int @default(0)
+  assists       Int @default(0)
+  minutesPlayed Int @default(0)
 
-  // Passing
-  passes          Int    @default(0)
-  passesComplete  Int    @default(0)
-  passAccuracy    Float?
-  keyPasses       Int    @default(0)
-  longBalls       Int    @default(0)
-  throughBalls    Int    @default(0)
+  passes         Int    @default(0)
+  passesComplete Int    @default(0)
+  passAccuracy   Float?
+  keyPasses      Int    @default(0)
+  longBalls      Int    @default(0)
+  throughBalls   Int    @default(0)
 
-  // Defensive
   tackles       Int @default(0)
   interceptions Int @default(0)
   clearances    Int @default(0)
   blocks        Int @default(0)
 
-  // Attacking
   shots         Int @default(0)
   shotsOnTarget Int @default(0)
   dribbles      Int @default(0)
   crosses       Int @default(0)
 
-  // Disciplinary
   fouls       Int @default(0)
   fouled      Int @default(0)
   yellowCards Int @default(0)
   redCards    Int @default(0)
 
-  // Goalkeeper
-  saves         Int @default(0)
-  goalsConceded Int @default(0)
+  saves         Int     @default(0)
+  goalsConceded Int     @default(0)
   cleanSheet    Boolean @default(false)
 
-  // Aerial
   aerialsWon  Int @default(0)
   aerialsLost Int @default(0)
 
-  // Possession
   touches    Int    @default(0)
   possession Float?
 
-  // Rating
   rating Float?
 
   customStats Json?
@@ -2954,7 +2748,7 @@ model MatchStat {
 }
 
 // ============================================================================
-// 📊 TRAINING MODELS - ENHANCED
+// 📊 TRAINING MODELS
 // ============================================================================
 
 model TrainingSession {
@@ -2975,12 +2769,10 @@ model TrainingSession {
   facilityId      String?
   maxParticipants Int?
 
-  // Content
   drills    Json?
   notes     String? @db.Text
   equipment String[]
 
-  // Status
   status String @default("SCHEDULED")
 
   deletedAt DateTime?
@@ -3008,7 +2800,6 @@ model TrainingAttendance {
   arrivalTime DateTime?
   notes       String?
 
-  // Performance tracking
   performanceRating Float?
   effortRating      Float?
   coachNotes        String?
@@ -3034,19 +2825,16 @@ model ScoutingReport {
   rating       Float?
   observations String? @db.Text
 
-  // Detailed ratings
   technicalRating Float?
   tacticalRating  Float?
   physicalRating  Float?
   mentalRating    Float?
 
-  // Recommendation
-  recommendation   String? // SIGN, MONITOR, REJECT
-  urgency          String? // HIGH, MEDIUM, LOW
-  suggestedValue   Float?
-  currency         String  @default("GBP")
+  recommendation String?
+  urgency        String?
+  suggestedValue Float?
+  currency       String  @default("GBP")
 
-  // Match context
   matchWatched String?
   matchDate    DateTime?
 
@@ -3071,16 +2859,14 @@ model Tactic {
   diagram     Json?
   formation   FormationType?
 
-  // Instructions
   defendingStyle  String?
   attackingStyle  String?
   pressingTrigger String?
   buildUpPlay     String?
 
-  // Set pieces
-  corners     Json?
-  freeKicks   Json?
-  throwIns    Json?
+  corners   Json?
+  freeKicks Json?
+  throwIns  Json?
 
   isActive Boolean @default(true)
 
@@ -3098,7 +2884,6 @@ model TeamAggregateStats {
   id     String @id @default(cuid())
   clubId String @unique
 
-  // Overall
   totalMatches      Int @default(0)
   totalWins         Int @default(0)
   totalDraws        Int @default(0)
@@ -3107,25 +2892,21 @@ model TeamAggregateStats {
   totalGoalsAgainst Int @default(0)
   winRate           Float?
 
-  // Home
   homeMatches Int @default(0)
   homeWins    Int @default(0)
   homeDraws   Int @default(0)
   homeLosses  Int @default(0)
 
-  // Away
   awayMatches Int @default(0)
   awayWins    Int @default(0)
   awayDraws   Int @default(0)
   awayLosses  Int @default(0)
 
-  // Streaks
-  currentStreak     Int    @default(0)
-  streakType        String? // WIN, DRAW, LOSS, UNBEATEN
-  longestWinStreak  Int    @default(0)
-  longestLossStreak Int    @default(0)
+  currentStreak     Int     @default(0)
+  streakType        String?
+  longestWinStreak  Int     @default(0)
+  longestLossStreak Int     @default(0)
 
-  // Clean sheets
   cleanSheets Int @default(0)
 
   lastUpdatedAt DateTime @default(now())
@@ -3136,38 +2917,30 @@ model TeamAggregateStats {
   @@map("team_aggregate_stats")
 }
 
-// ============================================================================
-// 🎯 PERFORMANCE GOALS - NEW
-// ============================================================================
-
 model PerformanceGoal {
   id String @id @default(cuid())
 
   userId   String?
   playerId String?
 
-  type     GoalType
-  title    String
-  description String? @db.Text
+  type        GoalType
+  title       String
+  description String?  @db.Text
 
-  // Target
   targetValue  Float?
   currentValue Float?
-  unit         String? // e.g., "goals", "km", "hours"
+  unit         String?
 
-  // Dates
-  startDate  DateTime
-  endDate    DateTime
-  status     GoalStatus @default(NOT_STARTED)
+  startDate DateTime
+  endDate   DateTime
+  status    GoalStatus @default(NOT_STARTED)
 
-  // Progress
-  progress   Int @default(0) // Percentage
+  progress   Int   @default(0)
   milestones Json?
 
-  // Review
   reviewedAt DateTime?
   reviewedBy String?
-  feedback   String? @db.Text
+  feedback   String?   @db.Text
 
   createdBy String
   createdAt DateTime @default(now())
@@ -3185,7 +2958,7 @@ model PerformanceGoal {
 }
 
 // ============================================================================
-// 🏟️ FACILITY MANAGEMENT - NEW
+// 🏟️ FACILITY MANAGEMENT
 // ============================================================================
 
 model Facility {
@@ -3194,27 +2967,22 @@ model Facility {
 
   name        String
   type        FacilityType
-  description String? @db.Text
+  description String?      @db.Text
 
-  // Location
-  address   String?
-  city      String?
-  postcode  String?
-  country   String?
+  address     String?
+  city        String?
+  postcode    String?
+  country     String?
   coordinates Json?
 
-  // Capacity
   capacity Int?
 
-  // Availability
-  isActive        Boolean @default(true)
-  operatingHours  Json? // { monday: { open: "09:00", close: "21:00" }, ... }
+  isActive       Boolean @default(true)
+  operatingHours Json?
 
-  // Amenities
   amenities String[]
   images    String[]
 
-  // Contact
   contactName  String?
   contactPhone String?
   contactEmail String?
@@ -3244,14 +3012,12 @@ model FacilityBooking {
 
   status BookingStatus @default(PENDING)
 
-  // Recurring
   isRecurring     Boolean @default(false)
   recurrenceRule  String?
   parentBookingId String?
 
-  // Cost
   cost     Float?
-  currency String @default("GBP")
+  currency String  @default("GBP")
   paid     Boolean @default(false)
 
   createdAt DateTime @default(now())
@@ -3267,37 +3033,32 @@ model FacilityBooking {
 }
 
 // ============================================================================
-// 📢 ANNOUNCEMENTS - NEW
+// 📢 ANNOUNCEMENTS
 // ============================================================================
 
 model Announcement {
   id     String @id @default(cuid())
   clubId String
 
-  title    String
-  content  String  @db.Text
-  excerpt  String?
+  title   String
+  content String  @db.Text
+  excerpt String?
 
   priority AnnouncementPriority @default(NORMAL)
   status   AnnouncementStatus   @default(DRAFT)
 
-  // Scheduling
   publishAt DateTime?
   expiresAt DateTime?
 
-  // Targeting
-  targetRoles    ClubMemberRole[]
-  targetTeamIds  String[]
-  isPublic       Boolean @default(false)
+  targetRoles   ClubMemberRole[]
+  targetTeamIds String[]
+  isPublic      Boolean          @default(false)
 
-  // Attachments
   attachments String[]
   imageUrl    String?
 
-  // Engagement
   viewCount Int @default(0)
 
-  // Author
   authorId String
 
   createdAt DateTime @default(now())
@@ -3335,13 +3096,12 @@ model Subscription {
   trialStart DateTime?
   trialEnd   DateTime?
 
-  cancelledAt     DateTime?
-  cancelledReason String?
-  cancelAtPeriodEnd Boolean @default(false)
+  cancelledAt       DateTime?
+  cancelledReason   String?
+  cancelAtPeriodEnd Boolean   @default(false)
 
-  // Usage based
   usageLimit   Int?
-  usageCurrent Int @default(0)
+  usageCurrent Int  @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3372,7 +3132,6 @@ model Payment {
   description String?
   metadata    Json?
 
-  // Refund info
   refundedAmount Float?
   refundedAt     DateTime?
   refundReason   String?
@@ -3405,14 +3164,12 @@ model Invoice {
 
   status String @default("ISSUED")
 
-  // Line items
   lineItems Json?
 
-  pdfUrl       String?
+  pdfUrl          String?
   stripeInvoiceId String?
 
-  // Dunning
-  remindersSent Int @default(0)
+  remindersSent Int       @default(0)
   lastReminder  DateTime?
 
   createdAt DateTime @default(now())
@@ -3428,7 +3185,7 @@ model Invoice {
 }
 
 // ============================================================================
-// 🤝 SPONSORS - NEW
+// 🤝 SPONSORS
 // ============================================================================
 
 model Sponsor {
@@ -3440,12 +3197,10 @@ model Sponsor {
   website     String?
   description String? @db.Text
 
-  // Contact
   contactName  String?
   contactEmail String?
   contactPhone String?
 
-  // Status
   isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
@@ -3464,14 +3219,12 @@ model ClubSponsor {
   clubId    String
   sponsorId String
 
-  // Deal details
-  type         String // MAIN, KIT, SLEEVE, TRAINING, STADIUM
-  value        Float?
-  currency     String @default("GBP")
-  startDate    DateTime
-  endDate      DateTime?
+  type      String
+  value     Float?
+  currency  String    @default("GBP")
+  startDate DateTime
+  endDate   DateTime?
 
-  // Deliverables
   deliverables Json?
 
   isActive Boolean @default(true)
@@ -3506,11 +3259,9 @@ model Notification {
   link     String?
   metadata Json?
 
-  // Delivery
   emailSent Boolean @default(false)
   pushSent  Boolean @default(false)
 
-  // Scheduling
   scheduledFor DateTime?
 
   createdAt DateTime @default(now())
@@ -3528,27 +3279,23 @@ model NotificationPreference {
   id     String @id @default(cuid())
   userId String @unique
 
-  // Email preferences
-  emailMatches    Boolean @default(true)
-  emailTeam       Boolean @default(true)
-  emailCoach      Boolean @default(true)
-  emailTraining   Boolean @default(true)
-  emailNews       Boolean @default(false)
-  emailMarketing  Boolean @default(false)
+  emailMatches   Boolean @default(true)
+  emailTeam      Boolean @default(true)
+  emailCoach     Boolean @default(true)
+  emailTraining  Boolean @default(true)
+  emailNews      Boolean @default(false)
+  emailMarketing Boolean @default(false)
 
-  // Push preferences
-  pushMatches     Boolean @default(true)
-  pushTeam        Boolean @default(true)
-  pushTraining    Boolean @default(true)
-  pushChat        Boolean @default(true)
+  pushMatches  Boolean @default(true)
+  pushTeam     Boolean @default(true)
+  pushTraining Boolean @default(true)
+  pushChat     Boolean @default(true)
 
-  // SMS preferences
-  smsMatches      Boolean @default(false)
-  smsUrgent       Boolean @default(false)
+  smsMatches Boolean @default(false)
+  smsUrgent  Boolean @default(false)
 
-  // Quiet hours
-  quietHoursStart String? // "22:00"
-  quietHoursEnd   String? // "08:00"
+  quietHoursStart String?
+  quietHoursEnd   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3560,7 +3307,7 @@ model NotificationPreference {
 }
 
 // ============================================================================
-// 💬 CHAT SYSTEM - NEW (FIXED)
+// 💬 CHAT SYSTEM
 // ============================================================================
 
 model Chat {
@@ -3569,16 +3316,13 @@ model Chat {
   type ChatType @default(DIRECT)
   name String?
 
-  // For team/club chats
   teamId String?
   clubId String?
 
-  // Settings
   isArchived Boolean @default(false)
   isMuted    Boolean @default(false)
 
-  // Last activity
-  lastMessageAt DateTime?
+  lastMessageAt      DateTime?
   lastMessagePreview String?
 
   createdBy String
@@ -3603,14 +3347,11 @@ model Message {
 
   content String @db.Text
 
-  // Attachments
   attachments Json?
 
-  // Status
-  readBy    String[] @default([])
-  editedAt  DateTime?
+  readBy   String[]  @default([])
+  editedAt DateTime?
 
-  // Reply to
   replyToId String?
 
   deletedAt DateTime?
@@ -3632,14 +3373,13 @@ model ChatMember {
   userId String
   chatId String
 
-  role    String @default("MEMBER") // ADMIN, MEMBER
-  joinedAt DateTime @default(now())
+  role     String    @default("MEMBER")
+  joinedAt DateTime  @default(now())
   leftAt   DateTime?
 
-  // Notifications
-  isMuted       Boolean @default(false)
-  lastReadAt    DateTime?
-  unreadCount   Int     @default(0)
+  isMuted     Boolean   @default(false)
+  lastReadAt  DateTime?
+  unreadCount Int       @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
@@ -3691,7 +3431,7 @@ model SocialAction {
   id     String @id @default(cuid())
   userId String
 
-  type         String // LIKE, SHARE, COMMENT, BOOKMARK
+  type         String
   resourceId   String
   resourceType String
 
@@ -3717,9 +3457,8 @@ model Achievement {
   description String? @db.Text
   icon        String?
 
-  // Progress
-  progress Int @default(100) // Percentage
-  tier     String? // BRONZE, SILVER, GOLD, PLATINUM
+  progress Int     @default(100)
+  tier     String?
 
   unlockedAt DateTime @default(now())
 
@@ -3745,8 +3484,7 @@ model Badge {
   icon        String?
   category    String?
 
-  // Rarity
-  rarity String @default("COMMON") // COMMON, RARE, EPIC, LEGENDARY
+  rarity String @default("COMMON")
 
   awardedAt DateTime @default(now())
 
@@ -3760,37 +3498,32 @@ model Badge {
 }
 
 // ============================================================================
-// 📹 MEDIA ASSETS - NEW
+// 📹 MEDIA ASSETS
 // ============================================================================
 
 model MediaAsset {
   id             String @id @default(cuid())
   organisationId String
 
-  type     String // IMAGE, VIDEO, DOCUMENT
+  type     String
   filename String
   url      String
   mimeType String
 
-  // Dimensions (for images/videos)
   width  Int?
   height Int?
 
-  // Size
   sizeBytes Int
 
-  // Video specific
-  duration           Int? // seconds
+  duration           Int?
   thumbnailUrl       String?
   processingStatus   TranscodingStatus?
   processingProvider VideoProcessingProvider?
 
-  // Metadata
   alt         String?
   description String?
   tags        String[]
 
-  // Usage tracking
   usageCount Int @default(0)
 
   createdBy String
@@ -3820,10 +3553,8 @@ model Webhook {
   isActive Boolean @default(true)
   secret   String?
 
-  // Headers
   headers Json?
 
-  // Retry config
   maxRetries   Int @default(3)
   retryDelayMs Int @default(1000)
 
@@ -3880,7 +3611,6 @@ model ApiUsageMetrics {
   errorCount          Int    @default(0)
   bandwidthBytes      BigInt @default(0)
 
-  // Breakdown by endpoint
   endpointBreakdown Json?
 
   updatedAt DateTime @updatedAt
@@ -3903,7 +3633,6 @@ model QuotaUsage {
   apiCallsUsedThisMonth Int @default(0)
   matchesThisMonth      Int @default(0)
 
-  // Reset tracking
   monthlyResetDate DateTime?
 
   updatedAt DateTime @updatedAt
@@ -3922,7 +3651,7 @@ model DatabaseBackup {
   id             String @id @default(cuid())
   organisationId String
 
-  type   String @default("FULL") // FULL, INCREMENTAL
+  type   String @default("FULL")
   size   Int
   status String @default("COMPLETED")
 
@@ -3930,7 +3659,6 @@ model DatabaseBackup {
   checksum  String?
   expiresAt DateTime
 
-  // Metadata
   tablesIncluded String[]
   rowsCaptured   Int?
 
@@ -3943,17 +3671,3 @@ model DatabaseBackup {
   @@index([status])
   @@map("database_backups")
 }
-
-// ============================================================================
-// 📊 VIEWS (Read-only computed data)
-// ============================================================================
-
-// These can be created as database views for performance
-// view PlayerLeaderboard {
-//   playerId String @unique
-//   goals Int
-//   assists Int
-//   appearances Int
-//   rating Float
-//   rank Int
-// }

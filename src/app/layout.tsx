@@ -1,420 +1,335 @@
 /**
- * 🌟 PITCHCONNECT - Root Layout
+ * ============================================================================
+ * 🏆 PITCHCONNECT - Root Layout v2.0
  * Path: src/app/layout.tsx
- *
  * ============================================================================
- * ROOT SERVER LAYOUT
+ * 
+ * ENTERPRISE-GRADE ROOT LAYOUT
+ * 
+ * Features:
+ * ✅ Server-side session fetching (NextAuth v4)
+ * ✅ Custom fonts (Inter, Space Grotesk, JetBrains Mono)
+ * ✅ Theme provider with system preference detection
+ * ✅ Error boundary wrapper
+ * ✅ Comprehensive SEO metadata
+ * ✅ PWA manifest and icons
+ * ✅ Security headers
+ * ✅ Analytics ready
+ * 
  * ============================================================================
- * ✅ Fetches server session (NextAuth v4)
- * ✅ Error handling and logging
- * ✅ Type-safe session management
- * ✅ Comprehensive metadata configuration
- * ✅ SEO optimizations
- * ✅ Mobile support
- *
- * ARCHITECTURE:
- * - Server Component (async)
- * - Calls getServerSession(auth) on server
- * - Passes decrypted session to client Providers
- * - Wraps entire application
  */
 
-import type { Metadata, Viewport } from 'next'
-import { getServerSession } from 'next-auth'
-import { auth } from '@/auth'
-import { Providers } from '@/app/providers'
-import '@/styles/globals.css'
+import type { Metadata, Viewport } from 'next';
+import { Inter, Space_Grotesk, JetBrains_Mono } from 'next/font/google';
+import { getServerSession } from 'next-auth';
+import { auth } from '@/auth';
+import { Providers } from '@/app/providers';
+import { ErrorBoundaryProvider } from '@/app/error-boundary-provider';
+import '@/styles/globals.css';
 
+// ============================================================================
+// FONT CONFIGURATION
+// ============================================================================
+
+/**
+ * Inter - Primary body font
+ * Clean, modern sans-serif optimized for UI
+ */
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+  preload: true,
+});
+
+/**
+ * Space Grotesk - Display/heading font
+ * Bold, distinctive geometric sans-serif
+ */
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-space-grotesk',
+  preload: true,
+});
+
+/**
+ * JetBrains Mono - Monospace font
+ * For code, stats, and tabular data
+ */
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-jetbrains-mono',
+  preload: true,
+});
 
 // ============================================================================
 // METADATA CONFIGURATION
 // ============================================================================
 
-/**
- * Root metadata for the entire application
- * Used by search engines, social media, and browsers
- * 
- * SEO & Social Media optimization for PitchConnect brand
- */
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://pitchconnect.com';
+
 export const metadata: Metadata = {
-  // Basic metadata
-  title: "PitchConnect - World's Best Sports Management Platform",
+  // Basic
+  title: {
+    default: 'PitchConnect - Elite Sports Team Management Platform',
+    template: '%s | PitchConnect',
+  },
   description:
-    'Professional sports team management, player analytics, performance tracking, and tactical analysis. All-in-one platform for football, netball, rugby, cricket, American football, and basketball teams.',
+    'The all-in-one sports management platform for coaches, managers, and players. Team scheduling, performance analytics, tactical tools, and more. Start your free trial today.',
   
-  // Keywords for SEO
+  // Keywords
   keywords: [
-    'sports management',
-    'team management',
-    'player analytics',
-    'performance tracking',
-    'tactical analysis',
+    'sports management software',
+    'team management app',
     'football management',
-    'netball platform',
-    'rugby statistics',
-    'cricket analytics',
-    'basketball management',
-    'sports software',
-    'team coordination',
+    'player analytics',
+    'match scheduling',
+    'tactical analysis',
+    'sports coaching software',
+    'club management',
+    'netball management',
+    'rugby team app',
+    'cricket statistics',
+    'basketball coaching',
+    'sports performance tracking',
+    'UK sports software',
   ],
-  
-  // Author & Creator
-  authors: [{ name: 'PitchConnect Team' }],
+
+  // Author & Publisher
+  authors: [{ name: 'PitchConnect', url: siteUrl }],
   creator: 'PitchConnect',
-  publisher: 'PitchConnect',
-  
-  // SEO Robots
-  robots: 'index, follow',
-  
-  // Open Graph (Facebook, LinkedIn, Twitter)
+  publisher: 'PitchConnect Ltd',
+
+  // Robots
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+
+  // Open Graph
   openGraph: {
     type: 'website',
     locale: 'en_GB',
-    url: 'https://pitchconnect.com',
-    title: "PitchConnect - World's Best Sports Management Platform",
-    description:
-      'Professional sports team management and analytics platform for coaches, managers, and teams worldwide',
+    url: siteUrl,
     siteName: 'PitchConnect',
+    title: 'PitchConnect - Elite Sports Team Management Platform',
+    description:
+      'Manage your sports team like never before. Performance analytics, match scheduling, tactical tools, and more.',
     images: [
       {
-        url: 'https://pitchconnect.com/og-image.png',
+        url: `${siteUrl}/og-image.png`,
         width: 1200,
         height: 630,
         alt: 'PitchConnect - Sports Management Platform',
+        type: 'image/png',
       },
     ],
   },
-  
-  // Twitter Card
+
+  // Twitter
   twitter: {
     card: 'summary_large_image',
-    title: 'PitchConnect - Sports Management Platform',
-    description: 'Manage your sports team like never before',
+    site: '@pitchconnect',
     creator: '@pitchconnect',
-    images: ['https://pitchconnect.com/twitter-image.png'],
+    title: 'PitchConnect - Elite Sports Management',
+    description: 'The all-in-one platform for coaches, managers, and players.',
+    images: [`${siteUrl}/twitter-image.png`],
   },
-  
+
   // Apple Web App
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'PitchConnect',
-  },
-  
-  // Format detection (disable auto-detection for certain formats)
-  formatDetection: {
-    telephone: false,
-  },
-  
-  // Manifest for PWA
-  manifest: '/manifest.json',
-  
-  // App category
-  category: 'sports',
-  
-  // Icons
-  icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
-    other: [
+    startupImage: [
       {
-        rel: 'icon',
-        url: '/favicon-32x32.png',
-        sizes: '32x32',
-        type: 'image/png',
-      },
-      {
-        rel: 'icon',
-        url: '/favicon-16x16.png',
-        sizes: '16x16',
-        type: 'image/png',
+        url: '/splash/apple-splash-2048-2732.jpg',
+        media: '(device-width: 1024px) and (device-height: 1366px)',
       },
     ],
   },
-}
 
+  // Format Detection
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
+
+  // Manifest
+  manifest: '/manifest.json',
+
+  // Category
+  category: 'sports',
+
+  // Icons
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+    other: [
+      {
+        rel: 'mask-icon',
+        url: '/safari-pinned-tab.svg',
+        color: '#D4AF37',
+      },
+    ],
+  },
+
+  // Verification (add your IDs)
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION,
+    // yandex: 'your-yandex-verification',
+    // bing: 'your-bing-verification',
+  },
+
+  // Alternate Languages (if applicable)
+  alternates: {
+    canonical: siteUrl,
+    languages: {
+      'en-GB': siteUrl,
+      // 'en-US': `${siteUrl}/en-us`,
+    },
+  },
+
+  // Other
+  applicationName: 'PitchConnect',
+  referrer: 'strict-origin-when-cross-origin',
+  generator: 'Next.js',
+};
 
 // ============================================================================
 // VIEWPORT CONFIGURATION
 // ============================================================================
 
-/**
- * Viewport metadata for mobile responsiveness
- * Ensures proper scaling and rendering on mobile devices
- */
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  viewportFit: 'cover',
   maximumScale: 5,
   userScalable: true,
+  viewportFit: 'cover',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FFFFFF' },
+    { media: '(prefers-color-scheme: dark)', color: '#030712' },
+  ],
   colorScheme: 'light dark',
-}
-
+};
 
 // ============================================================================
-// TYPE DEFINITIONS
+// TYPES
 // ============================================================================
 
 interface RootLayoutProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
-
 
 // ============================================================================
 // ROOT LAYOUT COMPONENT
 // ============================================================================
 
-/**
- * Root Layout Component
- * 
- * Server Component that wraps the entire application.
- * 
- * Flow:
- * 1. ✅ Fetch session from server using getServerSession(auth)
- * 2. ✅ Session is decrypted on server using NEXTAUTH_SECRET
- * 3. ✅ Pass session to client Providers component
- * 4. ✅ SessionProvider makes session available to all client components
- * 
- * IMPORTANT: 
- * - This MUST be an async component (async function)
- * - NEXTAUTH_SECRET must be set in .env.local
- * - If JWT_SESSION_ERROR occurs, check NEXTAUTH_SECRET
- * - Session is type-safe and includes user role/permissions
- * 
- * @param props - Component props
- * @param props.children - Child components (entire app)
- * @returns Root HTML layout with providers
- */
 export default async function RootLayout({ children }: RootLayoutProps) {
-  // ============================================================================
+  // ---------------------------------------------------------------------------
   // FETCH SERVER SESSION
-  // ============================================================================
-  
-  let session = null
-  let sessionError: Error | null = null
+  // ---------------------------------------------------------------------------
+  let session = null;
 
   try {
-    /**
-     * 🔐 GET SERVER SESSION
-     * 
-     * This call:
-     * 1. Reads JWT from cookies (if present)
-     * 2. Decrypts using NEXTAUTH_SECRET
-     * 3. Validates JWT signature
-     * 4. Returns session object or null
-     * 
-     * Errors indicate:
-     * - JWT_SESSION_ERROR: Missing NEXTAUTH_SECRET
-     * - Invalid signature: Token tampered with
-     * - Expired token: User needs to re-login
-     */
-    session = await getServerSession(auth)
-    
-    // Log successful session fetch in development
+    session = await getServerSession(auth);
+
     if (process.env.NODE_ENV === 'development' && session) {
-      console.log('[Layout] ✅ Server session loaded:', {
+      console.log('[RootLayout] ✅ Session loaded:', {
         user: session.user?.email,
         role: session.user?.role,
-        timestamp: new Date().toISOString(),
-      })
+      });
     }
   } catch (error) {
-    // Capture session fetch errors
-    sessionError = error instanceof Error ? error : new Error(String(error))
-    
-    // Log error details for debugging
-    console.error('[Layout] ❌ Session fetch error:', {
-      message: sessionError.message,
-      name: sessionError.name,
-      timestamp: new Date().toISOString(),
-    })
-    
-    // In production, log to monitoring service
-    if (process.env.NODE_ENV === 'production') {
-      // TODO: Send to Sentry/monitoring service
-      // logErrorToMonitoring(sessionError)
-    }
-    
-    // Continue rendering with null session (graceful degradation)
-    session = null
+    console.error('[RootLayout] ❌ Session error:', error);
+    // Graceful degradation - continue with null session
   }
 
-
-  // ============================================================================
-  // RENDER ROOT LAYOUT
-  // ============================================================================
-
+  // ---------------------------------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------------------------------
   return (
-    <html lang="en" suppressHydrationWarning>
-      {/* 
-        ============================================================================
-        HTML HEAD
-        ============================================================================
-      */}
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+    >
       <head>
-        {/* 
-          VIEWPORT META TAG
-          Already handled by viewport export above, but including here for clarity
-        */}
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes"
-        />
-        
-        {/* 
-          APPLE WEB APP META TAGS
-          Enables home screen installation on iOS devices
-        */}
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="PitchConnect" />
-        
-        {/* 
-          THEME COLOR (for browser UI)
-          Used by Android Chrome to color the address bar
-        */}
-        <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
-        <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
-        
-        {/* 
-          SECURITY HEADERS
-          Can also be set via next.config.js or middleware
-        */}
-        <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-        <meta name="referrer" content="strict-origin-when-cross-origin" />
-        
-        {/* 
-          PRECONNECT TO EXTERNAL RESOURCES
-          Improves performance by establishing early connections
-        */}
+        {/* Preconnect to external resources */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         
-        {/* 
-          DNS PREFETCH (for faster external API calls)
-        */}
-        <link rel="dns-prefetch" href="//cdn.example.com" />
+        {/* DNS Prefetch */}
+        <link rel="dns-prefetch" href="//api.pitchconnect.com" />
+        <link rel="dns-prefetch" href="//cdn.pitchconnect.com" />
+        
+        {/* Microsoft Tile */}
+        <meta name="msapplication-TileColor" content="#D4AF37" />
+        <meta name="msapplication-config" content="/browserconfig.xml" />
+        
+        {/* Security */}
+        <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
+        <meta httpEquiv="X-Frame-Options" content="SAMEORIGIN" />
+        <meta httpEquiv="X-XSS-Protection" content="1; mode=block" />
+        <meta name="referrer" content="strict-origin-when-cross-origin" />
       </head>
 
-      {/* 
-        ============================================================================
-        HTML BODY
-        ============================================================================
-      */}
-      <body>
-        {/* 
-          PROVIDERS WRAPPER
-          
-          Session flow:
-          1. Server (this file) fetches session via getServerSession()
-          2. Session passed to Providers component (Client Component)
-          3. SessionProvider wraps all children with session context
-          4. All client components can now use useSession() hook
-          
-          If sessionError occurred:
-          - Session will be null
-          - Client components must handle null session gracefully
-          - User can still use app but without authentication
-        */}
+      <body className="min-h-screen bg-background font-sans antialiased">
+        {/* Skip to main content link for accessibility */}
+        <a
+          href="#main-content"
+          className="skip-link"
+        >
+          Skip to main content
+        </a>
+
+        {/* Providers Wrapper */}
         <Providers session={session}>
-          {/* 
-            APPLICATION CONTENT
-            All app pages, components, and content render here
-            
-            Available to all client components:
-            - useSession() hook
-            - Session context (if authenticated)
-            - Role-based access control
-            - User permissions
-          */}
-          {children}
-          
-          {/* 
-            DEBUG: Session Error Display (Development Only)
-            Shows session fetch errors for debugging
-          */}
-          {process.env.NODE_ENV === 'development' && sessionError && (
-            <div className="fixed bottom-4 right-4 max-w-md rounded-lg bg-red-50 p-4 text-sm text-red-900 border border-red-200">
-              <p className="font-semibold">🚨 Session Error (Dev Only)</p>
-              <p className="mt-1 text-xs font-mono">{sessionError.message}</p>
+          <ErrorBoundaryProvider>
+            {/* Main Content */}
+            <div id="main-content" className="relative flex min-h-screen flex-col">
+              {children}
             </div>
-          )}
+
+            {/* Portal containers */}
+            <div id="modal-root" />
+            <div id="toast-root" />
+          </ErrorBoundaryProvider>
         </Providers>
+
+        {/* Development indicators */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="fixed bottom-4 left-4 z-max flex items-center gap-2 rounded-full bg-charcoal-900 px-3 py-1 text-xs text-white font-mono">
+            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="hidden sm:inline">DEV</span>
+            <span className="text-charcoal-400">|</span>
+            <span className="sm:hidden">xs</span>
+            <span className="hidden sm:inline md:hidden">sm</span>
+            <span className="hidden md:inline lg:hidden">md</span>
+            <span className="hidden lg:inline xl:hidden">lg</span>
+            <span className="hidden xl:inline 2xl:hidden">xl</span>
+            <span className="hidden 2xl:inline">2xl</span>
+          </div>
+        )}
       </body>
     </html>
-  )
+  );
 }
-
-
-// ============================================================================
-// DOCUMENTATION
-// ============================================================================
-
-/**
- * USING SESSION IN CLIENT COMPONENTS
- * 
- * Example client component with authentication:
- * 
- * ```
- * 'use client'
- * 
- * import { useSession } from 'next-auth/react'
- * import { useRouter } from 'next/navigation'
- * 
- * export default function Dashboard() {
- *   const { data: session, status } = useSession({ required: true })
- *   const router = useRouter()
- *   
- *   if (status === 'loading') return <div>Loading...</div>
- *   if (status === 'unauthenticated') {
- *     router.push('/auth/login')
- *     return null
- *   }
- *   
- *   return (
- *     <div>
- *       <h1>Welcome, {session.user?.name}</h1>
- *       <p>Role: {session.user?.role}</p>
- *       {session.user?.permissions.includes('manage_players') && (
- *         <div>Player management panel</div>
- *       )}
- *     </div>
- *   )
- * }
- * ```
- */
-
-/**
- * TROUBLESHOOTING SESSION ERRORS
- * 
- * Error: "JWT_SESSION_ERROR"
- * ├─ Cause: NEXTAUTH_SECRET not set or incorrect
- * └─ Fix: Verify NEXTAUTH_SECRET in .env.local and restart server
- * 
- * Error: "Invalid token signature"
- * ├─ Cause: Different NEXTAUTH_SECRET values in dev/prod
- * └─ Fix: Ensure consistent SECRET across all environments
- * 
- * Error: "Session is null in client component"
- * ├─ Cause: User not authenticated or session expired
- * └─ Fix: Use useSession({ required: true }) to redirect to login
- * 
- * Error: "Cannot read property 'user' of null"
- * ├─ Cause: Accessing session.user without null check
- * └─ Fix: Always check if (session?.user) before accessing
- */
-
-/**
- * ENVIRONMENT VARIABLES REQUIRED
- * 
- * .env.local (Development):
- * - NEXTAUTH_SECRET=your-super-secret-key-here (generate with: openssl rand -base64 32)
- * - NEXTAUTH_URL=http://localhost:3000
- * - DATABASE_URL=postgresql://...
- * 
- * .env.production (Production):
- * - NEXTAUTH_SECRET=your-production-secret (generate fresh)
- * - NEXTAUTH_URL=https://pitchconnect.com
- * - DATABASE_URL=postgresql://production-db
- */
