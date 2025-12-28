@@ -6,7 +6,7 @@
  */
 
 import { Suspense } from 'react';
-import { LoginForm } from './components/LoginForm';
+import LoginForm from './components/LoginForm';
 
 // Skeleton for Suspense fallback
 function LoginSkeleton() {

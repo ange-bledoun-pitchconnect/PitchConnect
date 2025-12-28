@@ -14,7 +14,7 @@
  */
 
 import { Suspense } from 'react';
-import { RegisterForm } from './components/RegisterForm';
+import RegisterForm from './components/RegisterForm';
 
 function SignupSkeleton() {
   return (
