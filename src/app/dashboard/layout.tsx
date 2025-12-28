@@ -20,7 +20,7 @@
 
 import { ReactNode } from 'react';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { authOptions } from '@/auth';
 import { redirect } from 'next/navigation';
 import DashboardLayoutClient from './dashboard-layout-client';
 import type { Metadata } from 'next';

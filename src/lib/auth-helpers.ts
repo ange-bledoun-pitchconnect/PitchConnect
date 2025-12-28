@@ -17,7 +17,8 @@
  * ============================================================================
  */
 
-import { auth } from '@/auth';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/auth';
 import { redirect } from 'next/navigation';
 import { hash, compare } from 'bcryptjs';
 
@@ -146,7 +147,7 @@ export interface UserWithRoles {
  */
 export async function getCurrentUser(): Promise<SessionUser | null> {
   try {
-    const session = await auth();
+    const session = await getServerSession(authOptions);
     return session?.user || null;
   } catch (error) {
     console.error('[AUTH] Error getting current user:', error);
@@ -159,7 +160,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
  */
 export async function getCurrentSession() {
   try {
-    return await auth();
+    return await getServerSession(authOptions);
   } catch (error) {
     console.error('[AUTH] Error getting session:', error);
     return null;

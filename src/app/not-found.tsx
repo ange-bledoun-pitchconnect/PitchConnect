@@ -14,17 +14,10 @@
  * ============================================================================
  */
 
+'use client';
+
 import Link from 'next/link';
 import { Trophy, Home, ArrowLeft, Search, HelpCircle, Mail } from 'lucide-react';
-
-// ============================================================================
-// METADATA
-// ============================================================================
-
-export const metadata = {
-  title: '404 - Page Not Found',
-  description: 'The page you are looking for could not be found.',
-};
 
 // ============================================================================
 // NOT FOUND PAGE

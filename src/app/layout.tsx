@@ -22,7 +22,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { getServerSession } from 'next-auth';
-import { auth } from '@/auth';
+import { authOptions } from '@/auth';
 import { Providers } from '@/app/providers';
 import { ErrorBoundaryProvider } from '@/app/error-boundary-provider';
 import '@/styles/globals.css';
@@ -250,7 +250,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
   let session = null;
 
   try {
-    session = await getServerSession(auth);
+    session = await getServerSession(authOptions);
 
     if (process.env.NODE_ENV === 'development' && session) {
       console.log('[RootLayout] ✅ Session loaded:', {
