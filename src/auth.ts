@@ -121,8 +121,8 @@ export const authOptions: NextAuthOptions = {
     signIn: '/auth/login',
     signOut: '/auth/logout',
     error: '/auth/error',
-    // Redirect new users to dashboard (not onboarding which doesn't exist)
-    newUser: '/dashboard/overview',
+    // Redirect new users to dashboard (smart router handles role-based redirect)
+    newUser: '/dashboard',
   },
 
   callbacks: {
@@ -172,8 +172,8 @@ export const authOptions: NextAuthOptions = {
       if (url.startsWith(baseUrl)) {
         return url;
       }
-      // Default to dashboard
-      return `${baseUrl}/dashboard/overview`;
+      // Default to dashboard (smart router handles role-based redirect)
+      return `${baseUrl}/dashboard`;
     },
   },
 

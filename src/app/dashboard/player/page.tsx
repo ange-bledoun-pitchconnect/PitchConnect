@@ -4,12 +4,9 @@
  * Path: src/app/dashboard/player/page.tsx
  * ============================================================================
  * 
- * MULTI-SPORT FEATURES:
- * ✅ Sport-specific stat labels and icons
- * ✅ Dynamic scoring units per sport
- * ✅ Sport context from player's teams
- * ✅ Multi-sport team display
- * ✅ Dark mode support
+ * FIXED: Uses correct Prisma schema field names:
+ * - Match uses homeTeam/awayTeam (not homeClub/awayClub)
+ * - Simplified queries to avoid schema mismatches
  * 
  * ============================================================================
  */
@@ -21,7 +18,7 @@ import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import {
   Trophy, Target, Calendar, TrendingUp, Award, Activity, Users, Search,
-  ArrowRight, Zap, Star, Shield, Clock, MapPin,
+  ArrowRight, Shield, MapPin, Bell,
 } from 'lucide-react';
 import { Sport, SPORT_CONFIGS, getStatLabels } from '@/types/player';
 
@@ -30,6 +27,7 @@ import { Sport, SPORT_CONFIGS, getStatLabels } from '@/types/player';
 // ============================================================================
 
 async function getPlayerDashboardData(userId: string) {
+  // Get player with basic relations
   const player = await prisma.player.findUnique({
     where: { userId },
     include: {
@@ -44,19 +42,6 @@ async function getPlayerDashboardData(userId: string) {
           },
         },
       },
-      matchAttendance: {
-        take: 5,
-        orderBy: { match: { kickOffTime: 'desc' } },
-        where: { match: { status: 'FINISHED' } },
-        include: {
-          match: {
-            include: {
-              homeClub: { select: { id: true, name: true } },
-              awayClub: { select: { id: true, name: true } },
-            },
-          },
-        },
-      },
     },
   });
 
@@ -64,29 +49,50 @@ async function getPlayerDashboardData(userId: string) {
 
   // Get primary sport from first team
   const primarySport = (player.teamPlayers[0]?.team?.club?.sport as Sport) || 'FOOTBALL';
-  const clubIds = player.teamPlayers.map((tp) => tp.team.clubId);
+  const teamIds = player.teamPlayers.map((tp) => tp.teamId);
 
-  // Get upcoming matches
-  const upcomingMatches = clubIds.length > 0
+  // Get upcoming matches for player's teams
+  const upcomingMatches = teamIds.length > 0
     ? await prisma.match.findMany({
         where: {
           status: 'SCHEDULED',
           kickOffTime: { gte: new Date() },
-          OR: [{ homeClubId: { in: clubIds } }, { awayClubId: { in: clubIds } }],
+          OR: [
+            { homeTeamId: { in: teamIds } },
+            { awayTeamId: { in: teamIds } },
+          ],
         },
         include: {
-          homeClub: { select: { id: true, name: true, shortName: true } },
-          awayClub: { select: { id: true, name: true, shortName: true } },
+          homeTeam: { select: { id: true, name: true } },
+          awayTeam: { select: { id: true, name: true } },
         },
         orderBy: { kickOffTime: 'asc' },
         take: 3,
       })
     : [];
 
+  // Get recent match results for form calculation
+  const recentMatches = teamIds.length > 0
+    ? await prisma.match.findMany({
+        where: {
+          status: 'FINISHED',
+          OR: [
+            { homeTeamId: { in: teamIds } },
+            { awayTeamId: { in: teamIds } },
+          ],
+        },
+        include: {
+          homeTeam: { select: { id: true, name: true } },
+          awayTeam: { select: { id: true, name: true } },
+        },
+        orderBy: { kickOffTime: 'desc' },
+        take: 5,
+      })
+    : [];
+
   // Calculate recent form
-  const recentForm: ('W' | 'D' | 'L')[] = player.matchAttendance.map((ma) => {
-    const m = ma.match;
-    const isHome = clubIds.includes(m.homeClubId);
+  const recentForm: ('W' | 'D' | 'L')[] = recentMatches.map((m) => {
+    const isHome = teamIds.includes(m.homeTeamId);
     const ourScore = isHome ? m.homeScore : m.awayScore;
     const theirScore = isHome ? m.awayScore : m.homeScore;
     if (ourScore === null || theirScore === null) return 'D';
@@ -115,9 +121,9 @@ async function getPlayerDashboardData(userId: string) {
       id: m.id,
       kickOffTime: m.kickOffTime,
       venue: m.venue,
-      homeClub: m.homeClub,
-      awayClub: m.awayClub,
-      isHome: clubIds.includes(m.homeClubId),
+      homeTeam: m.homeTeam,
+      awayTeam: m.awayTeam,
+      isHome: teamIds.includes(m.homeTeamId),
     })),
     recentForm,
     primarySport,
@@ -149,7 +155,7 @@ export default async function PlayerPage() {
         </p>
       </div>
 
-      {/* STATS OVERVIEW - Sport-specific labels */}
+      {/* STATS OVERVIEW */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
         <StatCard
           label={statLabels.primaryStat}
@@ -250,7 +256,7 @@ export default async function PlayerPage() {
         />
       </div>
 
-      {/* MY TEAMS - With sport icons */}
+      {/* MY TEAMS */}
       <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 shadow-sm">
         <div className="p-6 border-b border-neutral-200 dark:border-charcoal-700 flex items-center justify-between">
           <div>
@@ -353,7 +359,7 @@ export default async function PlayerPage() {
                     <div className="w-px h-10 bg-neutral-300 dark:bg-charcoal-600" />
                     <div>
                       <p className="font-semibold text-charcoal-900 dark:text-white">
-                        {match.homeClub.shortName || match.homeClub.name} vs {match.awayClub.shortName || match.awayClub.name}
+                        {match.homeTeam.name} vs {match.awayTeam.name}
                       </p>
                       {match.venue && (
                         <p className="text-sm text-charcoal-500 dark:text-charcoal-400 flex items-center gap-1">
@@ -369,6 +375,31 @@ export default async function PlayerPage() {
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* ACTIVITY FEED */}
+      <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 shadow-sm">
+        <div className="p-6 border-b border-neutral-200 dark:border-charcoal-700 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
+            <Bell className="w-5 h-5 text-gold-500" />
+            Activity Feed
+          </h2>
+        </div>
+        <div className="p-6">
+          <div className="text-center py-8">
+            <Activity className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-charcoal-900 dark:text-white mb-2">No activity yet</h3>
+            <p className="text-charcoal-600 dark:text-charcoal-400 mb-4">
+              Follow teams and players to see their updates here
+            </p>
+            <Link
+              href="/dashboard/player/discover"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-semibold rounded-lg text-sm"
+            >
+              <Search className="w-4 h-4" /> Discover
+            </Link>
+          </div>
         </div>
       </div>
     </div>

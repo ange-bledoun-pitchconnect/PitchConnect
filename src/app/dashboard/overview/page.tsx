@@ -22,7 +22,7 @@ import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import {
   Trophy, Target, Calendar, TrendingUp, Award, Activity, Users, Settings,
-  Bell, HelpCircle, MessageSquare, Shield, Star, CheckCircle, ArrowRight,
+  Bell, HelpCircle, MessageSquare, Shield, Star, CheckCircle, ArrowRight, Flag, BarChart3,
 } from 'lucide-react';
 import { Sport, SPORT_CONFIGS, getStatLabels } from '@/types/player';
 
@@ -94,13 +94,13 @@ async function getDashboardData(userId: string): Promise<DashboardData> {
   }
 
   // Get upcoming matches count
-  const clubIds = user.player?.teamPlayers.map((tp) => tp.team.clubId) || [];
-  const upcomingMatchesCount = clubIds.length > 0
+  const teamIds = user.player?.teamPlayers.map((tp) => tp.teamId) || [];
+  const upcomingMatchesCount = teamIds.length > 0
     ? await prisma.match.count({
         where: {
           status: 'SCHEDULED',
           kickOffTime: { gte: new Date() },
-          OR: [{ homeClubId: { in: clubIds } }, { awayClubId: { in: clubIds } }],
+          OR: [{ homeTeamId: { in: teamIds } }, { awayTeamId: { in: teamIds } }],
         },
       })
     : 0;
@@ -301,11 +301,61 @@ export default async function DashboardOverviewPage() {
 
         {data.user.roles.includes('TREASURER') && (
           <DashboardCard
-            href="/dashboard/finance"
+            href="/dashboard/treasurer"
             icon={<TrendingUp className="w-8 h-8 text-white" />}
-            title="Finance Dashboard"
+            title="Treasurer Dashboard"
             description="Manage payments, invoices, and reports"
             gradient="from-teal-500 to-green-600"
+          />
+        )}
+
+        {data.user.roles.includes('REFEREE') && (
+          <DashboardCard
+            href="/dashboard/referee"
+            icon={<Flag className="w-8 h-8 text-white" />}
+            title="Referee Dashboard"
+            description="View assignments, submit reports, and track fees"
+            gradient="from-yellow-500 to-orange-600"
+          />
+        )}
+
+        {data.user.roles.includes('SCOUT') && (
+          <DashboardCard
+            href="/dashboard/scout"
+            icon={<Target className="w-8 h-8 text-white" />}
+            title="Scout Dashboard"
+            description="Track players, create reports, and manage watchlists"
+            gradient="from-indigo-500 to-purple-600"
+          />
+        )}
+
+        {data.user.roles.includes('ANALYST') && (
+          <DashboardCard
+            href="/dashboard/analyst"
+            icon={<BarChart3 className="w-8 h-8 text-white" />}
+            title="Analyst Dashboard"
+            description="Performance analytics, match insights, and data reports"
+            gradient="from-cyan-500 to-blue-600"
+          />
+        )}
+
+        {data.user.roles.includes('FAN') && (
+          <DashboardCard
+            href="/dashboard/fan"
+            icon={<Star className="w-8 h-8 text-white" />}
+            title="Fan Dashboard"
+            description="Follow your favorite teams and players"
+            gradient="from-pink-500 to-rose-600"
+          />
+        )}
+
+        {data.user.roles.includes('PARENT') && (
+          <DashboardCard
+            href="/dashboard/parent"
+            icon={<Users className="w-8 h-8 text-white" />}
+            title="Parent Dashboard"
+            description="Track your children's activities and schedules"
+            gradient="from-emerald-500 to-teal-600"
           />
         )}
       </div>

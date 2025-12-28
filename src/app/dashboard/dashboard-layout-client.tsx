@@ -74,7 +74,9 @@ type UserRole =
   | 'LEAGUE_ADMIN'
   | 'REFEREE'
   | 'SCOUT'
-  | 'ANALYST';
+  | 'ANALYST'
+  | 'FAN'
+  | 'PARENT';
 
 interface SessionUser {
   id?: string;
@@ -142,7 +144,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Administration',
     items: [
       { label: 'Club Settings', href: '/dashboard/club', icon: Building2, roles: ['MANAGER', 'CLUB_OWNER'] },
-      { label: 'Finances', href: '/dashboard/finances', icon: Wallet, roles: ['TREASURER', 'MANAGER', 'CLUB_OWNER'] },
+      { label: 'Treasurer', href: '/dashboard/treasurer', icon: Wallet, roles: ['TREASURER', 'MANAGER', 'CLUB_OWNER'] },
       { label: 'League Admin', href: '/dashboard/league', icon: Crown, roles: ['LEAGUE_ADMIN'] },
       { label: 'Billing', href: '/dashboard/billing', icon: CreditCard, roles: ['MANAGER', 'CLUB_OWNER', 'LEAGUE_ADMIN'] },
     ],
@@ -205,6 +207,8 @@ function getPrimaryRoleName(roles: UserRole[] | undefined, isSuperAdmin: boolean
     REFEREE: 'Referee',
     SCOUT: 'Scout',
     ANALYST: 'Analyst',
+    FAN: 'Fan',
+    PARENT: 'Parent',
   };
   
   return roleNames[roles[0]] || 'Player';
