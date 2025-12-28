@@ -1,18 +1,60 @@
-// src/app/dashboard/page.tsx
+/**
+ * ============================================================================
+ * 🏆 PITCHCONNECT - Dashboard Router Page
+ * Path: src/app/dashboard/page.tsx
+ * ============================================================================
+ * 
+ * INTELLIGENT ROLE-BASED ROUTING
+ * 
+ * This page acts as a router that redirects users to their appropriate
+ * dashboard based on their role and permissions.
+ * 
+ * Schema Alignment (UserRole enum):
+ * - PLAYER → /dashboard/player
+ * - COACH → /dashboard/coach  
+ * - MANAGER → /dashboard/manager
+ * - TREASURER → /dashboard/treasurer
+ * - CLUB_OWNER → /dashboard/club
+ * - LEAGUE_ADMIN → /dashboard/league
+ * 
+ * Special Cases:
+ * - SuperAdmin → /dashboard/admin
+ * - Multiple roles → Highest priority role wins
+ * - No roles → Default to player dashboard
+ * 
+ * ============================================================================
+ */
+
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Trophy } from 'lucide-react';
 
 // ============================================================================
-// TYPE DEFINITIONS
+// TYPES - Schema Aligned
 // ============================================================================
 
-type UserRole = 'PLAYER' | 'PLAYER_PRO' | 'COACH' | 'CLUB_MANAGER' | 'LEAGUE_ADMIN' | 'TREASURER' | 'PARENT';
+/**
+ * User roles from Prisma schema
+ * These MUST match the UserRole enum in schema.prisma
+ */
+type UserRole = 
+  | 'PLAYER'
+  | 'COACH'
+  | 'MANAGER'
+  | 'TREASURER'
+  | 'CLUB_OWNER'
+  | 'LEAGUE_ADMIN'
+  | 'REFEREE'
+  | 'SCOUT'
+  | 'ANALYST';
 
-interface ExtendedUser {
+/**
+ * Extended user interface with role information
+ */
+interface SessionUser {
   id?: string;
   name?: string | null;
   email?: string | null;
@@ -21,201 +63,258 @@ interface ExtendedUser {
   roles?: UserRole[];
 }
 
-interface ExtendedSession {
-  user?: ExtendedUser;
-}
-
 // ============================================================================
-// DASHBOARD ROUTES MAPPING - Maps user roles to their dashboard paths
+// CONSTANTS - Route Configuration
 // ============================================================================
 
+/**
+ * Dashboard route mapping
+ * Maps each role to its corresponding dashboard path
+ */
 const DASHBOARD_ROUTES: Record<string, string> = {
-  SUPERADMIN: '/dashboard/superadmin', // ✅ CORRECTED - Points to /superadmin page.tsx
-  LEAGUE_ADMIN: '/dashboard/leagues',
-  CLUB_MANAGER: '/dashboard/clubs',
+  // Admin routes
+  SUPERADMIN: '/dashboard/admin',
+  
+  // Management roles (highest priority)
+  LEAGUE_ADMIN: '/dashboard/league',
+  CLUB_OWNER: '/dashboard/club',
+  MANAGER: '/dashboard/manager',
+  
+  // Staff roles
   COACH: '/dashboard/coach',
   TREASURER: '/dashboard/treasurer',
-  PLAYER_PRO: '/dashboard/player',
+  ANALYST: '/dashboard/analytics',
+  SCOUT: '/dashboard/scouting',
+  REFEREE: '/dashboard/referee',
+  
+  // Player role (default)
   PLAYER: '/dashboard/player',
-  PARENT: '/dashboard/parent',
 };
 
+/**
+ * Role priority order (highest to lowest)
+ * When a user has multiple roles, they're routed to the highest priority dashboard
+ */
+const ROLE_PRIORITY: UserRole[] = [
+  'LEAGUE_ADMIN',
+  'CLUB_OWNER',
+  'MANAGER',
+  'COACH',
+  'TREASURER',
+  'ANALYST',
+  'SCOUT',
+  'REFEREE',
+  'PLAYER',
+];
+
 // ============================================================================
-// ROLE PRIORITY RESOLVER - Determines which dashboard to show
+// HELPER FUNCTIONS
 // ============================================================================
 
-const getDashboardRoute = (user: ExtendedUser | undefined): string => {
-  if (!user) return '/dashboard/player';
+/**
+ * Determines the appropriate dashboard route based on user data
+ * 
+ * Priority:
+ * 1. SuperAdmin flag (highest)
+ * 2. Roles in priority order
+ * 3. Default to player dashboard
+ */
+function getDashboardRoute(user: SessionUser | undefined): string {
+  if (!user) {
+    return DASHBOARD_ROUTES.PLAYER;
+  }
 
-  // SuperAdmin takes HIGHEST priority - unrestricted access
+  // SuperAdmin takes absolute priority
   if (user.isSuperAdmin) {
-    console.log('✅ User is SuperAdmin, routing to:', DASHBOARD_ROUTES.SUPERADMIN);
     return DASHBOARD_ROUTES.SUPERADMIN;
   }
 
+  const userRoles = user.roles || [];
+
+  // Find the highest priority role the user has
+  for (const role of ROLE_PRIORITY) {
+    if (userRoles.includes(role)) {
+      return DASHBOARD_ROUTES[role] || DASHBOARD_ROUTES.PLAYER;
+    }
+  }
+
+  // Default fallback
+  return DASHBOARD_ROUTES.PLAYER;
+}
+
+/**
+ * Get role display name for UI
+ */
+function getRoleDisplayName(user: SessionUser | undefined): string {
+  if (!user) return 'Player';
+  if (user.isSuperAdmin) return 'Super Admin';
+  
   const roles = user.roles || [];
-
-  // Priority order (highest → lowest):
-  // LEAGUE_ADMIN > CLUB_MANAGER > COACH > TREASURER > PLAYER_PRO > PLAYER > PARENT
-  if (roles.includes('LEAGUE_ADMIN')) {
-    console.log('📊 User is LEAGUE_ADMIN');
-    return DASHBOARD_ROUTES.LEAGUE_ADMIN;
-  }
-  if (roles.includes('CLUB_MANAGER')) {
-    console.log('🏢 User is CLUB_MANAGER');
-    return DASHBOARD_ROUTES.CLUB_MANAGER;
-  }
-  if (roles.includes('COACH')) {
-    console.log('👨‍🏫 User is COACH');
-    return DASHBOARD_ROUTES.COACH;
-  }
-  if (roles.includes('TREASURER')) {
-    console.log('💰 User is TREASURER');
-    return DASHBOARD_ROUTES.TREASURER;
-  }
-  if (roles.includes('PLAYER_PRO')) {
-    console.log('⚽ User is PLAYER_PRO');
-    return DASHBOARD_ROUTES.PLAYER_PRO;
-  }
-  if (roles.includes('PLAYER')) {
-    console.log('🎯 User is PLAYER');
-    return DASHBOARD_ROUTES.PLAYER;
-  }
-  if (roles.includes('PARENT')) {
-    console.log('👨‍👩‍👧 User is PARENT');
-    return DASHBOARD_ROUTES.PARENT;
-  }
-
-  // Default fallback - new users without roles
-  console.log('❓ No roles found, defaulting to PLAYER');
-  return '/dashboard/player';
-};
+  if (roles.includes('LEAGUE_ADMIN')) return 'League Admin';
+  if (roles.includes('CLUB_OWNER')) return 'Club Owner';
+  if (roles.includes('MANAGER')) return 'Manager';
+  if (roles.includes('COACH')) return 'Coach';
+  if (roles.includes('TREASURER')) return 'Treasurer';
+  if (roles.includes('ANALYST')) return 'Analyst';
+  if (roles.includes('SCOUT')) return 'Scout';
+  if (roles.includes('REFEREE')) return 'Referee';
+  
+  return 'Player';
+}
 
 // ============================================================================
-// MAIN COMPONENT - Dashboard Router
+// LOADING COMPONENT
 // ============================================================================
 
-export default function DashboardRouter() {
-  const { data: session, status } = useSession() as {
-    data: ExtendedSession | null;
-    status: 'authenticated' | 'loading' | 'unauthenticated';
-  };
-  const router = useRouter();
-
-  // ============================================================================
-  // AUTH & ROUTING EFFECT - Handles all redirects based on auth status
-  // ============================================================================
-
-  useEffect(() => {
-    console.log('🔄 Dashboard Router Effect - Status:', status);
-
-    // Don't redirect while auth is loading
-    if (status === 'loading') {
-      console.log('⏳ Auth is loading, waiting...');
-      return;
-    }
-
-    // Unauthenticated → login page
-    if (status === 'unauthenticated') {
-      console.log('🔐 No session detected, redirecting to login');
-      router.replace('/auth/login');
-      return;
-    }
-
-    // Authenticated → role-based dashboard
-    if (status === 'authenticated' && session?.user) {
-      const route = getDashboardRoute(session.user);
-      const userRole = session.user.isSuperAdmin
-        ? 'SuperAdmin'
-        : session.user.roles?.[0] || 'Player';
-
-      console.log(
-        '✅ AUTHENTICATED USER ROUTING',
-        `| Route: ${route}`,
-        `| Role: ${userRole}`,
-        `| Email: ${session.user.email}`,
-        `| isSuperAdmin: ${session.user.isSuperAdmin}`
-      );
-      
-      // DEBUG: Log the actual DASHBOARD_ROUTES object
-      console.log('📋 DASHBOARD_ROUTES:', DASHBOARD_ROUTES);
-      
-      router.replace(route);
-    }
-  }, [status, session, router]);
-
-  // ============================================================================
-  // UI: Beautiful Loading State While Routing
-  // ============================================================================
-
+function LoadingScreen({ 
+  status, 
+  roleName, 
+  destination 
+}: { 
+  status: string; 
+  roleName: string; 
+  destination: string;
+}) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-charcoal-900 via-charcoal-800 to-charcoal-900 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Animated Background Blobs */}
+    <div 
+      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      style={{ 
+        background: 'linear-gradient(135deg, #111827 0%, #1f2937 50%, #111827 100%)' 
+      }}
+    >
+      {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Gold/Orange blob (top-right) */}
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-gold-500/20 to-orange-400/10 rounded-full blur-3xl animate-blob" />
-
-        {/* Purple blob (bottom-left, delayed) */}
-        <div
-          className="absolute -bottom-40 -left-40 w-96 h-96 bg-gradient-to-tr from-purple-500/20 to-transparent rounded-full blur-3xl animate-blob"
-          style={{ animationDelay: '2s' }}
+        <div 
+          className="absolute -top-40 -right-40 w-96 h-96 rounded-full blur-3xl animate-pulse"
+          style={{ background: 'rgba(249, 115, 22, 0.15)' }}
         />
-
-        {/* Blue blob (middle, longer delay) */}
-        <div
-          className="absolute top-1/2 left-1/2 w-72 h-72 bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-3xl animate-blob"
-          style={{ animationDelay: '4s' }}
+        <div 
+          className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full blur-3xl animate-pulse"
+          style={{ background: 'rgba(139, 92, 246, 0.1)', animationDelay: '1s' }}
         />
       </div>
 
-      {/* Loading Content Card */}
-      <div className="relative z-10 text-center space-y-6 max-w-md">
-        {/* Animated Loader Icon */}
+      {/* Content */}
+      <div className="relative z-10 text-center space-y-8 max-w-md">
+        {/* Logo */}
         <div className="flex justify-center">
-          <div className="w-16 h-16 bg-gradient-to-br from-gold-500 to-orange-400 rounded-2xl flex items-center justify-center shadow-2xl hover:shadow-gold-500/50 transition-shadow duration-300">
-            <Loader2 className="w-8 h-8 text-white animate-spin" />
+          <div 
+            className="w-20 h-20 rounded-2xl flex items-center justify-center shadow-2xl"
+            style={{ 
+              background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+              boxShadow: '0 20px 40px rgba(249, 115, 22, 0.3)'
+            }}
+          >
+            <Trophy className="w-10 h-10 text-white" />
           </div>
         </div>
 
-        {/* Heading Text */}
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gold-400 to-orange-300 bg-clip-text text-transparent">
-            Loading Your Dashboard
+        {/* Text */}
+        <div className="space-y-3">
+          <h1 
+            className="text-4xl font-bold"
+            style={{ 
+              background: 'linear-gradient(to right, #f97316, #fbbf24)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}
+          >
+            Loading Dashboard
           </h1>
-          <p className="text-gray-300 text-lg leading-relaxed">
-            Preparing your personalized experience based on your role...
+          <p className="text-lg" style={{ color: '#9ca3af' }}>
+            Preparing your personalized experience...
           </p>
         </div>
 
-        {/* Animated Progress Bar */}
-        <div className="w-full h-1.5 bg-charcoal-700 rounded-full overflow-hidden shadow-lg">
-          <div className="h-full bg-gradient-to-r from-gold-500 via-orange-400 to-purple-500 animate-pulse"></div>
+        {/* Progress Bar */}
+        <div 
+          className="w-full h-1.5 rounded-full overflow-hidden"
+          style={{ backgroundColor: '#374151' }}
+        >
+          <div 
+            className="h-full rounded-full animate-pulse"
+            style={{ 
+              background: 'linear-gradient(to right, #f97316, #fbbf24, #a855f7)',
+              width: '100%'
+            }}
+          />
         </div>
 
-        {/* Additional Context */}
-        <p className="text-gray-400 text-sm pt-4">
-          ✨ Setting up your interface...
-        </p>
+        {/* Spinner */}
+        <div className="flex justify-center">
+          <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#f97316' }} />
+        </div>
 
-        {/* Debug Info (development only) */}
+        {/* Debug Info (Development Only) */}
         {process.env.NODE_ENV === 'development' && (
-          <div className="mt-8 p-4 bg-charcoal-800/50 border border-gold-500/20 rounded-lg text-left">
-            <p className="text-xs text-gray-500 mb-2">Debug Info:</p>
-            <p className="text-xs text-gold-400 font-mono">
-              Status: {status}
-            </p>
-            <p className="text-xs text-gold-400 font-mono">
-              SuperAdmin: {session?.user?.isSuperAdmin ? '✅ Yes' : '❌ No'}
-            </p>
-            <p className="text-xs text-gold-400 font-mono">
-              Roles: {session?.user?.roles?.join(', ') || 'None'}
-            </p>
-            <p className="text-xs text-gold-400 font-mono">
-              Route: {getDashboardRoute(session?.user)}
-            </p>
+          <div 
+            className="mt-8 p-4 rounded-xl text-left text-sm font-mono"
+            style={{ 
+              backgroundColor: 'rgba(31, 41, 55, 0.5)', 
+              border: '1px solid rgba(249, 115, 22, 0.2)' 
+            }}
+          >
+            <p style={{ color: '#6b7280' }} className="mb-2">Debug Info:</p>
+            <p style={{ color: '#fbbf24' }}>Status: {status}</p>
+            <p style={{ color: '#fbbf24' }}>Role: {roleName}</p>
+            <p style={{ color: '#fbbf24' }}>Destination: {destination}</p>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
+export default function DashboardRouter() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [destination, setDestination] = useState('/dashboard/player');
+
+  // Get typed user from session
+  const user = session?.user as SessionUser | undefined;
+  const roleName = getRoleDisplayName(user);
+
+  // Handle routing based on auth status
+  useEffect(() => {
+    // Wait for session to load
+    if (status === 'loading') return;
+
+    // Redirect unauthenticated users to login
+    if (status === 'unauthenticated') {
+      router.replace('/auth/login?callbackUrl=/dashboard');
+      return;
+    }
+
+    // Calculate and perform redirect for authenticated users
+    if (status === 'authenticated' && user) {
+      const route = getDashboardRoute(user);
+      setDestination(route);
+      
+      // Log routing decision in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🎯 Dashboard Router:', {
+          email: user.email,
+          isSuperAdmin: user.isSuperAdmin,
+          roles: user.roles,
+          destination: route,
+        });
+      }
+
+      // Perform redirect
+      router.replace(route);
+    }
+  }, [status, user, router]);
+
+  // Show loading screen while processing
+  return (
+    <LoadingScreen 
+      status={status} 
+      roleName={roleName}
+      destination={destination}
+    />
   );
 }

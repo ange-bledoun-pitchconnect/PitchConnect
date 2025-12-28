@@ -1,5 +1,12 @@
 // ============================================================================
-// 🌟 PITCHCONNECT DATABASE SCHEMA v7.0.2 - PRISMA 6 STABLE
+// 🌟 PITCHCONNECT DATABASE SCHEMA v7.1.0 - ENTERPRISE AUTH EDITION
+// ============================================================================
+// Enhanced with:
+// - Complete Two-Factor Authentication model
+// - Secure password reset flow
+// - Email verification system
+// - Session management
+// - Audit logging for auth events
 // ============================================================================
 
 generator client {
@@ -9,9 +16,10 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DIRECT_URL")
-  directUrl = env("DIRECT_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [citext]
 }
 
 // ============================================================================
@@ -394,28 +402,77 @@ enum WebhookEvent {
 }
 
 enum AuditActionType {
+  // User Management
   USER_CREATED
   USER_UPDATED
   USER_DELETED
   USER_SUSPENDED
+  USER_BANNED
+  USER_REACTIVATED
   ROLE_ASSIGNED
+  ROLE_REMOVED
+
+  // Authentication Events
+  USER_REGISTERED
+  USER_LOGIN
+  USER_LOGOUT
+  LOGIN_FAILED
+  LOGIN_LOCKED
+  EMAIL_VERIFIED
+  PHONE_VERIFIED
+  PASSWORD_CHANGED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  TWO_FACTOR_VERIFIED
+  TWO_FACTOR_BACKUP_USED
+  SESSION_CREATED
+  SESSION_REVOKED
+  SESSION_EXPIRED
+  VERIFICATION_EMAIL_SENT
+  VERIFICATION_EMAIL_RESENT
+
+  // Subscription & Billing
   SUBSCRIPTION_GRANTED
   SUBSCRIPTION_UPGRADED
+  SUBSCRIPTION_DOWNGRADED
+  SUBSCRIPTION_CANCELLED
   PAYMENT_PROCESSED
+  PAYMENT_FAILED
+  REFUND_PROCESSED
+
+  // Data Operations
   DATA_EXPORTED
   DATA_DELETED
+  DATA_IMPORTED
+
+  // Team & Match
   TEAM_CREATED
+  TEAM_UPDATED
+  TEAM_DELETED
   MATCH_CREATED
+  MATCH_UPDATED
   MATCH_RESULT_UPDATED
+  MATCH_CANCELLED
+
+  // Player
+  PLAYER_TRANSFER
+  PLAYER_CONTRACT_SIGNED
+  MEDICAL_RECORD_ACCESSED
+  MEDICAL_RECORD_CREATED
+
+  // Compliance
+  CONSENT_UPDATED
+  GDPR_REQUEST
+  DATA_RETENTION_APPLIED
+
+  // System
   SYSTEM_MAINTENANCE
   API_KEY_GENERATED
   API_KEY_REVOKED
-  LOGIN_ATTEMPT
-  FAILED_LOGIN
   SUSPICIOUS_LOGIN
-  PLAYER_TRANSFER
-  MEDICAL_RECORD_ACCESSED
-  CONSENT_UPDATED
+  SECURITY_ALERT
 }
 
 enum TrainingIntensity {
@@ -689,6 +746,14 @@ enum GoalStatus {
   CANCELLED
 }
 
+enum VerificationType {
+  EMAIL
+  PHONE
+  PASSWORD_RESET
+  TWO_FACTOR
+  ACCOUNT_RECOVERY
+}
+
 // ============================================================================
 // 🏢 ORGANISATION & MULTI-TENANCY MODELS
 // ============================================================================
@@ -862,7 +927,7 @@ model Season {
 }
 
 // ============================================================================
-// 👤 USER & AUTHENTICATION MODELS (FIXED)
+// 👤 USER & AUTHENTICATION MODELS - ENHANCED v7.1.0
 // ============================================================================
 
 model User {
@@ -893,26 +958,28 @@ model User {
   primaryOrganisationId String?
 
   // =========================================================================
-  // 🔗 CLUB & TEAM ASSOCIATIONS (FIXED: Added missing fields)
+  // 🔗 CLUB & TEAM ASSOCIATIONS
   // =========================================================================
   clubId String?
   teamId String?
 
   // =========================================================================
-  // 🔐 AUTH & SECURITY (FIXED: Removed duplicates)
+  // 🔐 PASSWORD & AUTH
   // =========================================================================
-  password            String?
-  passwordChangedAt   DateTime?
+  password          String?
+  passwordChangedAt DateTime?
+
+  // Password Reset (hashed token stored)
   passwordResetToken  String?   @unique
   passwordResetExpiry DateTime?
 
+  // Login Security
   failedLoginAttempts Int       @default(0)
   lastFailedLoginAt   DateTime?
   lastLoginAt         DateTime?
   lastLoginIp         String?
-
-  loginAttempts Int       @default(0)
-  lockoutUntil  DateTime?
+  loginAttempts       Int       @default(0)
+  lockoutUntil        DateTime?
 
   // =========================================================================
   // 🔐 TWO-FACTOR AUTHENTICATION
@@ -951,12 +1018,15 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
+  // =========================================================================
+  // 🔗 RELATIONS
+  // =========================================================================
   organisationMemberships OrganisationMember[]
   organisationsOwned      Organisation[]          @relation("organisationOwner")
   accounts                Account[]
   sessions                Session[]
   refreshTokens           RefreshToken[]
+  twoFactorAuth           TwoFactorAuth?
   apiKeys                 ApiKey[]
   player                  Player?
   coach                   Coach?
@@ -1000,8 +1070,44 @@ model User {
   @@index([createdAt])
   @@index([lastName, firstName])
   @@index([isSuperAdmin])
+  @@index([passwordResetToken])
+  @@index([twoFactorEnabled])
   @@map("users")
 }
+
+// ============================================================================
+// 🔐 TWO-FACTOR AUTHENTICATION MODEL
+// ============================================================================
+
+model TwoFactorAuth {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // TOTP Secret (Base32 encoded)
+  secret String
+
+  // Status
+  enabled Boolean @default(false)
+
+  // Backup codes (hashed with SHA-256)
+  backupCodes String[]
+
+  // Timestamps
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastUsedAt DateTime?
+
+  // Relation
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([enabled])
+  @@map("two_factor_auth")
+}
+
+// ============================================================================
+// 🔑 OAUTH ACCOUNTS (NextAuth)
+// ============================================================================
 
 model Account {
   id                String @id @default(cuid())
@@ -1027,6 +1133,10 @@ model Account {
   @@index([userId])
   @@map("accounts")
 }
+
+// ============================================================================
+// 🎫 SESSION MANAGEMENT
+// ============================================================================
 
 model Session {
   id           String   @id @default(cuid())
@@ -1070,11 +1180,15 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+// ============================================================================
+// ✉️ VERIFICATION TOKENS (Email, Phone, Password Reset)
+// ============================================================================
+
 model VerificationToken {
-  id         String   @id @default(cuid())
-  identifier String
-  token      String   @unique
-  type       String   @default("EMAIL")
+  id         String           @id @default(cuid())
+  identifier String // User's email or phone
+  token      String           @unique // Hashed token
+  type       VerificationType @default(EMAIL)
   expires    DateTime
 
   createdAt DateTime @default(now())
@@ -1082,8 +1196,13 @@ model VerificationToken {
   @@unique([identifier, token])
   @@index([type])
   @@index([expires])
+  @@index([identifier])
   @@map("verification_tokens")
 }
+
+// ============================================================================
+// 🔑 API KEYS
+// ============================================================================
 
 model ApiKey {
   id             String  @id @default(cuid())
@@ -1182,7 +1301,7 @@ model ResourcePermission {
 
 model AuditLog {
   id             String  @id @default(cuid())
-  organisationId String
+  organisationId String?
   userId         String?
 
   action AuditActionType
@@ -1209,8 +1328,8 @@ model AuditLog {
 
   createdAt DateTime @default(now())
 
-  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  user         User?        @relation("auditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+  organisation Organisation? @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  user         User?         @relation("auditLogUser", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([organisationId])
   @@index([userId])
@@ -1382,8 +1501,7 @@ model Player {
   highlights         PlayerHighlight[]
   badges             Badge[]               @relation("badgePlayer")
   achievements       Achievement[]         @relation("achievementPlayer")
-  transfersFrom      Transfer[]            @relation("transferFrom")
-  transfersTo        Transfer[]            @relation("transferTo")
+  transfers          Transfer[]
   availabilityWindow PlayerAvailability[]
   performanceGoals   PerformanceGoal[]     @relation("goalPlayer")
   trainingAttendance TrainingAttendance[]
@@ -1843,9 +1961,8 @@ model Transfer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  player   Player  @relation("transferFrom", fields: [playerId], references: [id], onDelete: Cascade)
-  toPlayer Player? @relation("transferTo", fields: [playerId], references: [id], onDelete: Cascade, map: "transfer_to_player")
-  season   Season? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  player Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season Season? @relation(fields: [seasonId], references: [id], onDelete: SetNull)
 
   @@index([playerId])
   @@index([fromClubId])
@@ -3566,7 +3683,7 @@ model Webhook {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   deliveries   WebhookDelivery[]
 
   @@index([organisationId])

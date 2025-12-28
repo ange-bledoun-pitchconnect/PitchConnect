@@ -1,475 +1,195 @@
 /**
  * ============================================================================
- * 🔐 PITCHCONNECT - AUTHENTICATION CONFIGURATION v2.0
+ * 🏆 PITCHCONNECT - NextAuth Configuration
+ * Path: src/auth.ts
  * ============================================================================
- * Path: /src/auth.ts
- *
- * Enterprise-grade NextAuth v4 configuration with:
- * ✅ Prisma 7 compatible (singleton pattern)
- * ✅ Email/Password + OAuth (Google, GitHub, Microsoft)
- * ✅ JWT Session Strategy with refresh
- * ✅ Role-Based Access Control (RBAC)
- * ✅ Multi-tenancy support (Club/Team scoping)
- * ✅ Rate limiting awareness
- * ✅ Security logging & audit trail
- * ✅ Account lockout protection
- * ✅ Session fingerprinting
- * ✅ Type-safe configuration
+ * 
+ * Enterprise-grade authentication with:
+ * - Credentials provider (email/password)
+ * - Google OAuth provider
+ * - JWT session strategy
+ * - Role-based access control
+ * - 2FA support
+ * - Audit logging
+ * 
+ * Schema Alignment:
+ * - UserRole: PLAYER, COACH, MANAGER, TREASURER, CLUB_OWNER, LEAGUE_ADMIN
+ * - SubscriptionTier: PLAYER_FREE, PLAYER_PRO, COACH, MANAGER, LEAGUE_ADMIN
+ * 
  * ============================================================================
  */
 
-import NextAuth, {
-  type NextAuthConfig,
-  type DefaultSession,
-  type User as NextAuthUser,
-} from 'next-auth';
+import NextAuth from 'next-auth';
+import { PrismaAdapter } from '@auth/prisma-adapter';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
-import GitHubProvider from 'next-auth/providers/github';
-import { compare } from 'bcryptjs';
-import { z } from 'zod';
-
-// ============================================================================
-// ✅ PRISMA 7 FIX: Import singleton instance (NOT PrismaClient)
-// ============================================================================
+import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import { logger } from '@/lib/logging';
+import type { NextAuthConfig } from 'next-auth';
+import type { JWT } from 'next-auth/jwt';
+import type { User, Session, Account, Profile } from 'next-auth';
 
 // ============================================================================
-// 🎯 CONSTANTS
+// TYPES - Schema Aligned
 // ============================================================================
 
-/** Session duration constants */
-const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
-const SESSION_UPDATE_AGE = 24 * 60 * 60; // Refresh every 24 hours
-const JWT_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
-
-/** Security constants */
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MINUTES = 15;
-
-// ============================================================================
-// 🏷️ TYPE DEFINITIONS
-// ============================================================================
-
-/**
- * User roles aligned with Prisma schema
- * Ordered by privilege level (highest to lowest)
- */
-export type UserRole =
-  | 'SUPERADMIN'
-  | 'ADMIN'
+type UserRole = 
+  | 'PLAYER'
+  | 'COACH'
+  | 'MANAGER'
+  | 'TREASURER'
   | 'CLUB_OWNER'
   | 'LEAGUE_ADMIN'
-  | 'MANAGER'
-  | 'COACH'
-  | 'ANALYST'
-  | 'SCOUT'
   | 'REFEREE'
+  | 'SCOUT'
+  | 'ANALYST';
+
+type SubscriptionTier =
+  | 'PLAYER_FREE'
   | 'PLAYER_PRO'
-  | 'PLAYER'
-  | 'GUARDIAN'
-  | 'PARENT'
-  | 'FAN';
+  | 'COACH'
+  | 'MANAGER'
+  | 'LEAGUE_ADMIN';
 
-/**
- * User account status aligned with Prisma schema
- */
-export type UserStatus =
-  | 'ACTIVE'
-  | 'PENDING_EMAIL_VERIFICATION'
-  | 'PENDING_APPROVAL'
-  | 'SUSPENDED'
-  | 'BANNED'
-  | 'INACTIVE'
-  | 'ARCHIVED';
-
-/**
- * Permission names for RBAC
- */
-export type PermissionName =
-  | 'system:admin'
-  | 'users:read'
-  | 'users:write'
-  | 'users:delete'
-  | 'clubs:read'
-  | 'clubs:write'
-  | 'clubs:delete'
-  | 'teams:read'
-  | 'teams:write'
-  | 'teams:delete'
-  | 'players:read'
-  | 'players:write'
-  | 'players:delete'
-  | 'matches:read'
-  | 'matches:write'
-  | 'matches:delete'
-  | 'analytics:read'
-  | 'analytics:export'
-  | 'payments:read'
-  | 'payments:write'
-  | 'audit:read'
-  | 'settings:read'
-  | 'settings:write';
-
-/**
- * Extended session user type
- */
-interface SessionUser {
+interface ExtendedUser extends User {
   id: string;
   email: string;
   name: string;
-  image?: string | null;
-  role: UserRole;
+  firstName?: string;
+  lastName?: string;
+  image?: string;
   roles: UserRole[];
-  permissions: PermissionName[];
-  status: UserStatus;
-  clubId?: string | null;
-  teamId?: string | null;
-  emailVerified?: Date | null;
-  lastLoginAt?: Date | null;
+  subscriptionTier: SubscriptionTier;
+  isSuperAdmin: boolean;
+  twoFactorEnabled: boolean;
+  emailVerified: Date | null;
+  onboardingCompleted: boolean;
 }
 
-/**
- * Extend NextAuth types for type safety
- */
-declare module 'next-auth' {
-  interface Session extends DefaultSession {
-    user: SessionUser;
-    accessToken?: string;
-    error?: string;
-  }
-
-  interface User extends NextAuthUser {
-    role?: UserRole;
-    roles?: UserRole[];
-    status?: UserStatus;
-    clubId?: string | null;
-    teamId?: string | null;
-  }
+interface ExtendedJWT extends JWT {
+  id: string;
+  email: string;
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  image?: string;
+  roles: UserRole[];
+  subscriptionTier: SubscriptionTier;
+  isSuperAdmin: boolean;
+  twoFactorEnabled: boolean;
+  emailVerified: boolean;
+  onboardingCompleted: boolean;
 }
 
-declare module 'next-auth/jwt' {
-  interface JWT {
+interface ExtendedSession extends Session {
+  user: {
     id: string;
     email: string;
     name: string;
-    picture?: string | null;
-    role: UserRole;
+    firstName?: string;
+    lastName?: string;
+    image?: string;
     roles: UserRole[];
-    permissions: PermissionName[];
-    status: UserStatus;
-    clubId?: string | null;
-    teamId?: string | null;
-    emailVerified?: Date | null;
-    lastLoginAt?: Date | null;
-    iat?: number;
-    exp?: number;
-    jti?: string;
-  }
+    subscriptionTier: SubscriptionTier;
+    isSuperAdmin: boolean;
+    twoFactorEnabled: boolean;
+    emailVerified: boolean;
+    onboardingCompleted: boolean;
+  };
 }
 
 // ============================================================================
-// 🔒 VALIDATION SCHEMAS
+// MODULE AUGMENTATION
 // ============================================================================
 
-/**
- * Credentials validation schema using Zod
- */
-const credentialsSchema = z.object({
-  email: z
-    .string()
-    .email('Invalid email format')
-    .min(5, 'Email too short')
-    .max(255, 'Email too long')
-    .transform((v) => v.toLowerCase().trim()),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password too long'),
-});
-
-// ============================================================================
-// 🛡️ SECURITY HELPERS
-// ============================================================================
-
-/**
- * Check if account is locked due to too many failed attempts
- */
-async function isAccountLocked(userId: string): Promise<boolean> {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        failedLoginAttempts: true,
-        lastFailedLoginAt: true,
-      },
-    });
-
-    if (!user) return false;
-
-    // Check if locked out
-    if (user.failedLoginAttempts >= MAX_LOGIN_ATTEMPTS && user.lastFailedLoginAt) {
-      const lockoutEnd = new Date(user.lastFailedLoginAt);
-      lockoutEnd.setMinutes(lockoutEnd.getMinutes() + LOCKOUT_DURATION_MINUTES);
-
-      if (new Date() < lockoutEnd) {
-        return true;
-      }
-
-      // Lockout expired, reset attempts
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          failedLoginAttempts: 0,
-          lastFailedLoginAt: null,
-        },
-      });
-    }
-
-    return false;
-  } catch (error) {
-    console.error('[AUTH] Error checking account lock:', error);
-    return false;
-  }
+declare module 'next-auth' {
+  interface Session extends ExtendedSession {}
+  interface User extends ExtendedUser {}
 }
 
-/**
- * Record failed login attempt
- */
-async function recordFailedAttempt(userId: string): Promise<void> {
-  try {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        failedLoginAttempts: { increment: 1 },
-        lastFailedLoginAt: new Date(),
-      },
-    });
-  } catch (error) {
-    console.error('[AUTH] Error recording failed attempt:', error);
-  }
-}
-
-/**
- * Reset failed login attempts on successful login
- */
-async function resetFailedAttempts(userId: string): Promise<void> {
-  try {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        failedLoginAttempts: 0,
-        lastFailedLoginAt: null,
-        lastLoginAt: new Date(),
-      },
-    });
-  } catch (error) {
-    console.error('[AUTH] Error resetting failed attempts:', error);
-  }
-}
-
-/**
- * Log authentication event for audit trail
- */
-async function logAuthEvent(
-  type: 'LOGIN_SUCCESS' | 'LOGIN_FAILED' | 'LOGOUT' | 'SESSION_REFRESH' | 'OAUTH_LINK',
-  userId: string | null,
-  metadata: Record<string, unknown> = {}
-): Promise<void> {
-  try {
-    // Log to console in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[AUTH] ${type}:`, { userId, ...metadata });
-    }
-
-    // Optionally log to database audit table
-    // await prisma.auditLog.create({
-    //   data: {
-    //     action: type,
-    //     userId,
-    //     metadata: JSON.stringify(metadata),
-    //     ipAddress: metadata.ip as string,
-    //     userAgent: metadata.userAgent as string,
-    //   },
-    // });
-  } catch (error) {
-    console.error('[AUTH] Error logging auth event:', error);
-  }
+declare module 'next-auth/jwt' {
+  interface JWT extends ExtendedJWT {}
 }
 
 // ============================================================================
-// 🔑 PERMISSIONS HELPER
+// AUTH CONFIGURATION
 // ============================================================================
 
-/**
- * Role-to-permissions mapping
- * Defines what each role can do in the system
- */
-const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
-  SUPERADMIN: [
-    'system:admin',
-    'users:read', 'users:write', 'users:delete',
-    'clubs:read', 'clubs:write', 'clubs:delete',
-    'teams:read', 'teams:write', 'teams:delete',
-    'players:read', 'players:write', 'players:delete',
-    'matches:read', 'matches:write', 'matches:delete',
-    'analytics:read', 'analytics:export',
-    'payments:read', 'payments:write',
-    'audit:read',
-    'settings:read', 'settings:write',
-  ],
-  ADMIN: [
-    'users:read', 'users:write',
-    'clubs:read', 'clubs:write',
-    'teams:read', 'teams:write',
-    'players:read', 'players:write',
-    'matches:read', 'matches:write',
-    'analytics:read', 'analytics:export',
-    'audit:read',
-    'settings:read', 'settings:write',
-  ],
-  CLUB_OWNER: [
-    'clubs:read', 'clubs:write',
-    'teams:read', 'teams:write', 'teams:delete',
-    'players:read', 'players:write',
-    'matches:read', 'matches:write',
-    'analytics:read', 'analytics:export',
-    'payments:read', 'payments:write',
-    'settings:read', 'settings:write',
-  ],
-  LEAGUE_ADMIN: [
-    'teams:read', 'teams:write',
-    'matches:read', 'matches:write',
-    'analytics:read',
-    'settings:read',
-  ],
-  MANAGER: [
-    'teams:read', 'teams:write',
-    'players:read', 'players:write',
-    'matches:read', 'matches:write',
-    'analytics:read',
-  ],
-  COACH: [
-    'teams:read',
-    'players:read', 'players:write',
-    'matches:read', 'matches:write',
-    'analytics:read',
-  ],
-  ANALYST: [
-    'teams:read',
-    'players:read',
-    'matches:read',
-    'analytics:read', 'analytics:export',
-  ],
-  SCOUT: [
-    'teams:read',
-    'players:read',
-    'matches:read',
-    'analytics:read',
-  ],
-  REFEREE: [
-    'matches:read', 'matches:write',
-  ],
-  PLAYER_PRO: [
-    'players:read',
-    'matches:read',
-    'analytics:read',
-  ],
-  PLAYER: [
-    'players:read',
-    'matches:read',
-  ],
-  GUARDIAN: [
-    'players:read',
-    'matches:read',
-  ],
-  PARENT: [
-    'players:read',
-    'matches:read',
-  ],
-  FAN: [
-    'matches:read',
-  ],
-};
+export const authConfig: NextAuthConfig = {
+  // Prisma adapter for database sessions
+  adapter: PrismaAdapter(prisma),
 
-/**
- * Get permissions for a role
- */
-function getPermissionsByRole(role: UserRole): PermissionName[] {
-  return ROLE_PERMISSIONS[role] || [];
-}
+  // Use JWT strategy for sessions (stateless, scalable)
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // Update session every 24 hours
+  },
 
-/**
- * Get combined permissions for multiple roles
- */
-function getPermissionsByRoles(roles: UserRole[]): PermissionName[] {
-  const permissions = new Set<PermissionName>();
-  
-  for (const role of roles) {
-    const rolePerms = ROLE_PERMISSIONS[role] || [];
-    rolePerms.forEach((p) => permissions.add(p));
-  }
-  
-  return Array.from(permissions);
-}
+  // Custom pages
+  pages: {
+    signIn: '/auth/login',
+    signOut: '/auth/logout',
+    error: '/auth/error',
+    verifyRequest: '/auth/verify',
+    newUser: '/onboarding',
+  },
 
-/**
- * Get the highest privilege role from a list
- */
-function getPrimaryRole(roles: UserRole[]): UserRole {
-  const roleOrder: UserRole[] = [
-    'SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'LEAGUE_ADMIN',
-    'MANAGER', 'COACH', 'ANALYST', 'SCOUT', 'REFEREE',
-    'PLAYER_PRO', 'PLAYER', 'GUARDIAN', 'PARENT', 'FAN',
-  ];
-
-  for (const role of roleOrder) {
-    if (roles.includes(role)) {
-      return role;
-    }
-  }
-
-  return 'FAN';
-}
-
-// ============================================================================
-// 🔐 NEXTAUTH CONFIGURATION
-// ============================================================================
-
-const authConfig: NextAuthConfig = {
-  // ==========================================================================
-  // 🔌 AUTHENTICATION PROVIDERS
-  // ==========================================================================
+  // Authentication providers
   providers: [
-    // =========================================================================
-    // 📧 EMAIL/PASSWORD AUTHENTICATION
-    // =========================================================================
+    // ========================================================================
+    // GOOGLE OAUTH PROVIDER
+    // ========================================================================
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          prompt: 'consent',
+          access_type: 'offline',
+          response_type: 'code',
+        },
+      },
+      profile(profile) {
+        return {
+          id: profile.sub,
+          email: profile.email,
+          name: profile.name,
+          firstName: profile.given_name,
+          lastName: profile.family_name,
+          image: profile.picture,
+          emailVerified: profile.email_verified ? new Date() : null,
+          roles: ['PLAYER'] as UserRole[],
+          subscriptionTier: 'PLAYER_FREE' as SubscriptionTier,
+          isSuperAdmin: false,
+          twoFactorEnabled: false,
+          onboardingCompleted: false,
+        };
+      },
+    }),
+
+    // ========================================================================
+    // CREDENTIALS PROVIDER (Email/Password)
+    // ========================================================================
     CredentialsProvider({
       id: 'credentials',
       name: 'Email & Password',
       credentials: {
-        email: {
-          label: 'Email',
-          type: 'email',
-          placeholder: 'you@example.com',
-        },
-        password: {
-          label: 'Password',
-          type: 'password',
-        },
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+        twoFactorCode: { label: '2FA Code', type: 'text' },
       },
-
-      async authorize(credentials): Promise<NextAuthUser | null> {
+      async authorize(credentials) {
         try {
-          // Validate credentials with Zod
-          const result = credentialsSchema.safeParse(credentials);
-
-          if (!result.success) {
-            console.warn('[AUTH] Invalid credentials format:', result.error.flatten());
+          // Validate credentials exist
+          if (!credentials?.email || !credentials?.password) {
+            logger.warn('Login attempt with missing credentials');
             throw new Error('CredentialsSignin');
           }
 
-          const { email, password } = result.data;
+          const email = (credentials.email as string).toLowerCase().trim();
+          const password = credentials.password as string;
 
           // Find user by email
           const user = await prisma.user.findUnique({
@@ -478,418 +198,401 @@ const authConfig: NextAuthConfig = {
               id: true,
               email: true,
               password: true,
+              name: true,
               firstName: true,
               lastName: true,
-              avatar: true,
+              image: true,
               roles: true,
-              status: true,
+              subscriptionTier: true,
+              isSuperAdmin: true,
+              twoFactorEnabled: true,
               emailVerified: true,
-              clubId: true,
-              teamId: true,
-              failedLoginAttempts: true,
-              lastFailedLoginAt: true,
+              onboardingCompleted: true,
+              isActive: true,
+              status: true,
             },
           });
 
           // User not found
           if (!user) {
-            await logAuthEvent('LOGIN_FAILED', null, {
-              email,
-              reason: 'User not found',
-            });
+            logger.warn('Login attempt for non-existent user', { email });
             throw new Error('CredentialsSignin');
           }
 
-          // Check account lock
-          if (await isAccountLocked(user.id)) {
-            await logAuthEvent('LOGIN_FAILED', user.id, {
-              reason: 'Account locked',
-            });
-            throw new Error('AccountLocked');
+          // Account disabled
+          if (!user.isActive || user.status === 'BANNED' || user.status === 'SUSPENDED') {
+            logger.warn('Login attempt for disabled account', { email, status: user.status });
+            throw new Error('AccessDenied');
           }
 
-          // Check account status
-          const allowedStatuses: UserStatus[] = ['ACTIVE', 'PENDING_EMAIL_VERIFICATION'];
-          if (!allowedStatuses.includes(user.status as UserStatus)) {
-            await logAuthEvent('LOGIN_FAILED', user.id, {
-              reason: `Invalid status: ${user.status}`,
-            });
-            throw new Error('AccountInactive');
-          }
-
-          // Check if password exists (OAuth-only accounts)
+          // No password set (OAuth user)
           if (!user.password) {
-            await logAuthEvent('LOGIN_FAILED', user.id, {
-              reason: 'No password set (OAuth account)',
-            });
+            logger.warn('Login attempt for OAuth-only account', { email });
             throw new Error('OAuthAccountNotLinked');
           }
 
           // Verify password
-          const isPasswordValid = await compare(password, user.password);
-
-          if (!isPasswordValid) {
-            await recordFailedAttempt(user.id);
-            await logAuthEvent('LOGIN_FAILED', user.id, {
-              reason: 'Invalid password',
-            });
+          const isValidPassword = await bcrypt.compare(password, user.password);
+          if (!isValidPassword) {
+            logger.warn('Invalid password attempt', { email });
             throw new Error('CredentialsSignin');
           }
 
-          // ✅ SUCCESS: Reset failed attempts and update last login
-          await resetFailedAttempts(user.id);
-          await logAuthEvent('LOGIN_SUCCESS', user.id, { provider: 'credentials' });
+          // Check 2FA if enabled
+          if (user.twoFactorEnabled) {
+            const twoFactorCode = credentials.twoFactorCode as string | undefined;
+            
+            if (!twoFactorCode) {
+              // Return partial auth - client should prompt for 2FA code
+              throw new Error('TwoFactorRequired');
+            }
 
-          // Return user object
+            // Verify 2FA code (implement verification logic)
+            const isValid2FA = await verify2FACode(user.id, twoFactorCode);
+            if (!isValid2FA) {
+              logger.warn('Invalid 2FA code', { email });
+              throw new Error('InvalidTwoFactorCode');
+            }
+          }
+
+          // Check email verification if required
+          if (!user.emailVerified && process.env.REQUIRE_EMAIL_VERIFICATION === 'true') {
+            logger.warn('Login attempt with unverified email', { email });
+            throw new Error('EmailNotVerified');
+          }
+
+          // Log successful login
+          logger.info('User logged in successfully', { 
+            userId: user.id, 
+            email: user.email,
+            roles: user.roles,
+          });
+
+          // Update last login timestamp
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          });
+
+          // Return user object (password excluded)
           return {
             id: user.id,
             email: user.email,
-            name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
-            image: user.avatar,
-            role: getPrimaryRole(user.roles as UserRole[]),
+            name: user.name || `${user.firstName} ${user.lastName}`,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            image: user.image,
             roles: user.roles as UserRole[],
-            status: user.status as UserStatus,
-            clubId: user.clubId,
-            teamId: user.teamId,
+            subscriptionTier: user.subscriptionTier as SubscriptionTier,
+            isSuperAdmin: user.isSuperAdmin,
+            twoFactorEnabled: user.twoFactorEnabled,
+            emailVerified: user.emailVerified,
+            onboardingCompleted: user.onboardingCompleted,
           };
         } catch (error) {
-          // Re-throw known errors
-          if (error instanceof Error) {
-            const knownErrors = [
-              'CredentialsSignin',
-              'AccountLocked',
-              'AccountInactive',
-              'OAuthAccountNotLinked',
-            ];
-            if (knownErrors.includes(error.message)) {
-              throw error;
-            }
-          }
-
-          // Log unexpected errors
-          console.error('[AUTH] Unexpected authorization error:', error);
-          throw new Error('CredentialsSignin');
+          const message = error instanceof Error ? error.message : 'CredentialsSignin';
+          logger.error('Authorization error', error as Error);
+          throw new Error(message);
         }
       },
     }),
-
-    // =========================================================================
-    // 🌐 GOOGLE OAUTH
-    // =========================================================================
-    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-      ? [
-          GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-            allowDangerousEmailAccountLinking: true,
-            authorization: {
-              params: {
-                prompt: 'consent',
-                access_type: 'offline',
-                response_type: 'code',
-              },
-            },
-            profile(profile) {
-              return {
-                id: profile.sub,
-                name: profile.name,
-                email: profile.email,
-                image: profile.picture,
-              };
-            },
-          }),
-        ]
-      : []),
-
-    // =========================================================================
-    // 🐙 GITHUB OAUTH
-    // =========================================================================
-    ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
-      ? [
-          GitHubProvider({
-            clientId: process.env.GITHUB_CLIENT_ID,
-            clientSecret: process.env.GITHUB_CLIENT_SECRET,
-            allowDangerousEmailAccountLinking: true,
-          }),
-        ]
-      : []),
   ],
 
-  // ==========================================================================
-  // ⚙️ SESSION CONFIGURATION
-  // ==========================================================================
-  session: {
-    strategy: 'jwt',
-    maxAge: SESSION_MAX_AGE,
-    updateAge: SESSION_UPDATE_AGE,
-  },
-
-  // ==========================================================================
-  // 🔑 JWT CONFIGURATION
-  // ==========================================================================
-  jwt: {
-    maxAge: JWT_MAX_AGE,
-  },
-
-  // ==========================================================================
-  // 📄 CUSTOM PAGES
-  // ==========================================================================
-  pages: {
-    signIn: '/auth/signin',
-    signOut: '/auth/signout',
-    error: '/auth/error',
-    verifyRequest: '/auth/verify-request',
-    newUser: '/onboarding',
-  },
-
-  // ==========================================================================
-  // 🔄 CALLBACKS
-  // ==========================================================================
+  // ============================================================================
+  // CALLBACKS
+  // ============================================================================
   callbacks: {
     /**
      * Sign In Callback
-     * Validates and handles OAuth account creation/linking
+     * Called after successful authentication
      */
     async signIn({ user, account, profile }) {
-      // Require email for all sign-ins
-      if (!user.email) {
-        console.warn('[AUTH] Sign-in rejected: No email provided');
-        return false;
-      }
+      try {
+        // Handle OAuth sign in
+        if (account?.provider === 'google') {
+          const email = user.email?.toLowerCase();
+          
+          if (!email) {
+            logger.warn('OAuth sign in without email');
+            return false;
+          }
 
-      // Handle OAuth sign-in
-      if (account?.provider && account.provider !== 'credentials') {
-        try {
+          // Check if user exists
           const existingUser = await prisma.user.findUnique({
-            where: { email: user.email },
-            select: { id: true, status: true },
+            where: { email },
+            select: { id: true, isActive: true, status: true },
           });
 
-          if (existingUser) {
-            // Check if existing user can sign in
-            const allowedStatuses: UserStatus[] = ['ACTIVE', 'PENDING_EMAIL_VERIFICATION'];
-            if (!allowedStatuses.includes(existingUser.status as UserStatus)) {
-              console.warn(`[AUTH] OAuth sign-in rejected: User ${user.email} has status ${existingUser.status}`);
-              return false;
-            }
-
-            // Update last login
-            await prisma.user.update({
-              where: { id: existingUser.id },
-              data: { lastLoginAt: new Date() },
-            });
-
-            await logAuthEvent('LOGIN_SUCCESS', existingUser.id, {
-              provider: account.provider,
-            });
-          } else {
-            // Create new user from OAuth
-            console.log(`[AUTH] Creating new OAuth user: ${user.email} (${account.provider})`);
-
-            const newUser = await prisma.user.create({
-              data: {
-                email: user.email,
-                firstName: profile?.given_name || profile?.name?.split(' ')[0] || 'User',
-                lastName: profile?.family_name || profile?.name?.split(' ').slice(1).join(' ') || '',
-                avatar: user.image || profile?.picture,
-                roles: ['PLAYER'], // Default role
-                status: 'ACTIVE',
-                emailVerified: new Date(),
-                lastLoginAt: new Date(),
-              },
-            });
-
-            await logAuthEvent('LOGIN_SUCCESS', newUser.id, {
-              provider: account.provider,
-              isNewUser: true,
-            });
+          // Block disabled accounts
+          if (existingUser && (!existingUser.isActive || existingUser.status === 'BANNED')) {
+            logger.warn('OAuth sign in blocked - account disabled', { email });
+            return '/auth/error?error=AccessDenied';
           }
-        } catch (error) {
-          console.error(`[AUTH] OAuth sign-in error (${account.provider}):`, error);
-          return false;
+
+          logger.info('OAuth sign in successful', { 
+            provider: account.provider, 
+            email,
+          });
         }
+
+        return true;
+      } catch (error) {
+        logger.error('Sign in callback error', error as Error);
+        return false;
       }
-
-      return true;
-    },
-
-    /**
-     * Redirect Callback
-     * Controls post-authentication redirects
-     */
-    async redirect({ url, baseUrl }) {
-      // Handle relative URLs
-      if (url.startsWith('/')) {
-        return `${baseUrl}${url}`;
-      }
-
-      // Handle same-origin URLs
-      try {
-        const urlOrigin = new URL(url).origin;
-        if (urlOrigin === baseUrl) {
-          return url;
-        }
-      } catch {
-        // Invalid URL, use default
-      }
-
-      // Default redirect
-      return `${baseUrl}/dashboard`;
     },
 
     /**
      * JWT Callback
-     * Enriches JWT with user data from database
+     * Called when JWT is created or updated
      */
-    async jwt({ token, user, account, trigger }) {
-      // Initial sign-in
+    async jwt({ token, user, account, trigger, session }) {
+      // Initial sign in - add user data to token
       if (user) {
         token.id = user.id;
-        token.email = user.email || '';
-        token.name = user.name || '';
-        token.picture = user.image;
+        token.email = user.email!;
+        token.name = user.name!;
+        token.firstName = user.firstName;
+        token.lastName = user.lastName;
+        token.image = user.image;
+        token.roles = user.roles || ['PLAYER'];
+        token.subscriptionTier = user.subscriptionTier || 'PLAYER_FREE';
+        token.isSuperAdmin = user.isSuperAdmin || false;
+        token.twoFactorEnabled = user.twoFactorEnabled || false;
+        token.emailVerified = !!user.emailVerified;
+        token.onboardingCompleted = user.onboardingCompleted || false;
       }
 
-      // Fetch fresh user data on sign-in or session update
-      if (token.id && (user || trigger === 'update')) {
+      // Session update triggered (e.g., after profile update)
+      if (trigger === 'update' && session) {
+        return {
+          ...token,
+          ...session,
+        };
+      }
+
+      // Refresh user data from database periodically
+      if (token.id && !user) {
         try {
           const dbUser = await prisma.user.findUnique({
-            where: { id: token.id },
+            where: { id: token.id as string },
             select: {
-              id: true,
-              email: true,
-              firstName: true,
-              lastName: true,
-              avatar: true,
               roles: true,
-              status: true,
-              clubId: true,
-              teamId: true,
-              emailVerified: true,
-              lastLoginAt: true,
+              subscriptionTier: true,
+              isSuperAdmin: true,
+              twoFactorEnabled: true,
+              onboardingCompleted: true,
+              isActive: true,
             },
           });
 
-          if (dbUser) {
-            const roles = (dbUser.roles || ['PLAYER']) as UserRole[];
-
-            token.id = dbUser.id;
-            token.email = dbUser.email;
-            token.name = [dbUser.firstName, dbUser.lastName].filter(Boolean).join(' ') || dbUser.email;
-            token.picture = dbUser.avatar;
-            token.role = getPrimaryRole(roles);
-            token.roles = roles;
-            token.permissions = getPermissionsByRoles(roles);
-            token.status = dbUser.status as UserStatus;
-            token.clubId = dbUser.clubId;
-            token.teamId = dbUser.teamId;
-            token.emailVerified = dbUser.emailVerified;
-            token.lastLoginAt = dbUser.lastLoginAt;
-          } else {
-            console.warn(`[JWT] User not found: ${token.id}`);
+          if (dbUser && dbUser.isActive) {
+            token.roles = dbUser.roles as UserRole[];
+            token.subscriptionTier = dbUser.subscriptionTier as SubscriptionTier;
+            token.isSuperAdmin = dbUser.isSuperAdmin;
+            token.twoFactorEnabled = dbUser.twoFactorEnabled;
+            token.onboardingCompleted = dbUser.onboardingCompleted;
           }
         } catch (error) {
-          console.error('[JWT] Error fetching user data:', error);
+          logger.error('JWT refresh error', error as Error);
         }
       }
-
-      // Ensure defaults
-      token.role = token.role || 'PLAYER';
-      token.roles = token.roles || ['PLAYER'];
-      token.permissions = token.permissions || [];
-      token.status = token.status || 'ACTIVE';
 
       return token;
     },
 
     /**
      * Session Callback
-     * Exposes JWT data to client session
+     * Called when session is checked
      */
     async session({ session, token }) {
-      session.user = {
-        id: token.id,
-        email: token.email,
-        name: token.name,
-        image: token.picture,
-        role: token.role,
-        roles: token.roles,
-        permissions: token.permissions,
-        status: token.status,
-        clubId: token.clubId,
-        teamId: token.teamId,
-        emailVerified: token.emailVerified,
-        lastLoginAt: token.lastLoginAt,
-      };
+      if (token && session.user) {
+        session.user.id = token.id as string;
+        session.user.email = token.email as string;
+        session.user.name = token.name as string;
+        session.user.firstName = token.firstName as string;
+        session.user.lastName = token.lastName as string;
+        session.user.image = token.image as string;
+        session.user.roles = token.roles as UserRole[];
+        session.user.subscriptionTier = token.subscriptionTier as SubscriptionTier;
+        session.user.isSuperAdmin = token.isSuperAdmin as boolean;
+        session.user.twoFactorEnabled = token.twoFactorEnabled as boolean;
+        session.user.emailVerified = token.emailVerified as boolean;
+        session.user.onboardingCompleted = token.onboardingCompleted as boolean;
+      }
 
       return session;
     },
+
+    /**
+     * Redirect Callback
+     * Controls redirects after sign in/out
+     */
+    async redirect({ url, baseUrl }) {
+      // Allow relative URLs
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`;
+      }
+      
+      // Allow same-origin URLs
+      if (url.startsWith(baseUrl)) {
+        return url;
+      }
+      
+      // Default to dashboard
+      return `${baseUrl}/dashboard`;
+    },
   },
 
-  // ==========================================================================
-  // 📡 EVENTS
-  // ==========================================================================
+  // ============================================================================
+  // EVENTS
+  // ============================================================================
   events: {
-    async signIn({ user, account }) {
-      console.log(`[AUTH] Sign in: ${user.email} via ${account?.provider || 'credentials'}`);
+    async signIn({ user, account, isNewUser }) {
+      logger.info('Sign in event', {
+        userId: user.id,
+        email: user.email,
+        provider: account?.provider,
+        isNewUser,
+      });
     },
+
     async signOut({ token }) {
-      await logAuthEvent('LOGOUT', token?.id as string);
-      console.log(`[AUTH] Sign out: ${token?.email}`);
+      logger.info('Sign out event', {
+        userId: token?.id,
+        email: token?.email,
+      });
     },
+
     async createUser({ user }) {
-      console.log(`[AUTH] New user created: ${user.email}`);
+      logger.info('User created', {
+        userId: user.id,
+        email: user.email,
+      });
     },
+
     async linkAccount({ user, account }) {
-      await logAuthEvent('OAUTH_LINK', user.id, { provider: account.provider });
-      console.log(`[AUTH] Account linked: ${user.email} + ${account.provider}`);
+      logger.info('Account linked', {
+        userId: user.id,
+        provider: account.provider,
+      });
     },
   },
 
-  // ==========================================================================
-  // 🎨 THEME
-  // ==========================================================================
-  theme: {
-    logo: '/logo.png',
-    brandColor: '#F59E0B', // PitchConnect Gold
-    colorScheme: 'auto',
-  },
-
-  // ==========================================================================
-  // 🔧 DEBUG & SECURITY
-  // ==========================================================================
+  // Debug mode in development
   debug: process.env.NODE_ENV === 'development',
-  secret: process.env.NEXTAUTH_SECRET,
-
-  // Trust proxy headers (for production behind load balancer)
-  trustHost: true,
 };
 
 // ============================================================================
-// 📤 EXPORTS
+// 2FA VERIFICATION HELPER
 // ============================================================================
 
-/**
- * NextAuth handlers and utilities
- */
-export const {
-  handlers, // → app/api/auth/[...nextauth]/route.ts
-  auth, // → Server-side session access
-  signIn, // → Programmatic sign-in
-  signOut, // → Programmatic sign-out
-} = NextAuth(authConfig);
+async function verify2FACode(userId: string, code: string): Promise<boolean> {
+  try {
+    const twoFactorRecord = await prisma.twoFactorAuth.findUnique({
+      where: { userId },
+      select: { secret: true, enabled: true },
+    });
 
-/**
- * Export config for middleware and type checking
- */
+    if (!twoFactorRecord || !twoFactorRecord.enabled || !twoFactorRecord.secret) {
+      return false;
+    }
+
+    // Verify TOTP code
+    const isValid = await verifyTOTP(twoFactorRecord.secret, code);
+    
+    if (isValid) {
+      // Update last used timestamp
+      await prisma.twoFactorAuth.update({
+        where: { userId },
+        data: { lastUsedAt: new Date() },
+      });
+    }
+
+    return isValid;
+  } catch (error) {
+    logger.error('2FA verification error', error as Error);
+    return false;
+  }
+}
+
+// ============================================================================
+// TOTP VERIFICATION (copied from 2FA routes for standalone use)
+// ============================================================================
+
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const TOTP_PERIOD = 30;
+const TOTP_DIGITS = 6;
+const TOTP_WINDOW = 1;
+
+function decodeBase32(input: string): Uint8Array {
+  const upper = input.toUpperCase().replace(/=+$/, '');
+  let bits = 0;
+  let value = 0;
+  const output: number[] = [];
+
+  for (let i = 0; i < upper.length; i++) {
+    const idx = BASE32_ALPHABET.indexOf(upper[i]);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      output.push((value >> bits) & 255);
+    }
+  }
+
+  return new Uint8Array(output);
+}
+
+async function hmacSha1(key: Uint8Array, message: Uint8Array): Promise<Uint8Array> {
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    key,
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, message);
+  return new Uint8Array(signature);
+}
+
+async function generateTOTP(secret: string, time?: number): Promise<string> {
+  const timestamp = Math.floor((time || Date.now()) / 1000 / TOTP_PERIOD);
+  const buffer = new ArrayBuffer(8);
+  const view = new DataView(buffer);
+  view.setUint32(0, 0, false);
+  view.setUint32(4, timestamp, false);
+
+  const secretBytes = decodeBase32(secret);
+  const hmac = await hmacSha1(secretBytes, new Uint8Array(buffer));
+
+  const offset = hmac[19] & 0x0f;
+  const value =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+
+  return String(value % Math.pow(10, TOTP_DIGITS)).padStart(TOTP_DIGITS, '0');
+}
+
+async function verifyTOTP(secret: string, code: string): Promise<boolean> {
+  const now = Date.now();
+  for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
+    const testTime = now + i * TOTP_PERIOD * 1000;
+    const testCode = await generateTOTP(secret, testTime);
+    if (testCode === code) return true;
+  }
+  return false;
+}
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
+
+export const { handlers, signIn, signOut, auth } = NextAuth(authConfig);
+
 export { authConfig as authOptions };
 
-/**
- * Export helper functions for use in components
- */
-export { getPermissionsByRole, getPermissionsByRoles, getPrimaryRole };
-
-/**
- * Export types for use throughout the app
- */
-export type { UserRole, UserStatus, PermissionName, SessionUser };
+export type { ExtendedUser, ExtendedSession, ExtendedJWT, UserRole, SubscriptionTier };

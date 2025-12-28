@@ -1,102 +1,182 @@
+/**
+ * ============================================================================
+ * 🏆 PITCHCONNECT - Email Verification API
+ * Path: src/app/api/auth/verify-email/route.ts
+ * ============================================================================
+ * 
+ * POST /api/auth/verify-email
+ * 
+ * Enterprise Features:
+ * - Token validation with secure hash comparison
+ * - Expiry validation (24 hours)
+ * - Single-use token enforcement
+ * - Status update (PENDING_EMAIL_VERIFICATION → ACTIVE)
+ * - Comprehensive audit logging
+ * - Prisma database integration
+ * 
+ * Schema Alignment:
+ * - Uses VerificationToken model (not User fields)
+ * - Updates User.emailVerified, User.status
+ * - User.roles is array field, not relation
+ * 
+ * ============================================================================
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { logger } from '@/lib/logging';
+import { z } from 'zod';
+
 // ============================================================================
-// src/app/api/auth/verify-email/route.ts
-// POST - Verify user email address with token
+// VALIDATION SCHEMA
 // ============================================================================
 
-import { NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { parseJsonBody, validateRequired } from '@/lib/api/validation';
-import { success, errorResponse } from '@/lib/api/responses';
-import { BadRequestError, NotFoundError, UnauthorizedError } from '@/lib/api/errors';
-import { logAuthEvent } from '@/lib/api/audit';
+const VerifyEmailSchema = z.object({
+  token: z.string().min(1, 'Verification token is required'),
+  email: z.string().email('Invalid email address').toLowerCase().trim().optional(),
+});
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
 
 /**
- * POST /api/auth/verify-email
- * Verify user email address using verification token
- * 
- * Request Body:
- *   Required:
- *     - email: string (email to verify)
- *     - token: string (verification token from email)
- * 
- * Validation:
- *   - Token must match stored verification token
- *   - Token must not be expired (24 hour validity)
- *   - User must exist
- *   - Email must match registered email
- * 
- * Response:
- *   - Updated user object
- *   - emailVerified: true
- *   - status: ACTIVE
- * 
- * Side Effects:
- *   - Updates user emailVerified flag to true
- *   - Updates user status to ACTIVE
- *   - Clears verification token
- *   - Logs verification event to audit trail
- * 
- * Status Code: 200 OK
+ * Hash token for comparison
  */
+async function hashToken(token: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(token);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ============================================================================
+// POST HANDLER
+// ============================================================================
+
 export async function POST(request: NextRequest) {
+  const startTime = performance.now();
+  const clientIp = request.headers.get('x-forwarded-for') || 'unknown';
+
   try {
-    const body = await parseJsonBody(request);
+    // ========================================================================
+    // PARSE & VALIDATE
+    // ========================================================================
 
-    // Validate required fields
-    validateRequired(body, ['email', 'token']);
+    const body = await request.json();
+    const validation = VerifyEmailSchema.safeParse(body);
 
-    const email = body.email.toLowerCase().trim();
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, message: 'Invalid token format' },
+        { status: 400 }
+      );
+    }
 
-    // Find user with verification token
+    const { token, email } = validation.data;
+    const tokenHash = await hashToken(token);
+
+    // ========================================================================
+    // FIND VERIFICATION TOKEN
+    // ========================================================================
+
+    const verificationToken = await prisma.verificationToken.findFirst({
+      where: {
+        token: tokenHash,
+        type: 'EMAIL',
+        ...(email && { identifier: email }),
+      },
+    });
+
+    // Token not found
+    if (!verificationToken) {
+      logger.warn('Invalid verification token', { ip: clientIp });
+      return NextResponse.json(
+        { success: false, message: 'Invalid or expired verification link' },
+        { status: 400 }
+      );
+    }
+
+    // Token expired
+    if (new Date() > verificationToken.expires) {
+      // Clean up expired token
+      await prisma.verificationToken.delete({
+        where: { id: verificationToken.id },
+      });
+
+      logger.warn('Expired verification token', { 
+        email: verificationToken.identifier,
+        ip: clientIp,
+      });
+
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: 'Verification link has expired. Please request a new one.',
+          expired: true,
+        },
+        { status: 400 }
+      );
+    }
+
+    // ========================================================================
+    // FIND USER BY EMAIL (identifier)
+    // ========================================================================
+
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: verificationToken.identifier },
       select: {
         id: true,
         email: true,
         firstName: true,
         lastName: true,
         emailVerified: true,
-        emailVerificationToken: true,
-        emailVerificationTokenExpiry: true,
         status: true,
+        roles: true,
       },
     });
 
     if (!user) {
-      throw new NotFoundError('User not found');
+      logger.warn('Verification token for non-existent user', { 
+        email: verificationToken.identifier,
+      });
+      
+      // Clean up orphan token
+      await prisma.verificationToken.delete({
+        where: { id: verificationToken.id },
+      });
+
+      return NextResponse.json(
+        { success: false, message: 'User not found' },
+        { status: 404 }
+      );
     }
 
-    // Check if already verified
+    // Already verified
     if (user.emailVerified) {
-      throw new BadRequestError('Email address is already verified');
-    }
+      // Clean up used token
+      await prisma.verificationToken.delete({
+        where: { id: verificationToken.id },
+      });
 
-    // Check if token exists and hasn't expired
-    if (!user.emailVerificationToken) {
-      throw new BadRequestError(
-        'No verification token found. Please request a new verification email.'
+      return NextResponse.json(
+        { 
+          success: true, 
+          message: 'Email address is already verified',
+          alreadyVerified: true,
+        }
       );
     }
 
-    if (!user.emailVerificationTokenExpiry || user.emailVerificationTokenExpiry < new Date()) {
-      throw new UnauthorizedError(
-        'Verification token has expired. Please request a new verification email.'
-      );
-    }
+    // ========================================================================
+    // UPDATE USER - MARK AS VERIFIED
+    // ========================================================================
 
-    // Verify token matches (in production, use bcrypt.compare)
-    // For now, using direct comparison for simplicity
-    if (user.emailVerificationToken !== body.token) {
-      throw new UnauthorizedError('Invalid verification token');
-    }
-
-    // Update user
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
-        emailVerified: true,
-        emailVerificationToken: null,
-        emailVerificationTokenExpiry: null,
+        emailVerified: new Date(),
         status: 'ACTIVE',
       },
       select: {
@@ -106,23 +186,81 @@ export async function POST(request: NextRequest) {
         lastName: true,
         emailVerified: true,
         status: true,
+        roles: true,
         createdAt: true,
-        roles: {
-          select: { role: true },
-        },
       },
     });
 
-    // Log verification event
-    await logAuthEvent(
-      user.id,
-      'EMAIL_VERIFIED',
-      `Email verified for ${user.firstName} ${user.lastName}`,
-      request.headers.get('x-forwarded-for') || undefined
-    );
+    // ========================================================================
+    // DELETE USED TOKEN
+    // ========================================================================
 
-    return success(updatedUser);
+    await prisma.verificationToken.delete({
+      where: { id: verificationToken.id },
+    });
+
+    // ========================================================================
+    // AUDIT LOG
+    // ========================================================================
+
+    logger.info('Email verified successfully', {
+      userId: user.id,
+      email: user.email,
+      ip: clientIp,
+      duration: `${Math.round(performance.now() - startTime)}ms`,
+    });
+
+    // ========================================================================
+    // RESPONSE
+    // ========================================================================
+
+    return NextResponse.json({
+      success: true,
+      message: 'Email verified successfully. You can now sign in.',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        emailVerified: updatedUser.emailVerified,
+        status: updatedUser.status,
+        roles: updatedUser.roles,
+      },
+    });
+
   } catch (error) {
-    return errorResponse(error as Error);
+    logger.error('Email verification error', error as Error, {
+      ip: clientIp,
+      duration: `${Math.round(performance.now() - startTime)}ms`,
+    });
+
+    return NextResponse.json(
+      { success: false, message: 'An error occurred during verification' },
+      { status: 500 }
+    );
   }
+}
+
+// ============================================================================
+// GET HANDLER - Verify via URL parameter
+// ============================================================================
+
+export async function GET(request: NextRequest) {
+  const token = request.nextUrl.searchParams.get('token');
+  const email = request.nextUrl.searchParams.get('email');
+
+  if (!token) {
+    return NextResponse.json(
+      { success: false, message: 'Verification token is required' },
+      { status: 400 }
+    );
+  }
+
+  // Reuse POST logic
+  const mockRequest = {
+    json: async () => ({ token, email }),
+    headers: request.headers,
+  } as NextRequest;
+
+  return POST(mockRequest);
 }
