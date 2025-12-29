@@ -1,15 +1,20 @@
 // ============================================================================
-// 🌟 PITCHCONNECT DATABASE SCHEMA v7.2.0 - ENTERPRISE EDITION
+// 🌟 PITCHCONNECT DATABASE SCHEMA v7.3.0 - ENTERPRISE EDITION
 // ============================================================================
-// Enhanced with:
-// - Complete Two-Factor Authentication model
-// - Secure password reset flow
-// - Email verification system
-// - Session management
-// - Audit logging for auth events
-// - Team Join Request System (NEW)
-// - Job Posting & Application System (NEW)
-// - Enhanced Club/Team Management
+// Version History:
+// - v7.0.0: Initial enterprise schema
+// - v7.1.0: Added Two-Factor Auth, Password Reset, Email Verification
+// - v7.2.0: Added Team Join Requests, Job Posting System
+// - v7.3.0: Added MediaContent, Hybrid Training, Enhanced Attendance
+// ============================================================================
+// New in v7.3.0:
+// - MediaContent model for videos, images, documents (replaces VideoClip)
+// - Hybrid Training Sessions (Club-wide OR Team-specific)
+// - INJURED status in AttendanceStatus enum
+// - Custom training categories with sport-specific support
+// - Enhanced media processing with transcoding support
+// - Match-linked media content
+// - Training-linked media content
 // ============================================================================
 
 generator client {
@@ -133,6 +138,9 @@ enum PermissionType {
   FACILITY_BOOK
   SYSTEM_ADMIN
   AUDIT_LOG_VIEW
+  MEDIA_UPLOAD
+  MEDIA_DELETE
+  MEDIA_MANAGE
 }
 
 enum DataRetentionPolicy {
@@ -159,6 +167,7 @@ enum Sport {
 }
 
 enum Position {
+  // Football (Soccer)
   GOALKEEPER
   LEFT_BACK
   CENTER_BACK
@@ -175,6 +184,8 @@ enum Position {
   STRIKER
   CENTER_FORWARD
   SECOND_STRIKER
+
+  // Netball
   GOALKEEPER_NETBALL
   GOAL_ATTACK
   WING_ATTACK
@@ -182,6 +193,8 @@ enum Position {
   WING_DEFENSE
   GOAL_DEFENSE
   GOAL_SHOOTER
+
+  // Rugby Union
   PROP
   HOOKER
   LOCK
@@ -192,10 +205,14 @@ enum Position {
   INSIDE_CENTER
   OUTSIDE_CENTER
   FULLBACK
+
+  // Rugby League
   HOOKER_LEAGUE
   PROP_LEAGUE
   SECOND_ROW
   LOOSE_FORWARD
+
+  // American Football
   QUARTERBACK
   RUNNING_BACK
   WIDE_RECEIVER
@@ -212,20 +229,28 @@ enum Position {
   CORNERBACK
   PUNTER
   KICKER
+
+  // Basketball
   POINT_GUARD
   SHOOTING_GUARD
   SMALL_FORWARD
   POWER_FORWARD
   CENTER_BASKETBALL
+
+  // Cricket
   BATSMAN
   BOWLER
   ALL_ROUNDER
   FIELDER
   WICKET_KEEPER
+
+  // Hockey
   GOALTENDER
   DEFENSEMAN
   WINGER
   CENTER_HOCKEY
+
+  // Generic
   UTILITY
   SUBSTITUTE
 }
@@ -277,6 +302,7 @@ enum MatchAttendanceStatus {
 }
 
 enum MatchEventType {
+  // Football
   GOAL
   ASSIST
   YELLOW_CARD
@@ -295,12 +321,18 @@ enum MatchEventType {
   OWN_GOAL
   VAR_REVIEW
   VAR_DECISION
+
+  // General
   CHALLENGE_REVIEW
   TIMEOUT
   INTERCEPT
   REBOUND
+
+  // Netball
   CENTER_PASS
   OBSTRUCTION
+
+  // Rugby
   TRY
   CONVERSION
   PENALTY_GOAL
@@ -312,36 +344,76 @@ enum MatchEventType {
   KNOCK_ON
   HIGH_TACKLE
   OFFSIDE
+  SIN_BIN
+  YELLOW_CARD_RUGBY
+  RED_CARD_RUGBY
+
+  // Cricket
   WICKET
   BOUNDARY
+  SIX
   MAIDEN_OVER
   WIDE
   NO_BALL
   BYE
   LEG_BYE
   OVERTHROW
+  RUN_OUT
+  CAUGHT
+  BOWLED
+  LBW
+  STUMPED
+
+  // Basketball
   THREE_POINTER
+  TWO_POINTER
+  FREE_THROW_MADE
+  FREE_THROW_MISSED
   FAST_BREAK
   TURNOVER
   OFFENSIVE_FOUL
+  DEFENSIVE_FOUL
   TRAVEL
   DOUBLE_DRIBBLE
+  BLOCK
+  STEAL
+  DUNK
+  ALLEY_OOP
+
+  // American Football
   TOUCHDOWN
   FIELD_GOAL
   SAFETY_SCORE
   INTERCEPTION
   FUMBLE
   SACK
+  TWO_POINT_CONVERSION
+  EXTRA_POINT
+  PUNT
+  KICKOFF_RETURN
+  FAIR_CATCH
+
+  // Hockey
   HAT_TRICK
   MAJOR_PENALTY
   MINOR_PENALTY
   FIGHT
+  POWER_PLAY_GOAL
+  SHORTHANDED_GOAL
+  EMPTY_NET_GOAL
+
+  // General Events
   CAPTAIN_CHANGE
   WEATHER_DELAY
   FLOODLIGHT_FAILURE
+  PERIOD_START
+  PERIOD_END
+  OVERTIME_START
+  SHOOTOUT_START
 }
 
 enum FormationType {
+  // Football
   FOUR_FOUR_TWO
   FOUR_THREE_THREE
   THREE_FIVE_TWO
@@ -357,6 +429,29 @@ enum FormationType {
   FOUR_FOUR_ONE_ONE
   FOUR_THREE_TWO_ONE
   FOUR_FIVE_ONE
+
+  // Basketball
+  ONE_THREE_ONE
+  TWO_THREE
+  TWO_ONE_TWO
+  THREE_TWO
+  ONE_TWO_TWO
+
+  // American Football
+  I_FORMATION
+  SHOTGUN
+  PISTOL
+  SPREAD
+  SINGLE_BACK
+  PRO_SET
+  WILDCAT
+
+  // Rugby
+  PODS
+  DIAMOND
+  FLAT_LINE
+
+  // Generic
   CUSTOM
 }
 
@@ -401,10 +496,13 @@ enum WebhookEvent {
   USER_DELETED
   RESULT_APPROVED
   TRAINING_SCHEDULED
+  TRAINING_COMPLETED
   ANNOUNCEMENT_POSTED
   JOB_POSTED
   JOB_APPLICATION_RECEIVED
   JOIN_REQUEST_RECEIVED
+  MEDIA_UPLOADED
+  MEDIA_PROCESSED
 }
 
 enum AuditActionType {
@@ -466,6 +564,12 @@ enum AuditActionType {
   JOB_APPLICATION_REVIEWED
   JOB_APPLICATION_ACCEPTED
   JOB_APPLICATION_REJECTED
+  TRAINING_CREATED
+  TRAINING_UPDATED
+  TRAINING_CANCELLED
+  MEDIA_UPLOADED
+  MEDIA_DELETED
+  MEDIA_SHARED
   CONSENT_UPDATED
   GDPR_REQUEST
   DATA_RETENTION_APPLIED
@@ -476,6 +580,10 @@ enum AuditActionType {
   SECURITY_ALERT
 }
 
+// ============================================================================
+// 🏋️ TRAINING ENUMS - ENHANCED v7.3.0
+// ============================================================================
+
 enum TrainingIntensity {
   RECOVERY
   LOW
@@ -485,26 +593,63 @@ enum TrainingIntensity {
   COMPETITIVE
 }
 
+// Core training categories (sport-agnostic)
 enum TrainingCategory {
+  // Technical Skills
   PASSING
   SHOOTING
   DEFENDING
   POSSESSION
   SET_PIECES
+  DRIBBLING
+
+  // Physical
   CONDITIONING
-  TACTICAL
-  RECOVERY
   STRENGTH_POWER
   SPEED_AGILITY
   FLEXIBILITY
   BALANCE_COORDINATION
+  ENDURANCE
+
+  // Tactical
+  TACTICAL
+  FORMATION_WORK
+  GAME_STRATEGY
+  TRANSITIONS
+
+  // Recovery & Mental
+  RECOVERY
   MENTAL_PREPARATION
   VIDEO_ANALYSIS
   TEAM_BUILDING
+
+  // Position Specific
   GOALKEEPER_SPECIFIC
   POSITION_SPECIFIC
+
+  // Sport-Specific (see customCategory for granular control)
+  SPORT_SPECIFIC
+
+  // Generic
+  WARM_UP
+  COOL_DOWN
+  SCRIMMAGE
+  MATCH_SIMULATION
+  INDIVIDUAL_TRAINING
+  GROUP_TRAINING
 }
 
+// Training session status
+enum TrainingStatus {
+  DRAFT
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  POSTPONED
+}
+
+// ENHANCED: Now includes INJURED status
 enum AttendanceStatus {
   PRESENT
   ABSENT
@@ -512,7 +657,110 @@ enum AttendanceStatus {
   LATE
   LEFT_EARLY
   PARTIAL
+  INJURED      // NEW in v7.3.0
+  SICK         // NEW in v7.3.0
+  SUSPENDED    // NEW in v7.3.0
 }
+
+// ============================================================================
+// 📹 MEDIA ENUMS - NEW v7.3.0
+// ============================================================================
+
+enum MediaType {
+  VIDEO
+  IMAGE
+  DOCUMENT
+  AUDIO
+}
+
+enum MediaCategory {
+  // Match Related
+  MATCH_HIGHLIGHT
+  MATCH_FULL
+  MATCH_ANALYSIS
+  GOAL_CLIP
+  SAVE_CLIP
+  INCIDENT_CLIP
+
+  // Training Related
+  TRAINING_SESSION
+  TRAINING_DRILL
+  TRAINING_EXERCISE
+  TRAINING_ANALYSIS
+
+  // Player Related
+  PLAYER_HIGHLIGHT
+  PLAYER_INTERVIEW
+  PLAYER_PROFILE
+
+  // Team Related
+  TEAM_PROMO
+  TEAM_ANNOUNCEMENT
+  PRESS_CONFERENCE
+
+  // Documents
+  TACTICS_DOCUMENT
+  MEDICAL_DOCUMENT
+  CONTRACT_DOCUMENT
+  REPORT
+
+  // General
+  THUMBNAIL
+  PROFILE_PHOTO
+  BANNER
+  LOGO
+  OTHER
+}
+
+enum MediaVisibility {
+  PUBLIC
+  CLUB_ONLY
+  TEAM_ONLY
+  STAFF_ONLY
+  PRIVATE
+}
+
+enum MediaProcessingStatus {
+  PENDING
+  UPLOADING
+  PROCESSING
+  TRANSCODING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum VideoQuality {
+  Q_360P
+  Q_480P
+  Q_720P
+  Q_1080P
+  Q_2K
+  Q_4K
+  ORIGINAL
+}
+
+enum TranscodingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+  QUEUED
+}
+
+enum VideoProcessingProvider {
+  MUX
+  AWS_MEDIACONVERT
+  BUNNY_CDN
+  CLOUDINARY
+  INTERNAL
+  VERCEL_BLOB
+}
+
+// ============================================================================
+// 🏆 COMPETITION ENUMS
+// ============================================================================
 
 enum LeagueFormat {
   ROUND_ROBIN
@@ -571,6 +819,7 @@ enum ClubMemberRole {
   GOALKEEPING_COACH
   KIT_MANAGER
   MEDIA_OFFICER
+  VIDEO_ANALYST
 }
 
 enum TeamType {
@@ -584,32 +833,9 @@ enum TeamType {
   SCHOOL
 }
 
-enum VideoQuality {
-  Q_360P
-  Q_480P
-  Q_720P
-  Q_1080P
-  Q_2K
-  Q_4K
-}
-
-enum TranscodingStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-  CANCELLED
-  QUEUED
-}
-
-enum VideoProcessingProvider {
-  MUX
-  AWS_MEDIACONVERT
-  BUNNY_CDN
-  CLOUDINARY
-  INTERNAL
-  VERCEL_BLOB
-}
+// ============================================================================
+// 💼 HR & JOB ENUMS
+// ============================================================================
 
 enum TimesheetStatus {
   DRAFT
@@ -686,6 +912,9 @@ enum FacilityType {
   OFFICE
   CHANGING_ROOM
   HOSPITALITY
+  OUTDOOR_PITCH
+  INDOOR_PITCH
+  MULTI_PURPOSE
 }
 
 enum BookingStatus {
@@ -755,7 +984,7 @@ enum VerificationType {
   ACCOUNT_RECOVERY
 }
 
-// NEW ENUMS v7.2.0 - JOIN REQUESTS & JOB BOARD
+// JOIN REQUESTS & JOB BOARD
 
 enum JoinRequestStatus {
   PENDING
@@ -901,6 +1130,7 @@ model Organisation {
   facilities           Facility[]
   sponsors             Sponsor[]
   mediaAssets          MediaAsset[]
+  mediaContent         MediaContent[]
 
   @@index([slug])
   @@index([ownerId])
@@ -1027,11 +1257,11 @@ model User {
   isSuperAdmin Boolean     @default(false)
 
   primaryOrganisationId String?
-  clubId String?
-  teamId String?
+  clubId                String?
+  teamId                String?
 
-  password          String?
-  passwordChangedAt DateTime?
+  password            String?
+  passwordChangedAt   DateTime?
   passwordResetToken  String?   @unique
   passwordResetExpiry DateTime?
 
@@ -1111,6 +1341,7 @@ model User {
   jobApplications         JobApplication[]        @relation("applicant")
   reviewedApplications    JobApplication[]        @relation("applicationReviewer")
   jobPostingsCreated      JobPosting[]            @relation("jobCreator")
+  mediaUploaded           MediaContent[]          @relation("mediaUploader")
 
   @@index([email])
   @@index([phone])
@@ -1131,8 +1362,8 @@ model TwoFactorAuth {
   id     String @id @default(cuid())
   userId String @unique
 
-  secret String
-  enabled Boolean @default(false)
+  secret      String
+  enabled     Boolean  @default(false)
   backupCodes String[]
 
   createdAt  DateTime  @default(now())
@@ -1585,6 +1816,7 @@ model PlayerStatistic {
   crossesAttempt  Int    @default(0)
   crossesComplete Int    @default(0)
 
+  // Sport-specific stats stored as JSON for flexibility
   sportSpecificStats Json?
 
   averageRating Float?
@@ -2036,12 +2268,12 @@ model Coach {
   availabilityNotes String?
 
   // Job Seeking Fields
-  isOpenToOpportunities   Boolean  @default(false)
-  preferredRoles          String[]
-  preferredLocations      String[]
-  expectedSalary          Float?
-  expectedSalaryCurrency  String   @default("GBP")
-  noticePeriod            String?
+  isOpenToOpportunities  Boolean  @default(false)
+  preferredRoles         String[]
+  preferredLocations     String[]
+  expectedSalary         Float?
+  expectedSalaryCurrency String   @default("GBP")
+  noticePeriod           String?
 
   deletedAt DateTime?
 
@@ -2368,6 +2600,7 @@ model Club {
   announcements    Announcement[]
   sponsors         ClubSponsor[]
   jobPostings      JobPosting[]
+  mediaContent     MediaContent[]      @relation("clubMedia")
 
   @@index([organisationId])
   @@index([managerId])
@@ -2402,6 +2635,7 @@ model ClubMember {
   canManageRoster  Boolean @default(false)
   canManageMatches Boolean @default(false)
   canManageBilling Boolean @default(false)
+  canManageMedia   Boolean @default(false)
 
   deletedAt DateTime?
 
@@ -2441,12 +2675,14 @@ model Team {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club         Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  players      TeamPlayer[]
-  matchSquads  MatchSquad[]
-  formations   TeamFormation[]
-  leagueTeams  LeagueTeam[]
-  joinRequests TeamJoinRequest[]
+  club             Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  players          TeamPlayer[]
+  matchSquads      MatchSquad[]
+  formations       TeamFormation[]
+  leagueTeams      LeagueTeam[]
+  joinRequests     TeamJoinRequest[]
+  trainingSessions TrainingSession[] @relation("teamTraining")
+  mediaContent     MediaContent[]    @relation("teamMedia")
 
   @@unique([clubId, name])
   @@index([clubId])
@@ -2510,7 +2746,7 @@ model TeamFormation {
 }
 
 // ============================================================================
-// 📝 TEAM JOIN REQUESTS - NEW v7.2.0
+// 📝 TEAM JOIN REQUESTS
 // ============================================================================
 
 model TeamJoinRequest {
@@ -2554,7 +2790,7 @@ model TeamJoinRequest {
 }
 
 // ============================================================================
-// 💼 JOB POSTING & APPLICATION SYSTEM - NEW v7.2.0
+// 💼 JOB POSTING & APPLICATION SYSTEM
 // ============================================================================
 
 model JobPosting {
@@ -2937,6 +3173,7 @@ model Match {
   playerAttendance MatchAttendance[]
   stats            MatchStat[]
   officials        MatchOfficial[]
+  mediaContent     MediaContent[]    @relation("matchMedia")
 
   @@index([leagueId])
   @@index([homeClubId])
@@ -3098,6 +3335,7 @@ model MatchStat {
 
   rating Float?
 
+  // Sport-specific stats as JSON
   customStats Json?
 
   updatedAt DateTime @updatedAt
@@ -3112,12 +3350,13 @@ model MatchStat {
 }
 
 // ============================================================================
-// 📊 TRAINING MODELS
+// 📊 TRAINING MODELS - ENHANCED v7.3.0
 // ============================================================================
 
 model TrainingSession {
-  id      String @id @default(cuid())
+  id      String  @id @default(cuid())
   clubId  String
+  teamId  String? // NEW: Optional team-specific training (hybrid support)
   coachId String
 
   name        String
@@ -3129,6 +3368,9 @@ model TrainingSession {
   intensity TrainingIntensity @default(MEDIUM)
   category  TrainingCategory
 
+  // NEW v7.3.0: Custom category for sport-specific training
+  customCategory String?
+
   location        String?
   facilityId      String?
   maxParticipants Int?
@@ -3137,7 +3379,14 @@ model TrainingSession {
   notes     String? @db.Text
   equipment String[]
 
-  status String @default("SCHEDULED")
+  // NEW: Focus areas as array for better querying
+  focusAreas String[]
+
+  status TrainingStatus @default(SCHEDULED)
+
+  // Analytics
+  attendanceCount Int @default(0)
+  avgRating       Float?
 
   deletedAt DateTime?
 
@@ -3145,13 +3394,17 @@ model TrainingSession {
   updatedAt DateTime @updatedAt
 
   club       Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  team       Team?                @relation("teamTraining", fields: [teamId], references: [id], onDelete: SetNull)
   coach      Coach                @relation(fields: [coachId], references: [id], onDelete: Cascade)
   attendance TrainingAttendance[]
+  media      MediaContent[]       @relation("trainingMedia")
 
   @@index([clubId])
+  @@index([teamId])
   @@index([coachId])
   @@index([startTime])
   @@index([status])
+  @@index([category])
   @@map("training_sessions")
 }
 
@@ -3160,13 +3413,21 @@ model TrainingAttendance {
   sessionId String
   playerId  String
 
+  // ENHANCED: Now includes INJURED status
   status      AttendanceStatus @default(PRESENT)
   arrivalTime DateTime?
+  departTime  DateTime?
   notes       String?
+
+  // Injury reference if status is INJURED
+  injuryId String?
 
   performanceRating Float?
   effortRating      Float?
   coachNotes        String?
+
+  // Sport-specific metrics
+  customMetrics Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3319,6 +3580,104 @@ model PerformanceGoal {
   @@index([status])
   @@index([type])
   @@map("performance_goals")
+}
+
+// ============================================================================
+// 📹 MEDIA CONTENT MODEL - NEW v7.3.0
+// ============================================================================
+
+model MediaContent {
+  id             String  @id @default(cuid())
+  organisationId String?
+  clubId         String?
+  teamId         String?
+  matchId        String?
+  trainingId     String?
+
+  // Uploader
+  uploadedBy String
+
+  // File information
+  type     MediaType
+  category MediaCategory @default(OTHER)
+
+  title       String
+  description String? @db.Text
+  tags        String[]
+
+  // File metadata
+  filename     String
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  url          String
+  cdnUrl       String?
+
+  // Video-specific
+  duration     Int?
+  thumbnailUrl String?
+
+  // Image-specific
+  width  Int?
+  height Int?
+
+  // Processing
+  processingStatus   MediaProcessingStatus @default(PENDING)
+  processingProvider VideoProcessingProvider?
+  processingError    String?
+  processedAt        DateTime?
+
+  // Quality variants (for video)
+  qualityVariants Json?
+
+  // Access control
+  visibility  MediaVisibility @default(CLUB_ONLY)
+  isPublic    Boolean         @default(false)
+  accessRoles ClubMemberRole[]
+
+  // Analytics
+  viewCount     Int @default(0)
+  downloadCount Int @default(0)
+  likeCount     Int @default(0)
+
+  // Timestamps for video clips
+  startTimestamp Int?
+  endTimestamp   Int?
+
+  // Parent media (for clips from full videos)
+  parentMediaId String?
+
+  // Metadata
+  metadata Json?
+
+  // Expiry
+  expiresAt DateTime?
+
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  organisation Organisation?    @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  club         Club?            @relation("clubMedia", fields: [clubId], references: [id], onDelete: SetNull)
+  team         Team?            @relation("teamMedia", fields: [teamId], references: [id], onDelete: SetNull)
+  match        Match?           @relation("matchMedia", fields: [matchId], references: [id], onDelete: SetNull)
+  training     TrainingSession? @relation("trainingMedia", fields: [trainingId], references: [id], onDelete: SetNull)
+  uploader     User             @relation("mediaUploader", fields: [uploadedBy], references: [id])
+
+  @@index([organisationId])
+  @@index([clubId])
+  @@index([teamId])
+  @@index([matchId])
+  @@index([trainingId])
+  @@index([uploadedBy])
+  @@index([type])
+  @@index([category])
+  @@index([visibility])
+  @@index([processingStatus])
+  @@index([createdAt])
+  @@map("media_content")
 }
 
 // ============================================================================
@@ -3650,12 +4009,14 @@ model NotificationPreference {
   emailNews      Boolean @default(false)
   emailMarketing Boolean @default(false)
   emailJobs      Boolean @default(true)
+  emailMedia     Boolean @default(true)
 
   pushMatches  Boolean @default(true)
   pushTeam     Boolean @default(true)
   pushTraining Boolean @default(true)
   pushChat     Boolean @default(true)
   pushJobs     Boolean @default(true)
+  pushMedia    Boolean @default(true)
 
   smsMatches Boolean @default(false)
   smsUrgent  Boolean @default(false)
@@ -3864,7 +4225,7 @@ model Badge {
 }
 
 // ============================================================================
-// 📹 MEDIA ASSETS
+// 📹 LEGACY MEDIA ASSETS (for backward compatibility)
 // ============================================================================
 
 model MediaAsset {
@@ -3998,6 +4359,7 @@ model QuotaUsage {
   storageUsedMb         Int @default(0)
   apiCallsUsedThisMonth Int @default(0)
   matchesThisMonth      Int @default(0)
+  mediaStorageUsedMb    Int @default(0)
 
   monthlyResetDate DateTime?
 

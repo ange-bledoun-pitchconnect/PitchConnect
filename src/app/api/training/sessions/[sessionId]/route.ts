@@ -1,147 +1,53 @@
-/**
- * Training Session Detail API Endpoints
- * GET    /api/training/sessions/[sessionId]  - Get training session details
- * PATCH  /api/training/sessions/[sessionId]  - Update training session
- * DELETE /api/training/sessions/[sessionId]  - Delete training session
- * 
- * Schema-Aligned: TrainingSession, Drill, SessionDrill, TrainingAttendance models
- * - Proper AttendanceStatus enum: PRESENT, ABSENT, EXCUSED, LATE, LEFT_EARLY
- * - Full session details with drills and attendance tracking
- */
+// ============================================================================
+// 🏋️ TRAINING SESSION BY ID - API ROUTES
+// ============================================================================
+// GET, PUT, DELETE endpoints for individual training sessions
+// ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
-import { AttendanceStatus, TrainingIntensity, TrainingCategory } from '@prisma/client';
+import { auth } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
+import { UpdateTrainingSessionSchema } from '@/schemas/training.schema';
 
-// ============================================================================
-// TYPES
-// ============================================================================
-
-interface SessionDrillResponse {
-  id: string;
-  name: string;
-  duration: number;
-  category: TrainingCategory;
-  intensity: string;
-  order: number;
-  durationOverride?: number | null;
-}
-
-interface AttendanceStats {
-  present: number;
-  absent: number;
-  excused: number;
-  late: number;
-  leftEarly: number;
-  total: number;
-}
-
-interface TrainingSessionResponse {
-  id: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  duration: number;
-  location: string | null;
-  focus: string;
-  notes: string | null;
-  sessionType: string;
-  team: {
-    id: string;
-    name: string;
-    club: {
-      name: string;
-    };
-  };
-  coach: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  drills: SessionDrillResponse[];
-  attendance: AttendanceStats;
-  counts: {
-    drills: number;
-    attendees: number;
-  };
-  createdAt: string;
-  updatedAt: string;
+interface RouteParams {
+  params: { sessionId: string };
 }
 
 // ============================================================================
-// HELPERS
+// GET /api/training/[sessionId] - Get single training session
 // ============================================================================
 
-/**
- * Validate attendance status
- */
-function isValidAttendanceStatus(value: string): value is AttendanceStatus {
-  return ['PRESENT', 'ABSENT', 'EXCUSED', 'LATE', 'LEFT_EARLY'].includes(value);
-}
-
-/**
- * Calculate attendance statistics from array of attendance records
- */
-function calculateAttendanceStats(
-  attendanceRecords: Array<{ status: AttendanceStatus }>
-): AttendanceStats {
-  return {
-    present: attendanceRecords.filter((a) => a.status === 'PRESENT').length,
-    absent: attendanceRecords.filter((a) => a.status === 'ABSENT').length,
-    excused: attendanceRecords.filter((a) => a.status === 'EXCUSED').length,
-    late: attendanceRecords.filter((a) => a.status === 'LATE').length,
-    leftEarly: attendanceRecords.filter((a) => a.status === 'LEFT_EARLY').length,
-    total: attendanceRecords.length,
-  };
-}
-
-// ============================================================================
-// GET /api/training/sessions/[sessionId]
-// ============================================================================
-
-/**
- * Retrieve detailed training session information including drills and attendance
- * 
- * Parameters:
- * - sessionId: Training session ID
- * 
- * Returns: Complete TrainingSession with related data
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { sessionId: string } }
-) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
-
-    if (!session) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } },
+        { status: 401 }
+      );
     }
 
     const { sessionId } = params;
 
-    // Validate sessionId format
-    if (!sessionId || sessionId.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid session ID' },
-        { status: 400 }
-      );
-    }
-
-    // Fetch training session with all relations
     const trainingSession = await prisma.trainingSession.findUnique({
-      where: { id: sessionId },
+      where: { id: sessionId, deletedAt: null },
       include: {
+        club: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            logo: true,
+            sport: true,
+          },
+        },
         team: {
-          include: {
-            club: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
+          select: {
+            id: true,
+            name: true,
+            ageGroup: true,
+            gender: true,
           },
         },
         coach: {
@@ -151,203 +57,234 @@ export async function GET(
                 id: true,
                 firstName: true,
                 lastName: true,
+                avatar: true,
                 email: true,
               },
             },
           },
         },
-        drills: {
+        attendance: {
           include: {
-            drill: {
-              select: {
-                id: true,
-                name: true,
-                duration: true,
-                intensity: true,
-                category: true,
+            player: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    avatar: true,
+                  },
+                },
               },
             },
           },
           orderBy: {
-            order: 'asc',
+            player: {
+              user: { lastName: 'asc' },
+            },
           },
         },
-        attendance: {
+        media: {
+          where: { deletedAt: null },
           select: {
-            status: true,
+            id: true,
+            title: true,
+            type: true,
+            category: true,
+            url: true,
+            thumbnailUrl: true,
+            duration: true,
           },
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
 
     if (!trainingSession) {
       return NextResponse.json(
-        { success: false, error: 'Training session not found' },
+        { success: false, error: { code: 'NOT_FOUND', message: 'Training session not found' } },
         { status: 404 }
       );
     }
 
-    // Calculate attendance statistics
-    const attendanceStats = calculateAttendanceStats(trainingSession.attendance);
+    // Check permission
+    const membership = await prisma.clubMember.findFirst({
+      where: {
+        userId: session.user.id,
+        clubId: trainingSession.clubId,
+        isActive: true,
+      },
+    });
 
-    // Format drills
-    const formattedDrills: SessionDrillResponse[] = trainingSession.drills.map((sd) => ({
-      id: sd.drill.id,
-      name: sd.drill.name,
-      duration: sd.durationOverride || sd.drill.duration,
-      intensity: sd.drill.intensity,
-      category: sd.drill.category,
-      order: sd.order,
-      durationOverride: sd.durationOverride,
-    }));
+    if (!membership) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'Not a member of this club' } },
+        { status: 403 }
+      );
+    }
 
-    // Format response
-    const response: TrainingSessionResponse = {
-      id: trainingSession.id,
-      date: trainingSession.date.toISOString(),
-      startTime: trainingSession.startTime.toISOString(),
-      endTime: trainingSession.endTime.toISOString(),
-      duration: trainingSession.duration,
-      location: trainingSession.location,
-      focus: trainingSession.focus,
-      notes: trainingSession.notes,
-      sessionType: trainingSession.sessionType,
-      team: {
-        id: trainingSession.team.id,
-        name: trainingSession.team.name,
-        club: {
-          name: trainingSession.team.club.name,
-        },
-      },
-      coach: {
-        id: trainingSession.coach.user.id,
-        name: `${trainingSession.coach.user.firstName} ${trainingSession.coach.user.lastName}`.trim(),
-        email: trainingSession.coach.user.email,
-      },
-      drills: formattedDrills,
-      attendance: attendanceStats,
-      counts: {
-        drills: formattedDrills.length,
-        attendees: trainingSession.attendance.length,
-      },
-      createdAt: trainingSession.createdAt.toISOString(),
-      updatedAt: trainingSession.updatedAt.toISOString(),
+    // Calculate attendance summary
+    const attendanceSummary = {
+      total: trainingSession.attendance.length,
+      present: trainingSession.attendance.filter(a =>
+        ['PRESENT', 'LATE', 'LEFT_EARLY', 'PARTIAL'].includes(a.status)
+      ).length,
+      absent: trainingSession.attendance.filter(a => a.status === 'ABSENT').length,
+      excused: trainingSession.attendance.filter(a => a.status === 'EXCUSED').length,
+      injured: trainingSession.attendance.filter(a => a.status === 'INJURED').length,
+      sick: trainingSession.attendance.filter(a => a.status === 'SICK').length,
     };
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: response,
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...trainingSession,
+        attendanceSummary,
       },
-      { status: 200 }
-    );
+      meta: { timestamp: new Date().toISOString() },
+    });
   } catch (error) {
-    console.error('❌ Get training session error:', error);
+    console.error('GET /api/training/[sessionId] error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch training session',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch training session' } },
       { status: 500 }
     );
   }
 }
 
 // ============================================================================
-// PATCH /api/training/sessions/[sessionId]
+// PUT /api/training/[sessionId] - Update training session
 // ============================================================================
 
-/**
- * Update training session details
- * 
- * Parameters:
- * - sessionId: Training session ID
- * 
- * Request body (all optional):
- * - focus: Training focus/objective
- * - notes: Additional notes
- * - location: Training location
- * - sessionType: Type of session (TEAM, INDIVIDUAL, GROUP)
- */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { sessionId: string } }
-) {
+export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
-
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } },
+        { status: 401 }
+      );
     }
 
     const { sessionId } = params;
     const body = await request.json();
-    const { focus, notes, location, sessionType } = body;
 
-    // Validate sessionId
-    if (!sessionId || sessionId.length === 0) {
+    // Validate input
+    const parseResult = UpdateTrainingSessionSchema.safeParse(body);
+    if (!parseResult.success) {
       return NextResponse.json(
-        { success: false, error: 'Invalid session ID' },
+        {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid input',
+            details: parseResult.error.flatten(),
+          },
+        },
         { status: 400 }
       );
     }
 
-    // Check if session exists
+    const input = parseResult.data;
+
+    // Get existing session
     const existingSession = await prisma.trainingSession.findUnique({
-      where: { id: sessionId },
+      where: { id: sessionId, deletedAt: null },
+      select: {
+        id: true,
+        clubId: true,
+        coachId: true,
+        startTime: true,
+        endTime: true,
+        facilityId: true,
+      },
     });
 
     if (!existingSession) {
       return NextResponse.json(
-        { success: false, error: 'Training session not found' },
+        { success: false, error: { code: 'NOT_FOUND', message: 'Training session not found' } },
         { status: 404 }
       );
     }
 
-    // Build update object
-    const updateData: any = {};
+    // Check permission
+    const membership = await prisma.clubMember.findFirst({
+      where: {
+        userId: session.user.id,
+        clubId: existingSession.clubId,
+        isActive: true,
+        role: { in: ['OWNER', 'MANAGER', 'HEAD_COACH', 'ASSISTANT_COACH'] },
+      },
+    });
 
-    if (focus !== undefined && focus !== null) {
-      updateData.focus = focus.toString().trim();
+    if (!membership) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'No permission to update this session' } },
+        { status: 403 }
+      );
     }
 
-    if (notes !== undefined) {
-      updateData.notes = notes ? notes.toString().trim() : null;
-    }
+    // Check for facility conflicts if time or facility is changing
+    const newStartTime = input.startTime || existingSession.startTime;
+    const newEndTime = input.endTime || existingSession.endTime;
+    const newFacilityId = input.facilityId !== undefined ? input.facilityId : existingSession.facilityId;
 
-    if (location !== undefined) {
-      updateData.location = location ? location.toString().trim() : null;
-    }
+    if (newFacilityId) {
+      const facilityConflict = await prisma.trainingSession.findFirst({
+        where: {
+          id: { not: sessionId },
+          facilityId: newFacilityId,
+          deletedAt: null,
+          status: { notIn: ['CANCELLED', 'POSTPONED'] },
+          AND: [
+            { startTime: { lt: newEndTime } },
+            { endTime: { gt: newStartTime } },
+          ],
+        },
+        select: { id: true, name: true },
+      });
 
-    if (sessionType !== undefined) {
-      const validSessionTypes = ['TEAM', 'INDIVIDUAL', 'GROUP'];
-      if (!validSessionTypes.includes(sessionType)) {
+      if (facilityConflict) {
         return NextResponse.json(
           {
             success: false,
-            error: 'Invalid session type',
-            validTypes: validSessionTypes,
+            error: {
+              code: 'CONFLICT',
+              message: `Facility already booked for: ${facilityConflict.name}`,
+              details: { conflictingSessionId: facilityConflict.id },
+            },
           },
-          { status: 400 }
+          { status: 409 }
         );
       }
-      updateData.sessionType = sessionType;
     }
 
-    // Check if there are updates to make
-    if (Object.keys(updateData).length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No fields provided to update' },
-        { status: 400 }
-      );
-    }
+    // Build update data
+    const updateData: Prisma.TrainingSessionUpdateInput = {};
+
+    if (input.name !== undefined) updateData.name = input.name;
+    if (input.description !== undefined) updateData.description = input.description;
+    if (input.startTime !== undefined) updateData.startTime = input.startTime;
+    if (input.endTime !== undefined) updateData.endTime = input.endTime;
+    if (input.intensity !== undefined) updateData.intensity = input.intensity;
+    if (input.category !== undefined) updateData.category = input.category;
+    if (input.customCategory !== undefined) updateData.customCategory = input.customCategory;
+    if (input.location !== undefined) updateData.location = input.location;
+    if (input.facilityId !== undefined) updateData.facilityId = input.facilityId;
+    if (input.maxParticipants !== undefined) updateData.maxParticipants = input.maxParticipants;
+    if (input.drills !== undefined) updateData.drills = input.drills as Prisma.JsonValue;
+    if (input.notes !== undefined) updateData.notes = input.notes;
+    if (input.equipment !== undefined) updateData.equipment = input.equipment;
+    if (input.focusAreas !== undefined) updateData.focusAreas = input.focusAreas;
+    if (input.status !== undefined) updateData.status = input.status;
+    if (input.teamId !== undefined) updateData.teamId = input.teamId;
 
     // Update session
     const updatedSession = await prisma.trainingSession.update({
       where: { id: sessionId },
       data: updateData,
       include: {
+        club: true,
         team: true,
         coach: {
           include: {
@@ -356,7 +293,24 @@ export async function PATCH(
                 id: true,
                 firstName: true,
                 lastName: true,
+                avatar: true,
                 email: true,
+              },
+            },
+          },
+        },
+        attendance: {
+          include: {
+            player: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    avatar: true,
+                  },
+                },
               },
             },
           },
@@ -364,106 +318,190 @@ export async function PATCH(
       },
     });
 
-    console.log(`✅ Updated training session: ${updatedSession.id}`);
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: updatedSession,
-        message: 'Training session updated successfully',
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      success: true,
+      data: updatedSession,
+      meta: { timestamp: new Date().toISOString() },
+    });
   } catch (error) {
-    console.error('❌ Update training session error:', error);
+    console.error('PUT /api/training/[sessionId] error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to update training session',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to update training session' } },
       { status: 500 }
     );
   }
 }
 
 // ============================================================================
-// DELETE /api/training/sessions/[sessionId]
+// DELETE /api/training/[sessionId] - Delete training session (soft delete)
 // ============================================================================
 
-/**
- * Delete a training session
- * 
- * Parameters:
- * - sessionId: Training session ID
- * 
- * Note: This will cascade delete related records (drills, attendance)
- */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { sessionId: string } }
-) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
-
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } },
+        { status: 401 }
+      );
     }
 
     const { sessionId } = params;
 
-    // Validate sessionId
-    if (!sessionId || sessionId.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid session ID' },
-        { status: 400 }
-      );
-    }
-
-    // Check if session exists
+    // Get existing session
     const existingSession = await prisma.trainingSession.findUnique({
-      where: { id: sessionId },
-      select: {
-        id: true,
-        date: true,
-        team: { select: { name: true } },
-      },
+      where: { id: sessionId, deletedAt: null },
+      select: { id: true, clubId: true, name: true },
     });
 
     if (!existingSession) {
       return NextResponse.json(
-        { success: false, error: 'Training session not found' },
+        { success: false, error: { code: 'NOT_FOUND', message: 'Training session not found' } },
         { status: 404 }
       );
     }
 
-    // Delete session (cascades to SessionDrill and TrainingAttendance)
-    await prisma.trainingSession.delete({
-      where: { id: sessionId },
+    // Check permission
+    const membership = await prisma.clubMember.findFirst({
+      where: {
+        userId: session.user.id,
+        clubId: existingSession.clubId,
+        isActive: true,
+        role: { in: ['OWNER', 'MANAGER', 'HEAD_COACH'] },
+      },
     });
 
-    console.log(`✅ Deleted training session: ${sessionId} (${existingSession.team.name})`);
+    if (!membership) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'No permission to delete this session' } },
+        { status: 403 }
+      );
+    }
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Training session deleted successfully',
-        deletedSession: {
-          id: existingSession.id,
-          date: existingSession.date.toISOString(),
-          team: existingSession.team.name,
-        },
-      },
-      { status: 200 }
-    );
+    // Soft delete
+    await prisma.trainingSession.update({
+      where: { id: sessionId },
+      data: { deletedAt: new Date() },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: { deleted: true, sessionId, name: existingSession.name },
+      meta: { timestamp: new Date().toISOString() },
+    });
   } catch (error) {
-    console.error('❌ Delete training session error:', error);
+    console.error('DELETE /api/training/[sessionId] error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to delete training session',
-        details: error instanceof Error ? error.message : 'Unknown error',
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to delete training session' } },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================================================
+// PATCH /api/training/[sessionId] - Partial update (e.g., status change)
+// ============================================================================
+
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } },
+        { status: 401 }
+      );
+    }
+
+    const { sessionId } = params;
+    const body = await request.json();
+
+    // Get existing session
+    const existingSession = await prisma.trainingSession.findUnique({
+      where: { id: sessionId, deletedAt: null },
+      select: { id: true, clubId: true },
+    });
+
+    if (!existingSession) {
+      return NextResponse.json(
+        { success: false, error: { code: 'NOT_FOUND', message: 'Training session not found' } },
+        { status: 404 }
+      );
+    }
+
+    // Check permission
+    const membership = await prisma.clubMember.findFirst({
+      where: {
+        userId: session.user.id,
+        clubId: existingSession.clubId,
+        isActive: true,
+        role: { in: ['OWNER', 'MANAGER', 'HEAD_COACH', 'ASSISTANT_COACH'] },
       },
+    });
+
+    if (!membership) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'No permission to update this session' } },
+        { status: 403 }
+      );
+    }
+
+    // Handle specific PATCH operations
+    const { action, ...data } = body;
+
+    let updateData: Prisma.TrainingSessionUpdateInput = {};
+
+    switch (action) {
+      case 'cancel':
+        updateData = {
+          status: 'CANCELLED',
+          notes: data.reason ? `CANCELLED: ${data.reason}` : undefined,
+        };
+        break;
+
+      case 'complete':
+        updateData = {
+          status: 'COMPLETED',
+        };
+        break;
+
+      case 'start':
+        updateData = {
+          status: 'IN_PROGRESS',
+        };
+        break;
+
+      case 'postpone':
+        updateData = {
+          status: 'POSTPONED',
+          notes: data.reason ? `POSTPONED: ${data.reason}` : undefined,
+        };
+        break;
+
+      default:
+        // Generic partial update
+        updateData = data;
+    }
+
+    const updatedSession = await prisma.trainingSession.update({
+      where: { id: sessionId },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: updatedSession,
+      meta: { timestamp: new Date().toISOString() },
+    });
+  } catch (error) {
+    console.error('PATCH /api/training/[sessionId] error:', error);
+    return NextResponse.json(
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'Failed to update training session' } },
       { status: 500 }
     );
   }
