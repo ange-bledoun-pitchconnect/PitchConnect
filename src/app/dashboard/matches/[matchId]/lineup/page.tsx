@@ -1,16 +1,17 @@
 // ============================================================================
-// 📋 PITCHCONNECT - MATCH LINEUP PAGE
+// 👥 PITCHCONNECT - MATCH LINEUP PAGE v7.3.0
 // ============================================================================
-// Visual lineup builder with sport-specific formations and positions
-// Schema v7.2.0 aligned
+// Path: src/app/dashboard/matches/[matchId]/lineup/page.tsx
+// Server component for match lineup management
+// Schema v7.3.0 aligned - Uses MatchSquad model
 // ============================================================================
 
-import { Suspense } from 'react';
-import { notFound, redirect } from 'next/navigation';
 import { Metadata } from 'next';
+import { redirect, notFound } from 'next/navigation';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { LineupClient } from './LineupClient';
+import { ClubMemberRole, MatchStatus, Sport, FormationType, Position } from '@prisma/client';
+import LineupClient from './LineupClient';
 
 // ============================================================================
 // METADATA
@@ -19,7 +20,7 @@ import { LineupClient } from './LineupClient';
 export async function generateMetadata({
   params,
 }: {
-  params: { clubId: string; teamId: string; matchId: string };
+  params: { matchId: string };
 }): Promise<Metadata> {
   const match = await prisma.match.findUnique({
     where: { id: params.matchId },
@@ -29,44 +30,159 @@ export async function generateMetadata({
     },
   });
 
+  if (!match) {
+    return { title: 'Match Not Found | PitchConnect' };
+  }
+
   return {
-    title: match
-      ? `${match.homeTeam.name} vs ${match.awayTeam.name} - Lineup`
-      : 'Match Lineup',
-    description: 'Set and manage match lineup',
+    title: `${match.homeTeam.name} vs ${match.awayTeam.name} - Lineup | PitchConnect`,
+    description: `Team lineup for ${match.homeTeam.name} vs ${match.awayTeam.name}`,
   };
+}
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface SquadPlayer {
+  id: string;
+  matchId: string;
+  playerId: string;
+  teamId: string;
+  lineupPosition: number | null;
+  shirtNumber: number | null;
+  position: Position | null;
+  status: string;
+  isCaptain: boolean;
+  notes: string | null;
+  player: {
+    id: string;
+    primaryPosition: Position | null;
+    secondaryPosition: Position | null;
+    jerseyNumber: number | null;
+    user: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      avatar: string | null;
+    };
+  };
+}
+
+interface TeamLineupData {
+  id: string;
+  name: string;
+  shortName: string | null;
+  logo: string | null;
+  sport: Sport;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  formation: FormationType | null;
+  players: SquadPlayer[];
+}
+
+interface MatchLineupData {
+  id: string;
+  status: MatchStatus;
+  kickOffTime: Date;
+  venue: string | null;
+  homeClubId: string;
+  awayClubId: string;
+  homeFormation: FormationType | null;
+  awayFormation: FormationType | null;
+  homeTeam: TeamLineupData;
+  awayTeam: TeamLineupData;
+}
+
+// ============================================================================
+// PERMISSIONS
+// ============================================================================
+
+const MANAGE_LINEUP_ROLES: ClubMemberRole[] = [
+  'OWNER',
+  'MANAGER',
+  'HEAD_COACH',
+  'ASSISTANT_COACH',
+];
+
+async function canManageLineup(
+  userId: string,
+  homeClubId: string,
+  awayClubId: string
+): Promise<{ canManage: boolean; managedClubId: string | null }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+
+  if (user?.isSuperAdmin) {
+    return { canManage: true, managedClubId: homeClubId }; // SuperAdmin manages home by default
+  }
+
+  // Check home club membership
+  const homeMembership = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId: homeClubId,
+      isActive: true,
+      role: { in: MANAGE_LINEUP_ROLES },
+    },
+  });
+
+  if (homeMembership) {
+    return { canManage: true, managedClubId: homeClubId };
+  }
+
+  // Check away club membership
+  const awayMembership = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId: awayClubId,
+      isActive: true,
+      role: { in: MANAGE_LINEUP_ROLES },
+    },
+  });
+
+  if (awayMembership) {
+    return { canManage: true, managedClubId: awayClubId };
+  }
+
+  return { canManage: false, managedClubId: null };
 }
 
 // ============================================================================
 // DATA FETCHING
 // ============================================================================
 
-async function getLineupData(
-  matchId: string,
-  teamId: string,
-  clubId: string,
-  userId: string
-) {
-  // Get match with lineups
-  const match = await prisma.match.findFirst({
-    where: {
-      id: matchId,
-      OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
-    },
+async function getMatchLineupData(matchId: string): Promise<MatchLineupData | null> {
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
     include: {
       homeTeam: {
-        include: {
-          club: { select: { id: true, name: true, sport: true } },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          logo: true,
+          sport: true,
+          primaryColor: true,
+          secondaryColor: true,
+          formation: true,
         },
       },
       awayTeam: {
-        include: {
-          club: { select: { id: true, name: true, sport: true } },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          logo: true,
+          sport: true,
+          primaryColor: true,
+          secondaryColor: true,
+          formation: true,
         },
       },
-      competition: { select: { id: true, name: true } },
-      venue: { select: { id: true, name: true } },
-      lineups: {
+      squads: {
         include: {
           player: {
             include: {
@@ -75,44 +191,50 @@ async function getLineupData(
                   id: true,
                   firstName: true,
                   lastName: true,
-                  avatarUrl: true,
+                  avatar: true,
                 },
-              },
-              injuries: {
-                where: { status: 'ACTIVE' },
-                select: { id: true, severity: true },
               },
             },
           },
         },
+        orderBy: [{ status: 'asc' }, { lineupPosition: 'asc' }],
       },
-      formation: true,
     },
   });
 
   if (!match) return null;
 
-  // Check permissions
-  const membership = await prisma.clubMember.findFirst({
-    where: {
-      clubId: clubId,
-      userId: userId,
-      status: 'ACTIVE',
+  // Separate squad by team
+  const homeSquad = match.squads.filter((s) => s.teamId === match.homeTeamId);
+  const awaySquad = match.squads.filter((s) => s.teamId === match.awayTeamId);
+
+  return {
+    id: match.id,
+    status: match.status,
+    kickOffTime: match.kickOffTime,
+    venue: match.venue,
+    homeClubId: match.homeClubId,
+    awayClubId: match.awayClubId,
+    homeFormation: match.homeFormation,
+    awayFormation: match.awayFormation,
+    homeTeam: {
+      ...match.homeTeam,
+      players: homeSquad,
     },
-    include: { role: true },
-  });
+    awayTeam: {
+      ...match.awayTeam,
+      players: awaySquad,
+    },
+  };
+}
 
-  if (!membership) return null;
-
-  const canManageLineup = ['OWNER', 'ADMIN', 'MANAGER', 'COACH'].includes(
-    membership.role?.name || ''
-  );
-
-  // Get available players for lineup
-  const availablePlayers = await prisma.teamPlayer.findMany({
+async function getAvailablePlayers(clubId: string, teamId: string) {
+  // Get all players from teams in this club
+  const teamPlayers = await prisma.teamPlayer.findMany({
     where: {
-      teamId: teamId,
-      status: { in: ['ACTIVE', 'ON_LOAN'] },
+      teamId,
+      isActive: true,
+      status: { in: ['ACTIVE', 'ON_LOAN_IN'] },
     },
     include: {
       player: {
@@ -122,54 +244,22 @@ async function getLineupData(
               id: true,
               firstName: true,
               lastName: true,
-              avatarUrl: true,
-            },
-          },
-          injuries: {
-            where: { status: 'ACTIVE' },
-            select: { id: true, severity: true, bodyPart: true },
-          },
-          // Get player availability for match date
-          availability: {
-            where: {
-              date: {
-                gte: new Date(new Date(match.scheduledAt).setHours(0, 0, 0, 0)),
-                lte: new Date(new Date(match.scheduledAt).setHours(23, 59, 59, 999)),
-              },
+              avatar: true,
             },
           },
         },
       },
     },
-    orderBy: [{ position: 'asc' }, { jerseyNumber: 'asc' }],
   });
 
-  // Get saved formations for this team
-  const savedFormations = await prisma.teamFormation.findMany({
-    where: { teamId: teamId },
-    orderBy: { name: 'asc' },
-  });
-
-  const sport = match.homeTeam.club.sport;
-  const isHomeTeam = match.homeTeamId === teamId;
-
-  // Separate lineup into starting XI and substitutes
-  const teamLineup = match.lineups.filter((l) =>
-    isHomeTeam ? l.teamId === match.homeTeamId : l.teamId === match.awayTeamId
-  );
-
-  return {
-    match,
-    lineup: {
-      starting: teamLineup.filter((l) => l.isStarter),
-      substitutes: teamLineup.filter((l) => !l.isStarter),
-    },
-    availablePlayers,
-    savedFormations,
-    permissions: { canManageLineup, userRole: membership.role?.name || 'VIEWER' },
-    sport,
-    isHomeTeam,
-  };
+  return teamPlayers.map((tp) => ({
+    id: tp.player.id,
+    name: `${tp.player.user.firstName} ${tp.player.user.lastName}`,
+    avatar: tp.player.user.avatar,
+    position: tp.player.primaryPosition,
+    secondaryPosition: tp.player.secondaryPosition,
+    jerseyNumber: tp.jerseyNumber || tp.player.jerseyNumber,
+  }));
 }
 
 // ============================================================================
@@ -179,62 +269,66 @@ async function getLineupData(
 export default async function LineupPage({
   params,
 }: {
-  params: { clubId: string; teamId: string; matchId: string };
+  params: { matchId: string };
 }) {
   const session = await auth();
 
   if (!session?.user?.id) {
-    redirect(
-      '/auth/signin?callbackUrl=' +
-        encodeURIComponent(
-          `/dashboard/manager/clubs/${params.clubId}/teams/${params.teamId}/matches/${params.matchId}/lineup`
-        )
-    );
+    redirect(`/auth/login?callbackUrl=/dashboard/matches/${params.matchId}/lineup`);
   }
 
-  const data = await getLineupData(
-    params.matchId,
-    params.teamId,
-    params.clubId,
-    session.user.id
-  );
+  const match = await getMatchLineupData(params.matchId);
 
-  if (!data) {
+  if (!match) {
     notFound();
   }
 
-  return (
-    <Suspense fallback={<LineupPageSkeleton />}>
-      <LineupClient
-        match={data.match}
-        lineup={data.lineup}
-        availablePlayers={data.availablePlayers}
-        savedFormations={data.savedFormations}
-        permissions={data.permissions}
-        sport={data.sport}
-        isHomeTeam={data.isHomeTeam}
-        teamId={params.teamId}
-      />
-    </Suspense>
+  const { canManage, managedClubId } = await canManageLineup(
+    session.user.id,
+    match.homeClubId,
+    match.awayClubId
   );
-}
 
-// ============================================================================
-// LOADING SKELETON
-// ============================================================================
+  // Get available players for both teams
+  const [homeAvailable, awayAvailable] = await Promise.all([
+    getAvailablePlayers(match.homeClubId, match.homeTeam.id),
+    getAvailablePlayers(match.awayClubId, match.awayTeam.id),
+  ]);
 
-function LineupPageSkeleton() {
+  // Serialize dates for client
+  const serializedMatch = {
+    ...match,
+    kickOffTime: match.kickOffTime.toISOString(),
+    homeTeam: {
+      ...match.homeTeam,
+      players: match.homeTeam.players.map((p) => ({
+        ...p,
+        player: {
+          ...p.player,
+          user: p.player.user,
+        },
+      })),
+    },
+    awayTeam: {
+      ...match.awayTeam,
+      players: match.awayTeam.players.map((p) => ({
+        ...p,
+        player: {
+          ...p.player,
+          user: p.player.user,
+        },
+      })),
+    },
+  };
+
   return (
-    <div className="space-y-6 animate-pulse">
-      <div className="h-8 w-64 bg-gray-200 dark:bg-gray-700 rounded" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 h-[600px] bg-gray-200 dark:bg-gray-700 rounded-lg" />
-        <div className="space-y-4">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded-lg" />
-          ))}
-        </div>
-      </div>
-    </div>
+    <LineupClient
+      match={serializedMatch}
+      homeAvailablePlayers={homeAvailable}
+      awayAvailablePlayers={awayAvailable}
+      canManageLineup={canManage}
+      managedClubId={managedClubId}
+      currentUserId={session.user.id}
+    />
   );
 }

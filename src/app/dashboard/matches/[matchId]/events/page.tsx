@@ -1,17 +1,17 @@
 // ============================================================================
-// ⚽ PITCHCONNECT - MATCH EVENTS PAGE
+// ⚽ PITCHCONNECT - MATCH EVENTS PAGE v7.3.0
 // ============================================================================
-// Real-time match event tracking with sport-specific event types
-// Live scoring, timeline, and analytics
-// Schema v7.2.0 aligned
+// Path: src/app/dashboard/matches/[matchId]/events/page.tsx
+// Server component for match event tracking
+// Schema v7.3.0 aligned - Uses correct Prisma field names
 // ============================================================================
 
-import { Suspense } from 'react';
-import { notFound, redirect } from 'next/navigation';
 import { Metadata } from 'next';
+import { redirect, notFound } from 'next/navigation';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { MatchEventsClient } from './MatchEventsClient';
+import { ClubMemberRole, MatchStatus, Sport } from '@prisma/client';
+import MatchEventsClient from './MatchEventsClient';
 
 // ============================================================================
 // METADATA
@@ -20,7 +20,7 @@ import { MatchEventsClient } from './MatchEventsClient';
 export async function generateMetadata({
   params,
 }: {
-  params: { clubId: string; teamId: string; matchId: string };
+  params: { matchId: string };
 }): Promise<Metadata> {
   const match = await prisma.match.findUnique({
     where: { id: params.matchId },
@@ -31,89 +31,176 @@ export async function generateMetadata({
   });
 
   if (!match) {
-    return { title: 'Match Not Found' };
+    return { title: 'Match Not Found | PitchConnect' };
   }
 
   return {
-    title: `${match.homeTeam.name} vs ${match.awayTeam.name} - Match Events`,
-    description: 'Track match events in real-time',
+    title: `${match.homeTeam.name} vs ${match.awayTeam.name} - Events | PitchConnect`,
+    description: `Live match events and statistics for ${match.homeTeam.name} vs ${match.awayTeam.name}`,
   };
+}
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface MatchEventData {
+  id: string;
+  matchId: string;
+  playerId: string | null;
+  eventType: string;
+  minute: number;
+  secondaryMinute: number | null;
+  period: string | null;
+  relatedPlayerId: string | null;
+  assistPlayerId: string | null;
+  goalType: string | null;
+  cardReason: string | null;
+  details: Record<string, any> | null;
+  videoTimestamp: number | null;
+  createdAt: Date;
+}
+
+interface LineupPlayer {
+  id: string;
+  lineupPosition: number | null;
+  shirtNumber: number | null;
+  status: string;
+  player?: {
+    id: string;
+    user: {
+      firstName: string;
+      lastName: string;
+      avatar: string | null;
+    };
+    primaryPosition: string | null;
+    jerseyNumber: number | null;
+  };
+}
+
+interface MatchData {
+  id: string;
+  status: MatchStatus;
+  kickOffTime: Date;
+  homeScore: number | null;
+  awayScore: number | null;
+  homeHalftimeScore: number | null;
+  awayHalftimeScore: number | null;
+  venue: string | null;
+  homeClubId: string;
+  awayClubId: string;
+  homeTeam: {
+    id: string;
+    name: string;
+    shortName: string | null;
+    logo: string | null;
+    sport: Sport;
+    primaryColor: string | null;
+  };
+  awayTeam: {
+    id: string;
+    name: string;
+    shortName: string | null;
+    logo: string | null;
+    sport: Sport;
+    primaryColor: string | null;
+  };
+  events: MatchEventData[];
+  squads: LineupPlayer[];
+}
+
+// ============================================================================
+// PERMISSION CHECK
+// ============================================================================
+
+const MANAGE_EVENTS_ROLES: ClubMemberRole[] = [
+  'OWNER',
+  'MANAGER',
+  'HEAD_COACH',
+  'ASSISTANT_COACH',
+  'ANALYST',
+  'VIDEO_ANALYST',
+];
+
+async function canManageEvents(userId: string, homeClubId: string, awayClubId: string): Promise<boolean> {
+  // Check if user is SuperAdmin
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true, roles: true },
+  });
+
+  if (user?.isSuperAdmin) return true;
+
+  // Check if user has referee role (can manage all match events)
+  if (user?.roles?.includes('REFEREE')) return true;
+
+  // Check club membership for either team
+  const membership = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      isActive: true,
+      clubId: { in: [homeClubId, awayClubId] },
+      role: { in: MANAGE_EVENTS_ROLES },
+    },
+  });
+
+  return !!membership;
 }
 
 // ============================================================================
 // DATA FETCHING
 // ============================================================================
 
-async function getMatchEventData(
-  matchId: string,
-  teamId: string,
-  clubId: string,
-  userId: string
-) {
-  // Verify match exists and user has access
-  const match = await prisma.match.findFirst({
-    where: {
-      id: matchId,
-      OR: [
-        { homeTeamId: teamId },
-        { awayTeamId: teamId },
-      ],
-    },
+async function getMatchData(matchId: string): Promise<MatchData | null> {
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
     include: {
       homeTeam: {
-        include: {
-          club: {
-            select: { id: true, name: true, sport: true },
-          },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          logo: true,
+          sport: true,
+          primaryColor: true,
         },
       },
       awayTeam: {
-        include: {
-          club: {
-            select: { id: true, name: true, sport: true },
-          },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          logo: true,
+          sport: true,
+          primaryColor: true,
         },
-      },
-      competition: {
-        select: { id: true, name: true },
-      },
-      venue: {
-        select: { id: true, name: true },
       },
       events: {
-        orderBy: { minute: 'asc' },
-        include: {
-          player: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-            },
-          },
-          assistPlayer: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                },
-              },
-            },
+        orderBy: [{ minute: 'asc' }, { createdAt: 'asc' }],
+      },
+      squads: {
+        where: {
+          status: {
+            in: ['STARTING_LINEUP', 'SUBSTITUTE', 'CONFIRMED'],
           },
         },
-      },
-      lineups: {
         include: {
-          player: {
+          team: {
             include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  avatarUrl: true,
+              players: {
+                where: { isActive: true },
+                include: {
+                  player: {
+                    include: {
+                      user: {
+                        select: {
+                          firstName: true,
+                          lastName: true,
+                          avatar: true,
+                        },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -125,112 +212,109 @@ async function getMatchEventData(
 
   if (!match) return null;
 
-  // Check user permissions
-  const membership = await prisma.clubMember.findFirst({
-    where: {
-      clubId: clubId,
-      userId: userId,
-      status: 'ACTIVE',
-    },
-    include: {
-      role: true,
-    },
-  });
+  return {
+    id: match.id,
+    status: match.status,
+    kickOffTime: match.kickOffTime,
+    homeScore: match.homeScore,
+    awayScore: match.awayScore,
+    homeHalftimeScore: match.homeHalftimeScore,
+    awayHalftimeScore: match.awayHalftimeScore,
+    venue: match.venue,
+    homeClubId: match.homeClubId,
+    awayClubId: match.awayClubId,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    events: match.events.map((e) => ({
+      ...e,
+      details: e.details as Record<string, any> | null,
+    })),
+    squads: match.squads.map((s) => ({
+      id: s.id,
+      lineupPosition: s.lineupPosition,
+      shirtNumber: s.shirtNumber,
+      status: s.status,
+    })),
+  };
+}
 
-  if (!membership) return null;
-
-  const canManageEvents = ['OWNER', 'ADMIN', 'MANAGER', 'COACH'].includes(
-    membership.role?.name || ''
-  );
-
-  // Get available players for event logging
-  const teamPlayers = await prisma.teamPlayer.findMany({
-    where: {
-      teamId: teamId,
-      status: { in: ['ACTIVE', 'ON_LOAN'] },
-    },
-    include: {
-      player: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              avatarUrl: true,
+async function getTeamPlayers(homeClubId: string, awayClubId: string) {
+  // Get players from teams belonging to these clubs
+  const [homeTeams, awayTeams] = await Promise.all([
+    prisma.team.findMany({
+      where: { clubId: homeClubId, status: 'ACTIVE' },
+      include: {
+        players: {
+          where: { isActive: true },
+          include: {
+            player: {
+              include: {
+                user: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                    avatar: true,
+                  },
+                },
+              },
             },
           },
         },
       },
-    },
-    orderBy: { jerseyNumber: 'asc' },
-  });
+    }),
+    prisma.team.findMany({
+      where: { clubId: awayClubId, status: 'ACTIVE' },
+      include: {
+        players: {
+          where: { isActive: true },
+          include: {
+            player: {
+              include: {
+                user: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                    avatar: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
 
-  // Calculate current score from events
-  const sport = match.homeTeam.club.sport;
-  const score = calculateScore(match.events, match.homeTeamId, match.awayTeamId, sport);
+  const formatPlayers = (teams: typeof homeTeams) => {
+    const players: Array<{
+      id: string;
+      name: string;
+      avatar: string | null;
+      position: string | null;
+      jerseyNumber: number | null;
+    }> = [];
 
-  return {
-    match: {
-      ...match,
-      currentScore: score,
-    },
-    teamPlayers,
-    permissions: {
-      canManageEvents,
-      userRole: membership.role?.name || 'VIEWER',
-    },
-    sport,
-  };
-}
-
-// Calculate score based on events
-function calculateScore(
-  events: any[],
-  homeTeamId: string,
-  awayTeamId: string,
-  sport: string
-): { home: number; away: number } {
-  const scoringEvents: Record<string, Record<string, number>> = {
-    FOOTBALL: { GOAL: 1, OWN_GOAL: 1, PENALTY_SCORED: 1 },
-    RUGBY: { TRY: 5, CONVERSION: 2, PENALTY_GOAL: 3, DROP_GOAL: 3 },
-    BASKETBALL: { GOAL: 2, THREE_POINTER: 3 },
-    AMERICAN_FOOTBALL: { TOUCHDOWN: 6, FIELD_GOAL: 3, SAFETY_SCORE: 2 },
-    HOCKEY: { GOAL: 1 },
-    NETBALL: { GOAL: 1 },
-    CRICKET: { BOUNDARY: 4 },
-    LACROSSE: { GOAL: 1 },
-    AUSTRALIAN_RULES: { GOAL: 6 },
-    GAELIC_FOOTBALL: { GOAL: 3 },
-    FUTSAL: { GOAL: 1, PENALTY_SCORED: 1 },
-    BEACH_FOOTBALL: { GOAL: 1, PENALTY_SCORED: 1 },
-  };
-
-  const sportScoring = scoringEvents[sport] || { GOAL: 1 };
-  let homeScore = 0;
-  let awayScore = 0;
-
-  events.forEach((event) => {
-    const points = sportScoring[event.eventType] || 0;
-    if (points > 0) {
-      // Handle own goals (scored for opposing team)
-      if (event.eventType === 'OWN_GOAL') {
-        if (event.teamId === homeTeamId) {
-          awayScore += points;
-        } else {
-          homeScore += points;
-        }
-      } else {
-        if (event.teamId === homeTeamId) {
-          homeScore += points;
-        } else if (event.teamId === awayTeamId) {
-          awayScore += points;
+    for (const team of teams) {
+      for (const tp of team.players) {
+        if (tp.player) {
+          players.push({
+            id: tp.player.id,
+            name: `${tp.player.user.firstName} ${tp.player.user.lastName}`,
+            avatar: tp.player.user.avatar,
+            position: tp.player.primaryPosition,
+            jerseyNumber: tp.jerseyNumber || tp.player.jerseyNumber,
+          });
         }
       }
     }
-  });
 
-  return { home: homeScore, away: awayScore };
+    return players;
+  };
+
+  return {
+    homePlayers: formatPlayers(homeTeams),
+    awayPlayers: formatPlayers(awayTeams),
+  };
 }
 
 // ============================================================================
@@ -240,62 +324,40 @@ function calculateScore(
 export default async function MatchEventsPage({
   params,
 }: {
-  params: { clubId: string; teamId: string; matchId: string };
+  params: { matchId: string };
 }) {
   const session = await auth();
 
   if (!session?.user?.id) {
-    redirect(
-      '/auth/signin?callbackUrl=' +
-        encodeURIComponent(
-          `/dashboard/manager/clubs/${params.clubId}/teams/${params.teamId}/matches/${params.matchId}/events`
-        )
-    );
+    redirect(`/auth/login?callbackUrl=/dashboard/matches/${params.matchId}/events`);
   }
 
-  const data = await getMatchEventData(
-    params.matchId,
-    params.teamId,
-    params.clubId,
-    session.user.id
-  );
+  const match = await getMatchData(params.matchId);
 
-  if (!data) {
+  if (!match) {
     notFound();
   }
 
+  const canEdit = await canManageEvents(session.user.id, match.homeClubId, match.awayClubId);
+  const { homePlayers, awayPlayers } = await getTeamPlayers(match.homeClubId, match.awayClubId);
+
+  // Serialize dates for client component
+  const serializedMatch = {
+    ...match,
+    kickOffTime: match.kickOffTime.toISOString(),
+    events: match.events.map((e) => ({
+      ...e,
+      createdAt: e.createdAt.toISOString(),
+    })),
+  };
+
   return (
-    <Suspense fallback={<MatchEventsPageSkeleton />}>
-      <MatchEventsClient
-        match={data.match}
-        teamPlayers={data.teamPlayers}
-        permissions={data.permissions}
-        sport={data.sport}
-        currentTeamId={params.teamId}
-      />
-    </Suspense>
-  );
-}
-
-// ============================================================================
-// LOADING SKELETON
-// ============================================================================
-
-function MatchEventsPageSkeleton() {
-  return (
-    <div className="space-y-6 animate-pulse">
-      {/* Score Header */}
-      <div className="h-32 bg-gray-200 dark:bg-gray-700 rounded-lg" />
-
-      {/* Timeline */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-20 bg-gray-200 dark:bg-gray-700 rounded-lg" />
-          ))}
-        </div>
-        <div className="h-96 bg-gray-200 dark:bg-gray-700 rounded-lg" />
-      </div>
-    </div>
+    <MatchEventsClient
+      match={serializedMatch}
+      homePlayers={homePlayers}
+      awayPlayers={awayPlayers}
+      canManageEvents={canEdit}
+      currentUserId={session.user.id}
+    />
   );
 }

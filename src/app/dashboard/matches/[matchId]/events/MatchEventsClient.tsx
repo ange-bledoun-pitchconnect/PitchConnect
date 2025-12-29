@@ -1,965 +1,862 @@
 'use client';
 
 // ============================================================================
-// ⚽ PITCHCONNECT - MATCH EVENTS CLIENT COMPONENT
+// ⚽ PITCHCONNECT - MATCH EVENTS CLIENT v7.3.0
 // ============================================================================
-// Real-time event tracking with sport-specific event types and scoring
+// Path: src/app/dashboard/matches/[matchId]/events/MatchEventsClient.tsx
+// Real-time match event tracking with multi-sport support
+// Schema v7.3.0 aligned - Uses MatchEventType enum
 // ============================================================================
 
-import { useState, useMemo, useTransition, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
+  ArrowLeft,
   Plus,
   Clock,
   Play,
   Pause,
-  Square,
-  ChevronLeft,
-  ChevronRight,
-  Edit,
-  Trash2,
-  AlertTriangle,
-  Target,
-  Users,
-  Activity,
-  Zap,
   RefreshCw,
+  Filter,
+  Timer,
+  Users,
+  AlertCircle,
+  CheckCircle,
+  X,
+  ChevronDown,
+  Activity,
+  Loader2,
 } from 'lucide-react';
-import { Sport, MatchEventType, MatchStatus } from '@prisma/client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   getSportConfig,
-  SPORT_EVENT_TYPES,
-  SPORT_SCORING_EVENTS,
   getEventTypeLabel,
   getEventTypeIcon,
-} from '@/lib/sport-config';
-import { format } from 'date-fns';
+  getSportIcon,
+  type SportConfig,
+} from '@/lib/config/sports';
+import type { Sport, MatchEventType, MatchStatus } from '@prisma/client';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-interface MatchEventsClientProps {
-  match: MatchWithRelations;
-  teamPlayers: TeamPlayerWithRelations[];
-  permissions: {
-    canManageEvents: boolean;
-    userRole: string;
-  };
-  sport: Sport;
-  currentTeamId: string;
+interface MatchEvent {
+  id: string;
+  matchId: string;
+  playerId: string | null;
+  eventType: string;
+  minute: number;
+  secondaryMinute: number | null;
+  period: string | null;
+  relatedPlayerId: string | null;
+  assistPlayerId: string | null;
+  goalType: string | null;
+  cardReason: string | null;
+  details: Record<string, any> | null;
+  videoTimestamp: number | null;
+  createdAt: string;
 }
 
-interface MatchWithRelations {
+interface Player {
+  id: string;
+  name: string;
+  avatar: string | null;
+  position: string | null;
+  jerseyNumber: number | null;
+}
+
+interface TeamInfo {
+  id: string;
+  name: string;
+  shortName: string | null;
+  logo: string | null;
+  sport: Sport;
+  primaryColor: string | null;
+}
+
+interface MatchData {
   id: string;
   status: MatchStatus;
-  scheduledAt: Date;
-  startedAt: Date | null;
-  endedAt: Date | null;
-  homeTeam: {
-    id: string;
-    name: string;
-    club: { id: string; name: string; sport: Sport };
-  };
-  awayTeam: {
-    id: string;
-    name: string;
-    club: { id: string; name: string; sport: Sport };
-  };
-  competition: { id: string; name: string } | null;
-  venue: { id: string; name: string } | null;
-  events: MatchEventWithRelations[];
-  lineups: any[];
-  currentScore: { home: number; away: number };
+  kickOffTime: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  homeHalftimeScore: number | null;
+  awayHalftimeScore: number | null;
+  venue: string | null;
+  homeClubId: string;
+  awayClubId: string;
+  homeTeam: TeamInfo;
+  awayTeam: TeamInfo;
+  events: MatchEvent[];
 }
 
-interface MatchEventWithRelations {
-  id: string;
-  eventType: MatchEventType;
-  minute: number;
-  addedTime: number | null;
-  teamId: string | null;
-  player: {
-    id: string;
-    user: { firstName: string; lastName: string };
-  } | null;
-  assistPlayer: {
-    id: string;
-    user: { firstName: string; lastName: string };
-  } | null;
-  description: string | null;
-  metadata: any;
-  createdAt: Date;
+interface MatchEventsClientProps {
+  match: MatchData;
+  homePlayers: Player[];
+  awayPlayers: Player[];
+  canManageEvents: boolean;
+  currentUserId: string;
 }
 
-interface TeamPlayerWithRelations {
-  id: string;
-  jerseyNumber: number | null;
-  position: string | null;
-  player: {
-    id: string;
-    user: {
-      id: string;
-      firstName: string;
-      lastName: string;
-      avatarUrl: string | null;
-    };
-  };
-}
+// Event categories for filtering
+type EventCategory = 'all' | 'scoring' | 'disciplinary' | 'substitution' | 'gameFlow';
 
 // ============================================================================
-// EVENT TYPE CATEGORIES
+// HELPER FUNCTIONS
 // ============================================================================
 
-const EVENT_CATEGORIES = {
-  scoring: ['GOAL', 'TRY', 'TOUCHDOWN', 'CONVERSION', 'PENALTY_GOAL', 'DROP_GOAL', 'FIELD_GOAL', 'THREE_POINTER', 'PENALTY_SCORED', 'OWN_GOAL'],
-  disciplinary: ['YELLOW_CARD', 'SECOND_YELLOW', 'RED_CARD', 'MAJOR_PENALTY', 'MINOR_PENALTY'],
-  substitution: ['SUBSTITUTION_ON', 'SUBSTITUTION_OFF'],
-  gameFlow: ['KICKOFF', 'HALFTIME', 'FULLTIME', 'INJURY_TIME', 'TIMEOUT', 'PERIOD_START', 'PERIOD_END'],
-  var: ['VAR_REVIEW', 'VAR_DECISION'],
-  other: ['INJURY', 'ASSIST', 'PENALTY_MISSED', 'PENALTY_SAVED'],
+const getEventCategory = (eventType: string, sportConfig: SportConfig): EventCategory => {
+  if (sportConfig.scoringEvents.includes(eventType as MatchEventType)) {
+    return 'scoring';
+  }
+  
+  const disciplinaryEvents = [
+    'YELLOW_CARD', 'RED_CARD', 'SECOND_YELLOW', 'YELLOW_CARD_RUGBY', 'RED_CARD_RUGBY',
+    'SIN_BIN', 'MINOR_PENALTY', 'MAJOR_PENALTY', 'OFFENSIVE_FOUL', 'DEFENSIVE_FOUL',
+  ];
+  if (disciplinaryEvents.includes(eventType)) {
+    return 'disciplinary';
+  }
+  
+  const substitutionEvents = ['SUBSTITUTION_ON', 'SUBSTITUTION_OFF'];
+  if (substitutionEvents.includes(eventType)) {
+    return 'substitution';
+  }
+  
+  return 'gameFlow';
 };
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
-
-export function MatchEventsClient({
-  match,
-  teamPlayers,
-  permissions,
-  sport,
-  currentTeamId,
-}: MatchEventsClientProps) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  const sportConfig = getSportConfig(sport);
-
-  // State
-  const [showAddEventModal, setShowAddEventModal] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<MatchEventWithRelations | null>(null);
-  const [matchTimer, setMatchTimer] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'stats'>('timeline');
-
-  // Get available event types for this sport
-  const availableEventTypes = useMemo(() => {
-    return SPORT_EVENT_TYPES[sport] || [];
-  }, [sport]);
-
-  // Categorize events by type
-  const categorizedEvents = useMemo(() => {
-    return {
-      scoring: match.events.filter(e => EVENT_CATEGORIES.scoring.includes(e.eventType)),
-      disciplinary: match.events.filter(e => EVENT_CATEGORIES.disciplinary.includes(e.eventType)),
-      substitutions: match.events.filter(e => EVENT_CATEGORIES.substitution.includes(e.eventType)),
-      gameFlow: match.events.filter(e => EVENT_CATEGORIES.gameFlow.includes(e.eventType)),
-    };
-  }, [match.events]);
-
-  // Match timer effect
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isTimerRunning && match.status === 'IN_PROGRESS') {
-      interval = setInterval(() => {
-        setMatchTimer(prev => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, match.status]);
-
-  // Format timer display
-  const formatTimer = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+const getStatusColor = (status: MatchStatus): string => {
+  const colors: Partial<Record<MatchStatus, string>> = {
+    SCHEDULED: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    WARMUP: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+    LIVE: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 animate-pulse',
+    HALFTIME: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    SECOND_HALF: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    EXTRA_TIME_FIRST: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    EXTRA_TIME_SECOND: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    PENALTIES: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    FINISHED: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+    CANCELLED: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    POSTPONED: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
   };
+  return colors[status] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+};
 
-  // Get current match minute from timer
-  const currentMinute = Math.floor(matchTimer / 60);
-
-  // Determine if it's our team's event
-  const isOurTeam = (teamId: string | null) => teamId === currentTeamId;
-
-  return (
-    <div className="space-y-6">
-      {/* Match Header with Score */}
-      <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-xl shadow-lg p-6 text-white">
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => router.back()}
-            className="flex items-center gap-2 text-white/80 hover:text-white transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5" />
-            Back to Match
-          </button>
-
-          {/* Match Status Badge */}
-          <div className="flex items-center gap-2">
-            <span
-              className={`px-3 py-1 rounded-full text-sm font-medium ${
-                match.status === 'IN_PROGRESS'
-                  ? 'bg-green-500/20 text-green-300'
-                  : match.status === 'COMPLETED'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-yellow-500/20 text-yellow-300'
-              }`}
-            >
-              {match.status === 'IN_PROGRESS' ? '● LIVE' : match.status}
-            </span>
-          </div>
-        </div>
-
-        {/* Score Display */}
-        <div className="flex items-center justify-center gap-8">
-          {/* Home Team */}
-          <div className="text-center flex-1">
-            <h2 className="text-xl font-bold truncate">{match.homeTeam.name}</h2>
-            <p className="text-sm text-white/70">Home</p>
-          </div>
-
-          {/* Score */}
-          <div className="flex items-center gap-4">
-            <span className="text-5xl font-bold">{match.currentScore.home}</span>
-            <span className="text-3xl text-white/50">-</span>
-            <span className="text-5xl font-bold">{match.currentScore.away}</span>
-          </div>
-
-          {/* Away Team */}
-          <div className="text-center flex-1">
-            <h2 className="text-xl font-bold truncate">{match.awayTeam.name}</h2>
-            <p className="text-sm text-white/70">Away</p>
-          </div>
-        </div>
-
-        {/* Match Timer & Controls */}
-        {match.status === 'IN_PROGRESS' && permissions.canManageEvents && (
-          <div className="flex items-center justify-center gap-4 mt-6">
-            <div className="flex items-center gap-2 bg-white/10 rounded-lg px-4 py-2">
-              <Clock className="w-5 h-5" />
-              <span className="text-2xl font-mono">{formatTimer(matchTimer)}</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsTimerRunning(!isTimerRunning)}
-                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
-              >
-                {isTimerRunning ? (
-                  <Pause className="w-5 h-5" />
-                ) : (
-                  <Play className="w-5 h-5" />
-                )}
-              </button>
-              <button
-                onClick={() => setMatchTimer(0)}
-                className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
-              >
-                <RefreshCw className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Quick Info */}
-        <div className="flex items-center justify-center gap-6 mt-4 text-sm text-white/70">
-          {match.competition && (
-            <span>{match.competition.name}</span>
-          )}
-          {match.venue && (
-            <span>📍 {match.venue.name}</span>
-          )}
-          <span>{format(new Date(match.scheduledAt), 'PPP')}</span>
-        </div>
-      </div>
-
-      {/* Add Event Button */}
-      {permissions.canManageEvents && match.status === 'IN_PROGRESS' && (
-        <div className="flex justify-center">
-          <button
-            onClick={() => setShowAddEventModal(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors shadow-lg"
-          >
-            <Plus className="w-5 h-5" />
-            Add Event ({currentMinute}')
-          </button>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
-        <button
-          onClick={() => setActiveTab('timeline')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'timeline'
-              ? 'text-primary-600 border-b-2 border-primary-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Timeline
-        </button>
-        <button
-          onClick={() => setActiveTab('stats')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'stats'
-              ? 'text-primary-600 border-b-2 border-primary-600'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Match Stats
-        </button>
-      </div>
-
-      {/* Content */}
-      {activeTab === 'timeline' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Event Timeline */}
-          <div className="lg:col-span-2 space-y-4">
-            {match.events.length === 0 ? (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
-                <Activity className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                  No events recorded yet
-                </h3>
-                <p className="text-gray-500 dark:text-gray-400">
-                  {match.status === 'IN_PROGRESS'
-                    ? 'Start adding events to track the match'
-                    : 'Events will appear here once the match starts'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {match.events
-                  .sort((a, b) => b.minute - a.minute)
-                  .map((event) => (
-                    <EventCard
-                      key={event.id}
-                      event={event}
-                      sport={sport}
-                      isHomeTeam={event.teamId === match.homeTeam.id}
-                      homeTeamName={match.homeTeam.name}
-                      awayTeamName={match.awayTeam.name}
-                      canEdit={permissions.canManageEvents}
-                      onEdit={() => {
-                        setSelectedEvent(event);
-                        setShowAddEventModal(true);
-                      }}
-                    />
-                  ))}
-              </div>
-            )}
-          </div>
-
-          {/* Quick Stats Sidebar */}
-          <div className="space-y-4">
-            {/* Scoring Summary */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-              <h3 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <Target className="w-5 h-5" />
-                Scoring Summary
-              </h3>
-              <div className="space-y-3">
-                {categorizedEvents.scoring.length === 0 ? (
-                  <p className="text-sm text-gray-500">No scoring events yet</p>
-                ) : (
-                  categorizedEvents.scoring.map((event) => (
-                    <div key={event.id} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span>{getEventTypeIcon(event.eventType)}</span>
-                        <span className="text-gray-900 dark:text-white">
-                          {event.player?.user.lastName || 'Unknown'}
-                        </span>
-                      </div>
-                      <span className="text-gray-500">{event.minute}'</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Disciplinary Summary */}
-            {categorizedEvents.disciplinary.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                <h3 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5" />
-                  Cards & Penalties
-                </h3>
-                <div className="space-y-3">
-                  {categorizedEvents.disciplinary.map((event) => (
-                    <div key={event.id} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span>{getEventTypeIcon(event.eventType)}</span>
-                        <span className="text-gray-900 dark:text-white">
-                          {event.player?.user.lastName || 'Unknown'}
-                        </span>
-                      </div>
-                      <span className="text-gray-500">{event.minute}'</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Substitutions */}
-            {categorizedEvents.substitutions.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-                <h3 className="font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Substitutions
-                </h3>
-                <div className="space-y-3">
-                  {categorizedEvents.substitutions
-                    .filter(e => e.eventType === 'SUBSTITUTION_ON')
-                    .map((event) => (
-                      <div key={event.id} className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="text-green-500">↑</span>
-                          <span className="text-gray-900 dark:text-white">
-                            {event.player?.user.lastName || 'Unknown'}
-                          </span>
-                        </div>
-                        <span className="text-gray-500">{event.minute}'</span>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-
-            {/* Sport-specific Event Types */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">
-                {sportConfig.name} Event Types
-              </h4>
-              <div className="flex flex-wrap gap-1">
-                {availableEventTypes.slice(0, 10).map((eventType) => (
-                  <span
-                    key={eventType}
-                    className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded"
-                  >
-                    {getEventTypeLabel(eventType, sport)}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <MatchStatsView
-          match={match}
-          events={match.events}
-          sport={sport}
-        />
-      )}
-
-      {/* Add/Edit Event Modal */}
-      {showAddEventModal && (
-        <AddEventModal
-          match={match}
-          teamPlayers={teamPlayers}
-          sport={sport}
-          currentMinute={currentMinute}
-          availableEventTypes={availableEventTypes}
-          currentTeamId={currentTeamId}
-          editingEvent={selectedEvent}
-          onClose={() => {
-            setShowAddEventModal(false);
-            setSelectedEvent(null);
-          }}
-          onSubmit={() => {
-            setShowAddEventModal(false);
-            setSelectedEvent(null);
-            router.refresh();
-          }}
-        />
-      )}
-    </div>
-  );
-}
+const formatStatusLabel = (status: MatchStatus): string => {
+  return status.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
+};
 
 // ============================================================================
 // EVENT CARD COMPONENT
 // ============================================================================
 
-function EventCard({
-  event,
-  sport,
-  isHomeTeam,
-  homeTeamName,
-  awayTeamName,
-  canEdit,
-  onEdit,
-}: {
-  event: MatchEventWithRelations;
-  sport: Sport;
-  isHomeTeam: boolean;
-  homeTeamName: string;
-  awayTeamName: string;
-  canEdit: boolean;
-  onEdit: () => void;
-}) {
-  const eventIcon = getEventTypeIcon(event.eventType);
-  const eventLabel = getEventTypeLabel(event.eventType, sport);
+interface EventCardProps {
+  event: MatchEvent;
+  homePlayers: Player[];
+  awayPlayers: Player[];
+  homeClubId: string;
+  sportConfig: SportConfig;
+}
 
-  const isScoring = EVENT_CATEGORIES.scoring.includes(event.eventType);
-  const isDisciplinary = EVENT_CATEGORIES.disciplinary.includes(event.eventType);
-  const isGameFlow = EVENT_CATEGORIES.gameFlow.includes(event.eventType);
-
-  // Determine background color based on event type
-  const getBgColor = () => {
-    if (isScoring) return isHomeTeam
-      ? 'bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500'
-      : 'bg-green-50 dark:bg-green-900/20 border-r-4 border-green-500';
-    if (isDisciplinary) return isHomeTeam
-      ? 'bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500'
-      : 'bg-yellow-50 dark:bg-yellow-900/20 border-r-4 border-yellow-500';
-    if (isGameFlow) return 'bg-gray-50 dark:bg-gray-900/50 border-l-4 border-gray-400';
-    return 'bg-white dark:bg-gray-800';
+const EventCard = ({ event, homePlayers, awayPlayers, homeClubId, sportConfig }: EventCardProps) => {
+  const allPlayers = [...homePlayers, ...awayPlayers];
+  const player = event.playerId ? allPlayers.find((p) => p.id === event.playerId) : null;
+  const assistPlayer = event.assistPlayerId ? allPlayers.find((p) => p.id === event.assistPlayerId) : null;
+  
+  const isHomeEvent = player && homePlayers.some((p) => p.id === player.id);
+  const icon = getEventTypeIcon(event.eventType as MatchEventType);
+  const label = getEventTypeLabel(event.eventType as MatchEventType);
+  const category = getEventCategory(event.eventType, sportConfig);
+  
+  const categoryColors: Record<EventCategory, string> = {
+    all: 'border-gray-200 dark:border-gray-700',
+    scoring: 'border-green-400 dark:border-green-600 bg-green-50/50 dark:bg-green-900/10',
+    disciplinary: 'border-red-400 dark:border-red-600 bg-red-50/50 dark:bg-red-900/10',
+    substitution: 'border-blue-400 dark:border-blue-600 bg-blue-50/50 dark:bg-blue-900/10',
+    gameFlow: 'border-gray-300 dark:border-gray-600',
   };
 
   return (
-    <div className={`rounded-lg shadow p-4 ${getBgColor()}`}>
-      <div className={`flex items-start gap-4 ${!isHomeTeam && !isGameFlow ? 'flex-row-reverse text-right' : ''}`}>
-        {/* Minute */}
-        <div className="flex-shrink-0 w-12 text-center">
-          <span className="text-lg font-bold text-gray-900 dark:text-white">
-            {event.minute}'
-          </span>
-          {event.addedTime && event.addedTime > 0 && (
-            <span className="text-xs text-gray-500">+{event.addedTime}</span>
+    <div
+      className={`flex items-center gap-4 p-4 rounded-lg border-2 ${categoryColors[category]} transition-all hover:shadow-md`}
+    >
+      {/* Minute */}
+      <div className="flex-shrink-0 w-16 text-center">
+        <div className="text-2xl font-bold text-charcoal-900 dark:text-white">
+          {event.minute}'
+          {event.secondaryMinute && (
+            <span className="text-sm text-charcoal-500">+{event.secondaryMinute}</span>
+          )}
+        </div>
+        {event.period && (
+          <div className="text-xs text-charcoal-500 dark:text-charcoal-400">{event.period}</div>
+        )}
+      </div>
+
+      {/* Icon */}
+      <div className="flex-shrink-0 text-3xl">{icon}</div>
+
+      {/* Event Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-charcoal-900 dark:text-white">{label}</span>
+          {isHomeEvent !== undefined && (
+            <Badge
+              variant="outline"
+              className={
+                isHomeEvent
+                  ? 'border-blue-400 text-blue-600 dark:border-blue-500 dark:text-blue-400'
+                  : 'border-orange-400 text-orange-600 dark:border-orange-500 dark:text-orange-400'
+              }
+            >
+              {isHomeEvent ? 'Home' : 'Away'}
+            </Badge>
           )}
         </div>
 
-        {/* Event Icon */}
-        <div className="flex-shrink-0 text-2xl">
-          {eventIcon}
-        </div>
-
-        {/* Event Details */}
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-gray-900 dark:text-white">
-              {eventLabel}
-            </span>
-            {!isGameFlow && (
-              <span className="text-sm text-gray-500">
-                ({isHomeTeam ? homeTeamName : awayTeamName})
-              </span>
+        {player && (
+          <div className="flex items-center gap-2 mt-1">
+            {player.avatar ? (
+              <img src={player.avatar} alt="" className="w-6 h-6 rounded-full" />
+            ) : (
+              <div className="w-6 h-6 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center">
+                <Users className="w-3 h-3" />
+              </div>
             )}
+            <span className="text-charcoal-700 dark:text-charcoal-300">
+              {player.jerseyNumber && `#${player.jerseyNumber} `}
+              {player.name}
+            </span>
           </div>
+        )}
 
-          {event.player && (
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              {event.player.user.firstName} {event.player.user.lastName}
-              {event.assistPlayer && (
-                <span className="text-gray-500">
-                  {' '}(assist: {event.assistPlayer.user.firstName} {event.assistPlayer.user.lastName})
-                </span>
-              )}
-            </p>
-          )}
+        {assistPlayer && (
+          <div className="text-sm text-charcoal-500 dark:text-charcoal-400 mt-1">
+            Assist: {assistPlayer.name}
+          </div>
+        )}
 
-          {event.description && (
-            <p className="text-sm text-gray-500 mt-1">{event.description}</p>
-          )}
-        </div>
+        {event.cardReason && (
+          <div className="text-sm text-charcoal-500 dark:text-charcoal-400 mt-1">
+            Reason: {event.cardReason}
+          </div>
+        )}
 
-        {/* Edit Button */}
-        {canEdit && (
-          <button
-            onClick={onEdit}
-            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
+        {event.goalType && (
+          <div className="text-sm text-charcoal-500 dark:text-charcoal-400 mt-1">
+            Type: {event.goalType.replace(/_/g, ' ')}
+          </div>
         )}
       </div>
     </div>
   );
-}
-
-// ============================================================================
-// MATCH STATS VIEW
-// ============================================================================
-
-function MatchStatsView({
-  match,
-  events,
-  sport,
-}: {
-  match: MatchWithRelations;
-  events: MatchEventWithRelations[];
-  sport: Sport;
-}) {
-  // Calculate stats from events
-  const stats = useMemo(() => {
-    const homeStats: Record<string, number> = {};
-    const awayStats: Record<string, number> = {};
-
-    events.forEach((event) => {
-      const isHome = event.teamId === match.homeTeam.id;
-      const target = isHome ? homeStats : awayStats;
-      target[event.eventType] = (target[event.eventType] || 0) + 1;
-    });
-
-    return { home: homeStats, away: awayStats };
-  }, [events, match.homeTeam.id]);
-
-  // Define stat rows to display
-  const statRows = [
-    { key: 'GOAL', label: 'Goals' },
-    { key: 'ASSIST', label: 'Assists' },
-    { key: 'YELLOW_CARD', label: 'Yellow Cards' },
-    { key: 'RED_CARD', label: 'Red Cards' },
-    { key: 'SUBSTITUTION_ON', label: 'Substitutions' },
-  ];
-
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="font-medium text-gray-900 dark:text-white">Match Statistics</h3>
-      </div>
-
-      <div className="divide-y divide-gray-200 dark:divide-gray-700">
-        {statRows.map(({ key, label }) => {
-          const homeValue = stats.home[key] || 0;
-          const awayValue = stats.away[key] || 0;
-          const total = homeValue + awayValue || 1;
-          const homePercent = (homeValue / total) * 100;
-
-          return (
-            <div key={key} className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-lg font-bold text-gray-900 dark:text-white">
-                  {homeValue}
-                </span>
-                <span className="text-sm text-gray-500">{label}</span>
-                <span className="text-lg font-bold text-gray-900 dark:text-white">
-                  {awayValue}
-                </span>
-              </div>
-              <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
-                <div
-                  className="h-full bg-primary-500 transition-all"
-                  style={{ width: `${homePercent}%` }}
-                />
-                <div
-                  className="h-full bg-gray-400 transition-all"
-                  style={{ width: `${100 - homePercent}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+};
 
 // ============================================================================
 // ADD EVENT MODAL
 // ============================================================================
 
-function AddEventModal({
-  match,
-  teamPlayers,
-  sport,
-  currentMinute,
-  availableEventTypes,
-  currentTeamId,
-  editingEvent,
+interface AddEventModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit: (data: NewEventData) => Promise<void>;
+  homePlayers: Player[];
+  awayPlayers: Player[];
+  sportConfig: SportConfig;
+  currentMinute: number;
+  isSubmitting: boolean;
+}
+
+interface NewEventData {
+  eventType: MatchEventType;
+  minute: number;
+  secondaryMinute?: number;
+  period?: string;
+  playerId?: string;
+  assistPlayerId?: string;
+  goalType?: string;
+  cardReason?: string;
+  team: 'home' | 'away';
+}
+
+const AddEventModal = ({
+  isOpen,
   onClose,
   onSubmit,
-}: {
-  match: MatchWithRelations;
-  teamPlayers: TeamPlayerWithRelations[];
-  sport: Sport;
-  currentMinute: number;
-  availableEventTypes: MatchEventType[];
-  currentTeamId: string;
-  editingEvent: MatchEventWithRelations | null;
-  onClose: () => void;
-  onSubmit: () => void;
-}) {
-  const [formData, setFormData] = useState({
-    eventType: editingEvent?.eventType || ('' as MatchEventType),
-    minute: editingEvent?.minute || currentMinute,
-    addedTime: editingEvent?.addedTime || 0,
-    teamId: editingEvent?.teamId || currentTeamId,
-    playerId: editingEvent?.player?.id || '',
-    assistPlayerId: editingEvent?.assistPlayer?.id || '',
-    description: editingEvent?.description || '',
+  homePlayers,
+  awayPlayers,
+  sportConfig,
+  currentMinute,
+  isSubmitting,
+}: AddEventModalProps) => {
+  const [formData, setFormData] = useState<Partial<NewEventData>>({
+    minute: currentMinute,
+    team: 'home',
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<EventCategory>('all');
 
-  // Group events by category
-  const eventsByCategory = useMemo(() => {
-    const categories: Record<string, MatchEventType[]> = {
-      Scoring: [],
-      Disciplinary: [],
-      Substitution: [],
-      'Game Flow': [],
-      Other: [],
-    };
+  useEffect(() => {
+    if (isOpen) {
+      setFormData({ minute: currentMinute, team: 'home' });
+      setSelectedCategory('all');
+    }
+  }, [isOpen, currentMinute]);
 
-    availableEventTypes.forEach((eventType) => {
-      if (EVENT_CATEGORIES.scoring.includes(eventType)) {
-        categories.Scoring.push(eventType);
-      } else if (EVENT_CATEGORIES.disciplinary.includes(eventType)) {
-        categories.Disciplinary.push(eventType);
-      } else if (EVENT_CATEGORIES.substitution.includes(eventType)) {
-        categories.Substitution.push(eventType);
-      } else if (EVENT_CATEGORIES.gameFlow.includes(eventType)) {
-        categories['Game Flow'].push(eventType);
-      } else {
-        categories.Other.push(eventType);
-      }
-    });
+  if (!isOpen) return null;
 
-    return categories;
-  }, [availableEventTypes]);
+  const filteredEventTypes = sportConfig.eventTypes.filter((et) => {
+    if (selectedCategory === 'all') return true;
+    return getEventCategory(et, sportConfig) === selectedCategory;
+  });
+
+  const selectedPlayers = formData.team === 'home' ? homePlayers : awayPlayers;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    if (!formData.eventType || formData.minute === undefined) return;
 
-    try {
-      const url = editingEvent
-        ? `/api/matches/${match.id}/events/${editingEvent.id}`
-        : `/api/matches/${match.id}/events`;
-
-      const response = await fetch(url, {
-        method: editingEvent ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        onSubmit();
-      }
-    } catch (error) {
-      console.error('Failed to save event:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    await onSubmit({
+      eventType: formData.eventType as MatchEventType,
+      minute: formData.minute,
+      secondaryMinute: formData.secondaryMinute,
+      period: formData.period,
+      playerId: formData.playerId,
+      assistPlayerId: formData.assistPlayerId,
+      goalType: formData.goalType,
+      cardReason: formData.cardReason,
+      team: formData.team || 'home',
+    });
   };
 
-  // Check if event type needs a player
-  const needsPlayer = !EVENT_CATEGORIES.gameFlow.includes(formData.eventType);
-  const needsAssist = EVENT_CATEGORIES.scoring.includes(formData.eventType);
+  const needsPlayer = [
+    'GOAL', 'TRY', 'TOUCHDOWN', 'YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION_ON',
+    'SUBSTITUTION_OFF', 'ASSIST', 'THREE_POINTER', 'TWO_POINTER', 'FREE_THROW_MADE',
+  ].includes(formData.eventType || '');
+
+  const needsAssist = ['GOAL', 'TRY', 'TOUCHDOWN', 'THREE_POINTER', 'TWO_POINTER'].includes(
+    formData.eventType || ''
+  );
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-
-        <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-          <div className="sticky top-0 bg-white dark:bg-gray-800 p-6 border-b border-gray-200 dark:border-gray-700 z-10">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              {editingEvent ? 'Edit Event' : 'Add Match Event'}
-            </h2>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-6 space-y-4">
-            {/* Event Type Selection */}
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+      <Card className="w-full max-w-lg bg-white dark:bg-charcoal-800 max-h-[90vh] overflow-y-auto">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-charcoal-900 dark:text-white">Add Match Event</CardTitle>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="w-5 h-5" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Team Selection */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
+                Team
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData((f) => ({ ...f, team: 'home', playerId: undefined }))}
+                  className={`p-3 rounded-lg border-2 transition-all ${
+                    formData.team === 'home'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  <span className="font-semibold text-charcoal-900 dark:text-white">Home</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData((f) => ({ ...f, team: 'away', playerId: undefined }))}
+                  className={`p-3 rounded-lg border-2 transition-all ${
+                    formData.team === 'away'
+                      ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
+                      : 'border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  <span className="font-semibold text-charcoal-900 dark:text-white">Away</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Event Category Filter */}
+            <div>
+              <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
+                Category
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {(['all', 'scoring', 'disciplinary', 'substitution', 'gameFlow'] as EventCategory[]).map(
+                  (cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-3 py-1 rounded-full text-sm transition-all ${
+                        selectedCategory === cat
+                          ? 'bg-charcoal-900 text-white dark:bg-white dark:text-charcoal-900'
+                          : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* Event Type */}
+            <div>
+              <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
                 Event Type *
               </label>
-              <div className="space-y-2">
-                {Object.entries(eventsByCategory).map(([category, events]) => {
-                  if (events.length === 0) return null;
-                  return (
-                    <div key={category}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCategory(
-                          selectedCategory === category ? null : category
-                        )}
-                        className="w-full flex items-center justify-between p-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900"
-                      >
-                        {category}
-                        <ChevronRight
-                          className={`w-4 h-4 transition-transform ${
-                            selectedCategory === category ? 'rotate-90' : ''
-                          }`}
-                        />
-                      </button>
-                      {selectedCategory === category && (
-                        <div className="grid grid-cols-2 gap-2 mt-2 p-2">
-                          {events.map((eventType) => (
-                            <button
-                              key={eventType}
-                              type="button"
-                              onClick={() => setFormData({ ...formData, eventType })}
-                              className={`flex items-center gap-2 p-2 text-sm rounded-lg border transition-colors ${
-                                formData.eventType === eventType
-                                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300'
-                                  : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
-                              }`}
-                            >
-                              <span>{getEventTypeIcon(eventType)}</span>
-                              <span className="truncate">{getEventTypeLabel(eventType, sport)}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {formData.eventType && (
-                <div className="mt-2 flex items-center gap-2 p-2 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
-                  <span>{getEventTypeIcon(formData.eventType)}</span>
-                  <span className="font-medium text-primary-700 dark:text-primary-300">
-                    {getEventTypeLabel(formData.eventType, sport)}
-                  </span>
-                </div>
-              )}
+              <select
+                value={formData.eventType || ''}
+                onChange={(e) => setFormData((f) => ({ ...f, eventType: e.target.value as MatchEventType }))}
+                className="w-full px-3 py-2 bg-white dark:bg-charcoal-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                required
+              >
+                <option value="">Select event type</option>
+                {filteredEventTypes.map((et) => (
+                  <option key={et} value={et}>
+                    {getEventTypeIcon(et)} {getEventTypeLabel(et)}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Minute */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
                   Minute *
                 </label>
                 <input
                   type="number"
-                  required
                   min={0}
                   max={120}
-                  value={formData.minute}
-                  onChange={(e) => setFormData({ ...formData, minute: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500"
+                  value={formData.minute || 0}
+                  onChange={(e) => setFormData((f) => ({ ...f, minute: parseInt(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 bg-white dark:bg-charcoal-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                  required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
                   Added Time
                 </label>
                 <input
                   type="number"
                   min={0}
                   max={15}
-                  value={formData.addedTime}
-                  onChange={(e) => setFormData({ ...formData, addedTime: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500"
+                  value={formData.secondaryMinute || ''}
+                  onChange={(e) =>
+                    setFormData((f) => ({
+                      ...f,
+                      secondaryMinute: e.target.value ? parseInt(e.target.value) : undefined,
+                    }))
+                  }
+                  className="w-full px-3 py-2 bg-white dark:bg-charcoal-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                  placeholder="Optional"
                 />
               </div>
             </div>
 
-            {/* Team Selection */}
-            {!EVENT_CATEGORIES.gameFlow.includes(formData.eventType) && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Team *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, teamId: match.homeTeam.id })}
-                    className={`p-3 text-sm rounded-lg border transition-colors ${
-                      formData.teamId === match.homeTeam.id
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                        : 'border-gray-200 dark:border-gray-700'
-                    }`}
-                  >
-                    {match.homeTeam.name}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, teamId: match.awayTeam.id })}
-                    className={`p-3 text-sm rounded-lg border transition-colors ${
-                      formData.teamId === match.awayTeam.id
-                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                        : 'border-gray-200 dark:border-gray-700'
-                    }`}
-                  >
-                    {match.awayTeam.name}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Player Selection */}
-            {needsPlayer && formData.teamId === currentTeamId && (
+            {needsPlayer && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
                   Player
                 </label>
                 <select
-                  value={formData.playerId}
-                  onChange={(e) => setFormData({ ...formData, playerId: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500"
+                  value={formData.playerId || ''}
+                  onChange={(e) => setFormData((f) => ({ ...f, playerId: e.target.value || undefined }))}
+                  className="w-full px-3 py-2 bg-white dark:bg-charcoal-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                 >
-                  <option value="">Select player...</option>
-                  {teamPlayers.map((tp) => (
-                    <option key={tp.id} value={tp.player.id}>
-                      #{tp.jerseyNumber || '—'} {tp.player.user.firstName} {tp.player.user.lastName}
+                  <option value="">Select player</option>
+                  {selectedPlayers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.jerseyNumber ? `#${p.jerseyNumber} ` : ''}{p.name}
                     </option>
                   ))}
                 </select>
               </div>
             )}
 
-            {/* Assist Player (for scoring events) */}
-            {needsAssist && formData.teamId === currentTeamId && formData.playerId && (
+            {/* Assist Player */}
+            {needsAssist && formData.playerId && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Assist By
+                <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
+                  Assist
                 </label>
                 <select
-                  value={formData.assistPlayerId}
-                  onChange={(e) => setFormData({ ...formData, assistPlayerId: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500"
+                  value={formData.assistPlayerId || ''}
+                  onChange={(e) => setFormData((f) => ({ ...f, assistPlayerId: e.target.value || undefined }))}
+                  className="w-full px-3 py-2 bg-white dark:bg-charcoal-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                 >
                   <option value="">No assist</option>
-                  {teamPlayers
-                    .filter((tp) => tp.player.id !== formData.playerId)
-                    .map((tp) => (
-                      <option key={tp.id} value={tp.player.id}>
-                        #{tp.jerseyNumber || '—'} {tp.player.user.firstName} {tp.player.user.lastName}
+                  {selectedPlayers
+                    .filter((p) => p.id !== formData.playerId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.jerseyNumber ? `#${p.jerseyNumber} ` : ''}{p.name}
                       </option>
                     ))}
                 </select>
               </div>
             )}
 
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Description (optional)
-              </label>
-              <textarea
-                rows={2}
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500"
-                placeholder="Additional details about the event..."
-              />
-            </div>
+            {/* Card Reason */}
+            {['YELLOW_CARD', 'RED_CARD', 'SECOND_YELLOW'].includes(formData.eventType || '') && (
+              <div>
+                <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
+                  Reason
+                </label>
+                <input
+                  type="text"
+                  value={formData.cardReason || ''}
+                  onChange={(e) => setFormData((f) => ({ ...f, cardReason: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white dark:bg-charcoal-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+                  placeholder="e.g., Dangerous tackle"
+                />
+              </div>
+            )}
 
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              >
+            {/* Submit */}
+            <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <Button type="button" variant="outline" onClick={onClose} className="flex-1">
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 disabled={isSubmitting || !formData.eventType}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="flex-1 bg-green-500 hover:bg-green-600 text-white"
               >
-                {isSubmitting ? 'Saving...' : editingEvent ? 'Update Event' : 'Add Event'}
-              </button>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Event
+                  </>
+                )}
+              </Button>
             </div>
           </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
+export default function MatchEventsClient({
+  match,
+  homePlayers,
+  awayPlayers,
+  canManageEvents,
+  currentUserId,
+}: MatchEventsClientProps) {
+  const router = useRouter();
+  const sportConfig = getSportConfig(match.homeTeam.sport);
+
+  // State
+  const [events, setEvents] = useState<MatchEvent[]>(match.events);
+  const [filterCategory, setFilterCategory] = useState<EventCategory>('all');
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [matchTimer, setMatchTimer] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(
+    ['LIVE', 'SECOND_HALF', 'EXTRA_TIME_FIRST', 'EXTRA_TIME_SECOND'].includes(match.status)
+  );
+
+  // Timer effect
+  useEffect(() => {
+    if (!isTimerRunning) return;
+
+    const interval = setInterval(() => {
+      setMatchTimer((t) => t + 1);
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, [isTimerRunning]);
+
+  // Calculate current minute based on kick-off time
+  useEffect(() => {
+    if (['LIVE', 'SECOND_HALF'].includes(match.status)) {
+      const kickOff = new Date(match.kickOffTime);
+      const now = new Date();
+      const diffMinutes = Math.floor((now.getTime() - kickOff.getTime()) / 60000);
+      setMatchTimer(Math.max(0, Math.min(diffMinutes, 90)));
+    }
+  }, [match.kickOffTime, match.status]);
+
+  // Filter events
+  const filteredEvents = useMemo(() => {
+    if (filterCategory === 'all') return events;
+    return events.filter((e) => getEventCategory(e.eventType, sportConfig) === filterCategory);
+  }, [events, filterCategory, sportConfig]);
+
+  // Calculate live score from events
+  const calculateScore = useCallback(() => {
+    let homeScore = 0;
+    let awayScore = 0;
+
+    for (const event of events) {
+      if (sportConfig.scoringEvents.includes(event.eventType as MatchEventType)) {
+        const pointValue = sportConfig.scoring.pointValues[event.eventType] || 1;
+        const player = [...homePlayers, ...awayPlayers].find((p) => p.id === event.playerId);
+        
+        if (player) {
+          const isHome = homePlayers.some((p) => p.id === player.id);
+          if (isHome) {
+            homeScore += pointValue;
+          } else {
+            awayScore += pointValue;
+          }
+        }
+      }
+    }
+
+    return { homeScore, awayScore };
+  }, [events, homePlayers, awayPlayers, sportConfig]);
+
+  const { homeScore, awayScore } = calculateScore();
+
+  // Add event handler
+  const handleAddEvent = async (data: NewEventData) => {
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch(`/api/matches/${match.id}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventType: data.eventType,
+          minute: data.minute,
+          secondaryMinute: data.secondaryMinute,
+          period: data.period,
+          playerId: data.playerId,
+          assistPlayerId: data.assistPlayerId,
+          goalType: data.goalType,
+          cardReason: data.cardReason,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add event');
+      }
+
+      const newEvent = await response.json();
+      setEvents((prev) => [...prev, newEvent].sort((a, b) => a.minute - b.minute));
+      setIsAddModalOpen(false);
+    } catch (error) {
+      console.error('Error adding event:', error);
+      // TODO: Show error toast
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Refresh data
+  const refreshData = () => {
+    router.refresh();
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-green-50/10 to-blue-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <Link
+            href={`/dashboard/matches/${match.id}`}
+            className="inline-flex items-center gap-2 text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-white mb-4"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Match
+          </Link>
+
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-4xl">{getSportIcon(match.homeTeam.sport)}</span>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-charcoal-900 dark:text-white">
+                  Match Events
+                </h1>
+                <p className="text-charcoal-600 dark:text-charcoal-400">
+                  {match.homeTeam.name} vs {match.awayTeam.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={refreshData}>
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+              {canManageEvents && (
+                <Button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="bg-green-500 hover:bg-green-600 text-white"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Event
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Score Card */}
+        <Card className="mb-6 bg-gradient-to-r from-charcoal-900 to-charcoal-800 dark:from-charcoal-800 dark:to-charcoal-700 border-0 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              {/* Home Team */}
+              <div className="text-center flex-1">
+                {match.homeTeam.logo ? (
+                  <img
+                    src={match.homeTeam.logo}
+                    alt={match.homeTeam.name}
+                    className="w-16 h-16 mx-auto mb-2 rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="w-16 h-16 mx-auto mb-2 bg-blue-500 rounded-lg flex items-center justify-center text-3xl">
+                    {getSportIcon(match.homeTeam.sport)}
+                  </div>
+                )}
+                <p className="font-bold text-lg">{match.homeTeam.shortName || match.homeTeam.name}</p>
+              </div>
+
+              {/* Score */}
+              <div className="text-center px-8">
+                <Badge className={`${getStatusColor(match.status)} mb-2`}>
+                  {formatStatusLabel(match.status)}
+                </Badge>
+                <div className="text-5xl sm:text-6xl font-bold">
+                  {match.homeScore ?? homeScore} - {match.awayScore ?? awayScore}
+                </div>
+                <div className="mt-2 flex items-center justify-center gap-2 text-charcoal-300">
+                  <Timer className="w-4 h-4" />
+                  <span>
+                    {matchTimer}'
+                    {['LIVE', 'SECOND_HALF'].includes(match.status) && isTimerRunning && (
+                      <span className="animate-pulse"> ●</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Away Team */}
+              <div className="text-center flex-1">
+                {match.awayTeam.logo ? (
+                  <img
+                    src={match.awayTeam.logo}
+                    alt={match.awayTeam.name}
+                    className="w-16 h-16 mx-auto mb-2 rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="w-16 h-16 mx-auto mb-2 bg-orange-500 rounded-lg flex items-center justify-center text-3xl">
+                    {getSportIcon(match.awayTeam.sport)}
+                  </div>
+                )}
+                <p className="font-bold text-lg">{match.awayTeam.shortName || match.awayTeam.name}</p>
+              </div>
+            </div>
+
+            {/* Half-time Score */}
+            {(match.homeHalftimeScore !== null || match.awayHalftimeScore !== null) && (
+              <div className="text-center mt-4 text-charcoal-400 text-sm">
+                Half-time: {match.homeHalftimeScore ?? '-'} - {match.awayHalftimeScore ?? '-'}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Filter Tabs */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {(['all', 'scoring', 'disciplinary', 'substitution', 'gameFlow'] as EventCategory[]).map(
+            (category) => (
+              <button
+                key={category}
+                onClick={() => setFilterCategory(category)}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  filterCategory === category
+                    ? 'bg-charcoal-900 text-white dark:bg-white dark:text-charcoal-900'
+                    : 'bg-white dark:bg-charcoal-800 text-charcoal-700 dark:text-charcoal-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-charcoal-700'
+                }`}
+              >
+                {category === 'all' && 'All Events'}
+                {category === 'scoring' && `${sportConfig.scoring.displayLabel}`}
+                {category === 'disciplinary' && 'Cards'}
+                {category === 'substitution' && 'Subs'}
+                {category === 'gameFlow' && 'Other'}
+                {filterCategory === category && filteredEvents.length > 0 && (
+                  <Badge className="ml-2 bg-white/20">{filteredEvents.length}</Badge>
+                )}
+              </button>
+            )
+          )}
+        </div>
+
+        {/* Events Timeline */}
+        <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+          <CardHeader>
+            <CardTitle className="text-charcoal-900 dark:text-white flex items-center gap-2">
+              <Activity className="w-5 h-5 text-green-500" />
+              Event Timeline ({filteredEvents.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {filteredEvents.length === 0 ? (
+              <div className="text-center py-12">
+                <Clock className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-charcoal-900 dark:text-white mb-2">
+                  No events yet
+                </h3>
+                <p className="text-charcoal-600 dark:text-charcoal-400">
+                  {match.status === 'SCHEDULED'
+                    ? 'Events will appear here once the match starts'
+                    : 'No events match the selected filter'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredEvents.map((event) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    homePlayers={homePlayers}
+                    awayPlayers={awayPlayers}
+                    homeClubId={match.homeClubId}
+                    sportConfig={sportConfig}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Add Event Modal */}
+      <AddEventModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleAddEvent}
+        homePlayers={homePlayers}
+        awayPlayers={awayPlayers}
+        sportConfig={sportConfig}
+        currentMinute={matchTimer}
+        isSubmitting={isSubmitting}
+      />
     </div>
   );
 }

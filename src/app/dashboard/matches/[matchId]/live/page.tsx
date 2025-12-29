@@ -1,611 +1,267 @@
 'use client';
 
-/**
- * Live Match Page - ENHANCED VERSION
- * Path: /dashboard/matches/[matchId]/live
- * 
- * ============================================================================
- * ENTERPRISE FEATURES
- * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
- * ✅ Real-time match clock with auto-increment
- * ✅ Live event logging with instant updates
- * ✅ Advanced match statistics tracking
- * ✅ Event timeline with filtering
- * ✅ Possession tracking visualization
- * ✅ Performance analytics dashboard
- * ✅ Auto-refresh with configurable intervals
- * ✅ Injury time management
- * ✅ Match state management (live, paused, halftime, finished)
- * ✅ Export match data (JSON, CSV)
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Responsive design (mobile-first)
- * ✅ WebSocket-ready for real-time updates
- * ✅ Performance optimization with memoization
- */
+// ============================================================================
+// 📺 PITCHCONNECT - LIVE MATCH PAGE v7.3.0
+// ============================================================================
+// Path: src/app/dashboard/matches/[matchId]/live/page.tsx
+// Real-time live match tracking with multi-sport support
+// Schema v7.3.0 aligned - Uses MatchStatus enum
+// ============================================================================
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 import {
   ArrowLeft,
   Play,
   Pause,
+  RefreshCw,
   Clock,
   Activity,
-  Target,
   Users,
-  AlertCircle,
-  Download,
-  RefreshCw,
-  Settings,
-  BarChart3,
-  Loader2,
-  X,
-  Check,
-  Info,
-  TrendingUp,
-  Zap,
   Trophy,
-  AlertTriangle,
-  MapPin,
-  Eye,
+  AlertCircle,
+  Timer,
+  Radio,
+  Tv,
+  ChevronRight,
+  Volume2,
+  VolumeX,
+  Maximize2,
+  Share2,
+  MessageSquare,
+  Loader2,
 } from 'lucide-react';
-import Link from 'next/link';
-
-// ============================================================================
-// CUSTOM TOAST SYSTEM
-// ============================================================================
-
-type ToastType = 'success' | 'error' | 'info' | 'default';
-
-interface ToastMessage {
-  id: string;
-  type: ToastType;
-  message: string;
-  timestamp: number;
-}
-
-/**
- * Custom Toast Component
- */
-const Toast = ({
-  message,
-  type,
-  onClose,
-}: {
-  message: string;
-  type: ToastType;
-  onClose: () => void;
-}) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  const colors = {
-    success: 'bg-green-500 dark:bg-green-600',
-    error: 'bg-red-500 dark:bg-red-600',
-    info: 'bg-blue-500 dark:bg-blue-600',
-    default: 'bg-charcoal-800 dark:bg-charcoal-700',
-  };
-
-  const icons = {
-    success: <Check className="w-5 h-5 text-white" />,
-    error: <AlertCircle className="w-5 h-5 text-white" />,
-    info: <Info className="w-5 h-5 text-white" />,
-    default: <Loader2 className="w-5 h-5 text-white animate-spin" />,
-  };
-
-  return (
-    <div
-      className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}
-      role="status"
-      aria-live="polite"
-    >
-      {icons[type]}
-      <span className="text-sm font-medium flex-1">{message}</span>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-white/20 rounded transition-colors"
-        aria-label="Close notification"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-};
-
-/**
- * Toast Container
- */
-const ToastContainer = ({
-  toasts,
-  onRemove,
-}: {
-  toasts: ToastMessage[];
-  onRemove: (id: string) => void;
-}) => {
-  return (
-    <div className="fixed bottom-4 right-4 z-40 space-y-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * useToast Hook
- */
-const useToast = () => {
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = useCallback(
-    (message: string, type: ToastType = 'default') => {
-      const id = `toast-${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, message, type, timestamp: Date.now() }]);
-      return id;
-    },
-    []
-  );
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  return {
-    toasts,
-    addToast,
-    removeToast,
-    success: (message: string) => addToast(message, 'success'),
-    error: (message: string) => addToast(message, 'error'),
-    info: (message: string) => addToast(message, 'info'),
-  };
-};
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  getSportConfig,
+  getSportIcon,
+  getSportDisplayName,
+  getEventTypeLabel,
+  getEventTypeIcon,
+} from '@/lib/config/sports';
+import type { Sport, MatchStatus, MatchEventType } from '@prisma/client';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-interface Player {
-  id: string;
-  name: string;
-  number: number;
-  position: string;
-}
-
 interface MatchEvent {
   id: string;
-  matchId: string;
-  type:
-    | 'goal'
-    | 'yellow'
-    | 'red'
-    | 'sub'
-    | 'injury'
-    | 'corner'
-    | 'foul'
-    | 'possession'
-    | 'offside';
-  team: 'home' | 'away';
-  player?: Player;
-  replacePlayer?: Player;
+  eventType: string;
   minute: number;
-  injuryTime?: number;
-  notes?: string;
-  timestamp: string;
-  isOwn?: boolean;
-  isPenalty?: boolean;
+  secondaryMinute: number | null;
+  playerId: string | null;
+  assistPlayerId: string | null;
+  period: string | null;
+  playerName?: string;
+  assistPlayerName?: string;
+  teamSide?: 'home' | 'away';
+  createdAt: string;
 }
 
-interface MatchStats {
-  possession: number;
-  shots: number;
-  shotsOnTarget: number;
-  passes: number;
-  completedPasses: number;
-  fouls: number;
-  yellowCards: number;
-  redCards: number;
-  corners: number;
-  offsides: number;
-}
-
-interface LiveMatchStats {
-  homeTeam: MatchStats;
-  awayTeam: MatchStats;
-}
-
-interface LiveMatch {
+interface TeamInfo {
   id: string;
-  homeTeam: { id: string; name: string; logo?: string };
-  awayTeam: { id: string; name: string; logo?: string };
-  status: 'live' | 'paused' | 'finished' | 'halftime';
-  currentMinute: number;
-  injuryTime: number;
-  homeGoals: number;
-  awayGoals: number;
+  name: string;
+  shortName: string | null;
+  logo: string | null;
+  sport: Sport;
+  primaryColor: string | null;
+}
+
+interface MatchData {
+  id: string;
+  status: MatchStatus;
+  kickOffTime: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  homeHalftimeScore: number | null;
+  awayHalftimeScore: number | null;
+  venue: string | null;
+  homeClubId: string;
+  awayClubId: string;
+  homeTeam: TeamInfo;
+  awayTeam: TeamInfo;
+  isBroadcasted: boolean;
+  broadcastUrl: string | null;
   events: MatchEvent[];
-  stats: LiveMatchStats;
-  possession: { home: number; away: number };
-  startTime: string;
-  lastUpdated: string;
-  venue?: string;
-  attendance?: number;
 }
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const EVENT_TYPES = [
-  { type: 'goal', label: 'Goal', icon: '⚽', color: 'bg-yellow-100 text-yellow-700' },
-  { type: 'yellow', label: 'Yellow Card', icon: '🟨', color: 'bg-yellow-100 text-yellow-700' },
-  { type: 'red', label: 'Red Card', icon: '🟥', color: 'bg-red-100 text-red-700' },
-  { type: 'sub', label: 'Substitution', icon: '🔄', color: 'bg-blue-100 text-blue-700' },
-  { type: 'corner', label: 'Corner', icon: '🚩', color: 'bg-blue-100 text-blue-700' },
-  { type: 'foul', label: 'Foul', icon: '⚠️', color: 'bg-orange-100 text-orange-700' },
-];
+const REFRESH_INTERVAL = 30000; // 30 seconds
+const LIVE_STATUSES: MatchStatus[] = ['LIVE', 'HALFTIME', 'SECOND_HALF', 'EXTRA_TIME_FIRST', 'EXTRA_TIME_SECOND', 'PENALTIES'];
 
-/**
- * Generate Mock Live Match Data
- */
-const generateMockLiveMatch = (): LiveMatch => {
-  const events: MatchEvent[] = [
-    {
-      id: '1',
-      matchId: '1',
-      type: 'goal',
-      team: 'home',
-      player: { id: 'p1', name: 'Kai Havertz', number: 29, position: 'ST' },
-      minute: 12,
-      isPenalty: false,
-      timestamp: new Date(Date.now() - 48 * 60 * 1000).toISOString(),
-    },
-    {
-      id: '2',
-      matchId: '1',
-      type: 'yellow',
-      team: 'away',
-      player: { id: 'p2', name: 'Kyle Walker', number: 2, position: 'RB' },
-      minute: 18,
-      timestamp: new Date(Date.now() - 42 * 60 * 1000).toISOString(),
-    },
-    {
-      id: '3',
-      matchId: '1',
-      type: 'corner',
-      team: 'away',
-      minute: 25,
-      timestamp: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
-    },
-    {
-      id: '4',
-      matchId: '1',
-      type: 'goal',
-      team: 'away',
-      player: { id: 'p3', name: 'Erling Haaland', number: 9, position: 'ST' },
-      minute: 31,
-      isPenalty: false,
-      timestamp: new Date(Date.now() - 29 * 60 * 1000).toISOString(),
-    },
-  ];
+// ============================================================================
+// STATUS HELPERS
+// ============================================================================
 
-  return {
-    id: '1',
-    homeTeam: { id: 'h1', name: 'Arsenal' },
-    awayTeam: { id: 'a1', name: 'Manchester City' },
-    status: 'live',
-    currentMinute: 60,
-    injuryTime: 0,
-    homeGoals: 1,
-    awayGoals: 1,
-    events,
-    stats: {
-      homeTeam: {
-        possession: 48,
-        shots: 8,
-        shotsOnTarget: 4,
-        passes: 342,
-        completedPasses: 301,
-        fouls: 4,
-        yellowCards: 0,
-        redCards: 0,
-        corners: 3,
-        offsides: 1,
-      },
-      awayTeam: {
-        possession: 52,
-        shots: 9,
-        shotsOnTarget: 5,
-        passes: 365,
-        completedPasses: 324,
-        fouls: 3,
-        yellowCards: 1,
-        redCards: 0,
-        corners: 4,
-        offsides: 0,
-      },
-    },
-    possession: { home: 48, away: 52 },
-    startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    lastUpdated: new Date().toISOString(),
-    venue: 'Emirates Stadium',
-    attendance: 60361,
+const getStatusInfo = (status: MatchStatus): { label: string; color: string; isLive: boolean } => {
+  const statusMap: Record<MatchStatus, { label: string; color: string; isLive: boolean }> = {
+    SCHEDULED: { label: 'Scheduled', color: 'bg-blue-500', isLive: false },
+    WARMUP: { label: 'Warm Up', color: 'bg-yellow-500', isLive: false },
+    LIVE: { label: 'LIVE', color: 'bg-red-500', isLive: true },
+    HALFTIME: { label: 'Half Time', color: 'bg-orange-500', isLive: true },
+    SECOND_HALF: { label: '2nd Half', color: 'bg-red-500', isLive: true },
+    EXTRA_TIME_FIRST: { label: 'Extra Time', color: 'bg-purple-500', isLive: true },
+    EXTRA_TIME_SECOND: { label: 'Extra Time', color: 'bg-purple-500', isLive: true },
+    PENALTIES: { label: 'Penalties', color: 'bg-red-600', isLive: true },
+    FINISHED: { label: 'Full Time', color: 'bg-gray-500', isLive: false },
+    CANCELLED: { label: 'Cancelled', color: 'bg-red-700', isLive: false },
+    POSTPONED: { label: 'Postponed', color: 'bg-yellow-600', isLive: false },
+    ABANDONED: { label: 'Abandoned', color: 'bg-red-700', isLive: false },
+    REPLAY_SCHEDULED: { label: 'Replay Scheduled', color: 'bg-blue-600', isLive: false },
+    VOIDED: { label: 'Voided', color: 'bg-gray-600', isLive: false },
+    DELAYED: { label: 'Delayed', color: 'bg-yellow-500', isLive: false },
+    SUSPENDED: { label: 'Suspended', color: 'bg-orange-600', isLive: false },
   };
+
+  return statusMap[status] || { label: status, color: 'bg-gray-500', isLive: false };
 };
 
 // ============================================================================
-// COMPONENTS
+// LIVE PULSE COMPONENT
 // ============================================================================
 
-/**
- * Scoreboard Component
- */
-interface ScoreBoardProps {
-  liveMatch: LiveMatch;
-  isRunning: boolean;
-}
-
-const ScoreBoard = ({ liveMatch, isRunning }: ScoreBoardProps) => (
-  <Card className="bg-gradient-to-r from-blue-50 to-green-50 dark:from-charcoal-800 dark:to-charcoal-700 border-neutral-200 dark:border-charcoal-600 shadow-lg">
-    <CardContent className="pt-8 pb-8">
-      <div className="flex items-center justify-between gap-4">
-        {/* Home Team */}
-        <div className="flex-1 text-center">
-          <h2 className="text-2xl font-bold text-charcoal-900 dark:text-white mb-2">
-            {liveMatch.homeTeam.name}
-          </h2>
-          <p className="text-5xl font-bold text-gold-500 dark:text-gold-400">
-            {liveMatch.homeGoals}
-          </p>
-        </div>
-
-        {/* Center Info */}
-        <div className="flex flex-col items-center gap-3 px-4">
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-charcoal-600 dark:text-charcoal-400" />
-            <span className="text-2xl font-bold text-charcoal-900 dark:text-white">
-              {liveMatch.currentMinute}
-              {liveMatch.injuryTime > 0 ? `+${liveMatch.injuryTime}` : ''}
-            </span>
-          </div>
-          <Badge
-            className={`flex items-center gap-2 ${
-              liveMatch.status === 'live'
-                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 animate-pulse'
-                : liveMatch.status === 'halftime'
-                  ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-                  : liveMatch.status === 'finished'
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                    : 'bg-gray-100 dark:bg-charcoal-700 text-gray-700 dark:text-gray-300'
-            }`}
-          >
-            {liveMatch.status === 'live' && (
-              <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse" />
-            )}
-            {liveMatch.status.toUpperCase()}
-          </Badge>
-        </div>
-
-        {/* Away Team */}
-        <div className="flex-1 text-center">
-          <h2 className="text-2xl font-bold text-charcoal-900 dark:text-white mb-2">
-            {liveMatch.awayTeam.name}
-          </h2>
-          <p className="text-5xl font-bold text-gold-500 dark:text-gold-400">
-            {liveMatch.awayGoals}
-          </p>
-        </div>
-      </div>
-
-      {/* Possession Bar */}
-      <div className="mt-6 pt-6 border-t border-neutral-300 dark:border-charcoal-600">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-charcoal-600 dark:text-charcoal-400">
-            Possession
-          </p>
-          <p className="text-xs font-semibold text-charcoal-600 dark:text-charcoal-400">
-            {liveMatch.possession.home}% - {liveMatch.possession.away}%
-          </p>
-        </div>
-        <div className="flex gap-1 h-2 bg-neutral-300 dark:bg-charcoal-600 rounded-full overflow-hidden">
-          <div
-            className="bg-blue-500 dark:bg-blue-600 transition-all duration-500"
-            style={{ width: `${liveMatch.possession.home}%` }}
-          />
-          <div
-            className="bg-green-500 dark:bg-green-600 transition-all duration-500"
-            style={{ width: `${liveMatch.possession.away}%` }}
-          />
-        </div>
-      </div>
-    </CardContent>
-  </Card>
+const LivePulse = () => (
+  <span className="relative flex h-3 w-3">
+    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+  </span>
 );
 
-/**
- * Event Timeline Component
- */
-interface EventTimelineProps {
-  events: MatchEvent[];
+// ============================================================================
+// MATCH TIMER COMPONENT
+// ============================================================================
+
+interface MatchTimerProps {
+  kickOffTime: string;
+  status: MatchStatus;
 }
 
-const EventTimeline = ({ events }: EventTimelineProps) => {
-  const getEventIcon = (type: string) => {
-    const event = EVENT_TYPES.find((e) => e.type === type);
-    return event?.icon || '•';
-  };
+const MatchTimer = ({ kickOffTime, status }: MatchTimerProps) => {
+  const [currentMinute, setCurrentMinute] = useState(0);
 
-  const getEventColor = (type: string) => {
-    const event = EVENT_TYPES.find((e) => e.type === type);
-    return event?.color || 'bg-gray-100 text-gray-700';
-  };
+  useEffect(() => {
+    const calculateMinute = () => {
+      if (!LIVE_STATUSES.includes(status)) return;
+
+      const kickOff = new Date(kickOffTime);
+      const now = new Date();
+      let diffMinutes = Math.floor((now.getTime() - kickOff.getTime()) / 60000);
+
+      // Adjust for different periods
+      if (status === 'SECOND_HALF') {
+        diffMinutes = Math.min(90, Math.max(45, diffMinutes));
+      } else if (status === 'HALFTIME') {
+        diffMinutes = 45;
+      } else if (status === 'EXTRA_TIME_FIRST') {
+        diffMinutes = Math.min(105, Math.max(90, diffMinutes));
+      } else if (status === 'EXTRA_TIME_SECOND') {
+        diffMinutes = Math.min(120, Math.max(105, diffMinutes));
+      } else {
+        diffMinutes = Math.min(45, Math.max(0, diffMinutes));
+      }
+
+      setCurrentMinute(diffMinutes);
+    };
+
+    calculateMinute();
+    const interval = setInterval(calculateMinute, 30000);
+    return () => clearInterval(interval);
+  }, [kickOffTime, status]);
+
+  if (!LIVE_STATUSES.includes(status)) {
+    return null;
+  }
 
   return (
-    <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-      <CardHeader>
-        <CardTitle className="text-charcoal-900 dark:text-white">Event Timeline</CardTitle>
-        <CardDescription className="text-charcoal-600 dark:text-charcoal-400">
-          {events.length} events recorded
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {events.length === 0 ? (
-            <p className="text-sm text-charcoal-500 dark:text-charcoal-400 text-center py-8">
-              No events yet
-            </p>
-          ) : (
-            events.map((event, idx) => (
-              <div
-                key={event.id}
-                className="flex gap-4 pb-4 border-b border-neutral-200 dark:border-charcoal-600 last:border-0"
-              >
-                <div className="flex-shrink-0">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${getEventColor(
-                      event.type
-                    )}`}
-                  >
-                    {getEventIcon(event.type)}
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-charcoal-900 dark:text-white">
-                      {event.minute}'
-                    </span>
-                    <Badge
-                      className={`text-xs ${
-                        event.team === 'home'
-                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                          : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                      }`}
-                    >
-                      {event.team === 'home' ? '🔴' : '🟢'}
-                    </Badge>
-                  </div>
-                  <p className="text-sm font-medium text-charcoal-900 dark:text-white">
-                    {event.player?.name || 'Team event'}
-                  </p>
-                  {event.replacePlayer && (
-                    <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
-                      Replaced {event.replacePlayer.name}
-                    </p>
-                  )}
-                  {event.notes && (
-                    <p className="text-xs text-charcoal-500 dark:text-charcoal-400 mt-1">
-                      {event.notes}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex items-center gap-2 text-white">
+      <Timer className="w-5 h-5" />
+      <span className="text-2xl font-bold tabular-nums">{currentMinute}'</span>
+    </div>
   );
 };
 
-/**
- * Live Stats Component
- */
-interface LiveStatsProps {
-  stats: LiveMatchStats;
+// ============================================================================
+// EVENT FEED COMPONENT
+// ============================================================================
+
+interface EventFeedProps {
+  events: MatchEvent[];
+  sport: Sport;
 }
 
-const LiveStats = ({ stats }: LiveStatsProps) => {
-  const stats_list = [
-    { label: 'Shots', home: stats.homeTeam.shots, away: stats.awayTeam.shots },
-    {
-      label: 'On Target',
-      home: stats.homeTeam.shotsOnTarget,
-      away: stats.awayTeam.shotsOnTarget,
-    },
-    {
-      label: 'Possession',
-      home: stats.homeTeam.possession,
-      away: stats.awayTeam.possession,
-    },
-    { label: 'Fouls', home: stats.homeTeam.fouls, away: stats.awayTeam.fouls },
-    { label: 'Corners', home: stats.homeTeam.corners, away: stats.awayTeam.corners },
-    { label: 'Passes', home: stats.homeTeam.passes, away: stats.awayTeam.passes },
-    {
-      label: 'Completed',
-      home: stats.homeTeam.completedPasses,
-      away: stats.awayTeam.completedPasses,
-    },
-    { label: 'Offsides', home: stats.homeTeam.offsides, away: stats.awayTeam.offsides },
-  ];
+const EventFeed = ({ events, sport }: EventFeedProps) => {
+  const sportConfig = getSportConfig(sport);
+
+  if (events.length === 0) {
+    return (
+      <div className="text-center py-8 text-charcoal-500 dark:text-charcoal-400">
+        <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
+        <p>No events yet</p>
+        <p className="text-sm">Events will appear here as they happen</p>
+      </div>
+    );
+  }
 
   return (
-    <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-      <CardHeader>
-        <CardTitle className="text-charcoal-900 dark:text-white">Match Statistics</CardTitle>
-        <CardDescription className="text-charcoal-600 dark:text-charcoal-400">
-          Real-time team comparison
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          {stats_list.map((stat, idx) => (
-            <div key={idx}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-charcoal-900 dark:text-white">
-                  {stat.home}
-                </span>
-                <span className="text-xs font-semibold text-charcoal-600 dark:text-charcoal-400">
-                  {stat.label}
-                </span>
-                <span className="text-sm font-medium text-charcoal-900 dark:text-white">
-                  {stat.away}
-                </span>
+    <div className="space-y-3 max-h-96 overflow-y-auto">
+      {events.map((event, index) => {
+        const isScoring = sportConfig.scoringEvents.includes(event.eventType as MatchEventType);
+        const icon = getEventTypeIcon(event.eventType as MatchEventType);
+        const label = getEventTypeLabel(event.eventType as MatchEventType);
+
+        return (
+          <div
+            key={event.id}
+            className={`flex items-start gap-3 p-3 rounded-lg transition-all ${
+              isScoring
+                ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                : 'bg-charcoal-50 dark:bg-charcoal-700/50'
+            } ${index === 0 ? 'animate-in fade-in slide-in-from-top-2' : ''}`}
+          >
+            <div className="flex-shrink-0 text-2xl">{icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-charcoal-900 dark:text-white">{label}</span>
+                <Badge
+                  variant="outline"
+                  className={
+                    event.teamSide === 'home'
+                      ? 'border-blue-300 text-blue-600 dark:border-blue-600 dark:text-blue-400'
+                      : 'border-orange-300 text-orange-600 dark:border-orange-600 dark:text-orange-400'
+                  }
+                >
+                  {event.teamSide === 'home' ? 'Home' : 'Away'}
+                </Badge>
               </div>
-              <div className="flex gap-1 h-2 bg-neutral-200 dark:bg-charcoal-700 rounded-full overflow-hidden">
-                <div
-                  className="bg-blue-500 dark:bg-blue-600 transition-all duration-300"
-                  style={{
-                    width: `${
-                      stat.home === 0 && stat.away === 0
-                        ? 50
-                        : (stat.home / (stat.home + stat.away)) * 100
-                    }%`,
-                  }}
-                />
-                <div
-                  className="bg-green-500 dark:bg-green-600 transition-all duration-300"
-                  style={{
-                    width: `${
-                      stat.home === 0 && stat.away === 0
-                        ? 50
-                        : (stat.away / (stat.home + stat.away)) * 100
-                    }%`,
-                  }}
-                />
-              </div>
+              {event.playerName && (
+                <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                  {event.playerName}
+                  {event.assistPlayerName && (
+                    <span className="text-charcoal-500"> (Assist: {event.assistPlayerName})</span>
+                  )}
+                </p>
+              )}
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+            <div className="flex-shrink-0 text-right">
+              <span className="font-bold text-charcoal-900 dark:text-white">
+                {event.minute}'
+                {event.secondaryMinute && <span className="text-sm">+{event.secondaryMinute}</span>}
+              </span>
+              {event.period && (
+                <p className="text-xs text-charcoal-500 dark:text-charcoal-400">{event.period}</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 };
 
@@ -617,478 +273,365 @@ export default function LiveMatchPage() {
   const router = useRouter();
   const params = useParams();
   const matchId = params.matchId as string;
-  const { toasts, removeToast, success, error: showError, info } = useToast();
 
-  // ============================================================================
-  // STATE MANAGEMENT
-  // ============================================================================
-
-  const [liveMatch, setLiveMatch] = useState<LiveMatch | null>(null);
+  // State
+  const [match, setMatch] = useState<MatchData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRunning, setIsRunning] = useState(true);
-  const [selectedTab, setSelectedTab] = useState<'events' | 'stats' | 'timeline'>('timeline');
-  const [showSettings, setShowSettings] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(5);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
 
-  // ============================================================================
-  // LIFECYCLE
-  // ============================================================================
-
-  useEffect(() => {
-    fetchLiveMatch();
-  }, [matchId]);
-
-  // Auto-refresh live data
-  useEffect(() => {
-    if (!autoRefresh || !liveMatch) return;
-
-    const interval = setInterval(() => {
-      fetchLiveMatch();
-    }, refreshInterval * 1000);
-
-    return () => clearInterval(interval);
-  }, [autoRefresh, refreshInterval, matchId]);
-
-  // Update match timer
-  useEffect(() => {
-    if (!isRunning || !liveMatch || liveMatch.status !== 'live') return;
-
-    const interval = setInterval(() => {
-      setLiveMatch((prev) => {
-        if (!prev || prev.currentMinute >= 90) return prev;
-        return { ...prev, currentMinute: prev.currentMinute + 1 };
-      });
-    }, 60000); // Update every minute
-
-    return () => clearInterval(interval);
-  }, [isRunning, liveMatch]);
-
-  // ============================================================================
-  // API CALLS
-  // ============================================================================
-
-  const fetchLiveMatch = async () => {
+  // Fetch match data
+  const fetchMatch = useCallback(async (showLoader = true) => {
     try {
-      // In production, replace with real API call
-      // const response = await fetch(`/api/matches/${matchId}/live`);
-      // const data = await response.json();
+      if (showLoader) setIsRefreshing(true);
 
-      // Mock data
-      setLiveMatch(generateMockLiveMatch());
-    } catch (error) {
-      console.error('❌ Error fetching live match:', error);
-      showError('Failed to fetch live match data');
+      const response = await fetch(`/api/matches/${matchId}/live`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch match data');
+      }
+
+      const data = await response.json();
+      setMatch(data);
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching match:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load match');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [matchId]);
 
-  // ============================================================================
-  // EVENT HANDLERS
-  // ============================================================================
+  // Initial load
+  useEffect(() => {
+    fetchMatch();
+  }, [fetchMatch]);
 
-  const handleToggleMatch = () => {
-    if (liveMatch?.status === 'finished') {
-      showError('Cannot resume a finished match');
-      return;
-    }
+  // Auto-refresh
+  useEffect(() => {
+    if (!autoRefresh || !match) return;
 
-    setIsRunning(!isRunning);
+    const isLive = LIVE_STATUSES.includes(match.status);
+    if (!isLive) return;
 
-    if (!isRunning) {
-      success('⏯️ Match resumed');
-      setLiveMatch((prev) =>
-        prev ? { ...prev, status: 'live' } : null
-      );
-    } else {
-      info('⏸️ Match paused');
-      setLiveMatch((prev) =>
-        prev ? { ...prev, status: 'paused' } : null
-      );
-    }
-  };
+    const interval = setInterval(() => {
+      fetchMatch(false);
+    }, REFRESH_INTERVAL);
 
-  const handleExportStats = () => {
-    if (!liveMatch) return;
+    return () => clearInterval(interval);
+  }, [autoRefresh, match, fetchMatch]);
 
-    const statsData = JSON.stringify(liveMatch, null, 2);
-    const blob = new Blob([statsData], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `live-match-${matchId}-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    success('📥 Stats exported successfully');
-  };
-
-  const handleIncrementInjuryTime = () => {
-    setLiveMatch((prev) =>
-      prev
-        ? { ...prev, injuryTime: prev.injuryTime + 1 }
-        : null
-    );
-    info('⏱️ Injury time incremented');
-  };
-
-  // ============================================================================
-  // COMPUTED VALUES
-  // ============================================================================
-
-  const isFinished = useMemo(() => liveMatch?.status === 'finished', [liveMatch?.status]);
-  const isHalftime = useMemo(() => liveMatch?.status === 'halftime', [liveMatch?.status]);
-
-  // ============================================================================
-  // RENDER
-  // ============================================================================
-
+  // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-blue-50/10 to-green-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-green-50/10 to-blue-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-500 dark:text-blue-400 mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 animate-spin text-green-500 dark:text-green-400 mx-auto mb-4" />
           <p className="text-charcoal-600 dark:text-charcoal-300">Loading live match...</p>
         </div>
       </div>
     );
   }
 
-  if (!liveMatch) {
+  // Error state
+  if (error && !match) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-blue-50/10 to-green-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
-        <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-red-400 dark:text-red-500 mx-auto mb-4" />
-          <p className="text-xl font-semibold text-charcoal-900 dark:text-white">
-            Match not found
-          </p>
-          <Button
-            onClick={() => router.back()}
-            className="mt-4 bg-blue-500 hover:bg-blue-600 text-white"
-          >
-            Go Back
-          </Button>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-red-50/10 to-orange-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 p-4">
+        <Card className="w-full max-w-md bg-white dark:bg-charcoal-800">
+          <CardContent className="pt-6 text-center">
+            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-charcoal-900 dark:text-white mb-2">Error</h2>
+            <p className="text-charcoal-600 dark:text-charcoal-400 mb-6">{error}</p>
+            <div className="flex gap-3 justify-center">
+              <Button onClick={() => router.back()} variant="outline">
+                Go Back
+              </Button>
+              <Button onClick={() => fetchMatch()}>Try Again</Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-blue-50/10 to-green-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 transition-colors duration-200 p-4 sm:p-6 lg:p-8">
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+  if (!match) return null;
 
-      <div className="max-w-7xl mx-auto">
-        {/* HEADER */}
-        <div className="mb-8">
-          <Link href={`/dashboard/matches/${matchId}`}>
-            <Button
-              variant="ghost"
-              className="mb-4 text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-100 dark:hover:bg-charcoal-700"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Match
-            </Button>
+  const sportConfig = getSportConfig(match.homeTeam.sport);
+  const sportIcon = getSportIcon(match.homeTeam.sport);
+  const statusInfo = getStatusInfo(match.status);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-charcoal-900 via-charcoal-800 to-charcoal-900 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
+          <Link
+            href={`/dashboard/matches/${match.id}`}
+            className="inline-flex items-center gap-2 text-charcoal-400 hover:text-white"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Match
           </Link>
 
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-4xl font-bold text-charcoal-900 dark:text-white">
-                  Live Match
-                </h1>
-                {liveMatch.status === 'live' && (
-                  <Badge className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 animate-pulse flex items-center gap-1">
-                    <div className="w-2 h-2 bg-red-600 dark:bg-red-400 rounded-full animate-pulse" />
-                    LIVE
-                  </Badge>
+          <div className="flex items-center gap-2">
+            {/* Auto-refresh toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className={autoRefresh ? 'text-green-400' : 'text-charcoal-400'}
+            >
+              {autoRefresh ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+              <span className="ml-1 hidden sm:inline">{autoRefresh ? 'Auto' : 'Paused'}</span>
+            </Button>
+
+            {/* Manual refresh */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => fetchMatch()}
+              disabled={isRefreshing}
+              className="text-charcoal-400 hover:text-white"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </Button>
+
+            {/* Sound toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={soundEnabled ? 'text-green-400' : 'text-charcoal-400'}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+
+        {/* Main Score Card */}
+        <Card className="mb-6 bg-gradient-to-br from-charcoal-800 to-charcoal-900 border-charcoal-700 overflow-hidden">
+          <CardContent className="p-6 sm:p-8">
+            {/* Status Bar */}
+            <div className="flex items-center justify-center gap-4 mb-6">
+              {statusInfo.isLive && <LivePulse />}
+              <Badge className={`${statusInfo.color} text-white px-4 py-1 text-lg`}>
+                {statusInfo.label}
+              </Badge>
+              <MatchTimer kickOffTime={match.kickOffTime} status={match.status} />
+            </div>
+
+            {/* Teams & Score */}
+            <div className="grid grid-cols-3 gap-4 items-center">
+              {/* Home Team */}
+              <div className="text-center">
+                {match.homeTeam.logo ? (
+                  <img
+                    src={match.homeTeam.logo}
+                    alt={match.homeTeam.name}
+                    className="w-20 h-20 sm:w-28 sm:h-28 mx-auto mb-3 rounded-xl object-cover"
+                  />
+                ) : (
+                  <div className="w-20 h-20 sm:w-28 sm:h-28 mx-auto mb-3 bg-blue-500/30 rounded-xl flex items-center justify-center text-5xl">
+                    {sportIcon}
+                  </div>
+                )}
+                <h2 className="font-bold text-lg sm:text-xl text-white">
+                  {match.homeTeam.shortName || match.homeTeam.name}
+                </h2>
+              </div>
+
+              {/* Score */}
+              <div className="text-center">
+                <div className="text-6xl sm:text-8xl font-bold text-white tabular-nums">
+                  {match.homeScore ?? 0}
+                  <span className="mx-2 text-charcoal-500">-</span>
+                  {match.awayScore ?? 0}
+                </div>
+                {(match.homeHalftimeScore !== null || match.awayHalftimeScore !== null) && (
+                  <p className="text-charcoal-400 mt-2">
+                    HT: {match.homeHalftimeScore ?? '-'} - {match.awayHalftimeScore ?? '-'}
+                  </p>
                 )}
               </div>
-              <p className="text-charcoal-600 dark:text-charcoal-400">
-                {liveMatch.homeTeam.name} vs {liveMatch.awayTeam.name}
-              </p>
-            </div>
 
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                onClick={handleToggleMatch}
-                disabled={isFinished}
-                className={`${
-                  isRunning
-                    ? 'bg-orange-500 hover:bg-orange-600'
-                    : 'bg-green-500 hover:bg-green-600'
-                } text-white`}
-              >
-                {isRunning ? (
-                  <>
-                    <Pause className="w-4 h-4 mr-2" />
-                    Pause
-                  </>
+              {/* Away Team */}
+              <div className="text-center">
+                {match.awayTeam.logo ? (
+                  <img
+                    src={match.awayTeam.logo}
+                    alt={match.awayTeam.name}
+                    className="w-20 h-20 sm:w-28 sm:h-28 mx-auto mb-3 rounded-xl object-cover"
+                  />
                 ) : (
-                  <>
-                    <Play className="w-4 h-4 mr-2" />
-                    Resume
-                  </>
+                  <div className="w-20 h-20 sm:w-28 sm:h-28 mx-auto mb-3 bg-orange-500/30 rounded-xl flex items-center justify-center text-5xl">
+                    {sportIcon}
+                  </div>
                 )}
-              </Button>
-              <Button
-                onClick={fetchLiveMatch}
-                variant="outline"
-                className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
-              </Button>
-              <Button
-                onClick={handleExportStats}
-                variant="outline"
-                className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
-              <Button
-                onClick={() => setShowSettings(!showSettings)}
-                variant="outline"
-                className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300"
-              >
-                <Settings className="w-4 h-4" />
-              </Button>
+                <h2 className="font-bold text-lg sm:text-xl text-white">
+                  {match.awayTeam.shortName || match.awayTeam.name}
+                </h2>
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* SCOREBOARD */}
-        <div className="mb-8">
-          <ScoreBoard liveMatch={liveMatch} isRunning={isRunning} />
-        </div>
+            {/* Match Info */}
+            <div className="flex items-center justify-center gap-4 sm:gap-8 mt-6 pt-6 border-t border-charcoal-700 text-charcoal-400 text-sm flex-wrap">
+              {match.venue && (
+                <span className="flex items-center gap-1">
+                  <Radio className="w-4 h-4" />
+                  {match.venue}
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                {sportIcon} {getSportDisplayName(match.homeTeam.sport)}
+              </span>
+              {match.isBroadcasted && match.broadcastUrl && (
+                <a
+                  href={match.broadcastUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-red-400 hover:text-red-300"
+                >
+                  <Tv className="w-4 h-4" />
+                  Watch Live
+                </a>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* QUICK STATS GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-            <CardContent className="pt-6">
-              <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mb-2 font-semibold flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                Total Shots
-              </p>
-              <p className="text-2xl font-bold text-charcoal-900 dark:text-white">
-                {liveMatch.stats.homeTeam.shots} -{' '}
-                {liveMatch.stats.awayTeam.shots}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-            <CardContent className="pt-6">
-              <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mb-2 font-semibold flex items-center gap-2">
-                <Zap className="w-4 h-4" />
-                On Target
-              </p>
-              <p className="text-2xl font-bold text-charcoal-900 dark:text-white">
-                {liveMatch.stats.homeTeam.shotsOnTarget} -{' '}
-                {liveMatch.stats.awayTeam.shotsOnTarget}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-            <CardContent className="pt-6">
-              <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mb-2 font-semibold flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                Fouls
-              </p>
-              <p className="text-2xl font-bold text-charcoal-900 dark:text-white">
-                {liveMatch.stats.homeTeam.fouls} -{' '}
-                {liveMatch.stats.awayTeam.fouls}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-            <CardContent className="pt-6">
-              <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mb-2 font-semibold flex items-center gap-2">
-                <Trophy className="w-4 h-4" />
-                Corners
-              </p>
-              <p className="text-2xl font-bold text-charcoal-900 dark:text-white">
-                {liveMatch.stats.homeTeam.corners} -{' '}
-                {liveMatch.stats.awayTeam.corners}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* TABS */}
-        <div className="flex gap-4 border-b border-neutral-200 dark:border-charcoal-700 mb-8 overflow-x-auto">
-          <button
-            onClick={() => setSelectedTab('timeline')}
-            className={`px-4 py-3 font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-              selectedTab === 'timeline'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-charcoal-200'
-            }`}
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <Link href={`/dashboard/matches/${match.id}/events`}>
+            <Button variant="outline" className="w-full bg-charcoal-800 border-charcoal-700 text-white hover:bg-charcoal-700">
+              <Activity className="w-4 h-4 mr-2" />
+              Events
+            </Button>
+          </Link>
+          <Link href={`/dashboard/matches/${match.id}/lineup`}>
+            <Button variant="outline" className="w-full bg-charcoal-800 border-charcoal-700 text-white hover:bg-charcoal-700">
+              <Users className="w-4 h-4 mr-2" />
+              Lineup
+            </Button>
+          </Link>
+          <Link href={`/dashboard/matches/${match.id}/record-result`}>
+            <Button variant="outline" className="w-full bg-charcoal-800 border-charcoal-700 text-white hover:bg-charcoal-700">
+              <Trophy className="w-4 h-4 mr-2" />
+              Record
+            </Button>
+          </Link>
+          <Button
+            variant="outline"
+            className="w-full bg-charcoal-800 border-charcoal-700 text-white hover:bg-charcoal-700"
+            onClick={() => {
+              if (navigator.share) {
+                navigator.share({
+                  title: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                  text: `${match.homeScore ?? 0} - ${match.awayScore ?? 0}`,
+                  url: window.location.href,
+                });
+              }
+            }}
           >
-            <Clock className="w-4 h-4" />
-            Timeline
-          </button>
-          <button
-            onClick={() => setSelectedTab('stats')}
-            className={`px-4 py-3 font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-              selectedTab === 'stats'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-charcoal-200'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            Statistics
-          </button>
+            <Share2 className="w-4 h-4 mr-2" />
+            Share
+          </Button>
         </div>
 
-        {/* MAIN CONTENT */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* CONTENT AREA */}
-          <div className="lg:col-span-2">
-            {selectedTab === 'timeline' && <EventTimeline events={liveMatch.events} />}
-            {selectedTab === 'stats' && <LiveStats stats={liveMatch.stats} />}
-          </div>
-
-          {/* SIDEBAR */}
-          <div className="space-y-6">
-            {/* MATCH INFO */}
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-              <CardHeader>
-                <CardTitle className="text-lg text-charcoal-900 dark:text-white">
-                  Match Info
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Event Feed */}
+          <Card className="bg-charcoal-800 border-charcoal-700">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-green-500" />
+                  Live Events
                 </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400 font-semibold mb-1">
-                    Venue
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-charcoal-600 dark:text-charcoal-400" />
-                    <p className="font-semibold text-charcoal-900 dark:text-white">
-                      {liveMatch.venue || 'N/A'}
-                    </p>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400 font-semibold mb-1">
-                    Attendance
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Eye className="w-4 h-4 text-charcoal-600 dark:text-charcoal-400" />
-                    <p className="font-semibold text-charcoal-900 dark:text-white">
-                      {liveMatch.attendance?.toLocaleString() || 'N/A'}
-                    </p>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400 font-semibold mb-1">
-                    Status
-                  </p>
-                  <Badge
-                    className={`capitalize ${
-                      liveMatch.status === 'live'
-                        ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                        : liveMatch.status === 'halftime'
-                          ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
-                          : liveMatch.status === 'finished'
-                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                            : 'bg-gray-100 dark:bg-charcoal-700 text-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    {liveMatch.status}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+                {isRefreshing && <Loader2 className="w-4 h-4 animate-spin text-charcoal-400" />}
+              </div>
+              <CardDescription className="text-charcoal-400">
+                Real-time match updates
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <EventFeed events={match.events} sport={match.homeTeam.sport} />
+            </CardContent>
+          </Card>
 
-            {/* SETTINGS */}
-            {showSettings && (
-              <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-                <CardHeader>
-                  <CardTitle className="text-lg text-charcoal-900 dark:text-white">
-                    Settings
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-charcoal-900 dark:text-white">
-                      Auto Refresh
-                    </label>
-                    <input
-                      type="checkbox"
-                      checked={autoRefresh}
-                      onChange={(e) => setAutoRefresh(e.target.checked)}
-                      className="w-4 h-4 rounded"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-charcoal-900 dark:text-white block mb-2">
-                      Refresh Interval (s)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="30"
-                      value={refreshInterval}
-                      onChange={(e) => setRefreshInterval(parseInt(e.target.value) || 5)}
-                      className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleIncrementInjuryTime}
-                    variant="outline"
-                    className="w-full border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300"
-                  >
-                    <Clock className="w-4 h-4 mr-2" />
-                    Add Injury Time
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
+          {/* Match Stats (Placeholder) */}
+          <Card className="bg-charcoal-800 border-charcoal-700">
+            <CardHeader>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Clock className="w-5 h-5 text-blue-500" />
+                Match Info
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Kick-off time */}
+              <div className="flex items-center justify-between p-3 bg-charcoal-700/50 rounded-lg">
+                <span className="text-charcoal-400">Kick-off</span>
+                <span className="text-white font-medium">
+                  {new Date(match.kickOffTime).toLocaleString('en-GB', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </span>
+              </div>
 
-            {/* EVENT SUMMARY */}
-            <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-              <CardHeader>
-                <CardTitle className="text-lg text-charcoal-900 dark:text-white">
-                  Event Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                    Total Events
-                  </span>
-                  <Badge className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                    {liveMatch.events.length}
-                  </Badge>
+              {/* Venue */}
+              {match.venue && (
+                <div className="flex items-center justify-between p-3 bg-charcoal-700/50 rounded-lg">
+                  <span className="text-charcoal-400">Venue</span>
+                  <span className="text-white font-medium">{match.venue}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                    Goals
+              )}
+
+              {/* Sport */}
+              <div className="flex items-center justify-between p-3 bg-charcoal-700/50 rounded-lg">
+                <span className="text-charcoal-400">Sport</span>
+                <span className="text-white font-medium flex items-center gap-2">
+                  {sportIcon} {getSportDisplayName(match.homeTeam.sport)}
+                </span>
+              </div>
+
+              {/* Last updated */}
+              {lastUpdated && (
+                <div className="flex items-center justify-between p-3 bg-charcoal-700/50 rounded-lg">
+                  <span className="text-charcoal-400">Last Updated</span>
+                  <span className="text-white font-medium">
+                    {lastUpdated.toLocaleTimeString('en-GB', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })}
                   </span>
-                  <Badge className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">
-                    {liveMatch.homeGoals + liveMatch.awayGoals}
-                  </Badge>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                    Cards
-                  </span>
-                  <Badge className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
-                    {liveMatch.stats.homeTeam.yellowCards +
-                      liveMatch.stats.awayTeam.yellowCards}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+              )}
+
+              {/* View full match details */}
+              <Link href={`/dashboard/matches/${match.id}`} className="block">
+                <Button className="w-full bg-charcoal-700 hover:bg-charcoal-600 text-white">
+                  View Full Match Details
+                  <ChevronRight className="w-4 h-4 ml-2" />
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Footer Info */}
+        <div className="mt-6 text-center text-charcoal-500 text-sm">
+          <p>
+            {autoRefresh
+              ? `Auto-refreshing every ${REFRESH_INTERVAL / 1000} seconds`
+              : 'Auto-refresh paused'}
+          </p>
         </div>
       </div>
     </div>
   );
 }
-
-LiveMatchPage.displayName = 'LiveMatchPage';
