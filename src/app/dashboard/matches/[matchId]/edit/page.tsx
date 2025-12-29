@@ -1,69 +1,137 @@
 // ============================================================================
-// ➕ CREATE MATCH PAGE v7.4.0
+// ✏️ EDIT MATCH PAGE v7.4.0
 // ============================================================================
-// /dashboard/matches/create - Multi-sport match creation
+// /dashboard/matches/[matchId]/edit - Edit existing match
 // ============================================================================
 
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { notFound, redirect } from 'next/navigation';
+import { ArrowLeft, AlertTriangle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { MatchForm } from '@/components/forms/match-form';
+import { LIVE_STATUSES } from '@/types/match';
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface PageProps {
+  params: { matchId: string };
+}
 
 // ============================================================================
 // METADATA
 // ============================================================================
 
-export const metadata: Metadata = {
-  title: 'Create Match | PitchConnect',
-  description: 'Create a new match for your club',
-};
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const match = await prisma.match.findUnique({
+    where: { id: params.matchId },
+    include: {
+      homeClub: { select: { name: true, shortName: true } },
+      awayClub: { select: { name: true, shortName: true } },
+    },
+  });
+
+  if (!match) {
+    return { title: 'Match Not Found | PitchConnect' };
+  }
+
+  const title = match.title ||
+    `${match.homeClub.shortName || match.homeClub.name} vs ${match.awayClub.shortName || match.awayClub.name}`;
+
+  return {
+    title: `Edit ${title} | PitchConnect`,
+    description: `Edit match details for ${title}`,
+  };
+}
 
 // ============================================================================
 // DATA FETCHING
 // ============================================================================
 
-async function getFormData(userId: string) {
-  // Get user's club memberships with permission to create matches
+async function getMatch(matchId: string) {
+  return prisma.match.findUnique({
+    where: { id: matchId, deletedAt: null },
+    include: {
+      homeTeam: {
+        select: { id: true, name: true, clubId: true, logo: true },
+      },
+      awayTeam: {
+        select: { id: true, name: true, clubId: true, logo: true },
+      },
+      homeClub: {
+        select: { id: true, name: true, shortName: true, logo: true, sport: true },
+      },
+      awayClub: {
+        select: { id: true, name: true, shortName: true, logo: true, sport: true },
+      },
+      competition: {
+        select: { id: true, name: true, shortName: true, logo: true, type: true },
+      },
+      venueRelation: {
+        select: { id: true, name: true, city: true },
+      },
+      facilityRelation: {
+        select: { id: true, name: true, type: true },
+      },
+    },
+  });
+}
+
+async function getFormData(userId: string, match: NonNullable<Awaited<ReturnType<typeof getMatch>>>) {
+  // Get user's club memberships with permission to edit matches
   const memberships = await prisma.clubMember.findMany({
     where: {
       userId,
+      clubId: { in: [match.homeClubId, match.awayClubId] },
       isActive: true,
       deletedAt: null,
       OR: [
         { role: { in: ['OWNER', 'MANAGER', 'HEAD_COACH', 'ASSISTANT_COACH'] } },
         { canManageMatches: true },
-        { canCreateFriendlyMatches: true },
       ],
     },
     select: {
       clubId: true,
       role: true,
       canManageMatches: true,
-      canCreateFriendlyMatches: true,
     },
   });
 
-  if (memberships.length === 0) {
+  // Check if user can edit (is staff or creator)
+  const canEdit = memberships.length > 0 || match.createdById === userId;
+
+  if (!canEdit) {
     return null;
   }
 
-  const clubIds = memberships.map((m) => m.clubId);
+  // Get all clubs user has access to (for team selection)
+  const allMemberships = await prisma.clubMember.findMany({
+    where: {
+      userId,
+      isActive: true,
+      deletedAt: null,
+    },
+    select: { clubId: true },
+  });
 
-  // Fetch all related data in parallel
+  const clubIds = [...new Set([
+    ...allMemberships.map((m) => m.clubId),
+    match.homeClubId,
+    match.awayClubId,
+  ])];
+
+  // Fetch all related data
   const [clubs, teams, competitions, venues, facilities, coach] = await Promise.all([
-    // Clubs user has access to
     prisma.club.findMany({
-      where: {
-        id: { in: clubIds },
-        deletedAt: null,
-      },
+      where: { id: { in: clubIds }, deletedAt: null },
       select: {
         id: true,
         organisationId: true,
@@ -81,7 +149,6 @@ async function getFormData(userId: string) {
       orderBy: { name: 'asc' },
     }),
 
-    // Teams from those clubs
     prisma.team.findMany({
       where: {
         clubId: { in: clubIds },
@@ -102,22 +169,13 @@ async function getFormData(userId: string) {
       orderBy: [{ clubId: 'asc' }, { name: 'asc' }],
     }),
 
-    // Active competitions
     prisma.competition.findMany({
       where: {
         OR: [
           { clubId: { in: clubIds } },
-          { organisationId: { in: clubIds } },
-          {
-            teams: {
-              some: {
-                clubId: { in: clubIds },
-              },
-            },
-          },
+          { id: match.competitionId || undefined },
         ],
         deletedAt: null,
-        status: { in: ['DRAFT', 'ACTIVE', 'IN_PROGRESS'] },
       },
       select: {
         id: true,
@@ -133,12 +191,8 @@ async function getFormData(userId: string) {
       orderBy: { name: 'asc' },
     }),
 
-    // External venues
     prisma.venue.findMany({
-      where: {
-        deletedAt: null,
-        isActive: true,
-      },
+      where: { deletedAt: null, isActive: true },
       select: {
         id: true,
         name: true,
@@ -154,15 +208,10 @@ async function getFormData(userId: string) {
       take: 100,
     }),
 
-    // Club facilities
     prisma.facility.findMany({
       where: {
         organisation: {
-          clubs: {
-            some: {
-              id: { in: clubIds },
-            },
-          },
+          clubs: { some: { id: { in: clubIds } } },
         },
         deletedAt: null,
         isActive: true,
@@ -178,15 +227,11 @@ async function getFormData(userId: string) {
       orderBy: { name: 'asc' },
     }),
 
-    // Check if user is a coach
     prisma.coach.findUnique({
       where: { userId },
       select: { id: true },
     }),
   ]);
-
-  // Determine default sport from clubs
-  const defaultSport = clubs.length > 0 ? clubs[0].sport : 'FOOTBALL';
 
   return {
     clubs,
@@ -195,8 +240,7 @@ async function getFormData(userId: string) {
     venues,
     facilities,
     coachId: coach?.id,
-    defaultSport,
-    memberships,
+    defaultSport: match.homeClub.sport,
   };
 }
 
@@ -204,16 +248,22 @@ async function getFormData(userId: string) {
 // MAIN PAGE COMPONENT
 // ============================================================================
 
-export default async function CreateMatchPage() {
+export default async function EditMatchPage({ params }: PageProps) {
   const session = await auth();
 
   if (!session?.user?.id) {
     redirect('/login');
   }
 
-  const formData = await getFormData(session.user.id);
+  const match = await getMatch(params.matchId);
 
-  // No permission to create matches
+  if (!match) {
+    notFound();
+  }
+
+  const formData = await getFormData(session.user.id, match);
+
+  // No permission to edit
   if (!formData) {
     return (
       <main className="container py-6">
@@ -221,15 +271,14 @@ export default async function CreateMatchPage() {
           <CardHeader>
             <CardTitle>Permission Required</CardTitle>
             <CardDescription>
-              You don&apos;t have permission to create matches. Contact your club
-              manager to request access.
+              You don&apos;t have permission to edit this match.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline">
-              <Link href="/dashboard/matches">
+              <Link href={`/dashboard/matches/${match.id}`}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Matches
+                Back to Match
               </Link>
             </Button>
           </CardContent>
@@ -238,27 +287,46 @@ export default async function CreateMatchPage() {
     );
   }
 
+  const isLive = LIVE_STATUSES.includes(match.status);
+  const isFinished = match.status === 'FINISHED';
+
   return (
     <main className="container py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button asChild variant="ghost" size="icon">
-          <Link href="/dashboard/matches" aria-label="Back to matches">
+          <Link href={`/dashboard/matches/${match.id}`} aria-label="Back to match">
             <ArrowLeft className="h-5 w-5" />
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Create Match</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Edit Match</h1>
           <p className="text-muted-foreground">
-            Schedule a new match for your team
+            {match.title || `${match.homeClub.shortName || match.homeClub.name} vs ${match.awayClub.shortName || match.awayClub.name}`}
           </p>
         </div>
       </div>
 
+      {/* Warning for live/finished matches */}
+      {(isLive || isFinished) && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>
+            {isLive ? 'Match is Live' : 'Match has Finished'}
+          </AlertTitle>
+          <AlertDescription>
+            {isLive
+              ? 'This match is currently in progress. Some fields may be locked.'
+              : 'This match has finished. Only limited fields can be edited.'}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Form */}
       <div className="max-w-4xl">
         <MatchForm
-          mode="create"
+          mode="edit"
+          match={match as any}
           clubs={formData.clubs}
           teams={formData.teams}
           competitions={formData.competitions}
