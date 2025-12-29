@@ -1,5 +1,5 @@
 // ============================================================================
-// 🌟 PITCHCONNECT DATABASE SCHEMA v7.1.0 - ENTERPRISE AUTH EDITION
+// 🌟 PITCHCONNECT DATABASE SCHEMA v7.2.0 - ENTERPRISE EDITION
 // ============================================================================
 // Enhanced with:
 // - Complete Two-Factor Authentication model
@@ -7,6 +7,9 @@
 // - Email verification system
 // - Session management
 // - Audit logging for auth events
+// - Team Join Request System (NEW)
+// - Job Posting & Application System (NEW)
+// - Enhanced Club/Team Management
 // ============================================================================
 
 generator client {
@@ -399,10 +402,12 @@ enum WebhookEvent {
   RESULT_APPROVED
   TRAINING_SCHEDULED
   ANNOUNCEMENT_POSTED
+  JOB_POSTED
+  JOB_APPLICATION_RECEIVED
+  JOIN_REQUEST_RECEIVED
 }
 
 enum AuditActionType {
-  // User Management
   USER_CREATED
   USER_UPDATED
   USER_DELETED
@@ -411,8 +416,6 @@ enum AuditActionType {
   USER_REACTIVATED
   ROLE_ASSIGNED
   ROLE_REMOVED
-
-  // Authentication Events
   USER_REGISTERED
   USER_LOGIN
   USER_LOGOUT
@@ -432,8 +435,6 @@ enum AuditActionType {
   SESSION_EXPIRED
   VERIFICATION_EMAIL_SENT
   VERIFICATION_EMAIL_RESENT
-
-  // Subscription & Billing
   SUBSCRIPTION_GRANTED
   SUBSCRIPTION_UPGRADED
   SUBSCRIPTION_DOWNGRADED
@@ -441,13 +442,9 @@ enum AuditActionType {
   PAYMENT_PROCESSED
   PAYMENT_FAILED
   REFUND_PROCESSED
-
-  // Data Operations
   DATA_EXPORTED
   DATA_DELETED
   DATA_IMPORTED
-
-  // Team & Match
   TEAM_CREATED
   TEAM_UPDATED
   TEAM_DELETED
@@ -455,19 +452,23 @@ enum AuditActionType {
   MATCH_UPDATED
   MATCH_RESULT_UPDATED
   MATCH_CANCELLED
-
-  // Player
   PLAYER_TRANSFER
   PLAYER_CONTRACT_SIGNED
   MEDICAL_RECORD_ACCESSED
   MEDICAL_RECORD_CREATED
-
-  // Compliance
+  JOIN_REQUEST_SUBMITTED
+  JOIN_REQUEST_APPROVED
+  JOIN_REQUEST_REJECTED
+  JOIN_REQUEST_CANCELLED
+  JOB_POSTED
+  JOB_CLOSED
+  JOB_APPLICATION_SUBMITTED
+  JOB_APPLICATION_REVIEWED
+  JOB_APPLICATION_ACCEPTED
+  JOB_APPLICATION_REJECTED
   CONSENT_UPDATED
   GDPR_REQUEST
   DATA_RETENTION_APPLIED
-
-  // System
   SYSTEM_MAINTENANCE
   API_KEY_GENERATED
   API_KEY_REVOKED
@@ -754,6 +755,76 @@ enum VerificationType {
   ACCOUNT_RECOVERY
 }
 
+// NEW ENUMS v7.2.0 - JOIN REQUESTS & JOB BOARD
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum JobPostingStatus {
+  DRAFT
+  OPEN
+  PAUSED
+  CLOSED
+  FILLED
+  CANCELLED
+  EXPIRED
+}
+
+enum JobApplicationStatus {
+  PENDING
+  REVIEWING
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  INTERVIEW_COMPLETED
+  OFFERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  HIRED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMPORARY
+  INTERNSHIP
+  VOLUNTEER
+  FREELANCE
+  SEASONAL
+}
+
+enum JobCategory {
+  COACHING
+  MANAGEMENT
+  MEDICAL
+  ANALYSIS
+  SCOUTING
+  ADMINISTRATION
+  MEDIA
+  OPERATIONS
+  FINANCE
+  YOUTH_DEVELOPMENT
+  PERFORMANCE
+  OTHER
+}
+
+enum ExperienceLevel {
+  ENTRY
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+  DIRECTOR
+  EXECUTIVE
+}
+
 // ============================================================================
 // 🏢 ORGANISATION & MULTI-TENANCY MODELS
 // ============================================================================
@@ -927,7 +998,7 @@ model Season {
 }
 
 // ============================================================================
-// 👤 USER & AUTHENTICATION MODELS - ENHANCED v7.1.0
+// 👤 USER & AUTHENTICATION MODELS
 // ============================================================================
 
 model User {
@@ -956,24 +1027,14 @@ model User {
   isSuperAdmin Boolean     @default(false)
 
   primaryOrganisationId String?
-
-  // =========================================================================
-  // 🔗 CLUB & TEAM ASSOCIATIONS
-  // =========================================================================
   clubId String?
   teamId String?
 
-  // =========================================================================
-  // 🔐 PASSWORD & AUTH
-  // =========================================================================
   password          String?
   passwordChangedAt DateTime?
-
-  // Password Reset (hashed token stored)
   passwordResetToken  String?   @unique
   passwordResetExpiry DateTime?
 
-  // Login Security
   failedLoginAttempts Int       @default(0)
   lastFailedLoginAt   DateTime?
   lastLoginAt         DateTime?
@@ -981,16 +1042,10 @@ model User {
   loginAttempts       Int       @default(0)
   lockoutUntil        DateTime?
 
-  // =========================================================================
-  // 🔐 TWO-FACTOR AUTHENTICATION
-  // =========================================================================
   twoFactorEnabled     Boolean  @default(false)
   twoFactorSecret      String?  @unique
   twoFactorBackupCodes String[]
 
-  // =========================================================================
-  // ⚙️ PREFERENCES
-  // =========================================================================
   emailNotificationsEnabled Boolean @default(true)
   pushNotificationsEnabled  Boolean @default(true)
   smsNotificationsEnabled   Boolean @default(false)
@@ -999,9 +1054,6 @@ model User {
   showOnlineStatus          Boolean @default(true)
   profileVisibility         String  @default("PUBLIC")
 
-  // =========================================================================
-  // 📜 LEGAL & COMPLIANCE
-  // =========================================================================
   gdprConsent             Boolean   @default(false)
   gdprConsentDate         DateTime?
   dataProcessingConsent   Boolean   @default(false)
@@ -1018,9 +1070,6 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // =========================================================================
-  // 🔗 RELATIONS
-  // =========================================================================
   organisationMemberships OrganisationMember[]
   organisationsOwned      Organisation[]          @relation("organisationOwner")
   accounts                Account[]
@@ -1059,6 +1108,9 @@ model User {
   announcementsCreated    Announcement[]          @relation("announcementCreator")
   performanceGoals        PerformanceGoal[]       @relation("goalUser")
   goalsCreated            PerformanceGoal[]       @relation("goalCreator")
+  jobApplications         JobApplication[]        @relation("applicant")
+  reviewedApplications    JobApplication[]        @relation("applicationReviewer")
+  jobPostingsCreated      JobPosting[]            @relation("jobCreator")
 
   @@index([email])
   @@index([phone])
@@ -1075,39 +1127,24 @@ model User {
   @@map("users")
 }
 
-// ============================================================================
-// 🔐 TWO-FACTOR AUTHENTICATION MODEL
-// ============================================================================
-
 model TwoFactorAuth {
   id     String @id @default(cuid())
   userId String @unique
 
-  // TOTP Secret (Base32 encoded)
   secret String
-
-  // Status
   enabled Boolean @default(false)
-
-  // Backup codes (hashed with SHA-256)
   backupCodes String[]
 
-  // Timestamps
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   lastUsedAt DateTime?
 
-  // Relation
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([enabled])
   @@map("two_factor_auth")
 }
-
-// ============================================================================
-// 🔑 OAUTH ACCOUNTS (NextAuth)
-// ============================================================================
 
 model Account {
   id                String @id @default(cuid())
@@ -1133,10 +1170,6 @@ model Account {
   @@index([userId])
   @@map("accounts")
 }
-
-// ============================================================================
-// 🎫 SESSION MANAGEMENT
-// ============================================================================
 
 model Session {
   id           String   @id @default(cuid())
@@ -1180,14 +1213,10 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-// ============================================================================
-// ✉️ VERIFICATION TOKENS (Email, Phone, Password Reset)
-// ============================================================================
-
 model VerificationToken {
   id         String           @id @default(cuid())
-  identifier String // User's email or phone
-  token      String           @unique // Hashed token
+  identifier String
+  token      String           @unique
   type       VerificationType @default(EMAIL)
   expires    DateTime
 
@@ -1199,10 +1228,6 @@ model VerificationToken {
   @@index([identifier])
   @@map("verification_tokens")
 }
-
-// ============================================================================
-// 🔑 API KEYS
-// ============================================================================
 
 model ApiKey {
   id             String  @id @default(cuid())
@@ -1231,10 +1256,6 @@ model ApiKey {
   @@index([expiresAt])
   @@map("api_keys")
 }
-
-// ============================================================================
-// 🔐 PERMISSION & ROLE MANAGEMENT
-// ============================================================================
 
 model Role {
   id             String @id @default(cuid())
@@ -1506,6 +1527,7 @@ model Player {
   performanceGoals   PerformanceGoal[]     @relation("goalPlayer")
   trainingAttendance TrainingAttendance[]
   teamPlayers        TeamPlayer[]
+  joinRequests       TeamJoinRequest[]     @relation("playerJoinRequests")
 
   @@index([userId])
   @@index([isActive])
@@ -2013,6 +2035,14 @@ model Coach {
   isAvailable       Boolean @default(true)
   availabilityNotes String?
 
+  // Job Seeking Fields
+  isOpenToOpportunities   Boolean  @default(false)
+  preferredRoles          String[]
+  preferredLocations      String[]
+  expectedSalary          Float?
+  expectedSalaryCurrency  String   @default("GBP")
+  noticePeriod            String?
+
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2024,11 +2054,13 @@ model Coach {
   timesheets       CoachTimesheet[]  @relation("coach")
   payments         CoachPayment[]
   achievements     Achievement[]     @relation("achievementCoach")
+  jobApplications  JobApplication[]  @relation("coachApplications")
 
   @@index([userId])
   @@index([isVerified])
   @@index([coachType])
   @@index([licenseExpiry])
+  @@index([isOpenToOpportunities])
   @@map("coaches")
 }
 
@@ -2304,6 +2336,7 @@ model Club {
   isVerified       Boolean @default(false)
   isPublic         Boolean @default(true)
   acceptingPlayers Boolean @default(true)
+  acceptingStaff   Boolean @default(true)
   status           String  @default("ACTIVE")
 
   followerCount Int @default(0)
@@ -2334,6 +2367,7 @@ model Club {
   aggregateStats   TeamAggregateStats?
   announcements    Announcement[]
   sponsors         ClubSponsor[]
+  jobPostings      JobPosting[]
 
   @@index([organisationId])
   @@index([managerId])
@@ -2343,6 +2377,8 @@ model Club {
   @@index([city])
   @@index([country])
   @@index([status])
+  @@index([acceptingPlayers])
+  @@index([acceptingStaff])
   @@map("clubs")
 }
 
@@ -2396,21 +2432,27 @@ model Team {
   minPlayers Int?
   maxPlayers Int?
 
+  // Team preferences for join requests
+  acceptingJoinRequests Boolean @default(true)
+  requiresApproval      Boolean @default(true)
+
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club        Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  players     TeamPlayer[]
-  matchSquads MatchSquad[]
-  formations  TeamFormation[]
-  leagueTeams LeagueTeam[]
+  club         Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  players      TeamPlayer[]
+  matchSquads  MatchSquad[]
+  formations   TeamFormation[]
+  leagueTeams  LeagueTeam[]
+  joinRequests TeamJoinRequest[]
 
   @@unique([clubId, name])
   @@index([clubId])
   @@index([ageGroup])
   @@index([status])
+  @@index([acceptingJoinRequests])
   @@map("teams")
 }
 
@@ -2427,6 +2469,10 @@ model TeamPlayer {
 
   joinedAt DateTime  @default(now())
   leftAt   DateTime?
+
+  // Track how player joined
+  joinedVia     String? // 'DIRECT', 'JOIN_REQUEST', 'INVITATION', 'TRANSFER'
+  joinRequestId String?
 
   team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
@@ -2461,6 +2507,209 @@ model TeamFormation {
   @@index([clubId])
   @@index([teamId])
   @@map("team_formations")
+}
+
+// ============================================================================
+// 📝 TEAM JOIN REQUESTS - NEW v7.2.0
+// ============================================================================
+
+model TeamJoinRequest {
+  id       String @id @default(cuid())
+  teamId   String
+  playerId String
+
+  // Request details
+  status                JoinRequestStatus @default(PENDING)
+  message               String?           @db.Text
+  preferredPosition     Position?
+  preferredJerseyNumber Int?
+
+  // Player profile snapshot at time of request
+  playerProfileSnapshot Json?
+
+  // Review information
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewNotes     String?   @db.Text
+  rejectionReason String?
+
+  // Expiry
+  expiresAt DateTime?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player Player @relation("playerJoinRequests", fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, playerId, status])
+  @@index([teamId])
+  @@index([playerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@map("team_join_requests")
+}
+
+// ============================================================================
+// 💼 JOB POSTING & APPLICATION SYSTEM - NEW v7.2.0
+// ============================================================================
+
+model JobPosting {
+  id     String @id @default(cuid())
+  clubId String
+
+  // Job details
+  title            String
+  slug             String
+  description      String  @db.Text
+  shortDescription String?
+
+  // Classification
+  category        JobCategory
+  role            ClubMemberRole
+  employmentType  EmploymentType  @default(FULL_TIME)
+  experienceLevel ExperienceLevel @default(MID)
+
+  // Requirements
+  requirements    String[]
+  qualifications  String[]
+  certifications  String[]
+  skills          String[]
+  yearsExperience Int?
+
+  // Compensation
+  salaryMin      Float?
+  salaryMax      Float?
+  currency       String   @default("GBP")
+  salaryPeriod   String?
+  benefits       String[]
+  bonusStructure Json?
+
+  // Location
+  location       String?
+  city           String?
+  country        String?
+  isRemote       Boolean @default(false)
+  isHybrid       Boolean @default(false)
+  travelRequired Boolean @default(false)
+
+  // Status & Dates
+  status      JobPostingStatus @default(DRAFT)
+  publishedAt DateTime?
+  deadline    DateTime?
+  startDate   DateTime?
+
+  // Settings
+  isUrgent       Boolean @default(false)
+  isFeatured     Boolean @default(false)
+  isConfidential Boolean @default(false)
+
+  // Application settings
+  maxApplications     Int?
+  requiresCoverLetter Boolean @default(true)
+  requiresResume      Boolean @default(true)
+  customQuestions     Json?
+
+  // Metrics
+  viewCount        Int @default(0)
+  applicationCount Int @default(0)
+  shortlistedCount Int @default(0)
+
+  // Creator
+  createdBy String
+
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  club         Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  creator      User             @relation("jobCreator", fields: [createdBy], references: [id])
+  applications JobApplication[]
+
+  @@unique([clubId, slug])
+  @@index([clubId])
+  @@index([category])
+  @@index([role])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([deadline])
+  @@index([city])
+  @@index([country])
+  @@index([isRemote])
+  @@index([isFeatured])
+  @@index([createdAt])
+  @@map("job_postings")
+}
+
+model JobApplication {
+  id           String  @id @default(cuid())
+  jobPostingId String
+  userId       String
+  coachId      String?
+
+  // Application content
+  coverLetter   String? @db.Text
+  resumeUrl     String?
+  portfolioUrl  String?
+  linkedInUrl   String?
+  customAnswers Json?
+
+  // Applicant snapshot
+  applicantSnapshot Json?
+
+  // Status tracking
+  status JobApplicationStatus @default(PENDING)
+
+  // Review process
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  reviewNotes String?   @db.Text
+  rating      Int?
+
+  // Interview
+  interviewDate     DateTime?
+  interviewLocation String?
+  interviewNotes    String?   @db.Text
+  interviewRating   Int?
+
+  // Offer
+  offerDate          DateTime?
+  offerSalary        Float?
+  offerAcceptedAt    DateTime?
+  offerDeclinedAt    DateTime?
+  offerDeclineReason String?
+
+  // Rejection
+  rejectionReason String?
+  rejectionDate   DateTime?
+
+  // Withdrawal
+  withdrawnAt    DateTime?
+  withdrawReason String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  jobPosting JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  user       User       @relation("applicant", fields: [userId], references: [id], onDelete: Cascade)
+  coach      Coach?     @relation("coachApplications", fields: [coachId], references: [id], onDelete: SetNull)
+  reviewer   User?      @relation("applicationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@unique([jobPostingId, userId])
+  @@index([jobPostingId])
+  @@index([userId])
+  @@index([coachId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([rating])
+  @@map("job_applications")
 }
 
 // ============================================================================
@@ -2731,11 +2980,9 @@ model MatchEvent {
   period          String?
 
   relatedPlayerId String?
-
-  assistPlayerId String?
-  goalType       String?
-
-  cardReason String?
+  assistPlayerId  String?
+  goalType        String?
+  cardReason      String?
 
   details        Json?
   videoTimestamp Int?
@@ -3402,11 +3649,13 @@ model NotificationPreference {
   emailTraining  Boolean @default(true)
   emailNews      Boolean @default(false)
   emailMarketing Boolean @default(false)
+  emailJobs      Boolean @default(true)
 
   pushMatches  Boolean @default(true)
   pushTeam     Boolean @default(true)
   pushTraining Boolean @default(true)
   pushChat     Boolean @default(true)
+  pushJobs     Boolean @default(true)
 
   smsMatches Boolean @default(false)
   smsUrgent  Boolean @default(false)

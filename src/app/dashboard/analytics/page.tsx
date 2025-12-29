@@ -1,956 +1,841 @@
-'use client';
+// =============================================================================
+// 📊 ANALYTICS DASHBOARD - Enterprise-Grade Implementation
+// =============================================================================
+// Path: /dashboard/analytics
+// Access: COACH, MANAGER, ANALYST, CLUB_OWNER
+// Features: Team performance, match stats, player insights, form analysis
+// =============================================================================
 
-/**
- * PitchConnect Analytics Dashboard - v4.0 CHAMPIONSHIP-QUALITY
- * Location: ./src/app/dashboard/analytics/page.tsx
- * 
- * Features:
- * ✅ Multi-sport support (Football, Netball, Rugby, Cricket, etc.)
- * ✅ Advanced KPI metrics from Prisma schema
- * ✅ Real-time player stats aggregation
- * ✅ Team performance analytics & trends
- * ✅ Match detailed statistics & player comparisons
- * ✅ CSV/PDF export functionality
- * ✅ Dark mode & responsive design
- * ✅ Performance optimization & caching
- * ✅ Role-based access control
- * ✅ Zero external toast library (custom toast solution)
- */
-
-import { useState, useCallback, useMemo } from 'react';
+import { Suspense } from 'react';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { redirect } from 'next/navigation';
+import { prisma } from '@/lib/prisma';
+import Link from 'next/link';
 import {
-  Activity,
-  Target,
-  TrendingUp,
-  Zap,
-  Users,
-  Award,
   BarChart3,
-  Download,
-  Filter,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Trophy,
+  Target,
+  Users,
   Calendar,
-  RefreshCw,
-  AlertCircle,
-  CheckCircle,
-  X,
-  Loader,
-  ArrowUp,
-  ArrowDown,
+  ChevronRight,
+  Activity,
+  Shield,
+  Zap,
+  Award,
+  ArrowUpRight,
+  ArrowDownRight,
 } from 'lucide-react';
 
-// ============================================================================
-// TYPES - SCHEMA-ALIGNED
-// ============================================================================
+// =============================================================================
+// TYPES
+// =============================================================================
 
-interface MatchRecord {
-  id: string;
-  date: string;
-  opponent: string;
-  result: 'win' | 'draw' | 'loss';
-  goalsFor: number;
-  goalsAgainst: number;
-  venue?: string;
-  possession?: number;
-  shots?: number;
-  shotsOnTarget?: number;
-  passes?: number;
-  passesCompleted?: number;
-  tackles?: number;
-  fouls?: number;
-  corners?: number;
+interface ClubAnalytics {
+  overview: {
+    totalMatches: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    winRate: number;
+    goalsFor: number;
+    goalsAgainst: number;
+    goalDifference: number;
+    cleanSheets: number;
+    avgGoalsPerMatch: number;
+    avgGoalsConcededPerMatch: number;
+  };
+  form: {
+    last5: string[];
+    last10: string[];
+    currentStreak: {
+      type: 'WIN' | 'DRAW' | 'LOSS' | 'UNBEATEN' | null;
+      count: number;
+    };
+    homeForm: string[];
+    awayForm: string[];
+  };
+  homeVsAway: {
+    home: {
+      played: number;
+      wins: number;
+      draws: number;
+      losses: number;
+      goalsFor: number;
+      goalsAgainst: number;
+    };
+    away: {
+      played: number;
+      wins: number;
+      draws: number;
+      losses: number;
+      goalsFor: number;
+      goalsAgainst: number;
+    };
+  };
+  topPerformers: {
+    topScorers: Array<{
+      playerId: string;
+      playerName: string;
+      goals: number;
+      matches: number;
+      goalsPerMatch: number;
+    }>;
+    topAssists: Array<{
+      playerId: string;
+      playerName: string;
+      assists: number;
+      matches: number;
+      assistsPerMatch: number;
+    }>;
+    topRated: Array<{
+      playerId: string;
+      playerName: string;
+      avgRating: number;
+      matches: number;
+    }>;
+  };
+  recentMatches: Array<{
+    id: string;
+    opponent: string;
+    opponentLogo: string | null;
+    isHome: boolean;
+    score: string;
+    result: 'W' | 'D' | 'L';
+    date: string;
+    competition: string | null;
+  }>;
+  monthlyTrends: Array<{
+    month: string;
+    matches: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    goalsFor: number;
+    goalsAgainst: number;
+  }>;
 }
 
-interface PlayerPerformance {
-  id: string;
-  name: string;
-  number: number;
-  position: string;
-  club?: string;
-  goals: number;
-  assists: number;
-  appearances: number;
-  minutesPlayed: number;
-  rating: number;
-  trend: 'up' | 'down' | 'stable';
-  lastMatchRating: number;
-  passes: number;
-  passesCompleted: number;
-  shotsOnTarget: number;
-  tackles: number;
-  passAccuracy: number;
-}
+// =============================================================================
+// DATA FETCHING
+// =============================================================================
 
-interface TeamMetrics {
-  teamName: string;
-  season: string;
-  sport: 'FOOTBALL' | 'NETBALL' | 'RUGBY' | 'CRICKET' | 'AMERICAN_FOOTBALL' | 'BASKETBALL';
-  totalMatches: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  winPercentage: number;
-  goalsFor: number;
-  goalsAgainst: number;
-  goalDifference: number;
-  averageGoalsFor: number;
-  averageGoalsAgainst: number;
-  averagePossession: number;
-  totalPasses: number;
-  completedPasses: number;
-  passAccuracy: number;
-  totalShots: number;
-  shotsOnTarget: number;
-  shotAccuracy: number;
-  tackles: number;
-  interceptions: number;
-  cleanSheets: number;
-  recentMatches: MatchRecord[];
-  topPlayers: PlayerPerformance[];
-  formScore: number;
-  trend: 'improving' | 'stable' | 'declining';
-}
+async function getAnalyticsData(userId: string): Promise<{
+  clubs: Array<{ id: string; name: string; logo: string | null }>;
+  selectedClub: { id: string; name: string; logo: string | null } | null;
+  analytics: ClubAnalytics | null;
+}> {
+  // Get user's clubs (as member, manager, or owner)
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      clubMemberships: {
+        where: { isActive: true },
+        include: {
+          club: {
+            select: { id: true, name: true, logo: true },
+          },
+        },
+      },
+      managedClubs: {
+        select: { id: true, name: true, logo: true },
+      },
+      ownedClubs: {
+        select: { id: true, name: true, logo: true },
+      },
+    },
+  });
 
-interface ToastMessage {
-  id: string;
-  message: string;
-  type: 'success' | 'error' | 'info';
-}
+  if (!user) {
+    return { clubs: [], selectedClub: null, analytics: null };
+  }
 
-// ============================================================================
-// TOAST COMPONENT (No External Dependency)
-// ============================================================================
-
-const Toast = ({ message, type, onClose }: { message: string; type: 'success' | 'error' | 'info'; onClose: () => void }) => {
-  const baseClasses = 'fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300';
+  // Combine all clubs user has access to
+  const clubsMap = new Map<string, { id: string; name: string; logo: string | null }>();
   
-  const typeClasses = {
-    success: 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400',
-    error: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400',
-    info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400',
-  };
+  user.clubMemberships.forEach(m => clubsMap.set(m.club.id, m.club));
+  user.managedClubs.forEach(c => clubsMap.set(c.id, c));
+  user.ownedClubs.forEach(c => clubsMap.set(c.id, c));
 
-  const icons = {
-    success: <CheckCircle className="h-5 w-5 flex-shrink-0" />,
-    error: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
-    info: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
-  };
+  const clubs = Array.from(clubsMap.values());
 
-  return (
-    <div className={`${baseClasses} ${typeClasses[type]}`}>
-      {icons[type]}
-      <p className="text-sm font-medium">{message}</p>
-      <button onClick={onClose} className="ml-2 hover:opacity-70">
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  );
-};
+  if (clubs.length === 0) {
+    return { clubs: [], selectedClub: null, analytics: null };
+  }
 
-const ToastContainer = ({ toasts, onRemove }: { toasts: ToastMessage[]; onRemove: (id: string) => void }) => (
-  <div className="fixed bottom-4 right-4 z-50 space-y-2">
-    {toasts.map((toast) => (
-      <Toast
-        key={toast.id}
-        message={toast.message}
-        type={toast.type}
-        onClose={() => onRemove(toast.id)}
-      />
-    ))}
-  </div>
-);
+  // Use first club as default
+  const selectedClub = clubs[0];
 
-// ============================================================================
-// MOCK DATA - PRODUCTION-READY
-// ============================================================================
+  // Fetch analytics for selected club
+  const analytics = await fetchClubAnalytics(selectedClub.id);
 
-const generateMockTeamMetrics = (): TeamMetrics => {
-  const recentMatches: MatchRecord[] = [
-    {
-      id: '1',
-      date: '2024-12-08',
-      opponent: 'Manchester City',
-      result: 'win',
-      goalsFor: 3,
-      goalsAgainst: 2,
-      venue: 'Emirates Stadium',
-      possession: 48,
-      shots: 14,
-      shotsOnTarget: 6,
-      passes: 562,
-      passesCompleted: 497,
-      tackles: 18,
-      fouls: 7,
-      corners: 3,
-    },
-    {
-      id: '2',
-      date: '2024-12-05',
-      opponent: 'Chelsea',
-      result: 'draw',
-      goalsFor: 2,
-      goalsAgainst: 2,
-      venue: 'Stamford Bridge',
-      possession: 52,
-      shots: 12,
-      shotsOnTarget: 5,
-      passes: 545,
-      passesCompleted: 482,
-      tackles: 16,
-      fouls: 6,
-      corners: 4,
-    },
-    {
-      id: '3',
-      date: '2024-12-01',
-      opponent: 'Liverpool',
-      result: 'loss',
-      goalsFor: 1,
-      goalsAgainst: 2,
-      venue: 'Anfield',
-      possession: 45,
-      shots: 10,
-      shotsOnTarget: 4,
-      passes: 498,
-      passesCompleted: 432,
-      tackles: 20,
-      fouls: 8,
-      corners: 2,
-    },
-    {
-      id: '4',
-      date: '2024-11-28',
-      opponent: 'Tottenham',
-      result: 'win',
-      goalsFor: 2,
-      goalsAgainst: 1,
-      venue: 'Emirates Stadium',
-      possession: 55,
-      shots: 15,
-      shotsOnTarget: 7,
-      passes: 598,
-      passesCompleted: 534,
-      tackles: 15,
-      fouls: 5,
-      corners: 5,
-    },
-    {
-      id: '5',
-      date: '2024-11-25',
-      opponent: 'Brighton',
-      result: 'win',
-      goalsFor: 4,
-      goalsAgainst: 0,
-      venue: 'Emirates Stadium',
-      possession: 62,
-      shots: 18,
-      shotsOnTarget: 10,
-      passes: 645,
-      passesCompleted: 589,
-      tackles: 12,
-      fouls: 4,
-      corners: 6,
-    },
-  ];
-
-  return {
-    teamName: 'Arsenal FC',
-    season: '2024/25',
-    sport: 'FOOTBALL',
-    totalMatches: 15,
-    wins: 9,
-    draws: 2,
-    losses: 4,
-    winPercentage: 60,
-    goalsFor: 32,
-    goalsAgainst: 18,
-    goalDifference: 14,
-    averageGoalsFor: 2.13,
-    averageGoalsAgainst: 1.2,
-    averagePossession: 52.4,
-    totalPasses: 8247,
-    completedPasses: 7285,
-    passAccuracy: 88.4,
-    totalShots: 189,
-    shotsOnTarget: 78,
-    shotAccuracy: 41.3,
-    tackles: 267,
-    interceptions: 145,
-    cleanSheets: 6,
-    recentMatches,
-    topPlayers: [
-      {
-        id: '1',
-        name: 'Bukayo Saka',
-        number: 7,
-        position: 'RW',
-        club: 'Arsenal',
-        goals: 8,
-        assists: 5,
-        appearances: 12,
-        minutesPlayed: 1023,
-        rating: 8.2,
-        trend: 'up',
-        lastMatchRating: 8.5,
-        passes: 142,
-        passesCompleted: 128,
-        shotsOnTarget: 18,
-        tackles: 12,
-        passAccuracy: 90.1,
-      },
-      {
-        id: '2',
-        name: 'Kai Havertz',
-        number: 29,
-        position: 'ST',
-        club: 'Arsenal',
-        goals: 6,
-        assists: 2,
-        appearances: 11,
-        minutesPlayed: 876,
-        rating: 7.8,
-        trend: 'stable',
-        lastMatchRating: 8.1,
-        passes: 98,
-        passesCompleted: 82,
-        shotsOnTarget: 22,
-        tackles: 8,
-        passAccuracy: 83.7,
-      },
-      {
-        id: '3',
-        name: 'Martin Odegaard',
-        number: 8,
-        position: 'CAM',
-        club: 'Arsenal',
-        goals: 4,
-        assists: 7,
-        appearances: 14,
-        minutesPlayed: 1156,
-        rating: 8.1,
-        trend: 'up',
-        lastMatchRating: 8.3,
-        passes: 178,
-        passesCompleted: 162,
-        shotsOnTarget: 12,
-        tackles: 9,
-        passAccuracy: 91.0,
-      },
-      {
-        id: '4',
-        name: 'Gabriel Martinelli',
-        number: 11,
-        position: 'LW',
-        club: 'Arsenal',
-        goals: 5,
-        assists: 3,
-        appearances: 13,
-        minutesPlayed: 1034,
-        rating: 7.6,
-        trend: 'down',
-        lastMatchRating: 7.2,
-        passes: 127,
-        passesCompleted: 109,
-        shotsOnTarget: 15,
-        tackles: 10,
-        passAccuracy: 85.8,
-      },
-    ],
-    formScore: 72,
-    trend: 'improving',
-  };
-};
-
-// ============================================================================
-// ANALYTICS UTILITIES
-// ============================================================================
-
-const calculateFormScore = (matches: MatchRecord[]): number => {
-  if (matches.length === 0) return 0;
-  const score = matches.reduce((acc, match) => {
-    if (match.result === 'win') return acc + 3;
-    if (match.result === 'draw') return acc + 1;
-    return acc;
-  }, 0);
-  return Math.round((score / (matches.length * 3)) * 100);
-};
-
-const calculateWinPercentage = (matches: MatchRecord[]): number => {
-  if (matches.length === 0) return 0;
-  const wins = matches.filter((m) => m.result === 'win').length;
-  return Math.round((wins / matches.length) * 100);
-};
-
-const calculateAverageGoals = (matches: MatchRecord[]): number => {
-  if (matches.length === 0) return 0;
-  const total = matches.reduce((acc, m) => acc + m.goalsFor, 0);
-  return parseFloat((total / matches.length).toFixed(2));
-};
-
-const calculatePassAccuracy = (matches: MatchRecord[]): number => {
-  if (matches.length === 0) return 0;
-  const totalCompleted = matches.reduce((acc, m) => acc + (m.passesCompleted || 0), 0);
-  const totalPasses = matches.reduce((acc, m) => acc + (m.passes || 0), 0);
-  if (totalPasses === 0) return 0;
-  return Math.round((totalCompleted / totalPasses) * 100 * 10) / 10;
-};
-
-const calculateShotAccuracy = (matches: MatchRecord[]): number => {
-  if (matches.length === 0) return 0;
-  const totalOnTarget = matches.reduce((acc, m) => acc + (m.shotsOnTarget || 0), 0);
-  const totalShots = matches.reduce((acc, m) => acc + (m.shots || 0), 0);
-  if (totalShots === 0) return 0;
-  return Math.round((totalOnTarget / totalShots) * 100 * 10) / 10;
-};
-
-// ============================================================================
-// KPI CARD COMPONENT
-// ============================================================================
-
-interface KPICardProps {
-  label: string;
-  value: number;
-  unit?: string;
-  icon?: React.ReactNode;
-  trend?: { value: number; direction: 'up' | 'down' };
-  loading?: boolean;
+  return { clubs, selectedClub, analytics };
 }
 
-function KPICard({
-  label,
-  value,
-  unit = '',
-  icon,
+async function fetchClubAnalytics(clubId: string): Promise<ClubAnalytics | null> {
+  try {
+    // Fetch matches for this club
+    const matches = await prisma.match.findMany({
+      where: {
+        OR: [{ homeClubId: clubId }, { awayClubId: clubId }],
+        status: 'FINISHED',
+      },
+      include: {
+        homeTeam: { select: { id: true, name: true, logo: true } },
+        awayTeam: { select: { id: true, name: true, logo: true } },
+        league: { select: { name: true } },
+      },
+      orderBy: { kickOffTime: 'desc' },
+    });
+
+    // Calculate stats
+    let wins = 0, draws = 0, losses = 0;
+    let goalsFor = 0, goalsAgainst = 0, cleanSheets = 0;
+    let homeWins = 0, homeDraws = 0, homeLosses = 0, homeGoalsFor = 0, homeGoalsAgainst = 0;
+    let awayWins = 0, awayDraws = 0, awayLosses = 0, awayGoalsFor = 0, awayGoalsAgainst = 0;
+    const results: ('W' | 'D' | 'L')[] = [];
+    const homeResults: ('W' | 'D' | 'L')[] = [];
+    const awayResults: ('W' | 'D' | 'L')[] = [];
+
+    const monthlyData = new Map<string, { matches: number; wins: number; draws: number; losses: number; goalsFor: number; goalsAgainst: number }>();
+
+    for (const match of matches) {
+      const isHome = match.homeClubId === clubId;
+      const teamGoals = isHome ? (match.homeScore ?? 0) : (match.awayScore ?? 0);
+      const opponentGoals = isHome ? (match.awayScore ?? 0) : (match.homeScore ?? 0);
+      
+      let result: 'W' | 'D' | 'L';
+      if (teamGoals > opponentGoals) result = 'W';
+      else if (teamGoals < opponentGoals) result = 'L';
+      else result = 'D';
+
+      results.push(result);
+      goalsFor += teamGoals;
+      goalsAgainst += opponentGoals;
+
+      if (opponentGoals === 0) cleanSheets++;
+
+      if (result === 'W') wins++;
+      else if (result === 'D') draws++;
+      else losses++;
+
+      if (isHome) {
+        homeResults.push(result);
+        homeGoalsFor += teamGoals;
+        homeGoalsAgainst += opponentGoals;
+        if (result === 'W') homeWins++;
+        else if (result === 'D') homeDraws++;
+        else homeLosses++;
+      } else {
+        awayResults.push(result);
+        awayGoalsFor += teamGoals;
+        awayGoalsAgainst += opponentGoals;
+        if (result === 'W') awayWins++;
+        else if (result === 'D') awayDraws++;
+        else awayLosses++;
+      }
+
+      const monthKey = match.kickOffTime.toISOString().slice(0, 7);
+      const monthData = monthlyData.get(monthKey) || { matches: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 };
+      monthData.matches++;
+      monthData.goalsFor += teamGoals;
+      monthData.goalsAgainst += opponentGoals;
+      if (result === 'W') monthData.wins++;
+      else if (result === 'D') monthData.draws++;
+      else monthData.losses++;
+      monthlyData.set(monthKey, monthData);
+    }
+
+    const totalMatches = matches.length;
+    const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
+
+    // Calculate streak
+    let streakType: 'WIN' | 'DRAW' | 'LOSS' | 'UNBEATEN' | null = null;
+    let streakCount = 0;
+    if (results.length > 0) {
+      const first = results[0];
+      streakCount = 1;
+      for (let i = 1; i < results.length; i++) {
+        if (results[i] === first) streakCount++;
+        else break;
+      }
+      streakType = first === 'W' ? 'WIN' : first === 'D' ? 'DRAW' : 'LOSS';
+    }
+
+    // Get top performers
+    const playerStats = await prisma.playerStatistic.findMany({
+      where: {
+        player: {
+          teamPlayers: {
+            some: {
+              team: { clubId },
+              isActive: true,
+            },
+          },
+        },
+      },
+      include: {
+        player: {
+          include: {
+            user: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+    });
+
+    const playerAggregates = new Map<string, { goals: number; assists: number; matches: number; totalRating: number; ratingCount: number; name: string }>();
+    
+    for (const stat of playerStats) {
+      const existing = playerAggregates.get(stat.playerId) || {
+        goals: 0, assists: 0, matches: 0, totalRating: 0, ratingCount: 0,
+        name: `${stat.player.user.firstName} ${stat.player.user.lastName}`,
+      };
+      existing.goals += stat.goals;
+      existing.assists += stat.assists;
+      existing.matches += stat.matches;
+      if (stat.averageRating) {
+        existing.totalRating += stat.averageRating * stat.matches;
+        existing.ratingCount += stat.matches;
+      }
+      playerAggregates.set(stat.playerId, existing);
+    }
+
+    const topScorers = Array.from(playerAggregates.entries())
+      .map(([id, data]) => ({
+        playerId: id,
+        playerName: data.name,
+        goals: data.goals,
+        matches: data.matches,
+        goalsPerMatch: data.matches > 0 ? Math.round((data.goals / data.matches) * 100) / 100 : 0,
+      }))
+      .sort((a, b) => b.goals - a.goals)
+      .slice(0, 5);
+
+    const topAssists = Array.from(playerAggregates.entries())
+      .map(([id, data]) => ({
+        playerId: id,
+        playerName: data.name,
+        assists: data.assists,
+        matches: data.matches,
+        assistsPerMatch: data.matches > 0 ? Math.round((data.assists / data.matches) * 100) / 100 : 0,
+      }))
+      .sort((a, b) => b.assists - a.assists)
+      .slice(0, 5);
+
+    const topRated = Array.from(playerAggregates.entries())
+      .filter(([, data]) => data.ratingCount >= 3)
+      .map(([id, data]) => ({
+        playerId: id,
+        playerName: data.name,
+        avgRating: data.ratingCount > 0 ? Math.round((data.totalRating / data.ratingCount) * 10) / 10 : 0,
+        matches: data.matches,
+      }))
+      .sort((a, b) => b.avgRating - a.avgRating)
+      .slice(0, 5);
+
+    const recentMatches = matches.slice(0, 10).map((match) => {
+      const isHome = match.homeClubId === clubId;
+      const opponent = isHome ? match.awayTeam : match.homeTeam;
+      const teamGoals = isHome ? (match.homeScore ?? 0) : (match.awayScore ?? 0);
+      const opponentGoals = isHome ? (match.awayScore ?? 0) : (match.homeScore ?? 0);
+      const score = `${teamGoals} - ${opponentGoals}`;
+      
+      let result: 'W' | 'D' | 'L';
+      if (teamGoals > opponentGoals) result = 'W';
+      else if (teamGoals < opponentGoals) result = 'L';
+      else result = 'D';
+
+      return {
+        id: match.id,
+        opponent: opponent.name,
+        opponentLogo: opponent.logo,
+        isHome,
+        score,
+        result,
+        date: match.kickOffTime.toISOString(),
+        competition: match.league?.name ?? null,
+      };
+    });
+
+    const monthlyTrends = Array.from(monthlyData.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-12)
+      .map(([month, data]) => ({ month, ...data }));
+
+    return {
+      overview: {
+        totalMatches,
+        wins,
+        draws,
+        losses,
+        winRate,
+        goalsFor,
+        goalsAgainst,
+        goalDifference: goalsFor - goalsAgainst,
+        cleanSheets,
+        avgGoalsPerMatch: totalMatches > 0 ? Math.round((goalsFor / totalMatches) * 100) / 100 : 0,
+        avgGoalsConcededPerMatch: totalMatches > 0 ? Math.round((goalsAgainst / totalMatches) * 100) / 100 : 0,
+      },
+      form: {
+        last5: results.slice(0, 5),
+        last10: results.slice(0, 10),
+        currentStreak: { type: streakType, count: streakCount },
+        homeForm: homeResults.slice(0, 5),
+        awayForm: awayResults.slice(0, 5),
+      },
+      homeVsAway: {
+        home: {
+          played: homeWins + homeDraws + homeLosses,
+          wins: homeWins,
+          draws: homeDraws,
+          losses: homeLosses,
+          goalsFor: homeGoalsFor,
+          goalsAgainst: homeGoalsAgainst,
+        },
+        away: {
+          played: awayWins + awayDraws + awayLosses,
+          wins: awayWins,
+          draws: awayDraws,
+          losses: awayLosses,
+          goalsFor: awayGoalsFor,
+          goalsAgainst: awayGoalsAgainst,
+        },
+      },
+      topPerformers: { topScorers, topAssists, topRated },
+      recentMatches,
+      monthlyTrends,
+    };
+  } catch (error) {
+    console.error('Error fetching club analytics:', error);
+    return null;
+  }
+}
+
+// =============================================================================
+// COMPONENTS
+// =============================================================================
+
+function StatCard({ 
+  title, 
+  value, 
+  subtitle, 
+  icon: Icon, 
   trend,
-  loading,
-}: KPICardProps) {
+  color = 'blue' 
+}: { 
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: React.ElementType;
+  trend?: 'up' | 'down' | 'neutral';
+  color?: 'blue' | 'green' | 'yellow' | 'red' | 'purple';
+}) {
+  const colorClasses = {
+    blue: 'bg-blue-500/10 text-blue-500',
+    green: 'bg-emerald-500/10 text-emerald-500',
+    yellow: 'bg-amber-500/10 text-amber-500',
+    red: 'bg-red-500/10 text-red-500',
+    purple: 'bg-purple-500/10 text-purple-500',
+  };
+
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <p className="text-sm font-medium text-charcoal-600 dark:text-charcoal-400 mb-2">
-            {label}
-          </p>
-          {loading ? (
-            <div className="h-8 w-32 bg-neutral-200 dark:bg-charcoal-700 rounded animate-pulse" />
-          ) : (
-            <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-              {value}
-              {unit}
-            </p>
-          )}
+    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50 hover:border-slate-600/50 transition-all">
+      <div className="flex items-start justify-between">
+        <div className={`p-3 rounded-lg ${colorClasses[color]}`}>
+          <Icon className="h-6 w-6" />
         </div>
-        {icon && (
-          <div className="rounded-lg bg-gold-50 p-3 dark:bg-gold-900/20">
-            {icon}
+        {trend && (
+          <div className={`flex items-center gap-1 text-sm ${
+            trend === 'up' ? 'text-emerald-400' : trend === 'down' ? 'text-red-400' : 'text-slate-400'
+          }`}>
+            {trend === 'up' ? <ArrowUpRight className="h-4 w-4" /> : 
+             trend === 'down' ? <ArrowDownRight className="h-4 w-4" /> : 
+             <Minus className="h-4 w-4" />}
           </div>
         )}
       </div>
-
-      {trend && (
-        <div className={`flex items-center gap-2 text-sm font-semibold ${
-          trend.direction === 'up'
-            ? 'text-green-600 dark:text-green-400'
-            : 'text-red-600 dark:text-red-400'
-        }`}>
-          {trend.direction === 'up' ? (
-            <ArrowUp className="h-4 w-4" />
-          ) : (
-            <ArrowDown className="h-4 w-4" />
-          )}
-          {trend.direction === 'up' ? '+' : '-'}{trend.value}%
-        </div>
-      )}
+      <div className="mt-4">
+        <p className="text-2xl font-bold text-white">{value}</p>
+        <p className="text-sm text-slate-400 mt-1">{title}</p>
+        {subtitle && <p className="text-xs text-slate-500 mt-1">{subtitle}</p>}
+      </div>
     </div>
   );
 }
 
-// ============================================================================
-// PAGE COMPONENT - MAIN DASHBOARD
-// ============================================================================
-
-export default function AnalyticsDashboard() {
-  const [selectedTab, setSelectedTab] = useState<'overview' | 'players' | 'teams' | 'trends'>('overview');
-  const [isExporting, setIsExporting] = useState(false);
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  // Use mock data for now (ready for API integration)
-  const displayData = generateMockTeamMetrics();
-
-  // Toast utility
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  // Calculate KPIs
-  const kpis = useMemo(() => {
-    return {
-      formScore: calculateFormScore(displayData.recentMatches),
-      winPercentage: calculateWinPercentage(displayData.recentMatches),
-      passAccuracy: calculatePassAccuracy(displayData.recentMatches),
-      shotAccuracy: calculateShotAccuracy(displayData.recentMatches),
-      possessionEfficiency: (displayData.passAccuracy * displayData.averagePossession) / 100,
-      defensiveStrength: Math.round((displayData.cleanSheets / displayData.totalMatches) * 10),
-    };
-  }, [displayData]);
-
-  // Export handler
-  const handleExportAnalytics = async () => {
-    setIsExporting(true);
-    try {
-      let csv = 'PitchConnect Analytics Export\n';
-      csv += `Team,${displayData.teamName}\n`;
-      csv += `Season,${displayData.season}\n`;
-      csv += `Sport,${displayData.sport}\n`;
-      csv += `Generated,${new Date().toISOString()}\n\n`;
-
-      csv += 'KEY PERFORMANCE INDICATORS\n';
-      csv += `Form Score,${kpis.formScore}%\n`;
-      csv += `Win Percentage,${kpis.winPercentage}%\n`;
-      csv += `Pass Accuracy,${kpis.passAccuracy.toFixed(1)}%\n`;
-      csv += `Shot Accuracy,${kpis.shotAccuracy.toFixed(1)}%\n`;
-      csv += `Defensive Strength,${kpis.defensiveStrength}/10\n\n`;
-
-      csv += 'TEAM RECORD\n';
-      csv += `Matches,${displayData.totalMatches}\n`;
-      csv += `Wins,${displayData.wins}\n`;
-      csv += `Draws,${displayData.draws}\n`;
-      csv += `Losses,${displayData.losses}\n`;
-      csv += `Goals For,${displayData.goalsFor}\n`;
-      csv += `Goals Against,${displayData.goalsAgainst}\n`;
-      csv += `Goal Difference,${displayData.goalDifference}\n\n`;
-
-      csv += 'RECENT MATCHES\n';
-      csv += 'Date,Opponent,Result,Score,Venue,Possession%\n';
-      displayData.recentMatches.forEach((match) => {
-        csv += `${match.date},${match.opponent},${match.result.toUpperCase()},${match.goalsFor}-${match.goalsAgainst},"${match.venue || 'N/A'}",${match.possession || 0}\n`;
-      });
-
-      csv += '\nTOP PLAYERS\n';
-      csv += 'Name,Position,Goals,Assists,Apps,Rating\n';
-      displayData.topPlayers.forEach((player) => {
-        csv += `${player.name},${player.position},${player.goals},${player.assists},${player.appearances},${player.rating.toFixed(1)}\n`;
-      });
-
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute(
-        'download',
-        `${displayData.teamName.replace(/\s+/g, '-')}-analytics-${new Date().toISOString().split('T')[0]}.csv`
-      );
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      showToast('Analytics exported successfully', 'success');
-    } catch (err) {
-      showToast('Failed to export analytics', 'error');
-      console.error(err);
-    } finally {
-      setIsExporting(false);
-    }
+function FormBadge({ result }: { result: 'W' | 'D' | 'L' }) {
+  const colors = {
+    W: 'bg-emerald-500 text-white',
+    D: 'bg-amber-500 text-white',
+    L: 'bg-red-500 text-white',
   };
 
-  // ============================================================================
-  // RENDER
-  // ============================================================================
+  return (
+    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${colors[result]}`}>
+      {result}
+    </span>
+  );
+}
+
+function FormDisplay({ results, label }: { results: string[]; label: string }) {
+  return (
+    <div>
+      <p className="text-sm text-slate-400 mb-2">{label}</p>
+      <div className="flex gap-1.5">
+        {results.length > 0 ? (
+          results.map((r, i) => <FormBadge key={i} result={r as 'W' | 'D' | 'L'} />)
+        ) : (
+          <span className="text-slate-500 text-sm">No matches</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StreakBadge({ streak }: { streak: { type: string | null; count: number } }) {
+  if (!streak.type || streak.count === 0) return null;
+
+  const colors = {
+    WIN: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    DRAW: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    LOSS: 'bg-red-500/20 text-red-400 border-red-500/30',
+    UNBEATEN: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  };
+
+  const labels = {
+    WIN: 'Wins',
+    DRAW: 'Draws',
+    LOSS: 'Losses',
+    UNBEATEN: 'Unbeaten',
+  };
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* HEADER */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-charcoal-900 dark:text-white">Analytics Dashboard</h1>
-          <p className="text-charcoal-600 dark:text-charcoal-400 mt-1">
-            {displayData.teamName} • {displayData.season} • {displayData.sport}
-          </p>
-        </div>
+    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${colors[streak.type as keyof typeof colors]}`}>
+      <Zap className="h-4 w-4" />
+      <span className="font-medium">{streak.count} {labels[streak.type as keyof typeof labels]}</span>
+    </div>
+  );
+}
 
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={handleExportAnalytics}
-            disabled={isExporting}
-            className="flex items-center gap-2 rounded-lg bg-gold-600 px-4 py-2 font-semibold text-white transition-all hover:bg-gold-700 disabled:opacity-50 dark:bg-gold-600 dark:hover:bg-gold-700"
-          >
-            {isExporting ? (
-              <>
-                <Loader className="h-4 w-4 animate-spin" />
-                Exporting...
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4" />
-                Export CSV
-              </>
-            )}
-          </button>
-        </div>
+function TopPerformerCard({ 
+  rank, 
+  name, 
+  value, 
+  subtitle 
+}: { 
+  rank: number;
+  name: string;
+  value: string | number;
+  subtitle: string;
+}) {
+  const rankColors = ['text-amber-400', 'text-slate-300', 'text-amber-600'];
+
+  return (
+    <div className="flex items-center gap-4 p-3 rounded-lg hover:bg-slate-700/30 transition-colors">
+      <div className={`text-lg font-bold ${rankColors[rank - 1] || 'text-slate-500'}`}>
+        #{rank}
       </div>
-
-      {/* TABS */}
-      <div className="flex gap-4 border-b border-neutral-200 dark:border-charcoal-700 overflow-x-auto">
-        {[
-          { id: 'overview', label: 'Overview', icon: BarChart3 },
-          { id: 'players', label: 'Players', icon: Users },
-          { id: 'teams', label: 'Teams', icon: Award },
-          { id: 'trends', label: 'Trends', icon: TrendingUp },
-        ].map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setSelectedTab(id as typeof selectedTab)}
-            className={`flex items-center gap-2 px-4 py-3 font-semibold border-b-2 transition-all whitespace-nowrap text-sm ${
-              selectedTab === id
-                ? 'border-gold-600 text-gold-600 dark:text-gold-400'
-                : 'border-transparent text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-charcoal-100'
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {label}
-          </button>
-        ))}
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-white truncate">{name}</p>
+        <p className="text-sm text-slate-400">{subtitle}</p>
       </div>
+      <div className="text-right">
+        <p className="text-lg font-bold text-white">{value}</p>
+      </div>
+    </div>
+  );
+}
 
-      {/* CONTENT */}
-      {selectedTab === 'overview' && (
-        <div className="space-y-8">
-          {/* KPI CARDS */}
-          <div>
-            <h2 className="text-2xl font-bold text-charcoal-900 dark:text-white mb-4">Team Performance</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <KPICard
-                label="Form Score"
-                value={kpis.formScore}
-                unit="%"
-                icon={<TrendingUp className="h-5 w-5 text-blue-600" />}
-                trend={{ value: 12, direction: 'up' }}
-              />
-              <KPICard
-                label="Win Rate"
-                value={kpis.winPercentage}
-                unit="%"
-                icon={<Target className="h-5 w-5 text-green-600" />}
-                trend={{ value: 8, direction: 'up' }}
-              />
-              <KPICard
-                label="Pass Accuracy"
-                value={Math.round(kpis.passAccuracy)}
-                unit="%"
-                icon={<Zap className="h-5 w-5 text-orange-600" />}
-              />
-              <KPICard
-                label="Shot Accuracy"
-                value={Math.round(kpis.shotAccuracy)}
-                unit="%"
-                icon={<Activity className="h-5 w-5 text-purple-600" />}
-              />
+function RecentMatchRow({ match }: { match: ClubAnalytics['recentMatches'][0] }) {
+  const resultColors = {
+    W: 'bg-emerald-500',
+    D: 'bg-amber-500',
+    L: 'bg-red-500',
+  };
+
+  return (
+    <div className="flex items-center gap-4 p-3 rounded-lg hover:bg-slate-700/30 transition-colors">
+      <div className={`w-1 h-10 rounded-full ${resultColors[match.result]}`} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">{match.isHome ? 'vs' : '@'}</span>
+          <span className="font-medium text-white truncate">{match.opponent}</span>
+        </div>
+        <p className="text-sm text-slate-400">
+          {new Date(match.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+          {match.competition && ` • ${match.competition}`}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="text-lg font-bold text-white">{match.score}</p>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+      <div className="max-w-2xl mx-auto text-center py-20">
+        <div className="bg-slate-800/50 rounded-full p-6 w-24 h-24 mx-auto mb-6 flex items-center justify-center">
+          <BarChart3 className="h-12 w-12 text-slate-400" />
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-4">No Analytics Available</h1>
+        <p className="text-slate-400 mb-8">
+          Join a club or team to access performance analytics. Analytics will appear here once you're part of a club.
+        </p>
+        <Link
+          href="/dashboard/player/browse-teams"
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+        >
+          Browse Teams
+          <ChevronRight className="h-5 w-5" />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
+
+export default async function AnalyticsPage() {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    redirect('/auth/login');
+  }
+
+  const { clubs, selectedClub, analytics } = await getAnalyticsData(session.user.id);
+
+  if (!selectedClub || !analytics) {
+    return <EmptyState />;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Header */}
+      <div className="border-b border-slate-700/50 bg-slate-800/30 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                <BarChart3 className="h-7 w-7 text-blue-400" />
+                Analytics
+              </h1>
+              <p className="text-slate-400 mt-1">Performance insights for {selectedClub.name}</p>
             </div>
-          </div>
-
-          {/* ADVANCED METRICS */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
-              <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2">Possession Efficiency</h3>
-              <p className="text-3xl font-bold text-charcoal-900 dark:text-white">
-                {kpis.possessionEfficiency.toFixed(1)}%
-              </p>
-              <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-2">
-                Average {displayData.averagePossession.toFixed(1)}% possession
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
-              <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2">Defensive Strength</h3>
-              <p className="text-3xl font-bold text-charcoal-900 dark:text-white">{kpis.defensiveStrength}/10</p>
-              <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-2">{displayData.cleanSheets} clean sheets</p>
-            </div>
-
-            <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
-              <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2">Goal Difference</h3>
-              <p
-                className={`text-3xl font-bold ${
-                  displayData.goalDifference >= 0
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-red-600 dark:text-red-400'
-                }`}
+            <div className="flex items-center gap-3">
+              {clubs.length > 1 && (
+                <select className="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                  {clubs.map(club => (
+                    <option key={club.id} value={club.id}>{club.name}</option>
+                  ))}
+                </select>
+              )}
+              <Link
+                href="/dashboard/analytics/advanced"
+                className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-all"
               >
-                {displayData.goalDifference > 0 ? '+' : ''}
-                {displayData.goalDifference}
-              </p>
-              <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-2">
-                {displayData.goalsFor} for, {displayData.goalsAgainst} against
-              </p>
+                <Zap className="h-4 w-4" />
+                Advanced AI
+              </Link>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* RECENT MATCHES */}
-          <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
-            <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-4">Recent Matches</h3>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Overview Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <StatCard
+            title="Total Matches"
+            value={analytics.overview.totalMatches}
+            icon={Calendar}
+            color="blue"
+          />
+          <StatCard
+            title="Win Rate"
+            value={`${analytics.overview.winRate}%`}
+            subtitle={`${analytics.overview.wins}W ${analytics.overview.draws}D ${analytics.overview.losses}L`}
+            icon={Trophy}
+            trend={analytics.overview.winRate >= 50 ? 'up' : analytics.overview.winRate >= 30 ? 'neutral' : 'down'}
+            color="green"
+          />
+          <StatCard
+            title="Goals Scored"
+            value={analytics.overview.goalsFor}
+            subtitle={`${analytics.overview.avgGoalsPerMatch} per match`}
+            icon={Target}
+            color="purple"
+          />
+          <StatCard
+            title="Goal Difference"
+            value={analytics.overview.goalDifference > 0 ? `+${analytics.overview.goalDifference}` : analytics.overview.goalDifference}
+            subtitle={`${analytics.overview.cleanSheets} clean sheets`}
+            icon={Shield}
+            trend={analytics.overview.goalDifference > 0 ? 'up' : analytics.overview.goalDifference < 0 ? 'down' : 'neutral'}
+            color={analytics.overview.goalDifference > 0 ? 'green' : analytics.overview.goalDifference < 0 ? 'red' : 'yellow'}
+          />
+        </div>
+
+        {/* Form & Streak */}
+        <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Activity className="h-5 w-5 text-blue-400" />
+              Current Form
+            </h2>
+            <StreakBadge streak={analytics.form.currentStreak} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <FormDisplay results={analytics.form.last5} label="Last 5 Matches" />
+            <FormDisplay results={analytics.form.homeForm} label="Home Form" />
+            <FormDisplay results={analytics.form.awayForm} label="Away Form" />
+          </div>
+        </div>
+
+        {/* Home vs Away */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              🏠 Home Record
+            </h3>
             <div className="space-y-3">
-              {displayData.recentMatches.map((match) => (
-                <div
-                  key={match.id}
-                  className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-charcoal-700/50 rounded-lg hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-all"
-                >
-                  <div className="flex-1">
-                    <p className="font-semibold text-charcoal-900 dark:text-white">{match.opponent}</p>
-                    <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
-                      {new Date(match.date).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="font-bold text-charcoal-900 dark:text-white">
-                        {match.goalsFor} - {match.goalsAgainst}
-                      </p>
-                      <span
-                        className={`inline-block text-xs font-semibold px-2 py-1 rounded-full ${
-                          match.result === 'win'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                            : match.result === 'draw'
-                              ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
-                              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                        }`}
-                      >
-                        {match.result.charAt(0).toUpperCase() + match.result.slice(1)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Played</span>
+                <span className="text-white font-medium">{analytics.homeVsAway.home.played}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Record</span>
+                <span className="text-white font-medium">
+                  {analytics.homeVsAway.home.wins}W {analytics.homeVsAway.home.draws}D {analytics.homeVsAway.home.losses}L
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Goals</span>
+                <span className="text-white font-medium">
+                  {analytics.homeVsAway.home.goalsFor} scored, {analytics.homeVsAway.home.goalsAgainst} conceded
+                </span>
+              </div>
+              <div className="h-2 bg-slate-700 rounded-full overflow-hidden mt-4">
+                <div 
+                  className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400"
+                  style={{ 
+                    width: `${analytics.homeVsAway.home.played > 0 
+                      ? (analytics.homeVsAway.home.wins / analytics.homeVsAway.home.played) * 100 
+                      : 0}%` 
+                  }}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
 
-      {selectedTab === 'players' && (
-        <div className="space-y-8">
-          <div>
-            <h2 className="text-2xl font-bold text-charcoal-900 dark:text-white mb-4">Top Players</h2>
-            <div className="rounded-lg border border-neutral-200 bg-white overflow-hidden dark:border-charcoal-700 dark:bg-charcoal-800">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-neutral-200 bg-neutral-50 dark:border-charcoal-700 dark:bg-charcoal-700/50">
-                      <th className="text-left py-4 px-4 font-semibold text-charcoal-900 dark:text-white">Player</th>
-                      <th className="text-left py-4 px-4 font-semibold text-charcoal-900 dark:text-white">Position</th>
-                      <th className="text-center py-4 px-4 font-semibold text-charcoal-900 dark:text-white">Goals</th>
-                      <th className="text-center py-4 px-4 font-semibold text-charcoal-900 dark:text-white">Assists</th>
-                      <th className="text-center py-4 px-4 font-semibold text-charcoal-900 dark:text-white">Apps</th>
-                      <th className="text-center py-4 px-4 font-semibold text-charcoal-900 dark:text-white">Rating</th>
-                      <th className="text-center py-4 px-4 font-semibold text-charcoal-900 dark:text-white">Trend</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayData.topPlayers.map((player) => (
-                      <tr
-                        key={player.id}
-                        className="border-b border-neutral-100 dark:border-charcoal-700 hover:bg-neutral-50 dark:hover:bg-charcoal-700/50 transition-colors"
-                      >
-                        <td className="py-4 px-4">
-                          <div>
-                            <p className="font-semibold text-charcoal-900 dark:text-white">
-                              #{player.number} {player.name}
-                            </p>
-                            <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{player.club}</p>
-                          </div>
-                        </td>
-                        <td className="py-4 px-4">
-                          <span className="inline-block px-2.5 py-1 rounded-full bg-neutral-100 text-charcoal-900 text-xs font-semibold dark:bg-charcoal-700 dark:text-white">
-                            {player.position}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4 text-center font-semibold text-charcoal-900 dark:text-white">
-                          {player.goals}
-                        </td>
-                        <td className="py-4 px-4 text-center font-semibold text-charcoal-900 dark:text-white">
-                          {player.assists}
-                        </td>
-                        <td className="py-4 px-4 text-center font-semibold text-charcoal-900 dark:text-white">
-                          {player.appearances}
-                        </td>
-                        <td className="py-4 px-4 text-center">
-                          <span
-                            className={`inline-block px-2.5 py-1 rounded-full font-semibold text-xs ${
-                              player.rating >= 8.5
-                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                                : player.rating >= 7.5
-                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
-                            }`}
-                          >
-                            {player.rating.toFixed(1)}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4 text-center">
-                          {player.trend === 'up' && (
-                            <span className="text-green-600 dark:text-green-400">↑</span>
-                          )}
-                          {player.trend === 'down' && (
-                            <span className="text-red-600 dark:text-red-400">↓</span>
-                          )}
-                          {player.trend === 'stable' && (
-                            <span className="text-neutral-600 dark:text-neutral-400">→</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              ✈️ Away Record
+            </h3>
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Played</span>
+                <span className="text-white font-medium">{analytics.homeVsAway.away.played}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Record</span>
+                <span className="text-white font-medium">
+                  {analytics.homeVsAway.away.wins}W {analytics.homeVsAway.away.draws}D {analytics.homeVsAway.away.losses}L
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Goals</span>
+                <span className="text-white font-medium">
+                  {analytics.homeVsAway.away.goalsFor} scored, {analytics.homeVsAway.away.goalsAgainst} conceded
+                </span>
+              </div>
+              <div className="h-2 bg-slate-700 rounded-full overflow-hidden mt-4">
+                <div 
+                  className="h-full bg-gradient-to-r from-blue-500 to-blue-400"
+                  style={{ 
+                    width: `${analytics.homeVsAway.away.played > 0 
+                      ? (analytics.homeVsAway.away.wins / analytics.homeVsAway.away.played) * 100 
+                      : 0}%` 
+                  }}
+                />
               </div>
             </div>
           </div>
         </div>
-      )}
 
-      {selectedTab === 'teams' && (
-        <div className="space-y-8">
-          <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
-            <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-6">Team Statistics Summary</h3>
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-neutral-50 dark:bg-charcoal-700/50 rounded-lg">
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Matches Played</p>
-                  <p className="text-3xl font-bold text-charcoal-900 dark:text-white">{displayData.totalMatches}</p>
-                </div>
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                  <p className="text-sm text-green-600 dark:text-green-400">Wins</p>
-                  <p className="text-3xl font-bold text-green-700 dark:text-green-300">{displayData.wins}</p>
-                </div>
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                  <p className="text-sm text-yellow-600 dark:text-yellow-400">Draws</p>
-                  <p className="text-3xl font-bold text-yellow-700 dark:text-yellow-300">{displayData.draws}</p>
-                </div>
-                <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                  <p className="text-sm text-red-600 dark:text-red-400">Losses</p>
-                  <p className="text-3xl font-bold text-red-700 dark:text-red-300">{displayData.losses}</p>
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-200 dark:border-charcoal-700 pt-6">
-                <h4 className="font-semibold text-charcoal-900 dark:text-white mb-4">Attack Stats</h4>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Goals Scored', value: displayData.goalsFor },
-                    { label: 'Avg Goals/Match', value: displayData.averageGoalsFor.toFixed(2) },
-                    { label: 'Total Shots', value: displayData.totalShots },
-                    { label: 'Shots On Target', value: displayData.shotsOnTarget },
-                  ].map((stat) => (
-                    <div key={stat.label} className="flex items-center justify-between">
-                      <span className="text-sm text-charcoal-600 dark:text-charcoal-400">{stat.label}</span>
-                      <span className="font-semibold text-charcoal-900 dark:text-white">{stat.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border-t border-neutral-200 dark:border-charcoal-700 pt-6">
-                <h4 className="font-semibold text-charcoal-900 dark:text-white mb-4">Defence Stats</h4>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Goals Conceded', value: displayData.goalsAgainst },
-                    { label: 'Clean Sheets', value: displayData.cleanSheets },
-                    { label: 'Total Tackles', value: displayData.tackles },
-                    { label: 'Interceptions', value: displayData.interceptions },
-                  ].map((stat) => (
-                    <div key={stat.label} className="flex items-center justify-between">
-                      <span className="text-sm text-charcoal-600 dark:text-charcoal-400">{stat.label}</span>
-                      <span className="font-semibold text-charcoal-900 dark:text-white">{stat.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedTab === 'trends' && (
-        <div className="space-y-8">
-          <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-charcoal-700 dark:bg-charcoal-800">
-            <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-6">Form Analysis</h3>
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium text-charcoal-900 dark:text-white">Overall Form</p>
-                  <span
-                    className={`inline-block px-3 py-1 rounded-full font-semibold text-xs ${
-                      displayData.trend === 'improving'
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                        : displayData.trend === 'stable'
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                          : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                    }`}
-                  >
-                    {displayData.trend.charAt(0).toUpperCase() + displayData.trend.slice(1)}
-                  </span>
-                </div>
-                <div className="w-full h-3 bg-neutral-200 dark:bg-charcoal-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all ${
-                      displayData.trend === 'improving'
-                        ? 'bg-gradient-to-r from-green-500 to-green-600'
-                        : displayData.trend === 'stable'
-                          ? 'bg-gradient-to-r from-blue-500 to-blue-600'
-                          : 'bg-gradient-to-r from-red-500 to-red-600'
-                    }`}
-                    style={{ width: `${kpis.formScore}%` }}
+        {/* Top Performers & Recent Matches */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Top Scorers */}
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Target className="h-5 w-5 text-amber-400" />
+              Top Scorers
+            </h3>
+            <div className="space-y-1">
+              {analytics.topPerformers.topScorers.length > 0 ? (
+                analytics.topPerformers.topScorers.map((player, i) => (
+                  <TopPerformerCard
+                    key={player.playerId}
+                    rank={i + 1}
+                    name={player.playerName}
+                    value={player.goals}
+                    subtitle={`${player.goalsPerMatch} per match`}
                   />
-                </div>
-              </div>
+                ))
+              ) : (
+                <p className="text-slate-500 text-sm text-center py-4">No data available</p>
+              )}
+            </div>
+          </div>
 
-              <div className="border-t border-neutral-200 dark:border-charcoal-700 pt-4">
-                <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                  <span className="font-semibold">Last 5 matches: </span>
-                  {displayData.recentMatches
-                    .slice(0, 5)
-                    .map((m) => (m.result === 'win' ? 'W' : m.result === 'draw' ? 'D' : 'L'))
-                    .join('-')}
-                </p>
-              </div>
+          {/* Top Assists */}
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Users className="h-5 w-5 text-blue-400" />
+              Top Assists
+            </h3>
+            <div className="space-y-1">
+              {analytics.topPerformers.topAssists.length > 0 ? (
+                analytics.topPerformers.topAssists.map((player, i) => (
+                  <TopPerformerCard
+                    key={player.playerId}
+                    rank={i + 1}
+                    name={player.playerName}
+                    value={player.assists}
+                    subtitle={`${player.assistsPerMatch} per match`}
+                  />
+                ))
+              ) : (
+                <p className="text-slate-500 text-sm text-center py-4">No data available</p>
+              )}
+            </div>
+          </div>
 
-              <div className="border-t border-neutral-200 dark:border-charcoal-700 pt-4">
-                <h4 className="font-semibold text-charcoal-900 dark:text-white mb-3">Season Progression</h4>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-charcoal-600 dark:text-charcoal-400">Win Percentage</span>
-                    <span className="font-semibold text-charcoal-900 dark:text-white">{displayData.winPercentage}%</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-charcoal-600 dark:text-charcoal-400">Average Goals/Match</span>
-                    <span className="font-semibold text-charcoal-900 dark:text-white">
-                      {displayData.averageGoalsFor.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-charcoal-600 dark:text-charcoal-400">Average Goals Against/Match</span>
-                    <span className="font-semibold text-charcoal-900 dark:text-white">
-                      {displayData.averageGoalsAgainst.toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              </div>
+          {/* Recent Matches */}
+          <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-6 border border-slate-700/50">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-purple-400" />
+              Recent Results
+            </h3>
+            <div className="space-y-1">
+              {analytics.recentMatches.length > 0 ? (
+                analytics.recentMatches.slice(0, 5).map((match) => (
+                  <RecentMatchRow key={match.id} match={match} />
+                ))
+              ) : (
+                <p className="text-slate-500 text-sm text-center py-4">No matches played yet</p>
+              )}
             </div>
           </div>
         </div>
-      )}
-
-      {/* TOAST CONTAINER */}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      </div>
     </div>
   );
 }

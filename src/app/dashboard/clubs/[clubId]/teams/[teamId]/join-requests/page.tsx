@@ -1,650 +1,488 @@
-'use client';
+// =============================================================================
+// 🤝 TEAM JOIN REQUESTS MANAGEMENT - Review Player Requests
+// =============================================================================
+// Path: /dashboard/clubs/[clubId]/teams/[teamId]/join-requests
+// Access: Club managers, owners, coaches
+// Features: View, approve, reject player join requests
+// =============================================================================
 
-/**
- * PitchConnect Team Join Requests Management Page - v2.0 ENHANCED
- * Location: ./src/app/dashboard/clubs/[clubId]/teams/[teamId]/join-requests/page.tsx
- * 
- * Features:
- * ✅ Review and manage team join requests
- * ✅ Approve/reject player requests with confirmation
- * ✅ Display player profile information (position, foot, jersey, nationality)
- * ✅ Real-time request status updates
- * ✅ Separate pending and processed request sections
- * ✅ Player avatars with fallback initials
- * ✅ Custom toast notifications (zero dependencies)
- * ✅ Comprehensive action logging
- * ✅ Dark mode support
- * ✅ Responsive design
- * ✅ Schema-aligned data models
- * ✅ Advanced error handling
- */
-
-import { useEffect, useState, useCallback } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { redirect, notFound } from 'next/navigation';
+import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
 import {
   ArrowLeft,
-  UserPlus,
-  Loader2,
-  Mail,
-  Calendar,
-  CheckCircle,
-  XCircle,
-  Shield,
   Users,
-  AlertCircle,
+  UserPlus,
+  Check,
   X,
+  Clock,
+  Shield,
+  MapPin,
+  Calendar,
+  AlertCircle,
+  User,
+  Target,
+  Activity,
+  ChevronRight,
+  Mail,
+  Ruler,
+  Weight,
 } from 'lucide-react';
 
-// ============================================================================
-// TYPES - SCHEMA-ALIGNED
-// ============================================================================
+// =============================================================================
+// DATA FETCHING
+// =============================================================================
 
-interface PlayerProfile {
-  id?: string;
-  position?: string;
-  preferredFoot?: string;
-  jerseyNumber?: number | null;
-  nationality?: string;
-  height?: number;
-  weight?: number;
-}
+async function getJoinRequestsData(clubId: string, teamId: string, userId: string) {
+  // Verify team exists and user has access
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    include: {
+      club: {
+        include: {
+          members: {
+            where: {
+              userId,
+              isActive: true,
+              role: { in: ['OWNER', 'MANAGER', 'HEAD_COACH', 'ASSISTANT_COACH'] },
+            },
+          },
+        },
+      },
+      players: {
+        where: { isActive: true },
+        select: { jerseyNumber: true },
+      },
+    },
+  });
 
-interface JoinRequest {
-  id: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-  createdAt: string;
-  updatedAt?: string;
-  user: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    avatar?: string | null;
+  if (!team || team.clubId !== clubId) {
+    return null;
+  }
+
+  const hasAccess = 
+    team.club.managerId === userId ||
+    team.club.ownerId === userId ||
+    team.club.members.length > 0;
+
+  if (!hasAccess) {
+    return null;
+  }
+
+  // Fetch join requests
+  const requests = await prisma.teamJoinRequest.findMany({
+    where: { teamId },
+    include: {
+      player: {
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              avatar: true,
+              dateOfBirth: true,
+            },
+          },
+          aggregateStats: {
+            select: {
+              totalMatches: true,
+              totalGoals: true,
+              totalAssists: true,
+              avgRating: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  // Get counts by status
+  const statusCounts = await prisma.teamJoinRequest.groupBy({
+    by: ['status'],
+    where: { teamId },
+    _count: true,
+  });
+
+  const takenJerseyNumbers = team.players.map(p => p.jerseyNumber).filter(Boolean) as number[];
+
+  return {
+    team: {
+      id: team.id,
+      name: team.name,
+      ageGroup: team.ageGroup,
+      acceptingJoinRequests: team.acceptingJoinRequests,
+    },
+    club: {
+      id: team.club.id,
+      name: team.club.name,
+    },
+    requests: requests.map(r => ({
+      id: r.id,
+      status: r.status,
+      message: r.message,
+      preferredPosition: r.preferredPosition,
+      preferredJerseyNumber: r.preferredJerseyNumber,
+      reviewNotes: r.reviewNotes,
+      rejectionReason: r.rejectionReason,
+      reviewedAt: r.reviewedAt?.toISOString() ?? null,
+      createdAt: r.createdAt.toISOString(),
+      expiresAt: r.expiresAt?.toISOString() ?? null,
+      player: {
+        id: r.player.id,
+        userId: r.player.userId,
+        name: `${r.player.user.firstName} ${r.player.user.lastName}`,
+        email: r.player.user.email,
+        avatar: r.player.user.avatar,
+        dateOfBirth: r.player.user.dateOfBirth?.toISOString() ?? null,
+        primaryPosition: r.player.primaryPosition,
+        secondaryPosition: r.player.secondaryPosition,
+        preferredFoot: r.player.preferredFoot,
+        height: r.player.height,
+        weight: r.player.weight,
+        isVerified: r.player.isVerified,
+        stats: r.player.aggregateStats,
+      },
+    })),
+    statusCounts: statusCounts.reduce((acc, curr) => {
+      acc[curr.status] = curr._count;
+      return acc;
+    }, {} as Record<string, number>),
+    takenJerseyNumbers,
   };
-  playerProfile?: PlayerProfile;
 }
 
-interface Team {
-  id: string;
-  name: string;
-  clubId: string;
+// =============================================================================
+// COMPONENTS
+// =============================================================================
+
+function calculateAge(dateOfBirth: string | null): number | null {
+  if (!dateOfBirth) return null;
+  const today = new Date();
+  const birth = new Date(dateOfBirth);
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
 }
 
-interface ToastMessage {
-  id: string;
-  message: string;
-  type: 'success' | 'error' | 'info';
-}
-
-// ============================================================================
-// POSITION LABELS - FROM PRISMA SCHEMA
-// ============================================================================
-
-const POSITION_LABELS: Record<string, string> = {
-  GOALKEEPER: 'Goalkeeper',
-  DEFENDER: 'Defender',
-  MIDFIELDER: 'Midfielder',
-  FORWARD: 'Forward',
-  LEFT_BACK: 'Left Back',
-  RIGHT_BACK: 'Right Back',
-  CENTER_BACK: 'Center Back',
-  DEFENSIVE_MIDFIELDER: 'Defensive Midfielder',
-  CENTRAL_MIDFIELDER: 'Central Midfielder',
-  ATTACKING_MIDFIELDER: 'Attacking Midfielder',
-  LEFT_WINGER: 'Left Winger',
-  RIGHT_WINGER: 'Right Winger',
-  STRIKER: 'Striker',
-};
-
-// ============================================================================
-// TOAST COMPONENT (No External Dependency)
-// ============================================================================
-
-const Toast = ({
-  message,
-  type,
-  onClose,
-}: {
-  message: string;
-  type: 'success' | 'error' | 'info';
-  onClose: () => void;
-}) => {
-  const baseClasses =
-    'fixed bottom-4 right-4 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-300 z-50';
-
-  const typeClasses = {
-    success:
-      'bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-900/50 dark:text-green-400',
-    error:
-      'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-900/50 dark:text-red-400',
-    info: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-400',
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { color: string; label: string }> = {
+    PENDING: { color: 'bg-amber-500/20 text-amber-400 border-amber-500/30', label: 'Pending' },
+    APPROVED: { color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', label: 'Approved' },
+    REJECTED: { color: 'bg-red-500/20 text-red-400 border-red-500/30', label: 'Rejected' },
+    CANCELLED: { color: 'bg-slate-500/20 text-slate-400 border-slate-500/30', label: 'Cancelled' },
+    EXPIRED: { color: 'bg-slate-500/20 text-slate-400 border-slate-500/30', label: 'Expired' },
+    WITHDRAWN: { color: 'bg-slate-500/20 text-slate-400 border-slate-500/30', label: 'Withdrawn' },
   };
 
-  const icons = {
-    success: <CheckCircle className="h-5 w-5 flex-shrink-0" />,
-    error: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
-    info: <AlertCircle className="h-5 w-5 flex-shrink-0" />,
-  };
+  const c = config[status] || config.PENDING;
 
   return (
-    <div className={`${baseClasses} ${typeClasses[type]}`}>
-      {icons[type]}
-      <p className="text-sm font-medium">{message}</p>
-      <button onClick={onClose} className="ml-2 hover:opacity-70">
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  );
-};
-
-const ToastContainer = ({
-  toasts,
-  onRemove,
-}: {
-  toasts: ToastMessage[];
-  onRemove: (id: string) => void;
-}) => (
-  <div className="fixed bottom-4 right-4 z-50 space-y-2">
-    {toasts.map((toast) => (
-      <Toast
-        key={toast.id}
-        message={toast.message}
-        type={toast.type}
-        onClose={() => onRemove(toast.id)}
-      />
-    ))}
-  </div>
-);
-
-// ============================================================================
-// BADGE COMPONENT
-// ============================================================================
-
-const Badge = ({
-  children,
-  variant = 'default',
-}: {
-  children: React.ReactNode;
-  variant?: 'default' | 'success' | 'pending' | 'rejected' | 'outline';
-}) => {
-  const variants = {
-    default: 'bg-neutral-100 text-charcoal-700 dark:bg-charcoal-700 dark:text-charcoal-300',
-    success: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    outline:
-      'border border-neutral-200 bg-white text-charcoal-700 dark:border-charcoal-700 dark:bg-charcoal-800 dark:text-charcoal-300',
-  };
-
-  return (
-    <span className={`inline-block rounded-full px-3 py-1 text-xs font-semibold ${variants[variant]}`}>
-      {children}
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${c.color}`}>
+      {c.label}
     </span>
   );
-};
+}
 
-// ============================================================================
-// AVATAR COMPONENT
-// ============================================================================
-
-const PlayerAvatar = ({
-  avatar,
-  firstName,
-  lastName,
-}: {
-  avatar?: string | null;
-  firstName: string;
-  lastName: string;
-}) => {
-  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-
-  if (avatar) {
-    return (
-      <img
-        src={avatar}
-        alt={`${firstName} ${lastName}`}
-        className="h-14 w-14 rounded-full object-cover flex-shrink-0"
-      />
-    );
-  }
-
+function StatBadge({ icon: Icon, value, label }: { icon: React.ElementType; value: string | number; label: string }) {
   return (
-    <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gold-500 to-orange-500 font-bold text-white shadow-md">
-      {initials}
+    <div className="flex items-center gap-2 bg-slate-700/50 rounded-lg px-3 py-2">
+      <Icon className="h-4 w-4 text-slate-400" />
+      <div>
+        <p className="text-sm font-medium text-white">{value}</p>
+        <p className="text-xs text-slate-500">{label}</p>
+      </div>
     </div>
   );
-};
+}
 
-// ============================================================================
-// STATUS BADGE COMPONENT
-// ============================================================================
-
-const StatusBadge = ({ status }: { status: string }) => {
-  switch (status) {
-    case 'PENDING':
-      return <Badge variant="pending">Pending</Badge>;
-    case 'APPROVED':
-      return <Badge variant="success">✓ Approved</Badge>;
-    case 'REJECTED':
-      return <Badge variant="rejected">✗ Rejected</Badge>;
-    case 'CANCELLED':
-      return <Badge variant="outline">Cancelled</Badge>;
-    default:
-      return <Badge>{status}</Badge>;
-  }
-};
-
-// ============================================================================
-// MAIN PAGE COMPONENT
-// ============================================================================
-
-export default function TeamJoinRequestsPage() {
-  const router = useRouter();
-  const params = useParams();
-  const clubId = params.clubId as string;
-  const teamId = params.teamId as string;
-
-  // State Management
-  const [requests, setRequests] = useState<JoinRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [processingId, setProcessingId] = useState<string | null>(null);
-
-  // Toast utility
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  // ========================================================================
-  // DATA FETCHING
-  // ========================================================================
-
-  const fetchJoinRequests = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`/api/clubs/${clubId}/teams/${teamId}/join-requests`);
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch join requests');
-      }
-
-      const data = await response.json();
-      setRequests(data.joinRequests || []);
-    } catch (error) {
-      console.error('Error fetching join requests:', error);
-      showToast('Failed to load join requests', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [clubId, teamId, showToast]);
-
-  useEffect(() => {
-    if (clubId && teamId) {
-      fetchJoinRequests();
-    }
-  }, [clubId, teamId, fetchJoinRequests]);
-
-  // ========================================================================
-  // APPROVE REQUEST HANDLER
-  // ========================================================================
-
-  const handleApprove = async (requestId: string, playerName: string) => {
-    try {
-      setProcessingId(requestId);
-
-      const response = await fetch(
-        `/api/clubs/${clubId}/teams/${teamId}/join-requests/${requestId}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'APPROVE' }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || errorData.message || 'Failed to approve request');
-      }
-
-      // Update local state
-      setRequests((prev) =>
-        prev.map((req) =>
-          req.id === requestId ? { ...req, status: 'APPROVED' as const } : req
-        )
-      );
-
-      showToast(`✓ ${playerName} approved and added to team!`, 'success');
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to approve request. Please try again.';
-      showToast(errorMessage, 'error');
-      console.error('Error approving request:', error);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  // ========================================================================
-  // REJECT REQUEST HANDLER
-  // ========================================================================
-
-  const handleReject = async (requestId: string, playerName: string) => {
-    if (!confirm(`Are you sure you want to reject ${playerName}'s join request?`)) {
-      return;
-    }
-
-    try {
-      setProcessingId(requestId);
-
-      const response = await fetch(
-        `/api/clubs/${clubId}/teams/${teamId}/join-requests/${requestId}`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'REJECT' }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || errorData.message || 'Failed to reject request');
-      }
-
-      // Update local state
-      setRequests((prev) =>
-        prev.map((req) =>
-          req.id === requestId ? { ...req, status: 'REJECTED' as const } : req
-        )
-      );
-
-      showToast(`Request from ${playerName} rejected`, 'success');
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to reject request. Please try again.';
-      showToast(errorMessage, 'error');
-      console.error('Error rejecting request:', error);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  // ========================================================================
-  // FILTERING
-  // ========================================================================
-
-  const pendingRequests = requests.filter((r) => r.status === 'PENDING');
-  const processedRequests = requests.filter((r) => r.status !== 'PENDING');
-
-  // ========================================================================
-  // LOADING STATE
-  // ========================================================================
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800">
-        <div className="text-center">
-          <Loader2 className="mx-auto mb-4 h-12 w-12 animate-spin text-gold-600 dark:text-gold-500" />
-          <p className="font-medium text-charcoal-600 dark:text-charcoal-400">Loading join requests...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ========================================================================
-  // RENDER
-  // ========================================================================
+function RequestCard({ 
+  request, 
+  clubId, 
+  teamId,
+  takenJerseyNumbers,
+}: { 
+  request: any;
+  clubId: string;
+  teamId: string;
+  takenJerseyNumbers: number[];
+}) {
+  const age = calculateAge(request.player.dateOfBirth);
+  const isPending = request.status === 'PENDING';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 transition-colors duration-200 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800 p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-5xl">
-        {/* HEADER */}
-        <div className="mb-8">
-          <Link href={`/dashboard/clubs/${clubId}/teams/${teamId}`}>
-            <button className="mb-4 flex items-center gap-2 rounded-lg px-4 py-2 text-charcoal-700 transition-colors hover:bg-neutral-200 hover:text-charcoal-900 dark:text-charcoal-300 dark:hover:bg-charcoal-700 dark:hover:text-white">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Team
-            </button>
-          </Link>
-
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-gold-500 to-orange-500 shadow-lg">
-              <UserPlus className="h-8 w-8 text-white" />
+    <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl border border-slate-700/50 overflow-hidden">
+      {/* Header */}
+      <div className="p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+            {request.player.name.split(' ').map((n: string) => n[0]).join('')}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-lg font-semibold text-white truncate">{request.player.name}</h3>
+              {request.player.isVerified && (
+                <Shield className="h-4 w-4 text-blue-400" />
+              )}
+              <StatusBadge status={request.status} />
             </div>
-            <div>
-              <h1 className="mb-2 text-4xl font-bold text-charcoal-900 dark:text-white">
-                Join Requests
-              </h1>
-              <p className="text-charcoal-600 dark:text-charcoal-400">
-                {pendingRequests.length} pending{' '}
-                {pendingRequests.length === 1 ? 'request' : 'requests'}
-              </p>
+            <p className="text-sm text-slate-400 flex items-center gap-2">
+              <Mail className="h-3.5 w-3.5" />
+              {request.player.email}
+            </p>
+          </div>
+          <div className="text-right text-sm text-slate-500">
+            <div className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5" />
+              {new Date(request.createdAt).toLocaleDateString('en-GB', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+              })}
             </div>
           </div>
         </div>
 
-        {/* PENDING REQUESTS SECTION */}
-        <div className="mb-6 rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
-          <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
-            <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
-              <Users className="h-5 w-5 text-gold-600 dark:text-gold-400" />
-              Pending Requests
-            </h2>
-            <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
-              Review and approve or reject player join requests
-            </p>
-          </div>
+        {/* Player Details */}
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {request.player.primaryPosition && (
+            <StatBadge icon={Target} value={request.player.primaryPosition} label="Position" />
+          )}
+          {age !== null && (
+            <StatBadge icon={Calendar} value={`${age} yrs`} label="Age" />
+          )}
+          {request.player.height && (
+            <StatBadge icon={Ruler} value={`${request.player.height} cm`} label="Height" />
+          )}
+          {request.player.preferredFoot && (
+            <StatBadge icon={Activity} value={request.player.preferredFoot} label="Foot" />
+          )}
+        </div>
 
-          <div className="p-6">
-            {pendingRequests.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <UserPlus className="mb-4 h-16 w-16 text-charcoal-300 dark:text-charcoal-600" />
-                <h3 className="mb-2 text-lg font-semibold text-charcoal-900 dark:text-white">
-                  No pending requests
-                </h3>
-                <p className="text-charcoal-600 dark:text-charcoal-400">
-                  All join requests have been processed
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {pendingRequests.map((request) => (
-                  <div
-                    key={request.id}
-                    className="flex flex-col gap-4 rounded-xl border border-neutral-200 p-4 transition-all hover:border-gold-300 hover:shadow-md dark:border-charcoal-700 dark:hover:border-gold-500 md:flex-row md:items-center md:justify-between"
-                  >
-                    {/* PLAYER INFO */}
-                    <div className="flex flex-1 gap-4">
-                      <PlayerAvatar
-                        avatar={request.user.avatar}
-                        firstName={request.user.firstName}
-                        lastName={request.user.lastName}
-                      />
-
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-semibold text-charcoal-900 dark:text-white">
-                          {request.user.firstName} {request.user.lastName}
-                        </h3>
-
-                        {/* Email & Date */}
-                        <div className="mt-2 space-y-1">
-                          <p className="flex items-center gap-2 text-sm text-charcoal-600 dark:text-charcoal-400">
-                            <Mail className="h-3 w-3 flex-shrink-0" />
-                            <span className="truncate">{request.user.email}</span>
-                          </p>
-                          <p className="flex items-center gap-2 text-sm text-charcoal-600 dark:text-charcoal-400">
-                            <Calendar className="h-3 w-3 flex-shrink-0" />
-                            Requested{' '}
-                            {new Date(request.createdAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })}
-                          </p>
-                        </div>
-
-                        {/* PLAYER PROFILE BADGES */}
-                        {request.playerProfile && (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {request.playerProfile.position && (
-                              <Badge variant="default">
-                                {POSITION_LABELS[request.playerProfile.position] ||
-                                  request.playerProfile.position.replace(/_/g, ' ')}
-                              </Badge>
-                            )}
-                            {request.playerProfile.preferredFoot && (
-                              <Badge variant="outline">
-                                {request.playerProfile.preferredFoot} Footed
-                              </Badge>
-                            )}
-                            {request.playerProfile.jerseyNumber && (
-                              <Badge variant="default">
-                                #{request.playerProfile.jerseyNumber}
-                              </Badge>
-                            )}
-                            {request.playerProfile.nationality && (
-                              <Badge variant="outline">{request.playerProfile.nationality}</Badge>
-                            )}
-                            {request.playerProfile.height && (
-                              <Badge variant="outline">
-                                {request.playerProfile.height} cm
-                              </Badge>
-                            )}
-                            {request.playerProfile.weight && (
-                              <Badge variant="outline">
-                                {request.playerProfile.weight} kg
-                              </Badge>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* ACTIONS */}
-                    <div className="flex gap-2 md:flex-shrink-0">
-                      <button
-                        onClick={() =>
-                          handleApprove(
-                            request.id,
-                            `${request.user.firstName} ${request.user.lastName}`
-                          )
-                        }
-                        disabled={processingId === request.id}
-                        className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-green-600 to-green-600 px-4 py-2 font-semibold text-white transition-all hover:from-green-700 hover:to-green-700 disabled:cursor-not-allowed disabled:opacity-50 dark:from-green-600 dark:to-green-600 dark:hover:from-green-700 dark:hover:to-green-700"
-                      >
-                        {processingId === request.id ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="hidden sm:inline">Processing</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle className="h-4 w-4" />
-                            <span className="hidden sm:inline">Approve</span>
-                          </>
-                        )}
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          handleReject(
-                            request.id,
-                            `${request.user.firstName} ${request.user.lastName}`
-                          )
-                        }
-                        disabled={processingId === request.id}
-                        className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 font-semibold text-red-600 transition-all hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/50 dark:bg-charcoal-700 dark:text-red-400 dark:hover:bg-red-900/20"
-                      >
-                        <XCircle className="h-4 w-4" />
-                        <span className="hidden sm:inline">Reject</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
+        {/* Stats */}
+        {request.player.stats && (
+          <div className="mt-4 flex flex-wrap gap-4 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">Matches:</span>
+              <span className="text-white font-medium">{request.player.stats.totalMatches || 0}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">Goals:</span>
+              <span className="text-white font-medium">{request.player.stats.totalGoals || 0}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">Assists:</span>
+              <span className="text-white font-medium">{request.player.stats.totalAssists || 0}</span>
+            </div>
+            {request.player.stats.avgRating > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500">Avg Rating:</span>
+                <span className="text-white font-medium">{request.player.stats.avgRating.toFixed(1)}</span>
               </div>
             )}
           </div>
-        </div>
+        )}
 
-        {/* PROCESSED REQUESTS SECTION */}
-        {processedRequests.length > 0 && (
-          <div className="rounded-lg border border-neutral-200 bg-white shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
-            <div className="border-b border-neutral-200 px-6 py-4 dark:border-charcoal-700">
-              <h2 className="flex items-center gap-2 text-xl font-bold text-charcoal-900 dark:text-white">
-                <Shield className="h-5 w-5 text-charcoal-600 dark:text-charcoal-400" />
-                Request History
-              </h2>
-              <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
-                Previously processed join requests
-              </p>
-            </div>
-
-            <div className="p-6">
-              <div className="space-y-3">
-                {processedRequests.map((request) => (
-                  <div
-                    key={request.id}
-                    className="flex items-center justify-between rounded-xl border border-neutral-200 p-4 dark:border-charcoal-700"
-                  >
-                    {/* PLAYER INFO */}
-                    <div className="flex items-center gap-4">
-                      <PlayerAvatar
-                        avatar={request.user.avatar}
-                        firstName={request.user.firstName}
-                        lastName={request.user.lastName}
-                      />
-                      <div>
-                        <p className="font-semibold text-charcoal-900 dark:text-white">
-                          {request.user.firstName} {request.user.lastName}
-                        </p>
-                        <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                          {request.user.email}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* STATUS & DATE */}
-                    <div className="flex items-center gap-4">
-                      <p className="hidden text-sm text-charcoal-600 dark:text-charcoal-400 sm:block">
-                        {new Date(request.createdAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        })}
-                      </p>
-                      <StatusBadge status={request.status} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {/* Message */}
+        {request.message && (
+          <div className="mt-4 p-4 bg-slate-700/30 rounded-lg">
+            <p className="text-sm text-slate-400 italic">"{request.message}"</p>
           </div>
         )}
 
-        {/* EMPTY STATE - NO REQUESTS AT ALL */}
-        {requests.length === 0 && (
-          <div className="rounded-lg border border-neutral-200 bg-white p-12 text-center shadow-sm dark:border-charcoal-700 dark:bg-charcoal-800">
-            <UserPlus className="mx-auto mb-4 h-16 w-16 text-charcoal-300 dark:text-charcoal-600" />
-            <h3 className="mb-2 text-lg font-semibold text-charcoal-900 dark:text-white">
-              No join requests
-            </h3>
-            <p className="text-charcoal-600 dark:text-charcoal-400">
-              Players will appear here when they request to join your team
+        {/* Preferred Jersey */}
+        {request.preferredJerseyNumber && (
+          <div className="mt-4 flex items-center gap-2 text-sm">
+            <span className="text-slate-500">Preferred Jersey:</span>
+            <span className={`px-2 py-1 rounded-md font-bold ${
+              takenJerseyNumbers.includes(request.preferredJerseyNumber)
+                ? 'bg-red-500/20 text-red-400'
+                : 'bg-emerald-500/20 text-emerald-400'
+            }`}>
+              #{request.preferredJerseyNumber}
+              {takenJerseyNumbers.includes(request.preferredJerseyNumber) && ' (Taken)'}
+            </span>
+          </div>
+        )}
+
+        {/* Rejection Reason */}
+        {request.rejectionReason && (
+          <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <p className="text-sm text-red-400">
+              <span className="font-medium">Rejection Reason:</span> {request.rejectionReason}
             </p>
           </div>
         )}
       </div>
 
-      {/* TOAST CONTAINER */}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      {/* Actions */}
+      {isPending && (
+        <div className="px-6 py-4 bg-slate-800/50 border-t border-slate-700/50 flex items-center justify-end gap-3">
+          <form action={`/api/clubs/${clubId}/teams/${teamId}/join-requests`} method="POST">
+            <input type="hidden" name="requestId" value={request.id} />
+            <input type="hidden" name="action" value="REJECT" />
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+            >
+              <X className="h-4 w-4" />
+              Reject
+            </button>
+          </form>
+          <form action={`/api/clubs/${clubId}/teams/${teamId}/join-requests`} method="POST">
+            <input type="hidden" name="requestId" value={request.id} />
+            <input type="hidden" name="action" value="APPROVE" />
+            <button
+              type="submit"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+            >
+              <Check className="h-4 w-4" />
+              Approve
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({ filter }: { filter: string }) {
+  return (
+    <div className="text-center py-16">
+      <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
+        <UserPlus className="h-10 w-10 text-slate-400" />
+      </div>
+      <h3 className="text-xl font-semibold text-white mb-2">
+        {filter === 'all' ? 'No Join Requests Yet' : `No ${filter} Requests`}
+      </h3>
+      <p className="text-slate-400 max-w-md mx-auto">
+        {filter === 'all' 
+          ? 'When players request to join this team, their requests will appear here for review.'
+          : `There are no ${filter.toLowerCase()} join requests at the moment.`}
+      </p>
+    </div>
+  );
+}
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
+
+export default async function JoinRequestsPage({
+  params,
+  searchParams,
+}: {
+  params: { clubId: string; teamId: string };
+  searchParams: { status?: string };
+}) {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    redirect('/auth/login');
+  }
+
+  const data = await getJoinRequestsData(params.clubId, params.teamId, session.user.id);
+
+  if (!data) {
+    notFound();
+  }
+
+  const { team, club, requests, statusCounts, takenJerseyNumbers } = data;
+
+  // Filter requests
+  const filter = searchParams.status || 'PENDING';
+  const filteredRequests = filter === 'all' 
+    ? requests 
+    : requests.filter(r => r.status === filter);
+
+  const pendingCount = statusCounts['PENDING'] || 0;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Header */}
+      <div className="border-b border-slate-700/50 bg-slate-800/30 backdrop-blur-sm">
+        <div className="max-w-5xl mx-auto px-6 py-6">
+          <Link 
+            href={`/dashboard/clubs/${params.clubId}/teams/${params.teamId}`}
+            className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors mb-6"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Team
+          </Link>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+                <UserPlus className="h-7 w-7 text-blue-400" />
+                Join Requests
+                {pendingCount > 0 && (
+                  <span className="bg-blue-600 text-white text-sm px-2.5 py-1 rounded-full">
+                    {pendingCount} pending
+                  </span>
+                )}
+              </h1>
+              <p className="text-slate-400 mt-1">
+                {team.name} • {club.name}
+              </p>
+            </div>
+
+            {!team.acceptingJoinRequests && (
+              <div className="flex items-center gap-2 bg-amber-500/20 text-amber-400 px-4 py-2 rounded-lg text-sm">
+                <AlertCircle className="h-4 w-4" />
+                Join requests disabled
+              </div>
+            )}
+          </div>
+
+          {/* Filter Tabs */}
+          <div className="mt-6 flex flex-wrap gap-2">
+            {[
+              { value: 'PENDING', label: 'Pending', count: statusCounts['PENDING'] || 0 },
+              { value: 'APPROVED', label: 'Approved', count: statusCounts['APPROVED'] || 0 },
+              { value: 'REJECTED', label: 'Rejected', count: statusCounts['REJECTED'] || 0 },
+              { value: 'all', label: 'All', count: requests.length },
+            ].map(tab => (
+              <Link
+                key={tab.value}
+                href={`/dashboard/clubs/${params.clubId}/teams/${params.teamId}/join-requests?status=${tab.value}`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  filter === tab.value
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                {tab.label} ({tab.count})
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        {filteredRequests.length > 0 ? (
+          <div className="space-y-6">
+            {filteredRequests.map(request => (
+              <RequestCard
+                key={request.id}
+                request={request}
+                clubId={params.clubId}
+                teamId={params.teamId}
+                takenJerseyNumbers={takenJerseyNumbers}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState filter={filter} />
+        )}
+      </div>
     </div>
   );
 }
