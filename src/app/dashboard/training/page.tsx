@@ -1,607 +1,589 @@
-/**
- * Training Sessions List Page - WORLD-CLASS VERSION
- * Path: /dashboard/training
- *
- * ============================================================================
- * ENTERPRISE FEATURES
- * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
- * ✅ Training sessions listing
- * ✅ Advanced search functionality
- * ✅ Status filtering (SCHEDULED, COMPLETED, CANCELLED)
- * ✅ Grouped sessions by date
- * ✅ Session details display
- * ✅ Attendance statistics
- * ✅ Team and club information
- * ✅ Duration and location tracking
- * ✅ Drill count display
- * ✅ Quick create session button
- * ✅ Real-time search and filtering
- * ✅ Loading states with spinners
- * ✅ Error handling with detailed feedback
- * ✅ Custom toast notifications
- * ✅ Responsive design (mobile-first)
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Performance optimization with memoization
- * ✅ Smooth animations and transitions
- * ✅ Production-ready code
- */
+// ============================================================================
+// 🏆 PITCHCONNECT - Training Sessions List (Enterprise v7.7.0)
+// ============================================================================
+// Path: app/dashboard/training/page.tsx
+// Full multi-sport support with enterprise dark mode design
+// ============================================================================
 
-'use client';
-
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import {
-  X,
-  Check,
-  Info,
-  AlertCircle,
-  Loader2,
-  Zap,
-  Plus,
-  Search,
-  Calendar,
-  Clock,
-  MapPin,
-  Users,
-  Filter,
-  ChevronRight,
-  TrendingUp,
-} from 'lucide-react';
+import Image from 'next/image';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+import { getSportConfig, formatDuration } from '@/lib/sports/sport-config';
+import { 
+  TrainingStatus, 
+  TrainingIntensity, 
+  TrainingCategory,
+  Sport 
+} from '@prisma/client';
 
 // ============================================================================
-// CUSTOM TOAST SYSTEM
+// TYPES
 // ============================================================================
 
-type ToastType = 'success' | 'error' | 'info' | 'default';
-
-interface ToastMessage {
+interface TrainingSessionData {
   id: string;
-  type: ToastType;
-  message: string;
-  timestamp: number;
-}
-
-/**
- * Custom Toast Component
- */
-const Toast = ({
-  message,
-  type,
-  onClose,
-}: {
-  message: string;
-  type: ToastType;
-  onClose: () => void;
-}) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  const colors = {
-    success: 'bg-green-500 dark:bg-green-600',
-    error: 'bg-red-500 dark:bg-red-600',
-    info: 'bg-blue-500 dark:bg-blue-600',
-    default: 'bg-charcoal-800 dark:bg-charcoal-700',
-  };
-
-  const icons = {
-    success: <Check className="w-5 h-5 text-white" />,
-    error: <AlertCircle className="w-5 h-5 text-white" />,
-    info: <Info className="w-5 h-5 text-white" />,
-    default: <Loader2 className="w-5 h-5 text-white animate-spin" />,
-  };
-
-  return (
-    <div
-      className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}
-      role="status"
-      aria-live="polite"
-    >
-      {icons[type]}
-      <span className="text-sm font-medium flex-1">{message}</span>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-white/20 rounded transition-colors"
-        aria-label="Close notification"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-};
-
-/**
- * Toast Container
- */
-const ToastContainer = ({
-  toasts,
-  onRemove,
-}: {
-  toasts: ToastMessage[];
-  onRemove: (id: string) => void;
-}) => {
-  return (
-    <div className="fixed bottom-4 right-4 z-40 space-y-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * useToast Hook
- */
-const useToast = () => {
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = useCallback(
-    (message: string, type: ToastType = 'default') => {
-      const id = `toast-${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, message, type, timestamp: Date.now() }]);
-      return id;
-    },
-    []
-  );
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  return {
-    toasts,
-    addToast,
-    removeToast,
-    success: (message: string) => addToast(message, 'success'),
-    error: (message: string) => addToast(message, 'error'),
-    info: (message: string) => addToast(message, 'info'),
-  };
-};
-
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
-
-interface Attendance {
-  present: number;
-  absent: number;
-  pending: number;
-}
-
-interface TrainingSession {
-  id: string;
-  date: string;
-  duration: number;
+  name: string;
+  description: string | null;
+  startTime: Date;
+  endTime: Date;
+  status: TrainingStatus;
+  intensity: TrainingIntensity;
+  category: TrainingCategory;
   location: string | null;
-  focus: string;
-  status: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  attendanceCount: number;
+  avgRating: number | null;
+  club: {
+    id: string;
+    name: string;
+    sport: Sport;
+    logo: string | null;
+  };
   team: {
     id: string;
     name: string;
-    club: {
-      id: string;
-      name: string;
+  } | null;
+  coach: {
+    id: string;
+    user: {
+      firstName: string;
+      lastName: string;
+      avatar: string | null;
     };
   };
-  attendance: Attendance;
-  drillCount: number;
+  sessionDrills: {
+    id: string;
+  }[];
+  _count: {
+    attendance: number;
+  };
 }
 
 // ============================================================================
-// CONSTANTS
+// DATA FETCHING
 // ============================================================================
 
-const STATUS_OPTIONS = [
-  { value: 'ALL', label: 'All Sessions' },
-  { value: 'SCHEDULED', label: 'Scheduled' },
-  { value: 'IN_PROGRESS', label: 'In Progress' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'CANCELLED', label: 'Cancelled' },
-];
+async function getUserClubs(userId: string) {
+  const memberships = await prisma.clubMember.findMany({
+    where: {
+      userId,
+      isActive: true,
+      deletedAt: null,
+    },
+    select: {
+      clubId: true,
+      role: true,
+    },
+  });
+  return memberships.map(m => m.clubId);
+}
+
+async function getTrainingSessions(clubIds: string[], filters: {
+  status?: string;
+  sport?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+}) {
+  const where: any = {
+    clubId: { in: clubIds },
+    deletedAt: null,
+  };
+  
+  if (filters.status && filters.status !== 'all') {
+    where.status = filters.status as TrainingStatus;
+  }
+  
+  if (filters.dateFrom) {
+    where.startTime = { gte: filters.dateFrom };
+  }
+  
+  if (filters.dateTo) {
+    where.startTime = { ...where.startTime, lte: filters.dateTo };
+  }
+
+  return prisma.trainingSession.findMany({
+    where,
+    include: {
+      club: {
+        select: {
+          id: true,
+          name: true,
+          sport: true,
+          logo: true,
+        },
+      },
+      team: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      coach: {
+        include: {
+          user: {
+            select: {
+              firstName: true,
+              lastName: true,
+              avatar: true,
+            },
+          },
+        },
+      },
+      sessionDrills: {
+        select: { id: true },
+      },
+      _count: {
+        select: {
+          attendance: true,
+        },
+      },
+    },
+    orderBy: { startTime: 'desc' },
+    take: 50,
+  });
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+const STATUS_CONFIG: Record<TrainingStatus, { label: string; color: string; bgColor: string }> = {
+  DRAFT: { label: 'Draft', color: 'text-gray-400', bgColor: 'bg-gray-500/20' },
+  SCHEDULED: { label: 'Scheduled', color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
+  IN_PROGRESS: { label: 'In Progress', color: 'text-amber-400', bgColor: 'bg-amber-500/20' },
+  COMPLETED: { label: 'Completed', color: 'text-green-400', bgColor: 'bg-green-500/20' },
+  CANCELLED: { label: 'Cancelled', color: 'text-red-400', bgColor: 'bg-red-500/20' },
+  POSTPONED: { label: 'Postponed', color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
+};
+
+const INTENSITY_CONFIG: Record<TrainingIntensity, { label: string; color: string; icon: string }> = {
+  RECOVERY: { label: 'Recovery', color: '#22c55e', icon: '🧘' },
+  LOW: { label: 'Low', color: '#84cc16', icon: '🚶' },
+  MEDIUM: { label: 'Medium', color: '#f59e0b', icon: '🏃' },
+  HIGH: { label: 'High', color: '#ef4444', icon: '🔥' },
+  MAXIMUM: { label: 'Maximum', color: '#dc2626', icon: '💥' },
+  COMPETITIVE: { label: 'Competitive', color: '#8b5cf6', icon: '🏆' },
+};
+
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(date));
+}
+
+function formatTime(date: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(date));
+}
+
+function isToday(date: Date): boolean {
+  const today = new Date();
+  const d = new Date(date);
+  return d.getDate() === today.getDate() &&
+    d.getMonth() === today.getMonth() &&
+    d.getFullYear() === today.getFullYear();
+}
+
+function isUpcoming(date: Date): boolean {
+  return new Date(date) > new Date();
+}
 
 // ============================================================================
 // COMPONENTS
 // ============================================================================
 
-/**
- * Status Badge Component
- */
-interface StatusBadgeProps {
-  status: string;
-}
-
-const StatusBadge = ({ status }: StatusBadgeProps) => {
-  const colors: Record<string, string> = {
-    SCHEDULED: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
-    IN_PROGRESS: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
-    COMPLETED: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
-    CANCELLED: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
-  };
-
+function StatusBadge({ status }: { status: TrainingStatus }) {
+  const config = STATUS_CONFIG[status];
   return (
-    <span
-      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-        colors[status] || 'bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400'
-      }`}
-    >
-      {status}
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium ${config.color} ${config.bgColor}`}>
+      {config.label}
     </span>
   );
-};
-
-/**
- * Session Card Component
- */
-interface SessionCardProps {
-  session: TrainingSession;
 }
 
-const SessionCard = ({ session }: SessionCardProps) => {
-  const sessionDate = new Date(session.date);
-  const totalPlayers =
-    session.attendance.present + session.attendance.absent + session.attendance.pending;
-  const presentPercent = totalPlayers > 0 
-    ? Math.round((session.attendance.present / totalPlayers) * 100)
-    : 0;
+function IntensityIndicator({ intensity }: { intensity: TrainingIntensity }) {
+  const config = INTENSITY_CONFIG[intensity];
+  return (
+    <span 
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
+      style={{ backgroundColor: `${config.color}20`, color: config.color }}
+    >
+      <span>{config.icon}</span>
+      {config.label}
+    </span>
+  );
+}
+
+function SportBadge({ sport }: { sport: Sport }) {
+  const config = getSportConfig(sport);
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+      style={{ backgroundColor: `${config.color}20`, color: config.color }}
+    >
+      <span>{config.icon}</span>
+      {config.shortName}
+    </span>
+  );
+}
+
+function TrainingCard({ session }: { session: TrainingSessionData }) {
+  const sportConfig = getSportConfig(session.club.sport);
+  const duration = Math.round(
+    (new Date(session.endTime).getTime() - new Date(session.startTime).getTime()) / 60000
+  );
+  const today = isToday(session.startTime);
+  const upcoming = isUpcoming(session.startTime);
 
   return (
-    <Link href={`/dashboard/training/${session.id}`}>
-      <div className="bg-white dark:bg-charcoal-800 rounded-lg border border-neutral-200 dark:border-charcoal-700 hover:shadow-lg hover:border-green-300 dark:hover:border-green-700 transition-all cursor-pointer p-6">
-        <div className="space-y-4">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <h3 className="text-xl font-bold text-charcoal-900 dark:text-white mb-1">
-                {session.focus}
-              </h3>
-              <p className="text-charcoal-600 dark:text-charcoal-400 text-sm flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                {session.team.name} • {session.team.club.name}
-              </p>
-            </div>
-            <StatusBadge status={session.status} />
-          </div>
+    <Link
+      href={`/dashboard/training/${session.id}`}
+      className={`
+        group relative block bg-[#2a2a2a] rounded-2xl border overflow-hidden
+        transition-all duration-300 hover:shadow-xl hover:shadow-black/20 hover:-translate-y-1
+        ${today 
+          ? 'border-amber-500/50 ring-2 ring-amber-500/20' 
+          : 'border-[#3a3a3a] hover:border-amber-500/30'
+        }
+      `}
+    >
+      {/* Today Badge */}
+      {today && (
+        <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-1.5 text-center">
+          <span className="text-xs font-bold text-white uppercase tracking-wider">Today</span>
+        </div>
+      )}
 
-          {/* Details */}
-          <div className="flex flex-wrap items-center gap-4 text-sm text-charcoal-600 dark:text-charcoal-400">
-            <span className="inline-flex items-center gap-1">
-              <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              {sessionDate.toLocaleTimeString('en-GB', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <Zap className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-              {session.duration} min
-            </span>
-            {session.location && (
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="w-4 h-4 text-red-600 dark:text-red-400" />
-                {session.location}
-              </span>
-            )}
-            <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400">
-              <Zap className="w-3 h-3" />
-              {session.drillCount} drills
-            </span>
-          </div>
-
-          {/* Attendance Stats */}
-          <div className="pt-2 border-t border-neutral-200 dark:border-charcoal-700">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-medium text-charcoal-600 dark:text-charcoal-400">
-                Attendance: {session.attendance.present} of {totalPlayers}
-              </p>
-              <p className="text-xs font-semibold text-green-600 dark:text-green-400">
-                {presentPercent}%
-              </p>
+      <div className={`p-5 ${today ? 'pt-10' : ''}`}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <SportBadge sport={session.club.sport} />
+              <StatusBadge status={session.status} />
             </div>
-            <div className="h-2 bg-neutral-200 dark:bg-charcoal-700 rounded-full overflow-hidden">
-              <div
-                className="h-2 bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500"
-                style={{ width: `${presentPercent}%` }}
-              />
+            <h3 className="font-bold text-lg text-white group-hover:text-amber-400 transition-colors truncate">
+              {session.name}
+            </h3>
+            <p className="text-sm text-gray-400 truncate">
+              {session.club.name}
+              {session.team && ` • ${session.team.name}`}
+            </p>
+          </div>
+          <IntensityIndicator intensity={session.intensity} />
+        </div>
+
+        {/* Time & Location */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-[#1a1a1a] rounded-xl p-3">
+            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Date
+            </div>
+            <div className="text-white font-medium text-sm">
+              {formatDate(session.startTime)}
             </div>
           </div>
-
-          {/* Quick Stats */}
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-3">
-              <div className="text-center">
-                <p className="font-bold text-green-600 dark:text-green-400">
-                  {session.attendance.present}
-                </p>
-                <p className="text-charcoal-500 dark:text-charcoal-500">Present</p>
-              </div>
-              <div className="text-center">
-                <p className="font-bold text-yellow-600 dark:text-yellow-400">
-                  {session.attendance.pending}
-                </p>
-                <p className="text-charcoal-500 dark:text-charcoal-500">Pending</p>
-              </div>
-              <div className="text-center">
-                <p className="font-bold text-red-600 dark:text-red-400">
-                  {session.attendance.absent}
-                </p>
-                <p className="text-charcoal-500 dark:text-charcoal-500">Absent</p>
-              </div>
+          <div className="bg-[#1a1a1a] rounded-xl p-3">
+            <div className="flex items-center gap-2 text-gray-400 text-xs mb-1">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Time
             </div>
-            <ChevronRight className="w-5 h-5 text-charcoal-400 dark:text-charcoal-600" />
+            <div className="text-white font-medium text-sm">
+              {formatTime(session.startTime)} • {formatDuration(duration)}
+            </div>
+          </div>
+        </div>
+
+        {/* Location */}
+        {session.location && (
+          <div className="flex items-center gap-2 text-sm text-gray-400 mb-4">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="truncate">{session.location}</span>
+          </div>
+        )}
+
+        {/* Footer Stats */}
+        <div className="flex items-center justify-between pt-4 border-t border-[#3a3a3a]">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5 text-sm">
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="text-gray-400">{session._count.attendance}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-sm">
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <span className="text-gray-400">{session.sessionDrills.length} drills</span>
+            </div>
+          </div>
+          
+          {/* Coach Avatar */}
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-[#3a3a3a] overflow-hidden ring-2 ring-[#2a2a2a]">
+              {session.coach.user.avatar ? (
+                <Image
+                  src={session.coach.user.avatar}
+                  alt={`${session.coach.user.firstName} ${session.coach.user.lastName}`}
+                  width={28}
+                  height={28}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xs text-gray-500">
+                  {session.coach.user.firstName[0]}
+                </div>
+              )}
+            </div>
+            <span className="text-xs text-gray-500 hidden sm:inline">
+              {session.coach.user.firstName}
+            </span>
           </div>
         </div>
       </div>
     </Link>
   );
-};
-
-/**
- * Empty State Component
- */
-interface EmptyStateProps {
-  hasFilters: boolean;
 }
 
-const EmptyState = ({ hasFilters }: EmptyStateProps) => {
+function EmptyState() {
   return (
-    <div className="bg-white dark:bg-charcoal-800 rounded-lg border border-neutral-200 dark:border-charcoal-700 p-12">
-      <div className="text-center space-y-4">
-        <Zap className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto" />
-        <h3 className="text-xl font-bold text-charcoal-900 dark:text-white">
-          No training sessions found
-        </h3>
-        <p className="text-charcoal-600 dark:text-charcoal-400 max-w-md mx-auto">
-          {hasFilters
-            ? 'Try adjusting your search or filters to find sessions'
-            : 'Create your first training session to get started managing your team'}
-        </p>
-        <Link href="/dashboard/training/create">
-          <button className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 dark:from-green-700 dark:to-green-800 dark:hover:from-green-800 dark:hover:to-green-900 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all mt-4">
-            <Plus className="w-4 h-4" />
-            Create Session
-          </button>
-        </Link>
+    <div className="text-center py-16">
+      <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-[#2a2a2a] flex items-center justify-center">
+        <svg className="w-10 h-10 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
       </div>
+      <h3 className="text-xl font-semibold text-white mb-2">No Training Sessions</h3>
+      <p className="text-gray-400 max-w-md mx-auto mb-6">
+        You haven't created any training sessions yet. Create your first session to start tracking attendance and drills.
+      </p>
+      <Link
+        href="/dashboard/training/create"
+        className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500
+                   text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-amber-500/25
+                   transition-all duration-300"
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        Create First Session
+      </Link>
     </div>
   );
-};
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="bg-[#2a2a2a] rounded-2xl p-5 animate-pulse">
+          <div className="flex gap-2 mb-4">
+            <div className="h-6 w-16 bg-[#3a3a3a] rounded-lg" />
+            <div className="h-6 w-20 bg-[#3a3a3a] rounded-lg" />
+          </div>
+          <div className="h-6 w-3/4 bg-[#3a3a3a] rounded mb-2" />
+          <div className="h-4 w-1/2 bg-[#3a3a3a] rounded mb-4" />
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="h-16 bg-[#1a1a1a] rounded-xl" />
+            <div className="h-16 bg-[#1a1a1a] rounded-xl" />
+          </div>
+          <div className="h-4 w-full bg-[#3a3a3a] rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatusFilter({
+  activeStatus,
+  onStatusChange,
+}: {
+  activeStatus: string;
+  onStatusChange: (status: string) => void;
+}) {
+  const statuses = [
+    { key: 'all', label: 'All Sessions' },
+    { key: 'SCHEDULED', label: 'Scheduled' },
+    { key: 'IN_PROGRESS', label: 'In Progress' },
+    { key: 'COMPLETED', label: 'Completed' },
+    { key: 'CANCELLED', label: 'Cancelled' },
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {statuses.map((s) => (
+        <Link
+          key={s.key}
+          href={`/dashboard/training?status=${s.key}`}
+          className={`
+            px-4 py-2 rounded-xl text-sm font-medium transition-all border
+            ${activeStatus === s.key
+              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-transparent'
+              : 'bg-[#2a2a2a] text-gray-300 border-[#3a3a3a] hover:border-amber-500/30 hover:text-white'
+            }
+          `}
+        >
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 // ============================================================================
-// MAIN COMPONENT
+// MAIN PAGE COMPONENT
 // ============================================================================
 
-export default function TrainingSessionsListPage() {
-  const { toasts, removeToast, success, error: showError } = useToast();
-  const router = useRouter();
+interface PageProps {
+  searchParams: { status?: string; sport?: string };
+}
 
-  // State management
-  const [sessions, setSessions] = useState<TrainingSession[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+export default async function TrainingListPage({ searchParams }: PageProps) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    redirect('/auth/signin');
+  }
 
-  // =========================================================================
-  // EFFECTS
-  // =========================================================================
-
-  useEffect(() => {
-    fetchSessions();
-  }, []);
-
-  // =========================================================================
-  // HANDLERS
-  // =========================================================================
-
-  /**
-   * Fetch training sessions from API
-   */
-  const fetchSessions = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/training/sessions');
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch sessions');
-      }
-
-      const data = await response.json();
-      setSessions(data.sessions || []);
-      success('✅ Training sessions loaded');
-    } catch (error) {
-      console.error('Error fetching sessions:', error);
-      showError('❌ Failed to load training sessions');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [success, showError]);
-
-  // =========================================================================
-  // FILTERING & GROUPING
-  // =========================================================================
-
-  /**
-   * Filter sessions based on search and status
-   */
-  const filteredSessions = useMemo(() => {
-    let filtered = sessions;
-
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (session) =>
-          session.team.name.toLowerCase().includes(query) ||
-          session.focus.toLowerCase().includes(query) ||
-          session.location?.toLowerCase().includes(query) ||
-          session.team.club.name.toLowerCase().includes(query)
-      );
-    }
-
-    // Status filter
-    if (statusFilter !== 'ALL') {
-      filtered = filtered.filter((session) => session.status === statusFilter);
-    }
-
-    return filtered;
-  }, [sessions, searchQuery, statusFilter]);
-
-  /**
-   * Group sessions by date
-   */
-  const groupedSessions = useMemo(() => {
-    const grouped: { [key: string]: TrainingSession[] } = {};
-
-    filteredSessions.forEach((session) => {
-      const date = new Date(session.date).toLocaleDateString('en-GB', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      if (!grouped[date]) {
-        grouped[date] = [];
-      }
-      grouped[date].push(session);
-    });
-
-    // Sort dates
-    return Object.keys(grouped)
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
-      .reduce(
-        (result, key) => {
-          result[key] = grouped[key];
-          return result;
-        },
-        {} as { [key: string]: TrainingSession[] }
-      );
-  }, [filteredSessions]);
-
-  const hasFilters = searchQuery !== '' || statusFilter !== 'ALL';
-
-  // =========================================================================
-  // RENDER
-  // =========================================================================
-
-  if (isLoading) {
+  const clubIds = await getUserClubs(session.user.id);
+  
+  if (clubIds.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-neutral-50 via-green-50/10 to-blue-50/10 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800">
-        <ToastContainer toasts={toasts} onRemove={removeToast} />
-        <Loader2 className="w-12 h-12 animate-spin text-green-600 dark:text-green-400 mb-4" />
-        <p className="text-charcoal-600 dark:text-charcoal-400 font-medium">
-          Loading training sessions...
-        </p>
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-white mb-2">No Club Membership</h2>
+          <p className="text-gray-400 mb-4">Join a club to view training sessions.</p>
+          <Link
+            href="/dashboard/clubs"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500
+                       text-white font-semibold rounded-xl"
+          >
+            Browse Clubs
+          </Link>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-green-50/10 to-blue-50/10 dark:from-charcoal-900 dark:via-charcoal-900 dark:to-charcoal-800 p-4 sm:p-6 lg:p-8">
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+  const activeStatus = searchParams.status || 'all';
+  const sessions = await getTrainingSessions(clubIds, {
+    status: activeStatus,
+    sport: searchParams.sport,
+  });
 
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-blue-400 dark:from-green-600 dark:to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
-              <Zap className="w-8 h-8 text-white" />
-            </div>
+  // Group sessions by date
+  const groupedSessions = sessions.reduce((acc, s) => {
+    const dateKey = formatDate(s.startTime);
+    if (!acc[dateKey]) acc[dateKey] = [];
+    acc[dateKey].push(s);
+    return acc;
+  }, {} as Record<string, TrainingSessionData[]>);
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0a]">
+      {/* Header */}
+      <div className="bg-gradient-to-b from-[#1a1a1a] to-[#0a0a0a] border-b border-[#2a2a2a]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-2 text-sm mb-6">
+            <Link href="/dashboard" className="text-gray-400 hover:text-white transition-colors">
+              Dashboard
+            </Link>
+            <span className="text-gray-600">/</span>
+            <span className="text-amber-400">Training</span>
+          </nav>
+
+          {/* Title */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div>
-              <h1 className="text-4xl font-bold text-charcoal-900 dark:text-white">
+              <h1 className="text-2xl lg:text-3xl font-bold text-white mb-2">
                 Training Sessions
               </h1>
-              <p className="text-charcoal-600 dark:text-charcoal-400 mt-1">
-                {filteredSessions.length}{' '}
-                {filteredSessions.length === 1 ? 'session' : 'sessions'}
+              <p className="text-gray-400">
+                Manage and track all your training sessions across clubs
               </p>
             </div>
-          </div>
 
-          <Link href="/dashboard/training/create">
-            <button className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 dark:from-green-700 dark:to-green-800 dark:hover:from-green-800 dark:hover:to-green-900 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all whitespace-nowrap">
-              <Plus className="w-4 h-4" />
+            <Link
+              href="/dashboard/training/create"
+              className="inline-flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-500
+                         text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-amber-500/25
+                         transition-all duration-300 whitespace-nowrap self-start lg:self-auto"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
               Create Session
-            </button>
-          </Link>
+            </Link>
+          </div>
         </div>
+      </div>
 
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Filters */}
-        <div className="bg-white dark:bg-charcoal-800 rounded-lg p-6 shadow-sm border border-neutral-200 dark:border-charcoal-700 space-y-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Filter className="w-5 h-5 text-gold-600 dark:text-gold-400" />
-            <h3 className="text-lg font-semibold text-charcoal-900 dark:text-white">Filters</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-charcoal-400 dark:text-charcoal-500" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search teams, focus, location..."
-                className="w-full pl-10 pr-4 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white placeholder-charcoal-400 dark:placeholder-charcoal-500 focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-600 transition-colors"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-charcoal-400 dark:text-charcoal-500" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-600 transition-colors appearance-none"
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+        <div className="mb-8">
+          <StatusFilter activeStatus={activeStatus} onStatusChange={() => {}} />
         </div>
 
-        {/* Sessions List */}
-        {Object.keys(groupedSessions).length === 0 ? (
-          <EmptyState hasFilters={hasFilters} />
-        ) : (
-          <div className="space-y-8">
-            {Object.entries(groupedSessions).map(([date, daySessions]) => (
-              <div key={date} className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Calendar className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  <h2 className="text-xl font-bold text-charcoal-900 dark:text-white">
+        {/* Sessions */}
+        <Suspense fallback={<LoadingSkeleton />}>
+          {sessions.length > 0 ? (
+            <div className="space-y-8">
+              {Object.entries(groupedSessions).map(([date, dateSessions]) => (
+                <div key={date}>
+                  <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
                     {date}
+                    <span className="text-sm text-gray-500 font-normal">
+                      ({dateSessions.length} session{dateSessions.length !== 1 ? 's' : ''})
+                    </span>
                   </h2>
-                  <span className="text-sm font-medium text-charcoal-600 dark:text-charcoal-400 bg-neutral-100 dark:bg-charcoal-700 px-3 py-1 rounded-full">
-                    {daySessions.length} session{daySessions.length !== 1 ? 's' : ''}
-                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {dateSessions.map((s) => (
+                      <TrainingCard key={s.id} session={s} />
+                    ))}
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {daySessions.map((session) => (
-                    <SessionCard key={session.id} session={session} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          ) : (
+            <EmptyState />
+          )}
+        </Suspense>
       </div>
     </div>
   );
 }
 
-TrainingSessionsListPage.displayName = 'TrainingSessionsListPage';
+// ============================================================================
+// METADATA
+// ============================================================================
+
+export const metadata = {
+  title: 'Training Sessions | PitchConnect',
+  description: 'View and manage all your training sessions',
+};

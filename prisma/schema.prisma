@@ -1,5 +1,5 @@
 // ============================================================================
-// 🏆 PITCHCONNECT DATABASE SCHEMA v7.6.0 - ENTERPRISE EDITION
+// 🏆 PITCHCONNECT DATABASE SCHEMA v7.7.0 - ENTERPRISE EDITION
 // ============================================================================
 // 
 // Version History:
@@ -10,27 +10,37 @@
 // - v7.4.0: Competition System, Match Enhancements, Multi-Sport
 // - v7.5.0: Social Accounts, Fitness Assessments, Parent-Child Relations
 // - v7.6.0: AI Predictions, Enhanced Referee/Scout, Watchlists, Analytics
+// - v7.7.0: Training Drill Library, Budget & Expense System, Enhanced Stats
 //
 // ============================================================================
-// NEW IN v7.6.0:
+// NEW IN v7.7.0:
 // ============================================================================
 //
-// 🤖 AI PREDICTION SYSTEM:
-//   - Prediction model for AI-powered insights
-//   - PredictionFeedback model for accuracy tracking
-//   - 18 PredictionTypes (PERFORMANCE, INJURY_RISK, MARKET_VALUE, etc.)
-//   - Confidence scoring and impact levels
+// 🎯 TRAINING DRILL LIBRARY SYSTEM:
+//   - TrainingDrill model for reusable drills
+//   - TrainingSessionDrill model for session-drill linking
+//   - DrillCategory enum (50+ sport-specific categories)
+//   - DrillIntensity & DrillDifficulty enums
+//   - Full multi-sport drill categorization
 //
-// ⚫ ENHANCED REFEREE SYSTEM:
-//   - RefereeAvailability model for calendar support
-//   - RefereeQualification model for certifications
-//   - RefereePayment model for fee tracking
-//   - RefereeMatchReport model for post-match reports
+// 💰 BUDGET & EXPENSE MANAGEMENT:
+//   - Budget model for club/team/season budgets
+//   - BudgetCategory model for budget line items
+//   - Expense model for tracking actual expenses
+//   - ExpenseCategory enum (30+ categories)
+//   - BudgetStatus, ExpenseStatus, BudgetPeriodType enums
+//   - Approval workflow for expenses
 //
-// 🔍 ENHANCED SCOUT SYSTEM:
-//   - ScoutWatchlist model for tracking prospects
-//   - ScoutMatchAttendance model for match logging
-//   - WatchlistStatus & WatchlistPriority enums
+// 📊 ENHANCED SPORT-SPECIFIC STATISTICS:
+//   - Documented JSON structures for sportSpecificStats
+//   - Type-safe stat tracking for all 12 sports
+//   - Enhanced PlayerStatistic model documentation
+//
+// 🔐 NEW PERMISSIONS & AUDIT:
+//   - Budget management permissions
+//   - Expense approval permissions
+//   - Drill management permissions
+//   - Enhanced audit trail for financial actions
 //
 // ============================================================================
 
@@ -123,7 +133,7 @@ enum VerificationType {
 }
 
 // ============================================================================
-// 📋 ENUMS - AI PREDICTIONS (NEW v7.6.0)
+// 📋 ENUMS - AI PREDICTIONS (v7.6.0)
 // ============================================================================
 
 enum PredictionType {
@@ -166,7 +176,7 @@ enum PredictionImpact {
 }
 
 // ============================================================================
-// 📋 ENUMS - SCOUT WATCHLIST (NEW v7.6.0)
+// 📋 ENUMS - SCOUT WATCHLIST (v7.6.0)
 // ============================================================================
 
 enum WatchlistStatus {
@@ -189,7 +199,7 @@ enum WatchlistPriority {
 }
 
 // ============================================================================
-// 📋 ENUMS - REFEREE (ENHANCED v7.6.0)
+// 📋 ENUMS - REFEREE (v7.6.0)
 // ============================================================================
 
 enum RefereeLevel {
@@ -210,24 +220,272 @@ enum RefereeAvailabilityStatus {
   BLOCKED
 }
 
+// ============================================================================
+// 📋 ENUMS - TRAINING DRILL SYSTEM (NEW v7.7.0)
+// ============================================================================
+
+enum DrillCategory {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Universal Categories (All Sports)
+  // ═══════════════════════════════════════════════════════════════════════════
+  WARM_UP
+  COOL_DOWN
+  CONDITIONING
+  STRENGTH_POWER
+  SPEED_AGILITY
+  FLEXIBILITY_MOBILITY
+  RECOVERY
+  MENTAL_PREPARATION
+  VIDEO_ANALYSIS
+  TEAM_MEETING
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Technical - Ball Sports (Football, Futsal, Beach Football)
+  // ═══════════════════════════════════════════════════════════════════════════
+  PASSING
+  SHOOTING
+  DRIBBLING
+  FIRST_TOUCH
+  CROSSING
+  HEADING
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Tactical Categories (Multi-Sport)
+  // ═══════════════════════════════════════════════════════════════════════════
+  DEFENSIVE_SHAPE
+  ATTACKING_PATTERNS
+  SET_PIECES
+  TRANSITIONS
+  PRESSING
+  BUILD_UP_PLAY
+  COUNTER_ATTACK
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Position-Specific Training
+  // ═══════════════════════════════════════════════════════════════════════════
+  GOALKEEPER_TRAINING
+  DEFENDER_TRAINING
+  MIDFIELDER_TRAINING
+  FORWARD_TRAINING
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Team Training
+  // ═══════════════════════════════════════════════════════════════════════════
+  SMALL_SIDED_GAMES
+  MATCH_SIMULATION
+  TEAM_TACTICS
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Rugby-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
+  SCRUMMAGING
+  LINEOUT
+  RUCKING
+  MAULING
+  TACKLING_TECHNIQUE
+  BREAKDOWN
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Basketball-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
+  FREE_THROWS
+  THREE_POINT_SHOOTING
+  POST_MOVES
+  PICK_AND_ROLL
+  FAST_BREAK
+  ZONE_DEFENSE
+  MAN_TO_MAN
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Cricket-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
+  BATTING_TECHNIQUE
+  BOWLING_TECHNIQUE
+  FIELDING_DRILLS
+  CATCHING
+  WICKET_KEEPING
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // American Football-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
+  BLOCKING
+  ROUTE_RUNNING
+  COVERAGE
+  SPECIAL_TEAMS
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Netball-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
+  FOOTWORK
+  INTERCEPTIONS
+  COURT_MOVEMENT
+  CIRCLE_WORK
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Hockey-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
+  STICK_HANDLING
+  SLAP_SHOT
+  POWER_PLAY
+  PENALTY_KILL
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Other Categories
+  // ═══════════════════════════════════════════════════════════════════════════
+  REHABILITATION
+  INDIVIDUAL_SKILL
+  FUN_GAMES
+  OTHER
+}
+
+enum DrillIntensity {
+  RECOVERY
+  LOW
+  MEDIUM
+  HIGH
+  MAXIMUM
+  VARIABLE
+}
+
+enum DrillDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  ELITE
+}
 
 // ============================================================================
-// 📋 ENUMS - PERMISSIONS (ENHANCED v7.6.0)
+// 📋 ENUMS - BUDGET & EXPENSE SYSTEM (NEW v7.7.0)
+// ============================================================================
+
+enum BudgetStatus {
+  DRAFT
+  ACTIVE
+  FROZEN
+  CLOSED
+  ARCHIVED
+}
+
+enum BudgetPeriodType {
+  SEASON
+  CALENDAR_YEAR
+  FISCAL_YEAR
+  QUARTERLY
+  MONTHLY
+  CUSTOM
+}
+
+enum ExpenseCategory {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Equipment & Gear
+  // ═══════════════════════════════════════════════════════════════════════════
+  EQUIPMENT_PURCHASE
+  EQUIPMENT_MAINTENANCE
+  EQUIPMENT_RENTAL
+  UNIFORMS_KITS
+  TRAINING_GEAR
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Facilities
+  // ═══════════════════════════════════════════════════════════════════════════
+  FACILITY_RENTAL
+  FACILITY_MAINTENANCE
+  PITCH_HIRE
+  GYM_MEMBERSHIP
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Travel & Accommodation
+  // ═══════════════════════════════════════════════════════════════════════════
+  TRAVEL_TRANSPORT
+  TRAVEL_FUEL
+  ACCOMMODATION
+  MEALS_CATERING
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Staff & Personnel
+  // ═══════════════════════════════════════════════════════════════════════════
+  COACHING_FEES
+  REFEREE_FEES
+  MEDICAL_STAFF
+  ADMINISTRATIVE_STAFF
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Medical & Welfare
+  // ═══════════════════════════════════════════════════════════════════════════
+  MEDICAL_SUPPLIES
+  PHYSIOTHERAPY
+  INSURANCE_PREMIUMS
+  PLAYER_WELFARE
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Competition & Registration
+  // ═══════════════════════════════════════════════════════════════════════════
+  LEAGUE_FEES
+  COMPETITION_ENTRY
+  REGISTRATION_FEES
+  FINES_PENALTIES
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Marketing & Admin
+  // ═══════════════════════════════════════════════════════════════════════════
+  MARKETING_PROMOTION
+  WEBSITE_HOSTING
+  SOFTWARE_SUBSCRIPTIONS
+  PRINTING_STATIONERY
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Events
+  // ═══════════════════════════════════════════════════════════════════════════
+  EVENTS_SOCIALS
+  AWARDS_TROPHIES
+  END_OF_SEASON
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Other
+  // ═══════════════════════════════════════════════════════════════════════════
+  MISCELLANEOUS
+  CONTINGENCY
+  OTHER
+}
+
+enum ExpenseStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PAID
+  REIMBURSED
+  CANCELLED
+}
+
+// ============================================================================
+// 📋 ENUMS - PERMISSIONS (ENHANCED v7.7.0)
 // ============================================================================
 
 enum PermissionType {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User Management
+  // ═══════════════════════════════════════════════════════════════════════════
   USER_CREATE
   USER_READ
   USER_UPDATE
   USER_DELETE
   USER_SUSPEND
   USER_BAN
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Team Management
+  // ═══════════════════════════════════════════════════════════════════════════
   TEAM_CREATE
   TEAM_READ
   TEAM_UPDATE
   TEAM_DELETE
   TEAM_INVITE
   TEAM_REMOVE_MEMBER
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Match Management
+  // ═══════════════════════════════════════════════════════════════════════════
   MATCH_CREATE
   MATCH_READ
   MATCH_UPDATE
@@ -237,49 +495,118 @@ enum PermissionType {
   MATCH_RECORD_STATS
   MATCH_MANAGE_LINEUP
   MATCH_RECORD_EVENTS
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Competition Management
+  // ═══════════════════════════════════════════════════════════════════════════
   COMPETITION_CREATE
   COMPETITION_READ
   COMPETITION_UPDATE
   COMPETITION_DELETE
   COMPETITION_MANAGE_TEAMS
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Player Management
+  // ═══════════════════════════════════════════════════════════════════════════
   PLAYER_CREATE
   PLAYER_READ
   PLAYER_UPDATE
   PLAYER_DELETE
   PLAYER_VERIFY
   PLAYER_TRANSFER
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Medical & Health
+  // ═══════════════════════════════════════════════════════════════════════════
   MEDICAL_READ
   MEDICAL_CREATE
   MEDICAL_UPDATE
   MEDICAL_READ_FULL
   MEDICAL_READ_AVAILABILITY
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Financial - ENHANCED v7.7.0
+  // ═══════════════════════════════════════════════════════════════════════════
   BILLING_READ
   BILLING_UPDATE
   BILLING_MANAGE_SUBSCRIPTIONS
+  BUDGET_VIEW
+  BUDGET_CREATE
+  BUDGET_UPDATE
+  BUDGET_DELETE
+  EXPENSE_VIEW
+  EXPENSE_CREATE
+  EXPENSE_APPROVE
+  EXPENSE_DELETE
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Analytics & Predictions
+  // ═══════════════════════════════════════════════════════════════════════════
   ANALYTICS_VIEW
   ANALYTICS_EXPORT
   PREDICTIONS_VIEW
   PREDICTIONS_CREATE
   PREDICTIONS_MANAGE
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Scouting
+  // ═══════════════════════════════════════════════════════════════════════════
   SCOUTING_VIEW
   SCOUTING_CREATE_REPORT
   SCOUTING_MANAGE_WATCHLIST
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Referee
+  // ═══════════════════════════════════════════════════════════════════════════
   REFEREE_VIEW_ASSIGNMENTS
   REFEREE_MANAGE_AVAILABILITY
   REFEREE_SUBMIT_REPORTS
   REFEREE_VIEW_FEES
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Training - ENHANCED v7.7.0
+  // ═══════════════════════════════════════════════════════════════════════════
+  TRAINING_VIEW
+  TRAINING_CREATE
+  TRAINING_UPDATE
+  TRAINING_DELETE
+  TRAINING_MANAGE_DRILLS
+  DRILL_CREATE
+  DRILL_UPDATE
+  DRILL_DELETE
+  DRILL_MANAGE_LIBRARY
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // API & System
+  // ═══════════════════════════════════════════════════════════════════════════
   API_ACCESS
   API_KEY_CREATE
   API_KEY_REVOKE
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Facilities & Venues
+  // ═══════════════════════════════════════════════════════════════════════════
   FACILITY_MANAGE
   FACILITY_BOOK
   VENUE_CREATE
   VENUE_UPDATE
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Admin & Audit
+  // ═══════════════════════════════════════════════════════════════════════════
   SYSTEM_ADMIN
   AUDIT_LOG_VIEW
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Media
+  // ═══════════════════════════════════════════════════════════════════════════
   MEDIA_UPLOAD
   MEDIA_DELETE
   MEDIA_MANAGE
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Social
+  // ═══════════════════════════════════════════════════════════════════════════
   SOCIAL_CONNECT
   SOCIAL_POST
   SOCIAL_MANAGE
@@ -294,6 +621,9 @@ enum DataRetentionPolicy {
 }
 
 enum AuditActionType {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User Actions
+  // ═══════════════════════════════════════════════════════════════════════════
   USER_CREATED
   USER_UPDATED
   USER_DELETED
@@ -307,6 +637,10 @@ enum AuditActionType {
   USER_LOGOUT
   LOGIN_FAILED
   LOGIN_LOCKED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Verification & Security
+  // ═══════════════════════════════════════════════════════════════════════════
   EMAIL_VERIFIED
   PHONE_VERIFIED
   PASSWORD_CHANGED
@@ -321,6 +655,10 @@ enum AuditActionType {
   SESSION_EXPIRED
   VERIFICATION_EMAIL_SENT
   VERIFICATION_EMAIL_RESENT
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Subscription & Payment
+  // ═══════════════════════════════════════════════════════════════════════════
   SUBSCRIPTION_GRANTED
   SUBSCRIPTION_UPGRADED
   SUBSCRIPTION_DOWNGRADED
@@ -328,15 +666,27 @@ enum AuditActionType {
   PAYMENT_PROCESSED
   PAYMENT_FAILED
   REFUND_PROCESSED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Data Management
+  // ═══════════════════════════════════════════════════════════════════════════
   DATA_EXPORTED
   DATA_DELETED
   DATA_IMPORTED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Organisation & Club
+  // ═══════════════════════════════════════════════════════════════════════════
   TEAM_CREATED
   TEAM_UPDATED
   TEAM_DELETED
   CLUB_CREATED
   CLUB_UPDATED
   CLUB_DELETED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Match & Competition
+  // ═══════════════════════════════════════════════════════════════════════════
   MATCH_CREATED
   MATCH_UPDATED
   MATCH_RESULT_UPDATED
@@ -349,6 +699,10 @@ enum AuditActionType {
   COMPETITION_DELETED
   COMPETITION_TEAM_ADDED
   COMPETITION_TEAM_REMOVED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Player & Medical
+  // ═══════════════════════════════════════════════════════════════════════════
   PLAYER_TRANSFER
   PLAYER_CONTRACT_SIGNED
   PLAYER_PERFORMANCE_RECORDED
@@ -357,6 +711,10 @@ enum AuditActionType {
   FITNESS_ASSESSMENT_CREATED
   FITNESS_ASSESSMENT_UPDATED
   PLAYER_CLEARED_TO_PLAY
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Join Requests & Jobs
+  // ═══════════════════════════════════════════════════════════════════════════
   JOIN_REQUEST_SUBMITTED
   JOIN_REQUEST_APPROVED
   JOIN_REQUEST_REJECTED
@@ -367,26 +725,73 @@ enum AuditActionType {
   JOB_APPLICATION_REVIEWED
   JOB_APPLICATION_ACCEPTED
   JOB_APPLICATION_REJECTED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Training & Drills - ENHANCED v7.7.0
+  // ═══════════════════════════════════════════════════════════════════════════
   TRAINING_CREATED
   TRAINING_UPDATED
   TRAINING_CANCELLED
+  DRILL_CREATED
+  DRILL_UPDATED
+  DRILL_DELETED
+  DRILL_ADDED_TO_SESSION
+  DRILL_REMOVED_FROM_SESSION
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Media & Social
+  // ═══════════════════════════════════════════════════════════════════════════
   MEDIA_UPLOADED
   MEDIA_DELETED
   MEDIA_SHARED
   SOCIAL_ACCOUNT_CONNECTED
   SOCIAL_ACCOUNT_DISCONNECTED
   SOCIAL_POST_PUBLISHED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AI Predictions
+  // ═══════════════════════════════════════════════════════════════════════════
   PREDICTION_CREATED
   PREDICTION_VERIFIED
   PREDICTION_FEEDBACK_SUBMITTED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Scouting
+  // ═══════════════════════════════════════════════════════════════════════════
   SCOUTING_REPORT_CREATED
   WATCHLIST_PLAYER_ADDED
   WATCHLIST_PLAYER_UPDATED
   WATCHLIST_PLAYER_REMOVED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Referee
+  // ═══════════════════════════════════════════════════════════════════════════
   REFEREE_ASSIGNED
   REFEREE_AVAILABILITY_UPDATED
   REFEREE_REPORT_SUBMITTED
   REFEREE_PAYMENT_PROCESSED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Budget & Expense - NEW v7.7.0
+  // ═══════════════════════════════════════════════════════════════════════════
+  BUDGET_CREATED
+  BUDGET_UPDATED
+  BUDGET_DELETED
+  BUDGET_STATUS_CHANGED
+  BUDGET_CATEGORY_ADDED
+  BUDGET_CATEGORY_UPDATED
+  EXPENSE_CREATED
+  EXPENSE_UPDATED
+  EXPENSE_DELETED
+  EXPENSE_SUBMITTED
+  EXPENSE_APPROVED
+  EXPENSE_REJECTED
+  EXPENSE_PAID
+  EXPENSE_REIMBURSED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GDPR & Security
+  // ═══════════════════════════════════════════════════════════════════════════
   CONSENT_UPDATED
   GDPR_REQUEST
   DATA_RETENTION_APPLIED
@@ -417,6 +822,9 @@ enum Sport {
 }
 
 enum Position {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Football / Soccer / Futsal / Beach Football
+  // ═══════════════════════════════════════════════════════════════════════════
   GOALKEEPER
   LEFT_BACK
   CENTER_BACK
@@ -433,6 +841,10 @@ enum Position {
   STRIKER
   CENTER_FORWARD
   SECOND_STRIKER
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Netball
+  // ═══════════════════════════════════════════════════════════════════════════
   GOALKEEPER_NETBALL
   GOAL_ATTACK
   WING_ATTACK
@@ -440,6 +852,10 @@ enum Position {
   WING_DEFENSE
   GOAL_DEFENSE
   GOAL_SHOOTER
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Rugby Union
+  // ═══════════════════════════════════════════════════════════════════════════
   PROP
   HOOKER
   LOCK
@@ -450,10 +866,18 @@ enum Position {
   INSIDE_CENTER
   OUTSIDE_CENTER
   FULLBACK
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Rugby League (additional)
+  // ═══════════════════════════════════════════════════════════════════════════
   HOOKER_LEAGUE
   PROP_LEAGUE
   SECOND_ROW
   LOOSE_FORWARD
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // American Football
+  // ═══════════════════════════════════════════════════════════════════════════
   QUARTERBACK
   RUNNING_BACK
   WIDE_RECEIVER
@@ -470,20 +894,47 @@ enum Position {
   CORNERBACK
   PUNTER
   KICKER
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Basketball
+  // ═══════════════════════════════════════════════════════════════════════════
   POINT_GUARD
   SHOOTING_GUARD
   SMALL_FORWARD
   POWER_FORWARD
   CENTER_BASKETBALL
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Cricket
+  // ═══════════════════════════════════════════════════════════════════════════
   BATSMAN
   BOWLER
   ALL_ROUNDER
   FIELDER
   WICKET_KEEPER
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Hockey / Lacrosse
+  // ═══════════════════════════════════════════════════════════════════════════
   GOALTENDER
   DEFENSEMAN
   WINGER
   CENTER_HOCKEY
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Australian Rules Football (AFL)
+  // ═══════════════════════════════════════════════════════════════════════════
+  FULL_FORWARD
+  HALF_FORWARD
+  FULL_BACK_AFL
+  HALF_BACK_AFL
+  RUCK
+  RUCK_ROVER
+  ROVER
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // General
+  // ═══════════════════════════════════════════════════════════════════════════
   UTILITY
   SUBSTITUTE
 }
@@ -495,6 +946,9 @@ enum PreferredFoot {
 }
 
 enum FormationType {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Football / Soccer
+  // ═══════════════════════════════════════════════════════════════════════════
   FOUR_FOUR_TWO
   FOUR_THREE_THREE
   THREE_FIVE_TWO
@@ -510,11 +964,19 @@ enum FormationType {
   FOUR_FOUR_ONE_ONE
   FOUR_THREE_TWO_ONE
   FOUR_FIVE_ONE
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Futsal / Small-Sided
+  // ═══════════════════════════════════════════════════════════════════════════
   ONE_THREE_ONE
   TWO_THREE
   TWO_ONE_TWO
   THREE_TWO
   ONE_TWO_TWO
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // American Football
+  // ═══════════════════════════════════════════════════════════════════════════
   I_FORMATION
   SHOTGUN
   PISTOL
@@ -522,12 +984,19 @@ enum FormationType {
   SINGLE_BACK
   PRO_SET
   WILDCAT
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Netball
+  // ═══════════════════════════════════════════════════════════════════════════
   PODS
   DIAMOND
   FLAT_LINE
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Custom
+  // ═══════════════════════════════════════════════════════════════════════════
   CUSTOM
 }
-
 
 // ============================================================================
 // 📋 ENUMS - MATCH & COMPETITION
@@ -646,6 +1115,9 @@ enum MatchAttendanceStatus {
 }
 
 enum MatchEventType {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Universal Events
+  // ═══════════════════════════════════════════════════════════════════════════
   GOAL
   ASSIST
   YELLOW_CARD
@@ -681,12 +1153,20 @@ enum MatchEventType {
   PERIOD_END
   OVERTIME_START
   SHOOTOUT_START
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Netball-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
   CENTER_PASS
   OBSTRUCTION
   CONTACT
   HELD_BALL
   STEPPING
   OVER_THIRD
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Rugby-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
   TRY
   CONVERSION
   PENALTY_GOAL
@@ -700,6 +1180,10 @@ enum MatchEventType {
   SIN_BIN
   YELLOW_CARD_RUGBY
   RED_CARD_RUGBY
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Cricket-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
   WICKET
   BOUNDARY
   SIX
@@ -714,6 +1198,10 @@ enum MatchEventType {
   BOWLED
   LBW
   STUMPED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Basketball-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
   THREE_POINTER
   TWO_POINTER
   FREE_THROW_MADE
@@ -728,6 +1216,10 @@ enum MatchEventType {
   STEAL
   DUNK
   ALLEY_OOP
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // American Football-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
   TOUCHDOWN
   FIELD_GOAL
   SAFETY_SCORE
@@ -739,6 +1231,10 @@ enum MatchEventType {
   PUNT
   KICKOFF_RETURN
   FAIR_CATCH
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Hockey-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
   HAT_TRICK
   MAJOR_PENALTY
   MINOR_PENALTY
@@ -746,6 +1242,10 @@ enum MatchEventType {
   POWER_PLAY_GOAL
   SHORTHANDED_GOAL
   EMPTY_NET_GOAL
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Australian Rules-Specific
+  // ═══════════════════════════════════════════════════════════════════════════
   BEHIND
   RUSHED_BEHIND
   MARK
@@ -1161,6 +1661,13 @@ enum PaymentType {
   SPONSORSHIP
   REFEREE_FEE
   REFEREE_EXPENSES
+  // NEW v7.7.0
+  MEMBERSHIP_FEE
+  PLAYER_FEE
+  CLUB_FEE
+  LEAGUE_FEE
+  EXPENSE_REIMBURSEMENT
+  BUDGET_ALLOCATION
   OTHER
 }
 
@@ -1225,37 +1732,92 @@ enum InvitationStatus {
 }
 
 enum WebhookEvent {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Match Events
+  // ═══════════════════════════════════════════════════════════════════════════
   MATCH_CREATED
   MATCH_STARTED
   MATCH_FINISHED
   MATCH_CANCELLED
   MATCH_LINEUP_SET
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Player Events
+  // ═══════════════════════════════════════════════════════════════════════════
   PLAYER_ADDED
   PLAYER_UPDATED
   PLAYER_INJURED
   PLAYER_TRANSFERRED
   PLAYER_CLEARED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Team & Competition
+  // ═══════════════════════════════════════════════════════════════════════════
   TEAM_UPDATED
   TEAM_CREATED
   COMPETITION_CREATED
   COMPETITION_STARTED
   COMPETITION_FINISHED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Billing
+  // ═══════════════════════════════════════════════════════════════════════════
   SUBSCRIPTION_UPDATED
   PAYMENT_RECEIVED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // User
+  // ═══════════════════════════════════════════════════════════════════════════
   USER_CREATED
   USER_DELETED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Fitness & Medical
+  // ═══════════════════════════════════════════════════════════════════════════
   FITNESS_ASSESSMENT_COMPLETED
   PLAYER_RTP_CLEARED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Predictions
+  // ═══════════════════════════════════════════════════════════════════════════
   PREDICTION_CREATED
   PREDICTION_VERIFIED
   HIGH_RISK_PREDICTION
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Scouting
+  // ═══════════════════════════════════════════════════════════════════════════
   SCOUTING_REPORT_SUBMITTED
   WATCHLIST_ALERT
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Referee
+  // ═══════════════════════════════════════════════════════════════════════════
   REFEREE_ASSIGNED
   REFEREE_REPORT_SUBMITTED
-  RESULT_APPROVED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Training & Drills - NEW v7.7.0
+  // ═══════════════════════════════════════════════════════════════════════════
   TRAINING_SCHEDULED
   TRAINING_COMPLETED
+  DRILL_CREATED
+  DRILL_LIBRARY_UPDATED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Budget & Expense - NEW v7.7.0
+  // ═══════════════════════════════════════════════════════════════════════════
+  BUDGET_CREATED
+  BUDGET_ALERT
+  BUDGET_THRESHOLD_REACHED
+  EXPENSE_SUBMITTED
+  EXPENSE_APPROVED
+  EXPENSE_REJECTED
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Other
+  // ═══════════════════════════════════════════════════════════════════════════
+  RESULT_APPROVED
   ANNOUNCEMENT_POSTED
   JOB_POSTED
   JOB_APPLICATION_RECEIVED
@@ -1264,9 +1826,8 @@ enum WebhookEvent {
   MEDIA_PROCESSED
 }
 
-
 // ============================================================================
-// 🤖 AI PREDICTION SYSTEM (NEW v7.6.0)
+// 🤖 AI PREDICTION SYSTEM (v7.6.0)
 // ============================================================================
 
 model Prediction {
@@ -1373,7 +1934,7 @@ model PredictionFeedback {
 }
 
 // ============================================================================
-// 🔍 SCOUT WATCHLIST & ATTENDANCE (NEW v7.6.0)
+// 🔍 SCOUT WATCHLIST & ATTENDANCE (v7.6.0)
 // ============================================================================
 
 model ScoutWatchlist {
@@ -1466,7 +2027,7 @@ model ScoutMatchAttendance {
 }
 
 // ============================================================================
-// ⚫ REFEREE SUPPORT MODELS (NEW v7.6.0)
+// ⚫ REFEREE SUPPORT MODELS (v7.6.0)
 // ============================================================================
 
 model RefereeAvailability {
@@ -1608,6 +2169,266 @@ model RefereeMatchReport {
   @@map("referee_match_reports")
 }
 
+// ============================================================================
+// 🎯 TRAINING DRILL LIBRARY (NEW v7.7.0)
+// ============================================================================
+
+model TrainingDrill {
+  id     String  @id @default(cuid())
+  clubId String?
+
+  name        String
+  description String? @db.Text
+
+  category   DrillCategory
+  intensity  DrillIntensity  @default(MEDIUM)
+  difficulty DrillDifficulty @default(INTERMEDIATE)
+
+  sport Sport?
+
+  defaultDuration Int @default(15)
+  minPlayers      Int?
+  maxPlayers      Int?
+
+  equipment   String[] @default([])
+  objectives  String[] @default([])
+  keyPoints   String[] @default([])
+  variations  String[] @default([])
+  progressions String[] @default([])
+
+  instructions String? @db.Text
+  coachingTips String? @db.Text
+  commonErrors String? @db.Text
+
+  diagramUrl   String?
+  videoUrl     String?
+  thumbnailUrl String?
+
+  ageGroups String[] @default([])
+  positions Position[] @default([])
+
+  tags String[] @default([])
+
+  isPublic    Boolean @default(false)
+  isFavorite  Boolean @default(false)
+  isArchived  Boolean @default(false)
+
+  usageCount    Int   @default(0)
+  averageRating Float?
+  totalRatings  Int   @default(0)
+
+  createdBy String?
+
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club          Club?                  @relation("clubDrills", fields: [clubId], references: [id], onDelete: SetNull)
+  creator       User?                  @relation("drillsCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  sessionDrills TrainingSessionDrill[]
+
+  @@index([clubId])
+  @@index([category])
+  @@index([intensity])
+  @@index([difficulty])
+  @@index([sport])
+  @@index([isPublic])
+  @@index([isArchived])
+  @@index([createdBy])
+  @@index([deletedAt])
+  @@map("training_drills")
+}
+
+model TrainingSessionDrill {
+  id        String @id @default(cuid())
+  sessionId String
+  drillId   String
+
+  order    Int @default(0)
+  duration Int
+
+  notes         String? @db.Text
+  modifications String? @db.Text
+
+  intensity DrillIntensity?
+
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+
+  rating       Float?
+  coachNotes   String? @db.Text
+  playerNotes  String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  drill   TrainingDrill   @relation(fields: [drillId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, drillId, order])
+  @@index([sessionId])
+  @@index([drillId])
+  @@index([order])
+  @@map("training_session_drills")
+}
+
+// ============================================================================
+// 💰 BUDGET & EXPENSE SYSTEM (NEW v7.7.0)
+// ============================================================================
+
+model Budget {
+  id             String  @id @default(cuid())
+  organisationId String?
+  clubId         String?
+  teamId         String?
+  seasonId       String?
+
+  name        String
+  description String? @db.Text
+
+  periodType BudgetPeriodType @default(SEASON)
+  startDate  DateTime
+  endDate    DateTime
+
+  totalBudget Float
+  currency    String @default("GBP")
+
+  status BudgetStatus @default(DRAFT)
+
+  approvedBy   String?
+  approvedAt   DateTime?
+  approvalNote String?
+
+  alertThreshold Float? @default(80)
+  alertSent      Boolean @default(false)
+  alertSentAt    DateTime?
+
+  notes String? @db.Text
+
+  createdBy String
+
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation?    @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  club         Club?            @relation("clubBudgets", fields: [clubId], references: [id], onDelete: SetNull)
+  team         Team?            @relation("teamBudgets", fields: [teamId], references: [id], onDelete: SetNull)
+  season       Season?          @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  creator      User             @relation("budgetsCreated", fields: [createdBy], references: [id])
+  categories   BudgetCategory[]
+  expenses     Expense[]
+
+  @@index([organisationId])
+  @@index([clubId])
+  @@index([teamId])
+  @@index([seasonId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([createdBy])
+  @@index([deletedAt])
+  @@map("budgets")
+}
+
+model BudgetCategory {
+  id       String @id @default(cuid())
+  budgetId String
+
+  name     String
+  category ExpenseCategory
+
+  allocatedAmount Float
+  spentAmount     Float @default(0)
+
+  alertThreshold Float? @default(90)
+  alertSent      Boolean @default(false)
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  budget   Budget    @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@unique([budgetId, category])
+  @@index([budgetId])
+  @@index([category])
+  @@map("budget_categories")
+}
+
+model Expense {
+  id       String  @id @default(cuid())
+  budgetId String?
+  categoryId String?
+  clubId   String?
+  teamId   String?
+
+  description String
+  amount      Float
+  currency    String @default("GBP")
+
+  category ExpenseCategory
+  status   ExpenseStatus   @default(DRAFT)
+
+  expenseDate DateTime
+  dueDate     DateTime?
+  paidDate    DateTime?
+
+  vendor        String?
+  invoiceNumber String?
+  invoiceUrl    String?
+  receiptUrls   String[] @default([])
+
+  paymentMethod String?
+  paymentRef    String?
+
+  isReimbursement     Boolean @default(false)
+  reimburseTo         String?
+  reimbursementStatus String?
+  reimbursedAt        DateTime?
+
+  submittedBy String
+  submittedAt DateTime?
+
+  approvedBy     String?
+  approvedAt     DateTime?
+  approvalNotes  String?
+  rejectedBy     String?
+  rejectedAt     DateTime?
+  rejectionNotes String?
+
+  notes    String? @db.Text
+  tags     String[] @default([])
+  metadata Json?
+
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  budget         Budget?         @relation(fields: [budgetId], references: [id], onDelete: SetNull)
+  budgetCategory BudgetCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  club           Club?           @relation("clubExpenses", fields: [clubId], references: [id], onDelete: SetNull)
+  team           Team?           @relation("teamExpenses", fields: [teamId], references: [id], onDelete: SetNull)
+  submitter      User            @relation("expensesCreated", fields: [submittedBy], references: [id])
+  approver       User?           @relation("expensesApproved", fields: [approvedBy], references: [id])
+
+  @@index([budgetId])
+  @@index([categoryId])
+  @@index([clubId])
+  @@index([teamId])
+  @@index([category])
+  @@index([status])
+  @@index([expenseDate])
+  @@index([submittedBy])
+  @@index([approvedBy])
+  @@index([deletedAt])
+  @@map("expenses")
+}
 
 // ============================================================================
 // 🏢 ORGANISATION MODELS
@@ -1689,6 +2510,7 @@ model Organisation {
   mediaAssets          MediaAsset[]
   mediaContent         MediaContent[]
   competitions         Competition[]
+  budgets              Budget[]
 
   @@index([slug])
   @@index([ownerId])
@@ -1778,6 +2600,7 @@ model Season {
   organisation Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   competitions Competition[]
   transfers    Transfer[]
+  budgets      Budget[]
 
   @@unique([organisationId, name])
   @@index([organisationId])
@@ -1908,6 +2731,10 @@ model User {
   matchesCreated            Match[]                 @relation("matchCreator")
   competitionsCreated       Competition[]           @relation("competitionCreator")
   fitnessAssessmentsCreated FitnessAssessment[]     @relation("fitnessAssessor")
+  drillsCreated             TrainingDrill[]         @relation("drillsCreated")
+  budgetsCreated            Budget[]                @relation("budgetsCreated")
+  expensesCreated           Expense[]               @relation("expensesCreated")
+  expensesApproved          Expense[]               @relation("expensesApproved")
 
   @@index([email])
   @@index([phone])
@@ -2114,7 +2941,6 @@ model ResourcePermission {
   @@map("resource_permissions")
 }
 
-
 // ============================================================================
 // 📋 AUDIT & DATA GOVERNANCE
 // ============================================================================
@@ -2263,7 +3089,7 @@ model DataDeletionRequest {
 }
 
 // ============================================================================
-// 🏃 PLAYER MODEL (ENHANCED v7.6.0 - Added scoutWatchlists)
+// 🏃 PLAYER MODEL (ENHANCED v7.7.0)
 // ============================================================================
 
 model Player {
@@ -2347,6 +3173,45 @@ model Player {
   @@map("players")
 }
 
+// ============================================================================
+// PLAYER STATISTICS (ENHANCED v7.7.0 - Sport-Specific Stats Documentation)
+// ============================================================================
+// 
+// The sportSpecificStats field stores JSON data structured per sport:
+//
+// FOOTBALL/FUTSAL/BEACH_FOOTBALL:
+// { "expectedGoals": 0.0, "expectedAssists": 0.0, "pressures": 0, "progressiveCarries": 0 }
+//
+// RUGBY:
+// { "tries": 0, "conversions": 0, "penaltyGoals": 0, "dropGoals": 0, "lineoutWins": 0, "scrumWins": 0, "turnoversWon": 0 }
+//
+// CRICKET:
+// { "runsScored": 0, "ballsFaced": 0, "strikeRate": 0.0, "centuries": 0, "halfCenturies": 0,
+//   "wicketsTaken": 0, "oversBowled": 0.0, "economyRate": 0.0, "maidens": 0, "catches": 0, "stumpings": 0 }
+//
+// BASKETBALL:
+// { "twoPointers": 0, "threePointers": 0, "freeThrows": 0, "rebounds": 0, "offensiveRebounds": 0,
+//   "steals": 0, "blocks": 0, "turnovers": 0, "plusMinus": 0 }
+//
+// AMERICAN_FOOTBALL:
+// { "passingYards": 0, "rushingYards": 0, "receivingYards": 0, "touchdowns": 0, "interceptions": 0,
+//   "sacks": 0, "fumbles": 0, "completionPercentage": 0.0 }
+//
+// NETBALL:
+// { "goalAttempts": 0, "goalsMade": 0, "shootingPercentage": 0.0, "centrePassReceives": 0,
+//   "gains": 0, "deflections": 0, "penalties": 0 }
+//
+// HOCKEY:
+// { "powerPlayGoals": 0, "shorthandedGoals": 0, "gameWinningGoals": 0, "faceoffWins": 0,
+//   "hits": 0, "blockedShots": 0, "penaltyMinutes": 0, "plusMinus": 0 }
+//
+// AUSTRALIAN_RULES:
+// { "kicks": 0, "handballs": 0, "marks": 0, "hitouts": 0, "behinds": 0, "tackles": 0, "clearances": 0 }
+//
+// GAELIC_FOOTBALL:
+// { "points": 0, "goals": 0, "frees": 0, "kickouts": 0, "marks": 0, "turnovers": 0 }
+// ============================================================================
+
 model PlayerStatistic {
   id       String  @id @default(cuid())
   playerId String
@@ -2393,6 +3258,7 @@ model PlayerStatistic {
   crossesAttempt  Int    @default(0)
   crossesComplete Int    @default(0)
 
+  // Sport-specific stats stored as JSON (see documentation above)
   sportSpecificStats Json?
 
   averageRating Float?
@@ -2861,7 +3727,6 @@ model Transfer {
   @@map("transfers")
 }
 
-
 // ============================================================================
 // 🏆 COACH MODELS
 // ============================================================================
@@ -3272,9 +4137,8 @@ model Treasurer {
   @@map("treasurers")
 }
 
-
 // ============================================================================
-// 🏢 CLUB & TEAM MODELS
+// 🏢 CLUB & TEAM MODELS (ENHANCED v7.7.0)
 // ============================================================================
 
 model Club {
@@ -3348,6 +4212,9 @@ model Club {
   competitions     Competition[]       @relation("clubCompetitions")
   competitionTeams CompetitionTeam[]
   socialAccounts   SocialAccount[]     @relation("clubSocialAccounts")
+  drills           TrainingDrill[]     @relation("clubDrills")
+  budgets          Budget[]            @relation("clubBudgets")
+  expenses         Expense[]           @relation("clubExpenses")
 
   @@index([organisationId])
   @@index([managerId])
@@ -3479,6 +4346,8 @@ model Team {
   mediaContent     MediaContent[]    @relation("teamMedia")
   homeMatches      Match[]           @relation("homeTeam")
   awayMatches      Match[]           @relation("awayTeam")
+  budgets          Budget[]          @relation("teamBudgets")
+  expenses         Expense[]         @relation("teamExpenses")
 
   @@unique([clubId, name])
   @@index([clubId])
@@ -3896,7 +4765,6 @@ model FacilityBooking {
   @@map("facility_bookings")
 }
 
-
 // ============================================================================
 // ⚽ MATCH MODELS
 // ============================================================================
@@ -4207,7 +5075,7 @@ model PlayerMatchPerformance {
 }
 
 // ============================================================================
-// 📊 TRAINING MODELS
+// 📊 TRAINING MODELS (ENHANCED v7.7.0)
 // ============================================================================
 
 model TrainingSession {
@@ -4231,6 +5099,7 @@ model TrainingSession {
   facilityId      String?
   maxParticipants Int?
 
+  // Legacy field - use sessionDrills relation instead
   drills    Json?
   notes     String? @db.Text
   equipment String[]
@@ -4247,11 +5116,12 @@ model TrainingSession {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club       Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  team       Team?                @relation("teamTraining", fields: [teamId], references: [id], onDelete: SetNull)
-  coach      Coach                @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  attendance TrainingAttendance[]
-  media      MediaContent[]       @relation("trainingMedia")
+  club          Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  team          Team?                  @relation("teamTraining", fields: [teamId], references: [id], onDelete: SetNull)
+  coach         Coach                  @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  attendance    TrainingAttendance[]
+  media         MediaContent[]         @relation("trainingMedia")
+  sessionDrills TrainingSessionDrill[]
 
   @@index([clubId])
   @@index([teamId])
@@ -4433,7 +5303,6 @@ model PerformanceGoal {
   @@index([type])
   @@map("performance_goals")
 }
-
 
 // ============================================================================
 // 📹 MEDIA MODELS
@@ -5030,7 +5899,7 @@ model Message {
 
 model ChatMember {
   id     String @id @default(cuid())
-  oderId String
+  userId String
   chatId String
 
   role     String    @default("MEMBER")
@@ -5041,11 +5910,11 @@ model ChatMember {
   lastReadAt  DateTime?
   unreadCount Int       @default(0)
 
-  user User @relation(fields: [oderId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
-  @@unique([oderId, chatId])
-  @@index([oderId])
+  @@unique([userId, chatId])
+  @@index([userId])
   @@index([chatId])
   @@map("chat_members")
 }
@@ -5289,21 +6158,80 @@ model DatabaseBackup {
 }
 
 // ============================================================================
-// END OF SCHEMA v7.6.0
+// END OF SCHEMA v7.7.0
 // ============================================================================
 // 
-// TOTAL MODELS: 102
-// TOTAL ENUMS: 72
+// TOTAL MODELS: 110
+// TOTAL ENUMS: 81
 // 
-// NEW IN v7.6.0:
-// - 8 New Models (Prediction, PredictionFeedback, ScoutWatchlist, 
-//   ScoutMatchAttendance, RefereeAvailability, RefereeQualification,
-//   RefereePayment, RefereeMatchReport)
-// - 7 New Enums (PredictionType, PredictionStatus, PredictionImpact,
-//   WatchlistStatus, WatchlistPriority, RefereeLevel, RefereeAvailabilityStatus)
-// - Enhanced Referee model with availability, fees, sport-specific ratings
-// - Enhanced Scout model with watchlist, match attendance, success metrics
-// - Enhanced Player model with scoutWatchlists relation
-// - New webhook events and audit actions
-// - New permission types for predictions, scouting, and referee features
+// ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║                         VERSION 7.7.0 SUMMARY                             ║
+// ╠═══════════════════════════════════════════════════════════════════════════╣
+// ║                                                                           ║
+// ║  NEW MODELS (8):                                                          ║
+// ║  ├─ TrainingDrill       - Reusable drill library                          ║
+// ║  ├─ TrainingSessionDrill - Session-drill junction table                   ║
+// ║  ├─ Budget              - Club/team budget management                     ║
+// ║  ├─ BudgetCategory      - Budget line items                               ║
+// ║  ├─ Expense             - Expense tracking with approval workflow         ║
+// ║  ├─ (v7.6.0) Prediction           - AI-powered predictions                ║
+// ║  ├─ (v7.6.0) PredictionFeedback   - Accuracy tracking                     ║
+// ║  ├─ (v7.6.0) ScoutWatchlist       - Player watchlist                      ║
+// ║  ├─ (v7.6.0) ScoutMatchAttendance - Scout match logging                   ║
+// ║  ├─ (v7.6.0) RefereeAvailability  - Referee calendar                      ║
+// ║  ├─ (v7.6.0) RefereeQualification - Certifications                        ║
+// ║  ├─ (v7.6.0) RefereePayment       - Fee tracking                          ║
+// ║  └─ (v7.6.0) RefereeMatchReport   - Post-match reports                    ║
+// ║                                                                           ║
+// ║  NEW ENUMS (9):                                                           ║
+// ║  ├─ DrillCategory       - 50+ sport-specific drill categories             ║
+// ║  ├─ DrillIntensity      - Drill intensity levels                          ║
+// ║  ├─ DrillDifficulty     - Beginner to Elite                               ║
+// ║  ├─ BudgetStatus        - Draft, Active, Frozen, Closed, Archived         ║
+// ║  ├─ BudgetPeriodType    - Season, Year, Quarter, Monthly, Custom          ║
+// ║  ├─ ExpenseCategory     - 30+ expense categories                          ║
+// ║  ├─ ExpenseStatus       - Full approval workflow                          ║
+// ║  ├─ (v7.6.0) PredictionType/Status/Impact                                 ║
+// ║  ├─ (v7.6.0) WatchlistStatus/Priority                                     ║
+// ║  └─ (v7.6.0) RefereeLevel/AvailabilityStatus                              ║
+// ║                                                                           ║
+// ║  ENHANCED PERMISSIONS:                                                    ║
+// ║  ├─ BUDGET_VIEW, BUDGET_CREATE, BUDGET_UPDATE, BUDGET_DELETE              ║
+// ║  ├─ EXPENSE_VIEW, EXPENSE_CREATE, EXPENSE_APPROVE, EXPENSE_DELETE         ║
+// ║  ├─ TRAINING_VIEW, TRAINING_CREATE, TRAINING_UPDATE, TRAINING_DELETE      ║
+// ║  ├─ TRAINING_MANAGE_DRILLS, DRILL_CREATE, DRILL_UPDATE, DRILL_DELETE      ║
+// ║  └─ DRILL_MANAGE_LIBRARY                                                  ║
+// ║                                                                           ║
+// ║  ENHANCED AUDIT ACTIONS:                                                  ║
+// ║  ├─ BUDGET_CREATED, BUDGET_UPDATED, BUDGET_DELETED                        ║
+// ║  ├─ BUDGET_STATUS_CHANGED, BUDGET_CATEGORY_ADDED/UPDATED                  ║
+// ║  ├─ EXPENSE_CREATED, EXPENSE_UPDATED, EXPENSE_DELETED                     ║
+// ║  ├─ EXPENSE_SUBMITTED, EXPENSE_APPROVED, EXPENSE_REJECTED                 ║
+// ║  ├─ EXPENSE_PAID, EXPENSE_REIMBURSED                                      ║
+// ║  └─ DRILL_CREATED, DRILL_UPDATED, DRILL_DELETED                           ║
+// ║                                                                           ║
+// ║  ENHANCED WEBHOOK EVENTS:                                                 ║
+// ║  ├─ DRILL_CREATED, DRILL_LIBRARY_UPDATED                                  ║
+// ║  ├─ BUDGET_CREATED, BUDGET_ALERT, BUDGET_THRESHOLD_REACHED                ║
+// ║  └─ EXPENSE_SUBMITTED, EXPENSE_APPROVED, EXPENSE_REJECTED                 ║
+// ║                                                                           ║
+// ║  SPORT-SPECIFIC STATISTICS DOCUMENTATION:                                 ║
+// ║  ├─ Football, Futsal, Beach Football stats                                ║
+// ║  ├─ Rugby Union/League stats                                              ║
+// ║  ├─ Cricket batting/bowling/fielding stats                                ║
+// ║  ├─ Basketball stats                                                      ║
+// ║  ├─ American Football stats                                               ║
+// ║  ├─ Netball stats                                                         ║
+// ║  ├─ Hockey stats                                                          ║
+// ║  ├─ Australian Rules stats                                                ║
+// ║  └─ Gaelic Football stats                                                 ║
+// ║                                                                           ║
+// ║  MULTI-SPORT SUPPORT: Full 12 sports                                      ║
+// ║  ├─ FOOTBALL, FUTSAL, BEACH_FOOTBALL                                      ║
+// ║  ├─ RUGBY, CRICKET, AMERICAN_FOOTBALL                                     ║
+// ║  ├─ BASKETBALL, HOCKEY, LACROSSE                                          ║
+// ║  ├─ NETBALL, AUSTRALIAN_RULES, GAELIC_FOOTBALL                            ║
+// ║  └─ 65+ position types across all sports                                  ║
+// ║                                                                           ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
 // ============================================================================
