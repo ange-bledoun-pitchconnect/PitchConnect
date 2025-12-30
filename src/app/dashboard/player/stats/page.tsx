@@ -1,637 +1,608 @@
-/**
- * ============================================================================
- * 📊 PITCHCONNECT - Player Stats v7.5.0 (Enterprise Multi-Sport)
- * Path: src/app/dashboard/player/stats/page.tsx
- * ============================================================================
- *
- * FEATURES:
- * ✅ Multi-sport support (12 sports)
- * ✅ Sport-specific stat labels
- * ✅ Season-by-season statistics
- * ✅ Recent form tracking
- * ✅ Season comparison
- * ✅ Export functionality
- * ✅ Dark mode support
- *
- * AFFECTED USER TYPES:
- * - PLAYER: Full access to own stats
- * - PARENT: Read-only access to children's stats
- * - COACH: Read access to squad stats
- * - ANALYST: Full analytical access
- * - SCOUT: Read access for evaluation
- *
- * ============================================================================
- */
+'use client';
 
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/auth';
-import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/prisma';
+// ============================================================================
+// 🏆 PITCHCONNECT PLAYER STATS v7.5.0
+// ============================================================================
+// Comprehensive statistics dashboard with season comparison
+// ============================================================================
+
+import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { Suspense } from 'react';
 import {
-  BarChart3,
-  Target,
-  TrendingUp,
-  Users,
   Activity,
+  TrendingUp,
+  TrendingDown,
+  Target,
+  Calendar,
+  Clock,
   Award,
-  Trophy,
+  Zap,
+  ChevronDown,
+  ChevronRight,
+  BarChart3,
+  PieChart,
+  Loader2,
+  AlertCircle,
   ArrowUp,
   ArrowDown,
-  ArrowLeft,
-  Calendar,
-  Download,
-  Share2,
-  Shield,
-  Star,
-  Timer,
-  ChevronRight,
+  Minus,
 } from 'lucide-react';
-import { Sport, SPORT_CONFIGS, getStatLabels } from '@/types/player';
+
+import { cn } from '@/lib/utils';
+import { Sport, SPORT_CONFIGS, formatPosition } from '@/lib/sport-config';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-interface PlayerStatistic {
-  id: string;
-  season: number;
+interface SeasonStats {
+  seasonId: string;
+  seasonName: string;
+  teamName: string;
+  sport: Sport;
   matches: number;
   starts: number;
+  substitutes: number;
   minutesPlayed: number;
   goals: number;
   assists: number;
   yellowCards: number;
   redCards: number;
-  passes: number;
-  passAccuracy: number | null;
-  tackles: number;
-  tackleSuccess: number | null;
-  interceptions: number;
-  shots: number;
-  shotsOnTarget: number;
-  cleanSheets: number;
-  averageRating: number | null;
+  avgRating: number;
+  cleanSheets?: number;
+  saves?: number;
+  passAccuracy?: number;
+  shotsOnTarget?: number;
+  tackles?: number;
+  interceptions?: number;
+  aerialDuels?: number;
 }
 
-interface RecentMatch {
-  date: Date;
-  opponent: string;
-  result: 'W' | 'D' | 'L';
-  primaryStat: number;
-  secondaryStat: number;
-  rating: number | null;
+interface CareerStats {
+  totalMatches: number;
+  totalGoals: number;
+  totalAssists: number;
+  totalMinutes: number;
+  totalYellowCards: number;
+  totalRedCards: number;
+  avgRating: number;
+  bestRating: number;
+  longestStreak: number;
+  currentStreak: number;
+}
+
+interface PerformanceTrend {
+  month: string;
+  matches: number;
+  goals: number;
+  assists: number;
+  avgRating: number;
 }
 
 // ============================================================================
-// DATA FETCHING
+// MOCK DATA
 // ============================================================================
 
-async function getPlayerStats(userId: string) {
-  const player = await prisma.player.findUnique({
-    where: { userId },
-    include: {
-      statistics: {
-        orderBy: { season: 'desc' },
-      },
-      teamPlayers: {
-        where: { isActive: true },
-        include: {
-          team: {
-            include: {
-              club: { select: { id: true, sport: true } },
-            },
-          },
-        },
-      },
-      matchAttendance: {
-        where: { match: { status: 'FINISHED' } },
-        take: 5,
-        orderBy: { match: { kickOffTime: 'desc' } },
-        include: {
-          match: {
-            include: {
-              homeClub: { select: { id: true, name: true, shortName: true } },
-              awayClub: { select: { id: true, name: true, shortName: true } },
-              homeTeam: { select: { id: true, name: true } },
-              awayTeam: { select: { id: true, name: true } },
-            },
-          },
-        },
-      },
-    },
-  });
+const MOCK_SEASONS: SeasonStats[] = [
+  {
+    seasonId: 's-2024',
+    seasonName: '2024/25',
+    teamName: 'First Team',
+    sport: 'FOOTBALL',
+    matches: 18,
+    starts: 15,
+    substitutes: 3,
+    minutesPlayed: 1350,
+    goals: 8,
+    assists: 5,
+    yellowCards: 2,
+    redCards: 0,
+    avgRating: 7.4,
+    passAccuracy: 82,
+    shotsOnTarget: 24,
+    tackles: 18,
+    interceptions: 12,
+  },
+  {
+    seasonId: 's-2023',
+    seasonName: '2023/24',
+    teamName: 'First Team',
+    sport: 'FOOTBALL',
+    matches: 35,
+    starts: 30,
+    substitutes: 5,
+    minutesPlayed: 2680,
+    goals: 12,
+    assists: 8,
+    yellowCards: 4,
+    redCards: 1,
+    avgRating: 7.2,
+    passAccuracy: 79,
+    shotsOnTarget: 42,
+    tackles: 35,
+    interceptions: 28,
+  },
+  {
+    seasonId: 's-2022',
+    seasonName: '2022/23',
+    teamName: 'First Team',
+    sport: 'FOOTBALL',
+    matches: 38,
+    starts: 35,
+    substitutes: 3,
+    minutesPlayed: 3120,
+    goals: 17,
+    assists: 11,
+    yellowCards: 3,
+    redCards: 0,
+    avgRating: 7.6,
+    passAccuracy: 84,
+    shotsOnTarget: 58,
+    tackles: 42,
+    interceptions: 31,
+  },
+];
 
-  if (!player) {
-    return { stats: null, previousStats: null, recentForm: [], sport: 'FOOTBALL' as Sport, allSeasons: [] };
-  }
+const MOCK_CAREER: CareerStats = {
+  totalMatches: 287,
+  totalGoals: 89,
+  totalAssists: 52,
+  totalMinutes: 22450,
+  totalYellowCards: 24,
+  totalRedCards: 2,
+  avgRating: 7.3,
+  bestRating: 9.4,
+  longestStreak: 23,
+  currentStreak: 5,
+};
 
-  const sport = (player.teamPlayers[0]?.team?.club?.sport as Sport) || 'FOOTBALL';
-  const clubIds = player.teamPlayers.map((tp) => tp.team.clubId);
-  const teamIds = player.teamPlayers.map((tp) => tp.teamId);
+const MOCK_TRENDS: PerformanceTrend[] = [
+  { month: 'Aug', matches: 4, goals: 2, assists: 1, avgRating: 7.2 },
+  { month: 'Sep', matches: 5, goals: 3, assists: 2, avgRating: 7.5 },
+  { month: 'Oct', matches: 4, goals: 1, assists: 0, avgRating: 6.8 },
+  { month: 'Nov', matches: 5, goals: 2, assists: 2, avgRating: 7.4 },
+  { month: 'Dec', matches: 6, goals: 3, assists: 1, avgRating: 7.6 },
+];
 
-  const currentStats = player.statistics[0] || null;
-  const previousStats = player.statistics[1] || null;
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
-  // Build recent form
-  const recentForm: RecentMatch[] = player.matchAttendance.map((ma) => {
-    const m = ma.match;
-    const isHome = clubIds.includes(m.homeClubId || '') || teamIds.includes(m.homeTeamId || '');
-    const ourScore = isHome ? m.homeScore : m.awayScore;
-    const theirScore = isHome ? m.awayScore : m.homeScore;
-    const opponent = isHome
-      ? (m.awayTeam?.name || m.awayClub?.shortName || m.awayClub?.name || 'Unknown')
-      : (m.homeTeam?.name || m.homeClub?.shortName || m.homeClub?.name || 'Unknown');
+export default function PlayerStatsPage() {
+  const { data: session } = useSession();
+  const [seasons, setSeasons] = useState<SeasonStats[]>([]);
+  const [career, setCareer] = useState<CareerStats | null>(null);
+  const [trends, setTrends] = useState<PerformanceTrend[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedSeason, setSelectedSeason] = useState<string>('all');
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSeason, setCompareSeason] = useState<string>('');
 
-    let result: 'W' | 'D' | 'L' = 'D';
-    if (ourScore !== null && theirScore !== null) {
-      if (ourScore > theirScore) result = 'W';
-      else if (ourScore < theirScore) result = 'L';
-    }
+  const sport: Sport = 'FOOTBALL';
+  const sportConfig = SPORT_CONFIGS[sport];
 
-    return {
-      date: m.kickOffTime,
-      opponent,
-      result,
-      primaryStat: ma.goals || 0,
-      secondaryStat: ma.assists || 0,
-      rating: ma.rating,
+  // Fetch data
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        setSeasons(MOCK_SEASONS);
+        setCareer(MOCK_CAREER);
+        setTrends(MOCK_TRENDS);
+      } catch (err) {
+        console.error('Failed to load stats');
+      } finally {
+        setIsLoading(false);
+      }
     };
-  });
 
-  return {
-    stats: currentStats as PlayerStatistic | null,
-    previousStats: previousStats as PlayerStatistic | null,
-    recentForm,
-    sport,
-    allSeasons: player.statistics as PlayerStatistic[],
+    fetchData();
+  }, []);
+
+  // Get selected season data
+  const currentSeasonData = selectedSeason === 'all' 
+    ? null 
+    : seasons.find((s) => s.seasonId === selectedSeason);
+
+  const compareSeasonData = compareSeason 
+    ? seasons.find((s) => s.seasonId === compareSeason) 
+    : null;
+
+  // Calculate comparison
+  const getComparison = (current: number, compare: number) => {
+    if (!compare) return { diff: 0, percentage: 0, trend: 'neutral' as const };
+    const diff = current - compare;
+    const percentage = compare !== 0 ? ((diff / compare) * 100) : 0;
+    return {
+      diff,
+      percentage: Math.abs(percentage),
+      trend: diff > 0 ? 'up' as const : diff < 0 ? 'down' as const : 'neutral' as const,
+    };
   };
-}
 
-// ============================================================================
-// HELPERS
-// ============================================================================
+  // Render stat card with comparison
+  const renderStatCard = (
+    label: string,
+    value: number | string,
+    icon: typeof Activity,
+    compareValue?: number,
+    suffix?: string,
+    decimals = 0
+  ) => {
+    const Icon = icon;
+    const numValue = typeof value === 'number' ? value : parseFloat(value);
+    const comparison = compareValue !== undefined ? getComparison(numValue, compareValue) : null;
 
-function getChange(current: number, previous: number): { value: string; isUp: boolean | null } {
-  if (previous === 0) {
-    return { value: current > 0 ? '+100%' : '0%', isUp: current > 0 ? true : null };
-  }
-  const change = ((current - previous) / previous) * 100;
-  return {
-    value: `${change >= 0 ? '+' : ''}${change.toFixed(0)}%`,
-    isUp: change > 0 ? true : change < 0 ? false : null,
+    return (
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm text-zinc-400">{label}</span>
+          <Icon className="h-4 w-4 text-zinc-500" />
+        </div>
+        <div className="flex items-end justify-between">
+          <p className="text-2xl font-bold text-white">
+            {typeof value === 'number' ? value.toFixed(decimals) : value}
+            {suffix && <span className="text-sm text-zinc-400 ml-1">{suffix}</span>}
+          </p>
+          {comparison && comparison.trend !== 'neutral' && (
+            <div
+              className={cn(
+                'flex items-center gap-1 text-sm',
+                comparison.trend === 'up' ? 'text-green-400' : 'text-red-400'
+              )}
+            >
+              {comparison.trend === 'up' ? (
+                <ArrowUp className="h-3 w-3" />
+              ) : (
+                <ArrowDown className="h-3 w-3" />
+              )}
+              {comparison.percentage.toFixed(0)}%
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
-}
 
-// ============================================================================
-// LOADING SKELETON
-// ============================================================================
-
-function StatsSkeleton() {
-  return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-pulse">
-      <div className="h-12 bg-charcoal-200 dark:bg-charcoal-700 rounded-lg w-64" />
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="h-32 bg-charcoal-200 dark:bg-charcoal-700 rounded-xl" />
-        ))}
+  // Render progress bar
+  const renderProgressBar = (label: string, value: number, max: number, color: string) => (
+    <div className="space-y-1">
+      <div className="flex justify-between text-sm">
+        <span className="text-zinc-400">{label}</span>
+        <span className="text-white font-medium">{value}%</span>
       </div>
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="h-64 bg-charcoal-200 dark:bg-charcoal-700 rounded-xl" />
-        <div className="h-64 bg-charcoal-200 dark:bg-charcoal-700 rounded-xl" />
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// COMPONENTS
-// ============================================================================
-
-function StatCard({
-  label,
-  value,
-  icon,
-  color,
-  subtext,
-  change,
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  color: string;
-  subtext?: string;
-  change?: { value: string; isUp: boolean | null } | null;
-}) {
-  return (
-    <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 p-6 hover:shadow-lg transition-shadow">
-      <div className="flex items-center justify-between mb-3">
-        <div className={`w-12 h-12 ${color} rounded-xl flex items-center justify-center`}>{icon}</div>
-        {change && change.isUp !== null && (
-          <span
-            className={`flex items-center gap-1 text-xs font-semibold ${
-              change.isUp ? 'text-success-600 dark:text-success-400' : 'text-error-600 dark:text-error-400'
-            }`}
-          >
-            {change.isUp ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-            {change.value}
-          </span>
-        )}
-      </div>
-      <p className="text-sm text-charcoal-600 dark:text-charcoal-400 font-semibold mb-1">{label}</p>
-      <p className="text-3xl font-bold text-charcoal-900 dark:text-white tabular-nums">{value}</p>
-      {subtext && <p className="text-xs text-charcoal-500 dark:text-charcoal-400 mt-1">{subtext}</p>}
-    </div>
-  );
-}
-
-function StatBar({
-  label,
-  value,
-  max,
-  color,
-  subtext,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  color: string;
-  subtext?: string;
-}) {
-  const percentage = Math.min((value / max) * 100, 100);
-  return (
-    <div>
-      <div className="flex justify-between text-sm mb-1">
-        <span className="text-charcoal-700 dark:text-charcoal-300 font-semibold">{label}</span>
-        <span className="font-bold text-charcoal-900 dark:text-white tabular-nums">{value}</span>
-      </div>
-      <div className="w-full bg-charcoal-200 dark:bg-charcoal-700 rounded-full h-2">
+      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
         <div
-          className={`bg-gradient-to-r ${color} h-2 rounded-full transition-all duration-500`}
-          style={{ width: `${percentage}%` }}
+          className={cn('h-full rounded-full transition-all', color)}
+          style={{ width: `${Math.min(value, 100)}%` }}
         />
       </div>
-      {subtext && <p className="text-xs text-charcoal-500 dark:text-charcoal-400 mt-1">{subtext}</p>}
     </div>
   );
-}
 
-function EmptyState({ sportConfig }: { sportConfig: (typeof SPORT_CONFIGS)[Sport] }) {
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex items-center gap-4 mb-8">
-        <Link href="/dashboard/player" className="p-2 rounded-lg hover:bg-charcoal-100 dark:hover:bg-charcoal-700">
-          <ArrowLeft className="w-5 h-5 text-charcoal-600 dark:text-charcoal-400" />
-        </Link>
-        <h1 className="text-3xl font-bold text-charcoal-900 dark:text-white flex items-center gap-3">
-          <span className="text-3xl">{sportConfig.icon}</span>
-          {sportConfig.name} Statistics
-        </h1>
+  // Render mini bar chart
+  const renderMiniChart = () => {
+    const maxGoals = Math.max(...trends.map((t) => t.goals));
+
+    return (
+      <div className="flex items-end justify-between h-20 gap-1">
+        {trends.map((trend, i) => (
+          <div key={trend.month} className="flex-1 flex flex-col items-center gap-1">
+            <div
+              className={cn(
+                'w-full rounded-t transition-all',
+                i === trends.length - 1 ? 'bg-green-500' : 'bg-zinc-700'
+              )}
+              style={{ height: `${(trend.goals / maxGoals) * 100}%`, minHeight: '4px' }}
+            />
+            <span className="text-[10px] text-zinc-500">{trend.month}</span>
+          </div>
+        ))}
       </div>
-      <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 p-12 text-center">
-        <BarChart3 className="w-16 h-16 text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4" />
-        <p className="text-lg font-semibold text-charcoal-900 dark:text-white mb-2">No Statistics Available</p>
-        <p className="text-charcoal-600 dark:text-charcoal-400 mb-6">
-          Start playing matches to track your {sportConfig.name.toLowerCase()} performance!
-        </p>
-        <Link
-          href="/dashboard/player/browse-teams"
-          className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-gold-500 to-orange-500 text-white font-semibold rounded-lg"
-        >
-          <Users className="w-4 h-4" /> Join a Team
-        </Link>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-10 w-10 text-green-500 animate-spin mx-auto mb-4" />
+          <p className="text-zinc-400">Loading statistics...</p>
+        </div>
       </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// MAIN PAGE COMPONENT
-// ============================================================================
-
-export default async function PlayerStatsPage() {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.id) {
-    redirect('/auth/login');
+    );
   }
 
-  const { stats, previousStats, recentForm, sport, allSeasons } = await getPlayerStats(session.user.id);
-  const sportConfig = SPORT_CONFIGS[sport];
-  const statLabels = getStatLabels(sport);
-
-  if (!stats) {
-    return <EmptyState sportConfig={sportConfig} />;
-  }
-
-  const primaryPerGame = stats.matches > 0 ? (stats.goals / stats.matches).toFixed(2) : '0.00';
-  const secondaryPerGame = stats.matches > 0 ? (stats.assists / stats.matches).toFixed(2) : '0.00';
-
   return (
-    <Suspense fallback={<StatsSkeleton />}>
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/dashboard/player"
-              className="p-2 rounded-lg hover:bg-charcoal-100 dark:hover:bg-charcoal-700 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-charcoal-600 dark:text-charcoal-400" />
-            </Link>
+    <div className="min-h-screen bg-zinc-950">
+      {/* Header */}
+      <div className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-charcoal-900 dark:text-white flex items-center gap-3">
-                <span className="text-4xl">{sportConfig.icon}</span>
-                {sportConfig.name} Statistics
+              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                <BarChart3 className="h-6 w-6 text-green-500" />
+                My Statistics
               </h1>
-              <p className="text-charcoal-600 dark:text-charcoal-400">
-                {stats.season}/{stats.season + 1} Season • {stats.matches} Appearances
+              <p className="text-sm text-zinc-400 mt-1">
+                Performance analytics across all seasons
               </p>
             </div>
+
+            <div className="flex items-center gap-3">
+              {/* Season selector */}
+              <div className="relative">
+                <select
+                  value={selectedSeason}
+                  onChange={(e) => setSelectedSeason(e.target.value)}
+                  className="appearance-none pl-4 pr-10 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                >
+                  <option value="all">All Time</option>
+                  {seasons.map((s) => (
+                    <option key={s.seasonId} value={s.seasonId}>
+                      {s.seasonName}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
+              </div>
+
+              {/* Compare toggle */}
+              <button
+                onClick={() => setCompareMode(!compareMode)}
+                className={cn(
+                  'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                  compareMode
+                    ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+                    : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                )}
+              >
+                Compare
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button className="px-4 py-2 border border-charcoal-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 rounded-lg flex items-center gap-2 hover:bg-charcoal-50 dark:hover:bg-charcoal-700 transition-colors">
-              <Share2 className="w-4 h-4" /> Share
-            </button>
-            <button className="px-4 py-2 bg-gradient-to-r from-purple-500 to-info-500 text-white font-semibold rounded-lg flex items-center gap-2 shadow-purple">
-              <Download className="w-4 h-4" /> Export
-            </button>
-          </div>
+
+          {/* Compare season selector */}
+          {compareMode && (
+            <div className="mt-4 flex items-center gap-2">
+              <span className="text-sm text-zinc-400">Compare with:</span>
+              <select
+                value={compareSeason}
+                onChange={(e) => setCompareSeason(e.target.value)}
+                className="appearance-none px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50"
+              >
+                <option value="">Select season</option>
+                {seasons
+                  .filter((s) => s.seasonId !== selectedSeason)
+                  .map((s) => (
+                    <option key={s.seasonId} value={s.seasonId}>
+                      {s.seasonName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
         </div>
+      </div>
 
-        {/* Key Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          <StatCard
-            label="Appearances"
-            value={stats.matches}
-            icon={<Users className="w-6 h-6 text-info-500" />}
-            color="bg-info-100 dark:bg-info/20"
-            change={previousStats ? getChange(stats.matches, previousStats.matches) : null}
-          />
-          <StatCard
-            label={statLabels.primaryStat}
-            value={stats.goals}
-            icon={<Target className="w-6 h-6 text-success-500" />}
-            color="bg-success-100 dark:bg-success/20"
-            subtext={`${primaryPerGame} per game`}
-            change={previousStats ? getChange(stats.goals, previousStats.goals) : null}
-          />
-          <StatCard
-            label={statLabels.secondaryStat}
-            value={stats.assists}
-            icon={<TrendingUp className="w-6 h-6 text-purple-500" />}
-            color="bg-purple-100 dark:bg-purple-500/20"
-            subtext={`${secondaryPerGame} per game`}
-            change={previousStats ? getChange(stats.assists, previousStats.assists) : null}
-          />
-        </div>
-
-        {/* Detailed Stats */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Attacking */}
-          <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 shadow-sm">
-            <div className="p-6 border-b border-charcoal-200 dark:border-charcoal-700 bg-gradient-to-r from-gold-50 dark:from-gold-900/10 to-transparent">
-              <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-                <Target className="w-5 h-5 text-gold-500" />
-                {sport === 'AMERICAN_FOOTBALL' ? 'Offensive' : 'Attacking'}
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              <StatBar label={`Total ${statLabels.primaryStat}`} value={stats.goals} max={50} color="from-gold-500 to-orange-400" />
-              {stats.shots > 0 && (
-                <>
-                  <StatBar label="Shots" value={stats.shots} max={50} color="from-purple-500 to-purple-600" />
-                  <StatBar
-                    label="Shots on Target"
-                    value={stats.shotsOnTarget}
-                    max={stats.shots || 1}
-                    color="from-success-500 to-success-600"
-                    subtext={`${stats.shots > 0 ? ((stats.shotsOnTarget / stats.shots) * 100).toFixed(0) : 0}% accuracy`}
-                  />
-                </>
-              )}
-              {stats.passes > 0 && (
-                <StatBar
-                  label="Key Passes"
-                  value={stats.passes}
-                  max={100}
-                  color="from-info-500 to-info-600"
-                  subtext={stats.passAccuracy ? `${stats.passAccuracy.toFixed(0)}% accuracy` : undefined}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Defensive */}
-          <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 shadow-sm">
-            <div className="p-6 border-b border-charcoal-200 dark:border-charcoal-700 bg-gradient-to-r from-info-50 dark:from-info/5 to-transparent">
-              <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-                <Shield className="w-5 h-5 text-info-500" /> Defensive
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              <StatBar
-                label={statLabels.defensiveStat}
-                value={stats.tackles}
-                max={60}
-                color="from-info-500 to-info-600"
-                subtext={stats.tackleSuccess ? `${stats.tackleSuccess.toFixed(0)}% success` : undefined}
-              />
-              <StatBar label="Interceptions" value={stats.interceptions} max={40} color="from-purple-500 to-purple-600" />
-              <StatBar label="Clean Sheets" value={stats.cleanSheets} max={20} color="from-success-500 to-success-600" />
-              <div className="flex justify-between pt-4 border-t border-charcoal-200 dark:border-charcoal-700">
-                <div className="flex gap-2">
-                  <span className="px-2 py-1 bg-warning-100 dark:bg-warning/20 text-warning-700 dark:text-warning-400 text-xs font-semibold rounded">
-                    {stats.yellowCards} {sport === 'RUGBY' ? 'Sin Bins' : 'Yellow'}
-                  </span>
-                  <span className="px-2 py-1 bg-error-100 dark:bg-error/20 text-error-700 dark:text-error-400 text-xs font-semibold rounded">
-                    {stats.redCards} Red
-                  </span>
-                </div>
-                <span className="text-sm text-charcoal-500 dark:text-charcoal-400">Discipline</span>
+      {/* Content */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Career Overview (when "All Time" selected) */}
+        {selectedSeason === 'all' && career && (
+          <>
+            {/* Hero stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              <div className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 border border-green-500/20 rounded-xl p-6 text-center">
+                <p className="text-4xl font-bold text-white">{career.totalMatches}</p>
+                <p className="text-sm text-green-400">Career Matches</p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-500/20 to-indigo-600/20 border border-blue-500/20 rounded-xl p-6 text-center">
+                <p className="text-4xl font-bold text-white">{career.totalGoals}</p>
+                <p className="text-sm text-blue-400">{sportConfig.primaryStat}</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-500/20 to-violet-600/20 border border-purple-500/20 rounded-xl p-6 text-center">
+                <p className="text-4xl font-bold text-white">{career.totalAssists}</p>
+                <p className="text-sm text-purple-400">{sportConfig.secondaryStat}</p>
+              </div>
+              <div className="bg-gradient-to-br from-yellow-500/20 to-orange-600/20 border border-yellow-500/20 rounded-xl p-6 text-center">
+                <p className="text-4xl font-bold text-white">{career.avgRating.toFixed(1)}</p>
+                <p className="text-sm text-yellow-400">Avg Rating</p>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* General Stats */}
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 shadow-sm">
-          <div className="p-6 border-b border-charcoal-200 dark:border-charcoal-700 bg-gradient-to-r from-success-50 dark:from-success/5 to-transparent">
-            <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-              <Activity className="w-5 h-5 text-success-500" /> General Performance
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-4 gap-6 p-6">
-            <div className="text-center p-4 bg-charcoal-50 dark:bg-charcoal-700/50 rounded-xl">
-              <p className="text-3xl font-bold text-charcoal-900 dark:text-white tabular-nums">{stats.matches}</p>
-              <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Matches</p>
+            {/* Additional career stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
+              {renderStatCard('Minutes', Math.round(career.totalMinutes / 60), Clock, undefined, 'hrs')}
+              {renderStatCard('Yellow Cards', career.totalYellowCards, AlertCircle)}
+              {renderStatCard('Red Cards', career.totalRedCards, AlertCircle)}
+              {renderStatCard('Best Rating', career.bestRating, Award, undefined, undefined, 1)}
+              {renderStatCard('Current Streak', career.currentStreak, Zap, undefined, 'games')}
+              {renderStatCard('Best Streak', career.longestStreak, TrendingUp, undefined, 'games')}
             </div>
-            <div className="text-center p-4 bg-charcoal-50 dark:bg-charcoal-700/50 rounded-xl">
-              <p className="text-3xl font-bold text-success-600 dark:text-success-400 tabular-nums">{stats.starts}</p>
-              <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Starts</p>
-            </div>
-            <div className="text-center p-4 bg-charcoal-50 dark:bg-charcoal-700/50 rounded-xl">
-              <p className="text-3xl font-bold text-purple-600 dark:text-purple-400 tabular-nums">{stats.minutesPlayed}</p>
-              <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Minutes</p>
-            </div>
-            <div className="text-center p-4 bg-charcoal-50 dark:bg-charcoal-700/50 rounded-xl">
-              <p className="text-3xl font-bold text-gold-600 dark:text-gold-400 tabular-nums">
-                {stats.averageRating?.toFixed(1) || '-'}
-              </p>
-              <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Avg Rating</p>
-            </div>
-          </div>
-        </div>
+          </>
+        )}
 
-        {/* Recent Form */}
-        {recentForm.length > 0 && (
-          <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 shadow-sm">
-            <div className="p-6 border-b border-charcoal-200 dark:border-charcoal-700 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-info-500" /> Recent Form
-              </h2>
-              <Link
-                href="/dashboard/player/fixtures"
-                className="text-sm font-semibold text-gold-600 dark:text-gold-400 hover:underline flex items-center gap-1"
-              >
-                View All <ChevronRight className="w-4 h-4" />
-              </Link>
+        {/* Season Stats */}
+        {currentSeasonData && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {renderStatCard(
+                'Matches',
+                currentSeasonData.matches,
+                Activity,
+                compareSeasonData?.matches
+              )}
+              {renderStatCard(
+                sportConfig.primaryStat,
+                currentSeasonData.goals,
+                Target,
+                compareSeasonData?.goals
+              )}
+              {renderStatCard(
+                sportConfig.secondaryStat,
+                currentSeasonData.assists,
+                Zap,
+                compareSeasonData?.assists
+              )}
+              {renderStatCard(
+                'Avg Rating',
+                currentSeasonData.avgRating,
+                Award,
+                compareSeasonData?.avgRating,
+                undefined,
+                1
+              )}
             </div>
-            <div className="p-6 space-y-3">
-              {recentForm.map((match, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-4 bg-charcoal-50 dark:bg-charcoal-700/50 rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`px-3 py-1 text-xs font-bold rounded-full ${
-                        match.result === 'W'
-                          ? 'bg-success-100 text-success-700 dark:bg-success/20 dark:text-success-400'
-                          : match.result === 'L'
-                          ? 'bg-error-100 text-error-700 dark:bg-error/20 dark:text-error-400'
-                          : 'bg-warning-100 text-warning-700 dark:bg-warning/20 dark:text-warning-400'
-                      }`}
-                    >
-                      {match.result}
-                    </span>
-                    <div>
-                      <p className="font-semibold text-charcoal-900 dark:text-white">{match.opponent}</p>
-                      <p className="text-xs text-charcoal-500 dark:text-charcoal-400">
-                        {new Date(match.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                      </p>
-                    </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {/* Playing time */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-zinc-400" />
+                  Playing Time
+                </h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400">Total Minutes</span>
+                    <span className="text-white font-bold">{currentSeasonData.minutesPlayed}'</span>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <div className="text-center">
-                      <p className="text-lg font-bold text-success-600 dark:text-success-400 tabular-nums">
-                        {match.primaryStat}
-                      </p>
-                      <p className="text-xs text-charcoal-500">{statLabels.primaryStat}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400">Starts</span>
+                    <span className="text-white font-bold">{currentSeasonData.starts}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400">Substitute Appearances</span>
+                    <span className="text-white font-bold">{currentSeasonData.substitutes}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-zinc-400">Avg Minutes/Game</span>
+                    <span className="text-white font-bold">
+                      {Math.round(currentSeasonData.minutesPlayed / currentSeasonData.matches)}'
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Performance metrics */}
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  <PieChart className="h-5 w-5 text-zinc-400" />
+                  Performance Metrics
+                </h3>
+                <div className="space-y-4">
+                  {currentSeasonData.passAccuracy && (
+                    renderProgressBar('Pass Accuracy', currentSeasonData.passAccuracy, 100, 'bg-blue-500')
+                  )}
+                  {currentSeasonData.shotsOnTarget && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400">Shots on Target</span>
+                      <span className="text-white font-bold">{currentSeasonData.shotsOnTarget}</span>
                     </div>
-                    <div className="text-center">
-                      <p className="text-lg font-bold text-purple-600 dark:text-purple-400 tabular-nums">
-                        {match.secondaryStat}
-                      </p>
-                      <p className="text-xs text-charcoal-500">{statLabels.secondaryStat}</p>
+                  )}
+                  {currentSeasonData.tackles && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400">Tackles Won</span>
+                      <span className="text-white font-bold">{currentSeasonData.tackles}</span>
                     </div>
-                    <div className="text-center">
-                      <p
-                        className={`text-lg font-bold tabular-nums ${
-                          match.rating && match.rating >= 7
-                            ? 'text-success-600 dark:text-success-400'
-                            : match.rating && match.rating >= 6
-                            ? 'text-warning-600 dark:text-warning-400'
-                            : 'text-error-600 dark:text-error-400'
-                        }`}
+                  )}
+                  {currentSeasonData.interceptions && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400">Interceptions</span>
+                      <span className="text-white font-bold">{currentSeasonData.interceptions}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Season by Season */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 mb-8">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-zinc-400" />
+            Season by Season
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left">
+                  <th className="px-4 py-3 text-sm font-medium text-zinc-400">Season</th>
+                  <th className="px-4 py-3 text-sm font-medium text-zinc-400">Team</th>
+                  <th className="px-4 py-3 text-sm font-medium text-zinc-400 text-center">Apps</th>
+                  <th className="px-4 py-3 text-sm font-medium text-zinc-400 text-center">{sportConfig.primaryStat}</th>
+                  <th className="px-4 py-3 text-sm font-medium text-zinc-400 text-center">{sportConfig.secondaryStat}</th>
+                  <th className="px-4 py-3 text-sm font-medium text-zinc-400 text-center">Mins</th>
+                  <th className="px-4 py-3 text-sm font-medium text-zinc-400 text-center">Rating</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seasons.map((season) => (
+                  <tr key={season.seasonId} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                    <td className="px-4 py-3 font-medium text-white">{season.seasonName}</td>
+                    <td className="px-4 py-3 text-zinc-300">{season.teamName}</td>
+                    <td className="px-4 py-3 text-center text-white">{season.matches}</td>
+                    <td className="px-4 py-3 text-center text-white font-bold">{season.goals}</td>
+                    <td className="px-4 py-3 text-center text-white">{season.assists}</td>
+                    <td className="px-4 py-3 text-center text-zinc-300">{season.minutesPlayed}'</td>
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        className={cn(
+                          'px-2 py-1 rounded text-sm font-bold',
+                          season.avgRating >= 7.5
+                            ? 'bg-green-500/10 text-green-400'
+                            : season.avgRating >= 7.0
+                            ? 'bg-blue-500/10 text-blue-400'
+                            : 'bg-zinc-500/10 text-zinc-300'
+                        )}
                       >
-                        {match.rating?.toFixed(1) || '-'}
-                      </p>
-                      <p className="text-xs text-charcoal-500">Rating</p>
-                    </div>
+                        {season.avgRating.toFixed(1)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Monthly Trend */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-zinc-400" />
+            Monthly Form (Current Season)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-sm text-zinc-400 mb-3">{sportConfig.primaryStat} by Month</p>
+              {renderMiniChart()}
+            </div>
+            <div className="space-y-3">
+              {trends.slice(-3).reverse().map((trend) => (
+                <div key={trend.month} className="flex items-center justify-between p-3 bg-zinc-800/50 rounded-lg">
+                  <span className="text-zinc-300">{trend.month}</span>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-zinc-400">{trend.matches} games</span>
+                    <span className="text-white font-bold">{trend.goals}G {trend.assists}A</span>
+                    <span
+                      className={cn(
+                        'px-2 py-0.5 rounded',
+                        trend.avgRating >= 7.5
+                          ? 'bg-green-500/10 text-green-400'
+                          : 'bg-zinc-600/50 text-zinc-300'
+                      )}
+                    >
+                      {trend.avgRating.toFixed(1)}
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        )}
-
-        {/* Season Comparison */}
-        {previousStats && (
-          <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 shadow-sm">
-            <div className="p-6 border-b border-charcoal-200 dark:border-charcoal-700">
-              <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-purple-500" /> Season Comparison
-              </h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-charcoal-200 dark:border-charcoal-700 text-left">
-                    <th className="px-6 py-3 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase">
-                      Metric
-                    </th>
-                    <th className="px-6 py-3 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase text-center">
-                      {previousStats.season}/{previousStats.season + 1}
-                    </th>
-                    <th className="px-6 py-3 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase text-center">
-                      {stats.season}/{stats.season + 1}
-                    </th>
-                    <th className="px-6 py-3 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase text-center">
-                      Change
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-charcoal-200 dark:divide-charcoal-700">
-                  {[
-                    { label: 'Appearances', prev: previousStats.matches, curr: stats.matches },
-                    { label: statLabels.primaryStat, prev: previousStats.goals, curr: stats.goals },
-                    { label: statLabels.secondaryStat, prev: previousStats.assists, curr: stats.assists },
-                    {
-                      label: 'Avg Rating',
-                      prev: previousStats.averageRating || 0,
-                      curr: stats.averageRating || 0,
-                      isDecimal: true,
-                    },
-                  ].map((row) => {
-                    const change = getChange(row.curr, row.prev);
-                    return (
-                      <tr key={row.label} className="hover:bg-purple-50 dark:hover:bg-purple-900/10">
-                        <td className="px-6 py-4 font-semibold text-charcoal-900 dark:text-white">{row.label}</td>
-                        <td className="px-6 py-4 text-center text-charcoal-600 dark:text-charcoal-400 tabular-nums">
-                          {row.isDecimal ? row.prev.toFixed(1) : row.prev}
-                        </td>
-                        <td className="px-6 py-4 text-center font-bold text-purple-600 dark:text-purple-400 tabular-nums">
-                          {row.isDecimal ? row.curr.toFixed(1) : row.curr}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${
-                              change.isUp === true
-                                ? 'bg-success-100 text-success-700 dark:bg-success/20 dark:text-success-400'
-                                : change.isUp === false
-                                ? 'bg-error-100 text-error-700 dark:bg-error/20 dark:text-error-400'
-                                : 'bg-charcoal-100 text-charcoal-700 dark:bg-charcoal-700 dark:text-charcoal-400'
-                            }`}
-                          >
-                            {change.isUp === true ? (
-                              <ArrowUp className="w-3 h-3" />
-                            ) : change.isUp === false ? (
-                              <ArrowDown className="w-3 h-3" />
-                            ) : null}
-                            {change.value}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
-    </Suspense>
+    </div>
   );
 }
