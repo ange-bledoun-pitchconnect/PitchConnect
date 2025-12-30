@@ -1,5 +1,5 @@
 // ============================================================================
-// 🏆 PITCHCONNECT DATABASE SCHEMA v7.7.0 - ENTERPRISE EDITION
+// 🏆 PITCHCONNECT DATABASE SCHEMA v7.8.0 - WORLD-CLASS ENTERPRISE EDITION
 // ============================================================================
 // 
 // Version History:
@@ -11,36 +11,60 @@
 // - v7.5.0: Social Accounts, Fitness Assessments, Parent-Child Relations
 // - v7.6.0: AI Predictions, Enhanced Referee/Scout, Watchlists, Analytics
 // - v7.7.0: Training Drill Library, Budget & Expense System, Enhanced Stats
+// - v7.8.0: Coach Management, Export System, Player Development, Gamification
 //
 // ============================================================================
-// NEW IN v7.7.0:
+// NEW IN v7.8.0:
 // ============================================================================
 //
-// 🎯 TRAINING DRILL LIBRARY SYSTEM:
-//   - TrainingDrill model for reusable drills
-//   - TrainingSessionDrill model for session-drill linking
-//   - DrillCategory enum (50+ sport-specific categories)
-//   - DrillIntensity & DrillDifficulty enums
-//   - Full multi-sport drill categorization
+// 🏋️ ENHANCED COACH MANAGEMENT (6 models):
+//   - CoachTimesheet (enhanced with period, breakdown fields)
+//   - CoachRate for flexible rate structures
+//   - CoachAssignment for team-level assignments
+//   - CoachCertification for qualification tracking
+//   - CoachPerformanceReview for coach evaluations
 //
-// 💰 BUDGET & EXPENSE MANAGEMENT:
-//   - Budget model for club/team/season budgets
-//   - BudgetCategory model for budget line items
-//   - Expense model for tracking actual expenses
-//   - ExpenseCategory enum (30+ categories)
-//   - BudgetStatus, ExpenseStatus, BudgetPeriodType enums
-//   - Approval workflow for expenses
+// 📊 EXPORT & REPORTING SYSTEM (4 models):
+//   - ExportRequest for tracking export jobs
+//   - ExportTemplate for saved configurations
+//   - ReportSchedule for automated reports
+//   - SportFieldConfig for sport-aware field mapping
 //
-// 📊 ENHANCED SPORT-SPECIFIC STATISTICS:
-//   - Documented JSON structures for sportSpecificStats
-//   - Type-safe stat tracking for all 12 sports
-//   - Enhanced PlayerStatistic model documentation
+// 🎯 PLAYER DEVELOPMENT SYSTEM (4 models):
+//   - PlayerDevelopmentPlan for structured growth paths
+//   - SkillAssessment for detailed skill tracking
+//   - SkillMilestone for progress tracking
+//   - MentorshipAssignment for player mentoring
 //
-// 🔐 NEW PERMISSIONS & AUDIT:
-//   - Budget management permissions
-//   - Expense approval permissions
-//   - Drill management permissions
-//   - Enhanced audit trail for financial actions
+// 📱 ENHANCED COMMUNICATION (3 models):
+//   - TeamAnnouncement for team-specific messaging
+//   - EventRSVP for event attendance tracking
+//   - ParentPortalAccess for parent engagement
+//
+// 💳 ENHANCED PAYMENTS (4 models):
+//   - PaymentPlan for installment payments
+//   - InstallmentPayment for payment tracking
+//   - FeeStructure for club/team fees
+//   - Scholarship for financial aid
+//
+// 🏥 ENHANCED MEDICAL & WELLNESS (5 models):
+//   - RecoveryProtocol for injury recovery
+//   - NutritionPlan for player nutrition
+//   - SleepLog for recovery monitoring
+//   - WellnessCheck for mental health tracking
+//   - PerformanceBenchmark for comparative analysis
+//
+// 📈 ANALYTICS & INSIGHTS (2 models):
+//   - TeamChemistry for team dynamics tracking
+//   - PlayerComparison for scouting comparisons
+//
+// 🎮 GAMIFICATION SYSTEM (6 models):
+//   - Challenge for player challenges
+//   - ChallengeParticipant for challenge tracking
+//   - Leaderboard for competitive rankings
+//   - LeaderboardEntry for player rankings
+//   - Streak for consistency tracking
+//   - SeasonAward for end-of-season recognition
 //
 // ============================================================================
 
@@ -221,13 +245,232 @@ enum RefereeAvailabilityStatus {
 }
 
 // ============================================================================
-// 📋 ENUMS - TRAINING DRILL SYSTEM (NEW v7.7.0)
+// 📋 ENUMS - EXPORT SYSTEM (NEW v7.8.0)
+// ============================================================================
+
+enum ExportFormat {
+  CSV
+  PDF
+  EXCEL
+  JSON
+  XML
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum ExportType {
+  PLAYERS
+  TEAMS
+  MATCHES
+  STANDINGS
+  TRAINING
+  ATTENDANCE
+  PERFORMANCE
+  FINANCIAL
+  MEDICAL
+  SCOUTING
+  ANALYTICS
+  CUSTOM
+}
+
+// ============================================================================
+// 📋 ENUMS - COACH MANAGEMENT (NEW v7.8.0)
+// ============================================================================
+
+enum CoachRateType {
+  HOURLY
+  DAILY
+  SESSION
+  MATCH
+  WEEKLY
+  MONTHLY
+  FIXED
+  PER_PLAYER
+}
+
+enum CoachAssignmentType {
+  HEAD_COACH
+  ASSISTANT_COACH
+  GOALKEEPER_COACH
+  FITNESS_COACH
+  YOUTH_COACH
+  DEVELOPMENT_COACH
+  TECHNICAL_DIRECTOR
+  INTERIM
+  SPECIALIST
+  CONSULTANT
+}
+
+enum CertificationStatus {
+  ACTIVE
+  EXPIRED
+  PENDING_RENEWAL
+  SUSPENDED
+  REVOKED
+}
+
+// ============================================================================
+// 📋 ENUMS - PLAYER DEVELOPMENT (NEW v7.8.0)
+// ============================================================================
+
+enum DevelopmentPhase {
+  FOUNDATION
+  DEVELOPMENT
+  MASTERY
+  ELITE
+  PROFESSIONAL
+}
+
+enum SkillCategory {
+  TECHNICAL
+  TACTICAL
+  PHYSICAL
+  MENTAL
+  SOCIAL
+  LEADERSHIP
+}
+
+enum MilestoneStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  CANCELLED
+}
+
+// ============================================================================
+// 📋 ENUMS - COMMUNICATION (NEW v7.8.0)
+// ============================================================================
+
+enum RSVPStatus {
+  PENDING
+  ATTENDING
+  NOT_ATTENDING
+  MAYBE
+  WAITLISTED
+}
+
+// ============================================================================
+// 📋 ENUMS - PAYMENTS (NEW v7.8.0)
+// ============================================================================
+
+enum PaymentPlanStatus {
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+  CANCELLED
+  PAUSED
+}
+
+enum ScholarshipType {
+  FULL
+  PARTIAL
+  MERIT
+  NEED_BASED
+  ATHLETIC
+  ACADEMIC
+}
+
+// ============================================================================
+// 📋 ENUMS - MEDICAL & WELLNESS (NEW v7.8.0)
+// ============================================================================
+
+enum RecoveryPhase {
+  ACUTE
+  SUBACUTE
+  REMODELING
+  FUNCTIONAL
+  RETURN_TO_SPORT
+  FULL_CLEARANCE
+}
+
+enum WellnessCategory {
+  PHYSICAL
+  MENTAL
+  EMOTIONAL
+  SOCIAL
+  SLEEP
+  NUTRITION
+  STRESS
+}
+
+// ============================================================================
+// 📋 ENUMS - GAMIFICATION (NEW v7.8.0)
+// ============================================================================
+
+enum ChallengeType {
+  INDIVIDUAL
+  TEAM
+  CLUB
+  GLOBAL
+}
+
+enum ChallengeStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum LeaderboardType {
+  GOALS
+  ASSISTS
+  CLEAN_SHEETS
+  RATING
+  ATTENDANCE
+  FITNESS
+  TRAINING
+  CUSTOM
+}
+
+enum LeaderboardScope {
+  TEAM
+  CLUB
+  LEAGUE
+  REGION
+  NATIONAL
+  GLOBAL
+}
+
+enum AwardCategory {
+  MVP
+  TOP_SCORER
+  TOP_ASSISTER
+  BEST_DEFENDER
+  BEST_GOALKEEPER
+  MOST_IMPROVED
+  COACHES_AWARD
+  FAIR_PLAY
+  ATTENDANCE
+  LEADERSHIP
+  ROOKIE_OF_YEAR
+  CUSTOM
+}
+
+enum ReportFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  ON_DEMAND
+}
+
+// ============================================================================
+// 📋 ENUMS - TRAINING DRILL SYSTEM (v7.7.0)
 // ============================================================================
 
 enum DrillCategory {
-  // ═══════════════════════════════════════════════════════════════════════════
   // Universal Categories (All Sports)
-  // ═══════════════════════════════════════════════════════════════════════════
   WARM_UP
   COOL_DOWN
   CONDITIONING
@@ -239,9 +482,7 @@ enum DrillCategory {
   VIDEO_ANALYSIS
   TEAM_MEETING
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Technical - Ball Sports (Football, Futsal, Beach Football)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Technical - Ball Sports
   PASSING
   SHOOTING
   DRIBBLING
@@ -249,9 +490,7 @@ enum DrillCategory {
   CROSSING
   HEADING
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Tactical Categories (Multi-Sport)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Tactical Categories
   DEFENSIVE_SHAPE
   ATTACKING_PATTERNS
   SET_PIECES
@@ -260,24 +499,18 @@ enum DrillCategory {
   BUILD_UP_PLAY
   COUNTER_ATTACK
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Position-Specific Training
-  // ═══════════════════════════════════════════════════════════════════════════
   GOALKEEPER_TRAINING
   DEFENDER_TRAINING
   MIDFIELDER_TRAINING
   FORWARD_TRAINING
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Team Training
-  // ═══════════════════════════════════════════════════════════════════════════
   SMALL_SIDED_GAMES
   MATCH_SIMULATION
   TEAM_TACTICS
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Rugby-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   SCRUMMAGING
   LINEOUT
   RUCKING
@@ -285,9 +518,7 @@ enum DrillCategory {
   TACKLING_TECHNIQUE
   BREAKDOWN
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Basketball-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   FREE_THROWS
   THREE_POINT_SHOOTING
   POST_MOVES
@@ -296,42 +527,32 @@ enum DrillCategory {
   ZONE_DEFENSE
   MAN_TO_MAN
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Cricket-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   BATTING_TECHNIQUE
   BOWLING_TECHNIQUE
   FIELDING_DRILLS
   CATCHING
   WICKET_KEEPING
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // American Football-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   BLOCKING
   ROUTE_RUNNING
   COVERAGE
   SPECIAL_TEAMS
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Netball-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   FOOTWORK
   INTERCEPTIONS
   COURT_MOVEMENT
   CIRCLE_WORK
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Hockey-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   STICK_HANDLING
   SLAP_SHOT
   POWER_PLAY
   PENALTY_KILL
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Other Categories
-  // ═══════════════════════════════════════════════════════════════════════════
   REHABILITATION
   INDIVIDUAL_SKILL
   FUN_GAMES
@@ -355,7 +576,7 @@ enum DrillDifficulty {
 }
 
 // ============================================================================
-// 📋 ENUMS - BUDGET & EXPENSE SYSTEM (NEW v7.7.0)
+// 📋 ENUMS - BUDGET & EXPENSE SYSTEM (v7.7.0)
 // ============================================================================
 
 enum BudgetStatus {
@@ -376,73 +597,55 @@ enum BudgetPeriodType {
 }
 
 enum ExpenseCategory {
-  // ═══════════════════════════════════════════════════════════════════════════
   // Equipment & Gear
-  // ═══════════════════════════════════════════════════════════════════════════
   EQUIPMENT_PURCHASE
   EQUIPMENT_MAINTENANCE
   EQUIPMENT_RENTAL
   UNIFORMS_KITS
   TRAINING_GEAR
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Facilities
-  // ═══════════════════════════════════════════════════════════════════════════
   FACILITY_RENTAL
   FACILITY_MAINTENANCE
   PITCH_HIRE
   GYM_MEMBERSHIP
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Travel & Accommodation
-  // ═══════════════════════════════════════════════════════════════════════════
   TRAVEL_TRANSPORT
   TRAVEL_FUEL
   ACCOMMODATION
   MEALS_CATERING
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Staff & Personnel
-  // ═══════════════════════════════════════════════════════════════════════════
   COACHING_FEES
   REFEREE_FEES
   MEDICAL_STAFF
   ADMINISTRATIVE_STAFF
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Medical & Welfare
-  // ═══════════════════════════════════════════════════════════════════════════
   MEDICAL_SUPPLIES
   PHYSIOTHERAPY
   INSURANCE_PREMIUMS
   PLAYER_WELFARE
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Competition & Registration
-  // ═══════════════════════════════════════════════════════════════════════════
   LEAGUE_FEES
   COMPETITION_ENTRY
   REGISTRATION_FEES
   FINES_PENALTIES
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Marketing & Admin
-  // ═══════════════════════════════════════════════════════════════════════════
   MARKETING_PROMOTION
   WEBSITE_HOSTING
   SOFTWARE_SUBSCRIPTIONS
   PRINTING_STATIONERY
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Events
-  // ═══════════════════════════════════════════════════════════════════════════
   EVENTS_SOCIALS
   AWARDS_TROPHIES
   END_OF_SEASON
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Other
-  // ═══════════════════════════════════════════════════════════════════════════
   MISCELLANEOUS
   CONTINGENCY
   OTHER
@@ -459,13 +662,11 @@ enum ExpenseStatus {
 }
 
 // ============================================================================
-// 📋 ENUMS - PERMISSIONS (ENHANCED v7.7.0)
+// 📋 ENUMS - PERMISSIONS (ENHANCED v7.8.0)
 // ============================================================================
 
 enum PermissionType {
-  // ═══════════════════════════════════════════════════════════════════════════
   // User Management
-  // ═══════════════════════════════════════════════════════════════════════════
   USER_CREATE
   USER_READ
   USER_UPDATE
@@ -473,9 +674,7 @@ enum PermissionType {
   USER_SUSPEND
   USER_BAN
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Team Management
-  // ═══════════════════════════════════════════════════════════════════════════
   TEAM_CREATE
   TEAM_READ
   TEAM_UPDATE
@@ -483,9 +682,7 @@ enum PermissionType {
   TEAM_INVITE
   TEAM_REMOVE_MEMBER
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Match Management
-  // ═══════════════════════════════════════════════════════════════════════════
   MATCH_CREATE
   MATCH_READ
   MATCH_UPDATE
@@ -496,18 +693,14 @@ enum PermissionType {
   MATCH_MANAGE_LINEUP
   MATCH_RECORD_EVENTS
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Competition Management
-  // ═══════════════════════════════════════════════════════════════════════════
   COMPETITION_CREATE
   COMPETITION_READ
   COMPETITION_UPDATE
   COMPETITION_DELETE
   COMPETITION_MANAGE_TEAMS
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Player Management
-  // ═══════════════════════════════════════════════════════════════════════════
   PLAYER_CREATE
   PLAYER_READ
   PLAYER_UPDATE
@@ -515,18 +708,14 @@ enum PermissionType {
   PLAYER_VERIFY
   PLAYER_TRANSFER
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Medical & Health
-  // ═══════════════════════════════════════════════════════════════════════════
   MEDICAL_READ
   MEDICAL_CREATE
   MEDICAL_UPDATE
   MEDICAL_READ_FULL
   MEDICAL_READ_AVAILABILITY
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Financial - ENHANCED v7.7.0
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Financial - ENHANCED v7.8.0
   BILLING_READ
   BILLING_UPDATE
   BILLING_MANAGE_SUBSCRIPTIONS
@@ -538,34 +727,31 @@ enum PermissionType {
   EXPENSE_CREATE
   EXPENSE_APPROVE
   EXPENSE_DELETE
+  PAYMENT_PLAN_VIEW
+  PAYMENT_PLAN_CREATE
+  PAYMENT_PLAN_MANAGE
+  SCHOLARSHIP_VIEW
+  SCHOLARSHIP_MANAGE
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Analytics & Predictions
-  // ═══════════════════════════════════════════════════════════════════════════
   ANALYTICS_VIEW
   ANALYTICS_EXPORT
   PREDICTIONS_VIEW
   PREDICTIONS_CREATE
   PREDICTIONS_MANAGE
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Scouting
-  // ═══════════════════════════════════════════════════════════════════════════
   SCOUTING_VIEW
   SCOUTING_CREATE_REPORT
   SCOUTING_MANAGE_WATCHLIST
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Referee
-  // ═══════════════════════════════════════════════════════════════════════════
   REFEREE_VIEW_ASSIGNMENTS
   REFEREE_MANAGE_AVAILABILITY
   REFEREE_SUBMIT_REPORTS
   REFEREE_VIEW_FEES
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Training - ENHANCED v7.7.0
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Training - ENHANCED v7.8.0
   TRAINING_VIEW
   TRAINING_CREATE
   TRAINING_UPDATE
@@ -576,37 +762,79 @@ enum PermissionType {
   DRILL_DELETE
   DRILL_MANAGE_LIBRARY
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Coach Management - NEW v7.8.0
+  COACH_RATE_VIEW
+  COACH_RATE_CREATE
+  COACH_RATE_UPDATE
+  COACH_RATE_DELETE
+  COACH_ASSIGNMENT_VIEW
+  COACH_ASSIGNMENT_CREATE
+  COACH_ASSIGNMENT_UPDATE
+  COACH_ASSIGNMENT_DELETE
+  COACH_CERTIFICATION_VIEW
+  COACH_CERTIFICATION_MANAGE
+  COACH_REVIEW_VIEW
+  COACH_REVIEW_CREATE
+
+  // Export & Reports - NEW v7.8.0
+  EXPORT_REQUEST
+  EXPORT_TEMPLATE_CREATE
+  EXPORT_TEMPLATE_MANAGE
+  REPORT_SCHEDULE_CREATE
+  REPORT_SCHEDULE_MANAGE
+
+  // Player Development - NEW v7.8.0
+  DEVELOPMENT_PLAN_VIEW
+  DEVELOPMENT_PLAN_CREATE
+  DEVELOPMENT_PLAN_MANAGE
+  SKILL_ASSESSMENT_VIEW
+  SKILL_ASSESSMENT_CREATE
+  MENTORSHIP_VIEW
+  MENTORSHIP_MANAGE
+
+  // Wellness - NEW v7.8.0
+  WELLNESS_VIEW
+  WELLNESS_CREATE
+  WELLNESS_VIEW_CONFIDENTIAL
+  RECOVERY_PROTOCOL_VIEW
+  RECOVERY_PROTOCOL_MANAGE
+  NUTRITION_VIEW
+  NUTRITION_MANAGE
+
+  // Gamification - NEW v7.8.0
+  CHALLENGE_VIEW
+  CHALLENGE_CREATE
+  CHALLENGE_MANAGE
+  LEADERBOARD_VIEW
+  LEADERBOARD_MANAGE
+  SEASON_AWARD_VIEW
+  SEASON_AWARD_MANAGE
+
+  // Parent Portal - NEW v7.8.0
+  PARENT_PORTAL_VIEW
+  PARENT_PORTAL_MANAGE
+
   // API & System
-  // ═══════════════════════════════════════════════════════════════════════════
   API_ACCESS
   API_KEY_CREATE
   API_KEY_REVOKE
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Facilities & Venues
-  // ═══════════════════════════════════════════════════════════════════════════
   FACILITY_MANAGE
   FACILITY_BOOK
   VENUE_CREATE
   VENUE_UPDATE
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Admin & Audit
-  // ═══════════════════════════════════════════════════════════════════════════
   SYSTEM_ADMIN
   AUDIT_LOG_VIEW
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Media
-  // ═══════════════════════════════════════════════════════════════════════════
   MEDIA_UPLOAD
   MEDIA_DELETE
   MEDIA_MANAGE
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Social
-  // ═══════════════════════════════════════════════════════════════════════════
   SOCIAL_CONNECT
   SOCIAL_POST
   SOCIAL_MANAGE
@@ -621,9 +849,7 @@ enum DataRetentionPolicy {
 }
 
 enum AuditActionType {
-  // ═══════════════════════════════════════════════════════════════════════════
   // User Actions
-  // ═══════════════════════════════════════════════════════════════════════════
   USER_CREATED
   USER_UPDATED
   USER_DELETED
@@ -638,9 +864,7 @@ enum AuditActionType {
   LOGIN_FAILED
   LOGIN_LOCKED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Verification & Security
-  // ═══════════════════════════════════════════════════════════════════════════
   EMAIL_VERIFIED
   PHONE_VERIFIED
   PASSWORD_CHANGED
@@ -656,9 +880,7 @@ enum AuditActionType {
   VERIFICATION_EMAIL_SENT
   VERIFICATION_EMAIL_RESENT
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Subscription & Payment
-  // ═══════════════════════════════════════════════════════════════════════════
   SUBSCRIPTION_GRANTED
   SUBSCRIPTION_UPGRADED
   SUBSCRIPTION_DOWNGRADED
@@ -667,16 +889,12 @@ enum AuditActionType {
   PAYMENT_FAILED
   REFUND_PROCESSED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Data Management
-  // ═══════════════════════════════════════════════════════════════════════════
   DATA_EXPORTED
   DATA_DELETED
   DATA_IMPORTED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Organisation & Club
-  // ═══════════════════════════════════════════════════════════════════════════
   TEAM_CREATED
   TEAM_UPDATED
   TEAM_DELETED
@@ -684,9 +902,7 @@ enum AuditActionType {
   CLUB_UPDATED
   CLUB_DELETED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Match & Competition
-  // ═══════════════════════════════════════════════════════════════════════════
   MATCH_CREATED
   MATCH_UPDATED
   MATCH_RESULT_UPDATED
@@ -700,9 +916,7 @@ enum AuditActionType {
   COMPETITION_TEAM_ADDED
   COMPETITION_TEAM_REMOVED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Player & Medical
-  // ═══════════════════════════════════════════════════════════════════════════
   PLAYER_TRANSFER
   PLAYER_CONTRACT_SIGNED
   PLAYER_PERFORMANCE_RECORDED
@@ -712,9 +926,7 @@ enum AuditActionType {
   FITNESS_ASSESSMENT_UPDATED
   PLAYER_CLEARED_TO_PLAY
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Join Requests & Jobs
-  // ═══════════════════════════════════════════════════════════════════════════
   JOIN_REQUEST_SUBMITTED
   JOIN_REQUEST_APPROVED
   JOIN_REQUEST_REJECTED
@@ -726,9 +938,7 @@ enum AuditActionType {
   JOB_APPLICATION_ACCEPTED
   JOB_APPLICATION_REJECTED
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Training & Drills - ENHANCED v7.7.0
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Training & Drills
   TRAINING_CREATED
   TRAINING_UPDATED
   TRAINING_CANCELLED
@@ -738,9 +948,7 @@ enum AuditActionType {
   DRILL_ADDED_TO_SESSION
   DRILL_REMOVED_FROM_SESSION
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Media & Social
-  // ═══════════════════════════════════════════════════════════════════════════
   MEDIA_UPLOADED
   MEDIA_DELETED
   MEDIA_SHARED
@@ -748,32 +956,24 @@ enum AuditActionType {
   SOCIAL_ACCOUNT_DISCONNECTED
   SOCIAL_POST_PUBLISHED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // AI Predictions
-  // ═══════════════════════════════════════════════════════════════════════════
   PREDICTION_CREATED
   PREDICTION_VERIFIED
   PREDICTION_FEEDBACK_SUBMITTED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Scouting
-  // ═══════════════════════════════════════════════════════════════════════════
   SCOUTING_REPORT_CREATED
   WATCHLIST_PLAYER_ADDED
   WATCHLIST_PLAYER_UPDATED
   WATCHLIST_PLAYER_REMOVED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Referee
-  // ═══════════════════════════════════════════════════════════════════════════
   REFEREE_ASSIGNED
   REFEREE_AVAILABILITY_UPDATED
   REFEREE_REPORT_SUBMITTED
   REFEREE_PAYMENT_PROCESSED
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Budget & Expense - NEW v7.7.0
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Budget & Expense
   BUDGET_CREATED
   BUDGET_UPDATED
   BUDGET_DELETED
@@ -789,9 +989,56 @@ enum AuditActionType {
   EXPENSE_PAID
   EXPENSE_REIMBURSED
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Coach Management - NEW v7.8.0
+  COACH_RATE_CREATED
+  COACH_RATE_UPDATED
+  COACH_RATE_DELETED
+  COACH_ASSIGNMENT_CREATED
+  COACH_ASSIGNMENT_UPDATED
+  COACH_ASSIGNMENT_ENDED
+  COACH_CERTIFICATION_ADDED
+  COACH_CERTIFICATION_EXPIRED
+  COACH_REVIEW_CREATED
+  COACH_REVIEW_ACKNOWLEDGED
+
+  // Export & Reports - NEW v7.8.0
+  EXPORT_REQUESTED
+  EXPORT_COMPLETED
+  EXPORT_FAILED
+  EXPORT_DOWNLOADED
+  EXPORT_TEMPLATE_CREATED
+  EXPORT_TEMPLATE_UPDATED
+  EXPORT_TEMPLATE_DELETED
+  REPORT_SCHEDULED
+  REPORT_GENERATED
+
+  // Player Development - NEW v7.8.0
+  DEVELOPMENT_PLAN_CREATED
+  DEVELOPMENT_PLAN_UPDATED
+  MILESTONE_COMPLETED
+  SKILL_ASSESSED
+  MENTORSHIP_STARTED
+  MENTORSHIP_ENDED
+
+  // Wellness - NEW v7.8.0
+  WELLNESS_CHECK_FLAGGED
+  RECOVERY_PHASE_CHANGED
+
+  // Payments - NEW v7.8.0
+  PAYMENT_PLAN_CREATED
+  INSTALLMENT_PAID
+  INSTALLMENT_OVERDUE
+  SCHOLARSHIP_AWARDED
+  SCHOLARSHIP_REVOKED
+
+  // Gamification - NEW v7.8.0
+  CHALLENGE_CREATED
+  CHALLENGE_COMPLETED
+  LEADERBOARD_UPDATED
+  STREAK_MILESTONE_REACHED
+  SEASON_AWARD_ANNOUNCED
+
   // GDPR & Security
-  // ═══════════════════════════════════════════════════════════════════════════
   CONSENT_UPDATED
   GDPR_REQUEST
   DATA_RETENTION_APPLIED
@@ -822,9 +1069,7 @@ enum Sport {
 }
 
 enum Position {
-  // ═══════════════════════════════════════════════════════════════════════════
   // Football / Soccer / Futsal / Beach Football
-  // ═══════════════════════════════════════════════════════════════════════════
   GOALKEEPER
   LEFT_BACK
   CENTER_BACK
@@ -842,9 +1087,7 @@ enum Position {
   CENTER_FORWARD
   SECOND_STRIKER
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Netball
-  // ═══════════════════════════════════════════════════════════════════════════
   GOALKEEPER_NETBALL
   GOAL_ATTACK
   WING_ATTACK
@@ -853,9 +1096,7 @@ enum Position {
   GOAL_DEFENSE
   GOAL_SHOOTER
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Rugby Union
-  // ═══════════════════════════════════════════════════════════════════════════
   PROP
   HOOKER
   LOCK
@@ -867,17 +1108,13 @@ enum Position {
   OUTSIDE_CENTER
   FULLBACK
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Rugby League (additional)
-  // ═══════════════════════════════════════════════════════════════════════════
   HOOKER_LEAGUE
   PROP_LEAGUE
   SECOND_ROW
   LOOSE_FORWARD
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // American Football
-  // ═══════════════════════════════════════════════════════════════════════════
   QUARTERBACK
   RUNNING_BACK
   WIDE_RECEIVER
@@ -895,35 +1132,27 @@ enum Position {
   PUNTER
   KICKER
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Basketball
-  // ═══════════════════════════════════════════════════════════════════════════
   POINT_GUARD
   SHOOTING_GUARD
   SMALL_FORWARD
   POWER_FORWARD
   CENTER_BASKETBALL
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Cricket
-  // ═══════════════════════════════════════════════════════════════════════════
   BATSMAN
   BOWLER
   ALL_ROUNDER
   FIELDER
   WICKET_KEEPER
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Hockey / Lacrosse
-  // ═══════════════════════════════════════════════════════════════════════════
   GOALTENDER
   DEFENSEMAN
   WINGER
   CENTER_HOCKEY
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Australian Rules Football (AFL)
-  // ═══════════════════════════════════════════════════════════════════════════
   FULL_FORWARD
   HALF_FORWARD
   FULL_BACK_AFL
@@ -932,9 +1161,7 @@ enum Position {
   RUCK_ROVER
   ROVER
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // General
-  // ═══════════════════════════════════════════════════════════════════════════
   UTILITY
   SUBSTITUTE
 }
@@ -946,9 +1173,7 @@ enum PreferredFoot {
 }
 
 enum FormationType {
-  // ═══════════════════════════════════════════════════════════════════════════
   // Football / Soccer
-  // ═══════════════════════════════════════════════════════════════════════════
   FOUR_FOUR_TWO
   FOUR_THREE_THREE
   THREE_FIVE_TWO
@@ -965,18 +1190,14 @@ enum FormationType {
   FOUR_THREE_TWO_ONE
   FOUR_FIVE_ONE
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Futsal / Small-Sided
-  // ═══════════════════════════════════════════════════════════════════════════
   ONE_THREE_ONE
   TWO_THREE
   TWO_ONE_TWO
   THREE_TWO
   ONE_TWO_TWO
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // American Football
-  // ═══════════════════════════════════════════════════════════════════════════
   I_FORMATION
   SHOTGUN
   PISTOL
@@ -985,16 +1206,12 @@ enum FormationType {
   PRO_SET
   WILDCAT
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Netball
-  // ═══════════════════════════════════════════════════════════════════════════
   PODS
   DIAMOND
   FLAT_LINE
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Custom
-  // ═══════════════════════════════════════════════════════════════════════════
   CUSTOM
 }
 
@@ -1115,9 +1332,7 @@ enum MatchAttendanceStatus {
 }
 
 enum MatchEventType {
-  // ═══════════════════════════════════════════════════════════════════════════
   // Universal Events
-  // ═══════════════════════════════════════════════════════════════════════════
   GOAL
   ASSIST
   YELLOW_CARD
@@ -1154,9 +1369,7 @@ enum MatchEventType {
   OVERTIME_START
   SHOOTOUT_START
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Netball-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   CENTER_PASS
   OBSTRUCTION
   CONTACT
@@ -1164,9 +1377,7 @@ enum MatchEventType {
   STEPPING
   OVER_THIRD
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Rugby-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   TRY
   CONVERSION
   PENALTY_GOAL
@@ -1181,9 +1392,7 @@ enum MatchEventType {
   YELLOW_CARD_RUGBY
   RED_CARD_RUGBY
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Cricket-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   WICKET
   BOUNDARY
   SIX
@@ -1199,9 +1408,7 @@ enum MatchEventType {
   LBW
   STUMPED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Basketball-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   THREE_POINTER
   TWO_POINTER
   FREE_THROW_MADE
@@ -1217,9 +1424,7 @@ enum MatchEventType {
   DUNK
   ALLEY_OOP
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // American Football-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   TOUCHDOWN
   FIELD_GOAL
   SAFETY_SCORE
@@ -1232,9 +1437,7 @@ enum MatchEventType {
   KICKOFF_RETURN
   FAIR_CATCH
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Hockey-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   HAT_TRICK
   MAJOR_PENALTY
   MINOR_PENALTY
@@ -1243,9 +1446,7 @@ enum MatchEventType {
   SHORTHANDED_GOAL
   EMPTY_NET_GOAL
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Australian Rules-Specific
-  // ═══════════════════════════════════════════════════════════════════════════
   BEHIND
   RUSHED_BEHIND
   MARK
@@ -1661,13 +1862,14 @@ enum PaymentType {
   SPONSORSHIP
   REFEREE_FEE
   REFEREE_EXPENSES
-  // NEW v7.7.0
   MEMBERSHIP_FEE
   PLAYER_FEE
   CLUB_FEE
   LEAGUE_FEE
   EXPENSE_REIMBURSEMENT
   BUDGET_ALLOCATION
+  INSTALLMENT
+  SCHOLARSHIP_DISBURSEMENT
   OTHER
 }
 
@@ -1732,81 +1934,59 @@ enum InvitationStatus {
 }
 
 enum WebhookEvent {
-  // ═══════════════════════════════════════════════════════════════════════════
   // Match Events
-  // ═══════════════════════════════════════════════════════════════════════════
   MATCH_CREATED
   MATCH_STARTED
   MATCH_FINISHED
   MATCH_CANCELLED
   MATCH_LINEUP_SET
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Player Events
-  // ═══════════════════════════════════════════════════════════════════════════
   PLAYER_ADDED
   PLAYER_UPDATED
   PLAYER_INJURED
   PLAYER_TRANSFERRED
   PLAYER_CLEARED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Team & Competition
-  // ═══════════════════════════════════════════════════════════════════════════
   TEAM_UPDATED
   TEAM_CREATED
   COMPETITION_CREATED
   COMPETITION_STARTED
   COMPETITION_FINISHED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Billing
-  // ═══════════════════════════════════════════════════════════════════════════
   SUBSCRIPTION_UPDATED
   PAYMENT_RECEIVED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // User
-  // ═══════════════════════════════════════════════════════════════════════════
   USER_CREATED
   USER_DELETED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Fitness & Medical
-  // ═══════════════════════════════════════════════════════════════════════════
   FITNESS_ASSESSMENT_COMPLETED
   PLAYER_RTP_CLEARED
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Predictions
-  // ═══════════════════════════════════════════════════════════════════════════
   PREDICTION_CREATED
   PREDICTION_VERIFIED
   HIGH_RISK_PREDICTION
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Scouting
-  // ═══════════════════════════════════════════════════════════════════════════
   SCOUTING_REPORT_SUBMITTED
   WATCHLIST_ALERT
 
-  // ═══════════════════════════════════════════════════════════════════════════
   // Referee
-  // ═══════════════════════════════════════════════════════════════════════════
   REFEREE_ASSIGNED
   REFEREE_REPORT_SUBMITTED
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Training & Drills - NEW v7.7.0
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Training & Drills
   TRAINING_SCHEDULED
   TRAINING_COMPLETED
   DRILL_CREATED
   DRILL_LIBRARY_UPDATED
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Budget & Expense - NEW v7.7.0
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Budget & Expense
   BUDGET_CREATED
   BUDGET_ALERT
   BUDGET_THRESHOLD_REACHED
@@ -1814,9 +1994,40 @@ enum WebhookEvent {
   EXPENSE_APPROVED
   EXPENSE_REJECTED
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Coach Management - NEW v7.8.0
+  COACH_ASSIGNED
+  COACH_UNASSIGNED
+  COACH_CERTIFICATION_EXPIRING
+  TIMESHEET_SUBMITTED
+  TIMESHEET_APPROVED
+  TIMESHEET_REJECTED
+
+  // Export & Reports - NEW v7.8.0
+  EXPORT_COMPLETED
+  REPORT_GENERATED
+
+  // Player Development - NEW v7.8.0
+  DEVELOPMENT_MILESTONE_COMPLETED
+  SKILL_ASSESSMENT_COMPLETED
+
+  // Wellness - NEW v7.8.0
+  WELLNESS_ALERT
+  RECOVERY_PHASE_CHANGED
+  PLAYER_CLEARED_TO_PLAY_WELLNESS
+
+  // Payments - NEW v7.8.0
+  PAYMENT_DUE
+  PAYMENT_OVERDUE
+  PAYMENT_RECEIVED_INSTALLMENT
+
+  // Gamification - NEW v7.8.0
+  CHALLENGE_STARTED
+  CHALLENGE_ENDED
+  LEADERBOARD_POSITION_CHANGED
+  STREAK_MILESTONE
+  SEASON_AWARD_ANNOUNCED
+
   // Other
-  // ═══════════════════════════════════════════════════════════════════════════
   RESULT_APPROVED
   ANNOUNCEMENT_POSTED
   JOB_POSTED
@@ -2170,7 +2381,7 @@ model RefereeMatchReport {
 }
 
 // ============================================================================
-// 🎯 TRAINING DRILL LIBRARY (NEW v7.7.0)
+// 🎯 TRAINING DRILL LIBRARY (v7.7.0)
 // ============================================================================
 
 model TrainingDrill {
@@ -2274,7 +2485,7 @@ model TrainingSessionDrill {
 }
 
 // ============================================================================
-// 💰 BUDGET & EXPENSE SYSTEM (NEW v7.7.0)
+// 💰 BUDGET & EXPENSE SYSTEM (v7.7.0)
 // ============================================================================
 
 model Budget {
@@ -2431,6 +2642,1243 @@ model Expense {
 }
 
 // ============================================================================
+// 📊 EXPORT & REPORTING SYSTEM (NEW v7.8.0)
+// ============================================================================
+
+model ExportRequest {
+  id             String  @id @default(cuid())
+  userId         String
+  organisationId String?
+  clubId         String?
+
+  exportType ExportType
+  format     ExportFormat @default(CSV)
+  
+  filters Json?
+  fields  String[] @default([])
+  
+  sport                Sport?
+  includeSportSpecific Boolean @default(true)
+
+  status       ExportStatus @default(PENDING)
+  progress     Int          @default(0)
+  recordCount  Int?
+  errorMessage String?
+
+  filename  String?
+  fileUrl   String?
+  fileSize  Int?
+  checksum  String?
+  expiresAt DateTime?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation("userExports", fields: [userId], references: [id], onDelete: Cascade)
+  organisation Organisation? @relation("orgExports", fields: [organisationId], references: [id], onDelete: SetNull)
+  club         Club?         @relation("clubExports", fields: [clubId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([organisationId])
+  @@index([clubId])
+  @@index([status])
+  @@index([exportType])
+  @@index([createdAt])
+  @@map("export_requests")
+}
+
+model ExportTemplate {
+  id             String  @id @default(cuid())
+  userId         String
+  organisationId String?
+  clubId         String?
+
+  name        String
+  description String?
+
+  exportType ExportType
+  format     ExportFormat @default(CSV)
+
+  filters Json?
+  fields  String[]
+  
+  sport                Sport?
+  includeSportSpecific Boolean @default(true)
+
+  columnMapping Json?
+
+  isPublic  Boolean @default(false)
+  isDefault Boolean @default(false)
+
+  usageCount Int       @default(0)
+  lastUsedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation("userExportTemplates", fields: [userId], references: [id], onDelete: Cascade)
+  organisation Organisation? @relation("orgExportTemplates", fields: [organisationId], references: [id], onDelete: SetNull)
+  club         Club?         @relation("clubExportTemplates", fields: [clubId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([organisationId])
+  @@index([clubId])
+  @@index([exportType])
+  @@index([isPublic])
+  @@map("export_templates")
+}
+
+model ReportSchedule {
+  id             String  @id @default(cuid())
+  userId         String
+  organisationId String?
+  clubId         String?
+
+  name        String
+  description String?
+
+  reportType ExportType
+  format     ExportFormat @default(PDF)
+  templateId String?
+
+  frequency    ReportFrequency
+  dayOfWeek    Int?
+  dayOfMonth   Int?
+  time         String?
+  timezone     String          @default("Europe/London")
+
+  recipients String[]
+  
+  filters Json?
+
+  isActive      Boolean   @default(true)
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  lastStatus    String?
+  failureCount  Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation("userReportSchedules", fields: [userId], references: [id], onDelete: Cascade)
+  organisation Organisation? @relation("orgReportSchedules", fields: [organisationId], references: [id], onDelete: SetNull)
+  club         Club?         @relation("clubReportSchedules", fields: [clubId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([organisationId])
+  @@index([clubId])
+  @@index([isActive])
+  @@index([nextRunAt])
+  @@map("report_schedules")
+}
+
+model SportFieldConfig {
+  id String @id @default(cuid())
+
+  sport     Sport
+  fieldName String
+  
+  displayName  String
+  description  String?
+  category     String
+  
+  dataType     String
+  unit         String?
+  
+  includeInExport   Boolean @default(true)
+  exportOrder       Int     @default(100)
+  exportHeader      String?
+  
+  aggregationType   String?
+  
+  minValue Float?
+  maxValue Float?
+
+  isRequired Boolean @default(false)
+  isActive   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sport, fieldName])
+  @@index([sport])
+  @@index([category])
+  @@index([isActive])
+  @@map("sport_field_configs")
+}
+
+// ============================================================================
+// 🏋️ ENHANCED COACH MANAGEMENT (NEW v7.8.0)
+// ============================================================================
+
+model CoachRate {
+  id      String @id @default(cuid())
+  coachId String
+  clubId  String?
+
+  rateType CoachRateType @default(HOURLY)
+  amount   Float
+  currency String        @default("GBP")
+
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  sport Sport?
+
+  trainingRate Float?
+  matchRate    Float?
+  travelRate   Float?
+  adminRate    Float?
+
+  contractId String?
+  notes      String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  coach Coach  @relation("coachRates", fields: [coachId], references: [id], onDelete: Cascade)
+  club  Club?  @relation("clubCoachRates", fields: [clubId], references: [id], onDelete: SetNull)
+
+  @@index([coachId])
+  @@index([clubId])
+  @@index([isActive])
+  @@index([effectiveFrom])
+  @@map("coach_rates")
+}
+
+model CoachAssignment {
+  id      String @id @default(cuid())
+  coachId String
+  teamId  String
+  clubId  String
+
+  assignmentType CoachAssignmentType @default(HEAD_COACH)
+  isPrimary      Boolean             @default(false)
+
+  seasonId  String?
+  startDate DateTime
+  endDate   DateTime?
+
+  responsibilities String[]
+  focusAreas       String[]
+
+  rating     Float?
+  reviewDate DateTime?
+  reviewedBy String?
+
+  isActive Boolean @default(true)
+  notes    String?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  coach  Coach   @relation("coachAssignments", fields: [coachId], references: [id], onDelete: Cascade)
+  team   Team    @relation("teamCoachAssignments", fields: [teamId], references: [id], onDelete: Cascade)
+  club   Club    @relation("clubCoachAssignments", fields: [clubId], references: [id], onDelete: Cascade)
+  season Season? @relation("seasonCoachAssignments", fields: [seasonId], references: [id], onDelete: SetNull)
+
+  @@unique([coachId, teamId, startDate])
+  @@index([coachId])
+  @@index([teamId])
+  @@index([clubId])
+  @@index([seasonId])
+  @@index([isActive])
+  @@index([assignmentType])
+  @@map("coach_assignments")
+}
+
+model CoachCertification {
+  id      String @id @default(cuid())
+  coachId String
+
+  name              String
+  issuingBody       String
+  certificateNumber String?
+  level             String?
+
+  sport Sport?
+
+  dateObtained DateTime
+  expiryDate   DateTime?
+  renewalDate  DateTime?
+
+  status CertificationStatus @default(ACTIVE)
+
+  documentUrl  String?
+  isVerified   Boolean   @default(false)
+  verifiedBy   String?
+  verifiedAt   DateTime?
+
+  cost        Float?
+  currency    String @default("GBP")
+  paidBy      String?
+
+  notes String?
+  tags  String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  coach Coach @relation("coachCertifications", fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@index([coachId])
+  @@index([sport])
+  @@index([status])
+  @@index([expiryDate])
+  @@map("coach_certifications")
+}
+
+model CoachPerformanceReview {
+  id      String @id @default(cuid())
+  coachId String
+  clubId  String
+
+  reviewPeriod String
+  reviewDate   DateTime
+
+  overallRating         Float
+  technicalKnowledge    Float?
+  communicationSkills   Float?
+  playerDevelopment     Float?
+  tacticalAwareness     Float?
+  motivationAbility     Float?
+  organizationalSkills  Float?
+  professionalism       Float?
+  adaptability          Float?
+
+  strengths     String[]
+  improvements  String[]
+  achievements  String[]
+  goals         String[]
+
+  selfAssessment    String? @db.Text
+  managerFeedback   String? @db.Text
+  playerFeedback    String? @db.Text
+  parentFeedback    String? @db.Text
+
+  status        String @default("DRAFT")
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+
+  reviewedBy String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  coach Coach @relation("coachReviews", fields: [coachId], references: [id], onDelete: Cascade)
+  club  Club  @relation("clubCoachReviews", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([coachId])
+  @@index([clubId])
+  @@index([reviewDate])
+  @@map("coach_performance_reviews")
+}
+
+// ============================================================================
+// 🎯 PLAYER DEVELOPMENT SYSTEM (NEW v7.8.0)
+// ============================================================================
+
+model PlayerDevelopmentPlan {
+  id       String @id @default(cuid())
+  playerId String
+  coachId  String
+  clubId   String
+
+  name        String
+  description String? @db.Text
+
+  phase     DevelopmentPhase @default(DEVELOPMENT)
+  startDate DateTime
+  endDate   DateTime?
+
+  shortTermGoals String[]
+  longTermGoals  String[]
+
+  technicalFocus String[]
+  tacticalFocus  String[]
+  physicalFocus  String[]
+  mentalFocus    String[]
+
+  progressPercentage Int       @default(0)
+  lastReviewDate     DateTime?
+  nextReviewDate     DateTime?
+
+  isActive Boolean @default(true)
+  status   String  @default("ACTIVE")
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player     Player           @relation("playerDevelopmentPlans", fields: [playerId], references: [id], onDelete: Cascade)
+  coach      Coach            @relation("coachDevelopmentPlans", fields: [coachId], references: [id], onDelete: Cascade)
+  club       Club             @relation("clubDevelopmentPlans", fields: [clubId], references: [id], onDelete: Cascade)
+  milestones SkillMilestone[]
+
+  @@index([playerId])
+  @@index([coachId])
+  @@index([clubId])
+  @@index([isActive])
+  @@map("player_development_plans")
+}
+
+model SkillAssessment {
+  id       String @id @default(cuid())
+  playerId String
+  coachId  String
+
+  assessmentDate DateTime
+  sport          Sport
+
+  technicalScore Float
+  tacticalScore  Float
+  physicalScore  Float
+  mentalScore    Float
+  overallScore   Float
+
+  technicalDetails Json?
+  tacticalDetails  Json?
+  physicalDetails  Json?
+  mentalDetails    Json?
+
+  previousAssessmentId String?
+  improvementScore     Float?
+
+  notes           String? @db.Text
+  recommendations String[]
+
+  isOfficial Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player Player @relation("playerSkillAssessments", fields: [playerId], references: [id], onDelete: Cascade)
+  coach  Coach  @relation("coachSkillAssessments", fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([coachId])
+  @@index([assessmentDate])
+  @@index([sport])
+  @@map("skill_assessments")
+}
+
+model SkillMilestone {
+  id                   String @id @default(cuid())
+  developmentPlanId    String
+  playerId             String
+
+  title       String
+  description String?
+  category    SkillCategory
+
+  targetDate   DateTime
+  completedAt  DateTime?
+  status       MilestoneStatus @default(NOT_STARTED)
+
+  targetValue   Float?
+  currentValue  Float?
+  unit          String?
+
+  evidenceUrls  String[]
+  coachNotes    String?
+  playerNotes   String?
+
+  verifiedBy    String?
+  verifiedAt    DateTime?
+
+  order Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  developmentPlan PlayerDevelopmentPlan @relation(fields: [developmentPlanId], references: [id], onDelete: Cascade)
+  player          Player                @relation("playerMilestones", fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([developmentPlanId])
+  @@index([playerId])
+  @@index([status])
+  @@index([targetDate])
+  @@map("skill_milestones")
+}
+
+model MentorshipAssignment {
+  id        String @id @default(cuid())
+  mentorId  String
+  menteeId  String
+  clubId    String
+
+  startDate DateTime
+  endDate   DateTime?
+
+  focusAreas String[]
+  goals      String[]
+
+  meetingFrequency String?
+  lastMeetingDate  DateTime?
+  nextMeetingDate  DateTime?
+
+  progressNotes Json?
+  rating        Float?
+
+  isActive Boolean @default(true)
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mentor Player @relation("mentorAssignments", fields: [mentorId], references: [id], onDelete: Cascade)
+  mentee Player @relation("menteeAssignments", fields: [menteeId], references: [id], onDelete: Cascade)
+  club   Club   @relation("clubMentorships", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([mentorId, menteeId, startDate])
+  @@index([mentorId])
+  @@index([menteeId])
+  @@index([clubId])
+  @@index([isActive])
+  @@map("mentorship_assignments")
+}
+
+// ============================================================================
+// 📱 ENHANCED COMMUNICATION (NEW v7.8.0)
+// ============================================================================
+
+model TeamAnnouncement {
+  id     String @id @default(cuid())
+  teamId String
+  clubId String
+
+  title    String
+  content  String  @db.Text
+  priority String  @default("NORMAL")
+
+  targetRoles String[]
+  targetAll   Boolean  @default(true)
+
+  publishAt   DateTime?
+  expiresAt   DateTime?
+  isPublished Boolean   @default(false)
+
+  requiresAcknowledgment Boolean @default(false)
+  acknowledgedBy         String[]
+
+  attachments String[]
+  imageUrl    String?
+
+  viewCount Int @default(0)
+
+  authorId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team   Team @relation("teamAnnouncements", fields: [teamId], references: [id], onDelete: Cascade)
+  club   Club @relation("clubTeamAnnouncements", fields: [clubId], references: [id], onDelete: Cascade)
+  author User @relation("userTeamAnnouncements", fields: [authorId], references: [id])
+
+  @@index([teamId])
+  @@index([clubId])
+  @@index([isPublished])
+  @@index([publishAt])
+  @@map("team_announcements")
+}
+
+model EventRSVP {
+  id     String @id @default(cuid())
+  userId String
+
+  eventType String
+  eventId   String
+
+  status       RSVPStatus @default(PENDING)
+  respondedAt  DateTime?
+
+  plusOnes       Int      @default(0)
+  dietaryNeeds   String?
+  transportNeeds String?
+  notes          String?
+
+  reminderSent   Boolean   @default(false)
+  reminderSentAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation("userRSVPs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventType, eventId])
+  @@index([userId])
+  @@index([eventType, eventId])
+  @@index([status])
+  @@map("event_rsvps")
+}
+
+model ParentPortalAccess {
+  id       String @id @default(cuid())
+  parentId String
+  playerId String
+  clubId   String
+
+  canViewSchedule      Boolean @default(true)
+  canViewPerformance   Boolean @default(true)
+  canViewMedical       Boolean @default(false)
+  canViewFinancial     Boolean @default(true)
+  canViewAttendance    Boolean @default(true)
+  canCommunicateCoach  Boolean @default(true)
+  canRSVPEvents        Boolean @default(true)
+  canViewTeammates     Boolean @default(false)
+  canAccessMedia       Boolean @default(true)
+
+  mediaConsentGiven     Boolean   @default(false)
+  mediaConsentDate      DateTime?
+  travelConsentGiven    Boolean   @default(false)
+  travelConsentDate     DateTime?
+  emergencyContactAdded Boolean   @default(false)
+
+  isActive  Boolean   @default(true)
+  grantedBy String
+  grantedAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent Parent @relation("parentPortalAccess", fields: [parentId], references: [id], onDelete: Cascade)
+  player Player @relation("playerParentAccess", fields: [playerId], references: [id], onDelete: Cascade)
+  club   Club   @relation("clubParentAccess", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, playerId])
+  @@index([parentId])
+  @@index([playerId])
+  @@index([clubId])
+  @@index([isActive])
+  @@map("parent_portal_access")
+}
+
+// ============================================================================
+// 💳 ENHANCED PAYMENTS (NEW v7.8.0)
+// ============================================================================
+
+model PaymentPlan {
+  id     String @id @default(cuid())
+  userId String
+  clubId String
+
+  name        String
+  description String?
+
+  totalAmount    Float
+  currency       String @default("GBP")
+  installments   Int
+  frequency      String
+
+  startDate DateTime
+  endDate   DateTime?
+
+  paidAmount       Float             @default(0)
+  remainingAmount  Float
+  nextPaymentDate  DateTime?
+  nextPaymentAmount Float?
+
+  status PaymentPlanStatus @default(ACTIVE)
+
+  lateFeeAmount    Float?
+  lateFeeApplied   Boolean @default(false)
+  gracePeriodDays  Int     @default(7)
+
+  invoiceId     String?
+  feeStructureId String?
+
+  notes String?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user                User                 @relation("userPaymentPlans", fields: [userId], references: [id], onDelete: Cascade)
+  club                Club                 @relation("clubPaymentPlans", fields: [clubId], references: [id], onDelete: Cascade)
+  installmentPayments InstallmentPayment[]
+
+  @@index([userId])
+  @@index([clubId])
+  @@index([status])
+  @@index([nextPaymentDate])
+  @@map("payment_plans")
+}
+
+model InstallmentPayment {
+  id            String @id @default(cuid())
+  paymentPlanId String
+
+  installmentNumber Int
+  amount            Float
+  currency          String @default("GBP")
+
+  dueDate   DateTime
+  paidAt    DateTime?
+  status    String    @default("PENDING")
+
+  paymentMethod String?
+  transactionId String?
+  receiptUrl    String?
+
+  lateFeeApplied Float?
+  notes          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  paymentPlan PaymentPlan @relation(fields: [paymentPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentPlanId, installmentNumber])
+  @@index([paymentPlanId])
+  @@index([dueDate])
+  @@index([status])
+  @@map("installment_payments")
+}
+
+model FeeStructure {
+  id     String @id @default(cuid())
+  clubId String
+  teamId String?
+
+  name        String
+  description String?
+
+  feeType    String
+  amount     Float
+  currency   String  @default("GBP")
+  frequency  String
+
+  ageGroups    String[]
+  playerTypes  String[]
+  
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  earlyBirdDiscount    Float?
+  earlyBirdDeadline    DateTime?
+  siblingDiscount      Float?
+  multiTeamDiscount    Float?
+
+  isActive  Boolean @default(true)
+  isTaxable Boolean @default(false)
+  taxRate   Float?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club Club  @relation("clubFeeStructures", fields: [clubId], references: [id], onDelete: Cascade)
+  team Team? @relation("teamFeeStructures", fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([clubId])
+  @@index([teamId])
+  @@index([feeType])
+  @@index([isActive])
+  @@map("fee_structures")
+}
+
+model Scholarship {
+  id       String @id @default(cuid())
+  playerId String
+  clubId   String
+
+  name        String
+  description String?
+
+  type   ScholarshipType
+  amount Float
+  currency String @default("GBP")
+  percentage Float?
+
+  startDate DateTime
+  endDate   DateTime?
+  seasonId  String?
+
+  conditions         String[]
+  gpaRequirement     Float?
+  attendanceRequired Float?
+
+  status     String   @default("ACTIVE")
+  statusNote String?
+
+  fundedBy   String?
+  fundSource String?
+
+  awardedBy   String
+  awardedAt   DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player Player  @relation("playerScholarships", fields: [playerId], references: [id], onDelete: Cascade)
+  club   Club    @relation("clubScholarships", fields: [clubId], references: [id], onDelete: Cascade)
+  season Season? @relation("seasonScholarships", fields: [seasonId], references: [id], onDelete: SetNull)
+
+  @@index([playerId])
+  @@index([clubId])
+  @@index([type])
+  @@index([status])
+  @@map("scholarships")
+}
+
+// ============================================================================
+// 🏥 ENHANCED MEDICAL & WELLNESS (NEW v7.8.0)
+// ============================================================================
+
+model RecoveryProtocol {
+  id       String @id @default(cuid())
+  playerId String
+  injuryId String
+
+  name        String
+  description String? @db.Text
+
+  phase     RecoveryPhase
+  startDate DateTime
+  endDate   DateTime?
+
+  exercises    Json?
+  restrictions String[]
+  medications  String[]
+  treatments   String[]
+
+  phaseGoals    String[]
+  progressNotes Json?
+
+  checkpoints Json?
+
+  isActive       Boolean   @default(true)
+  completedAt    DateTime?
+  nextReviewDate DateTime?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player Player @relation("playerRecoveryProtocols", fields: [playerId], references: [id], onDelete: Cascade)
+  injury Injury @relation("injuryRecoveryProtocols", fields: [injuryId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([injuryId])
+  @@index([phase])
+  @@index([isActive])
+  @@map("recovery_protocols")
+}
+
+model NutritionPlan {
+  id       String @id @default(cuid())
+  playerId String
+
+  name        String
+  description String? @db.Text
+
+  goals         String[]
+  targetWeight  Float?
+  targetBodyFat Float?
+
+  dailyCalories   Int?
+  proteinGrams    Int?
+  carbsGrams      Int?
+  fatGrams        Int?
+  fiberGrams      Int?
+
+  mealPlan Json?
+
+  allergies     String[]
+  restrictions  String[]
+  supplements   String[]
+
+  dailyWaterLiters Float?
+
+  isActive  Boolean   @default(true)
+  startDate DateTime
+  endDate   DateTime?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player Player @relation("playerNutritionPlans", fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([isActive])
+  @@map("nutrition_plans")
+}
+
+model SleepLog {
+  id       String @id @default(cuid())
+  playerId String
+
+  date      DateTime @db.Date
+  bedTime   DateTime
+  wakeTime  DateTime
+  duration  Float
+
+  qualityRating    Int?
+  restfulness      Int?
+  sleepLatency     Int?
+  awakenings       Int?
+
+  screenTimeBeforeBed Int?
+  caffeineIntake      Boolean?
+  exerciseBeforeBed   Boolean?
+  stressLevel         Int?
+
+  notes String?
+
+  source String?
+
+  createdAt DateTime @default(now())
+
+  player Player @relation("playerSleepLogs", fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, date])
+  @@index([playerId])
+  @@index([date])
+  @@map("sleep_logs")
+}
+
+model WellnessCheck {
+  id       String @id @default(cuid())
+  playerId String
+
+  checkDate DateTime
+  category  WellnessCategory
+
+  overallWellness Int
+  energyLevel     Int?
+  moodRating      Int?
+  motivationLevel Int?
+  stressLevel     Int?
+  anxietyLevel    Int?
+  confidenceLevel Int?
+
+  muscleSoreness Int?
+  fatigueLevel   Int?
+  sleepQuality   Int?
+  appetiteLevel  Int?
+
+  concerns      String?
+  positives     String?
+  supportNeeded String?
+
+  requiresFollowUp Boolean   @default(false)
+  followedUpBy     String?
+  followedUpAt     DateTime?
+  followUpNotes    String?
+
+  isConfidential Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  player Player @relation("playerWellnessChecks", fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([checkDate])
+  @@index([category])
+  @@index([requiresFollowUp])
+  @@map("wellness_checks")
+}
+
+model PerformanceBenchmark {
+  id String @id @default(cuid())
+
+  sport    Sport
+  ageGroup String
+  gender   String
+  level    String
+
+  metric       String
+  percentile10 Float
+  percentile25 Float
+  percentile50 Float
+  percentile75 Float
+  percentile90 Float
+  percentile99 Float
+
+  unit   String?
+  source String?
+  year   Int?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sport, ageGroup, gender, level, metric])
+  @@index([sport])
+  @@index([ageGroup])
+  @@index([metric])
+  @@map("performance_benchmarks")
+}
+
+// ============================================================================
+// 📈 ANALYTICS & INSIGHTS (NEW v7.8.0)
+// ============================================================================
+
+model TeamChemistry {
+  id     String @id @default(cuid())
+  teamId String
+
+  assessmentDate DateTime
+  seasonId       String?
+
+  overallChemistry Float
+  communication    Float?
+  trust            Float?
+  cohesion         Float?
+  motivation       Float?
+  leadership       Float?
+  conflictLevel    Float?
+
+  playerRelationships Json?
+
+  strengths       String[]
+  improvements    String[]
+  recommendations String[]
+
+  assessedBy String
+  notes      String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team   Team    @relation("teamChemistry", fields: [teamId], references: [id], onDelete: Cascade)
+  season Season? @relation("seasonChemistry", fields: [seasonId], references: [id], onDelete: SetNull)
+
+  @@index([teamId])
+  @@index([assessmentDate])
+  @@index([seasonId])
+  @@map("team_chemistry")
+}
+
+// ============================================================================
+// 🎮 GAMIFICATION SYSTEM (NEW v7.8.0)
+// ============================================================================
+
+model Challenge {
+  id     String  @id @default(cuid())
+  clubId String?
+
+  name        String
+  description String  @db.Text
+  type        ChallengeType
+
+  startDate DateTime
+  endDate   DateTime
+  status    ChallengeStatus @default(UPCOMING)
+
+  targetMetric String
+  targetValue  Float
+  unit         String?
+
+  rewardTitle       String?
+  rewardDescription String?
+  rewardBadgeId     String?
+  rewardPoints      Int?
+
+  eligibleRoles   String[]
+  eligibleTeamIds String[]
+  minParticipants Int?
+  maxParticipants Int?
+
+  currentLeaderId  String?
+  currentLeadValue Float?
+
+  isPublic Boolean @default(true)
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club         Club?                  @relation("clubChallenges", fields: [clubId], references: [id], onDelete: SetNull)
+  participants ChallengeParticipant[]
+
+  @@index([clubId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@map("challenges")
+}
+
+model ChallengeParticipant {
+  id          String @id @default(cuid())
+  challengeId String
+  userId      String
+  playerId    String?
+
+  joinedAt DateTime @default(now())
+
+  currentValue Float   @default(0)
+  rank         Int?
+  lastUpdated  DateTime?
+
+  isCompleted   Boolean   @default(false)
+  completedAt   DateTime?
+  rewardClaimed Boolean   @default(false)
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User      @relation("userChallenges", fields: [userId], references: [id], onDelete: Cascade)
+  player    Player?   @relation("playerChallenges", fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@unique([challengeId, userId])
+  @@index([challengeId])
+  @@index([userId])
+  @@index([rank])
+  @@map("challenge_participants")
+}
+
+model Leaderboard {
+  id     String  @id @default(cuid())
+  clubId String?
+  teamId String?
+
+  name        String
+  description String?
+
+  type      LeaderboardType
+  scope     LeaderboardScope
+  sport     Sport?
+
+  periodType String
+  startDate  DateTime?
+  endDate    DateTime?
+  seasonId   String?
+
+  metric          String
+  sortOrder       String @default("DESC")
+  minParticipation Int?
+
+  isActive  Boolean @default(true)
+  isPublic  Boolean @default(true)
+
+  lastUpdated DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club    Club?              @relation("clubLeaderboards", fields: [clubId], references: [id], onDelete: SetNull)
+  team    Team?              @relation("teamLeaderboards", fields: [teamId], references: [id], onDelete: SetNull)
+  season  Season?            @relation("seasonLeaderboards", fields: [seasonId], references: [id], onDelete: SetNull)
+  entries LeaderboardEntry[]
+
+  @@index([clubId])
+  @@index([teamId])
+  @@index([type])
+  @@index([isActive])
+  @@map("leaderboards")
+}
+
+model LeaderboardEntry {
+  id            String @id @default(cuid())
+  leaderboardId String
+  playerId      String
+
+  rank       Int
+  value      Float
+  change     Int?
+  trend      String?
+
+  gamesPlayed Int?
+  lastUpdated DateTime
+
+  leaderboard Leaderboard @relation(fields: [leaderboardId], references: [id], onDelete: Cascade)
+  player      Player      @relation("playerLeaderboardEntries", fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([leaderboardId, playerId])
+  @@index([leaderboardId])
+  @@index([playerId])
+  @@index([rank])
+  @@map("leaderboard_entries")
+}
+
+model Streak {
+  id       String @id @default(cuid())
+  playerId String
+
+  type        String
+  description String?
+
+  currentStreak  Int      @default(0)
+  longestStreak  Int      @default(0)
+  lastActivityAt DateTime?
+
+  startDate      DateTime
+  endDate        DateTime?
+
+  milestones Json?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player Player @relation("playerStreaks", fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([type])
+  @@index([isActive])
+  @@index([currentStreak])
+  @@map("streaks")
+}
+
+model SeasonAward {
+  id       String @id @default(cuid())
+  clubId   String
+  teamId   String?
+  seasonId String
+
+  category    AwardCategory
+  customName  String?
+  description String?
+
+  winnerId    String?
+  winnerType  String
+  winnerName  String
+
+  votingEnabled Boolean @default(false)
+  votingStartAt DateTime?
+  votingEndAt   DateTime?
+  totalVotes    Int     @default(0)
+
+  nominees Json?
+
+  awardedAt    DateTime?
+  awardedBy    String?
+  presentedAt  String?
+  photoUrl     String?
+  certificateUrl String?
+
+  isAnnounced Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club   Club    @relation("clubSeasonAwards", fields: [clubId], references: [id], onDelete: Cascade)
+  team   Team?   @relation("teamSeasonAwards", fields: [teamId], references: [id], onDelete: SetNull)
+  season Season  @relation("seasonAwards", fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, seasonId, category, teamId])
+  @@index([clubId])
+  @@index([teamId])
+  @@index([seasonId])
+  @@index([category])
+  @@map("season_awards")
+}
+
+// ============================================================================
 // 🏢 ORGANISATION MODELS
 // ============================================================================
 
@@ -2511,6 +3959,9 @@ model Organisation {
   mediaContent         MediaContent[]
   competitions         Competition[]
   budgets              Budget[]
+  exportRequests       ExportRequest[]          @relation("orgExports")
+  exportTemplates      ExportTemplate[]         @relation("orgExportTemplates")
+  reportSchedules      ReportSchedule[]         @relation("orgReportSchedules")
 
   @@index([slug])
   @@index([ownerId])
@@ -2597,10 +4048,15 @@ model Season {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organisation Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  competitions Competition[]
-  transfers    Transfer[]
-  budgets      Budget[]
+  organisation     Organisation       @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  competitions     Competition[]
+  transfers        Transfer[]
+  budgets          Budget[]
+  coachAssignments CoachAssignment[]  @relation("seasonCoachAssignments")
+  scholarships     Scholarship[]      @relation("seasonScholarships")
+  teamChemistry    TeamChemistry[]    @relation("seasonChemistry")
+  leaderboards     Leaderboard[]      @relation("seasonLeaderboards")
+  seasonAwards     SeasonAward[]      @relation("seasonAwards")
 
   @@unique([organisationId, name])
   @@index([organisationId])
@@ -2735,6 +4191,13 @@ model User {
   budgetsCreated            Budget[]                @relation("budgetsCreated")
   expensesCreated           Expense[]               @relation("expensesCreated")
   expensesApproved          Expense[]               @relation("expensesApproved")
+  exportRequests            ExportRequest[]         @relation("userExports")
+  exportTemplates           ExportTemplate[]        @relation("userExportTemplates")
+  reportSchedules           ReportSchedule[]        @relation("userReportSchedules")
+  paymentPlans              PaymentPlan[]           @relation("userPaymentPlans")
+  eventRSVPs                EventRSVP[]             @relation("userRSVPs")
+  challengeParticipations   ChallengeParticipant[]  @relation("userChallenges")
+  teamAnnouncementsCreated  TeamAnnouncement[]      @relation("userTeamAnnouncements")
 
   @@index([email])
   @@index([phone])
@@ -3089,7 +4552,7 @@ model DataDeletionRequest {
 }
 
 // ============================================================================
-// 🏃 PLAYER MODEL (ENHANCED v7.7.0)
+// 🏃 PLAYER MODEL (ENHANCED v7.8.0)
 // ============================================================================
 
 model Player {
@@ -3161,6 +4624,20 @@ model Player {
   matchEvents             MatchEvent[]              @relation("eventPlayer")
   matchEventsAssisted     MatchEvent[]              @relation("assistPlayer")
   matchEventsRelated      MatchEvent[]              @relation("relatedPlayer")
+  developmentPlans        PlayerDevelopmentPlan[]   @relation("playerDevelopmentPlans")
+  skillAssessments        SkillAssessment[]         @relation("playerSkillAssessments")
+  milestones              SkillMilestone[]          @relation("playerMilestones")
+  mentorshipsAsMentor     MentorshipAssignment[]    @relation("mentorAssignments")
+  mentorshipsAsMentee     MentorshipAssignment[]    @relation("menteeAssignments")
+  parentAccess            ParentPortalAccess[]      @relation("playerParentAccess")
+  scholarships            Scholarship[]             @relation("playerScholarships")
+  recoveryProtocols       RecoveryProtocol[]        @relation("playerRecoveryProtocols")
+  nutritionPlans          NutritionPlan[]           @relation("playerNutritionPlans")
+  sleepLogs               SleepLog[]                @relation("playerSleepLogs")
+  wellnessChecks          WellnessCheck[]           @relation("playerWellnessChecks")
+  challengeParticipations ChallengeParticipant[]    @relation("playerChallenges")
+  leaderboardEntries      LeaderboardEntry[]        @relation("playerLeaderboardEntries")
+  streaks                 Streak[]                  @relation("playerStreaks")
 
   @@index([userId])
   @@index([isActive])
@@ -3172,45 +4649,6 @@ model Player {
   @@index([deletedAt])
   @@map("players")
 }
-
-// ============================================================================
-// PLAYER STATISTICS (ENHANCED v7.7.0 - Sport-Specific Stats Documentation)
-// ============================================================================
-// 
-// The sportSpecificStats field stores JSON data structured per sport:
-//
-// FOOTBALL/FUTSAL/BEACH_FOOTBALL:
-// { "expectedGoals": 0.0, "expectedAssists": 0.0, "pressures": 0, "progressiveCarries": 0 }
-//
-// RUGBY:
-// { "tries": 0, "conversions": 0, "penaltyGoals": 0, "dropGoals": 0, "lineoutWins": 0, "scrumWins": 0, "turnoversWon": 0 }
-//
-// CRICKET:
-// { "runsScored": 0, "ballsFaced": 0, "strikeRate": 0.0, "centuries": 0, "halfCenturies": 0,
-//   "wicketsTaken": 0, "oversBowled": 0.0, "economyRate": 0.0, "maidens": 0, "catches": 0, "stumpings": 0 }
-//
-// BASKETBALL:
-// { "twoPointers": 0, "threePointers": 0, "freeThrows": 0, "rebounds": 0, "offensiveRebounds": 0,
-//   "steals": 0, "blocks": 0, "turnovers": 0, "plusMinus": 0 }
-//
-// AMERICAN_FOOTBALL:
-// { "passingYards": 0, "rushingYards": 0, "receivingYards": 0, "touchdowns": 0, "interceptions": 0,
-//   "sacks": 0, "fumbles": 0, "completionPercentage": 0.0 }
-//
-// NETBALL:
-// { "goalAttempts": 0, "goalsMade": 0, "shootingPercentage": 0.0, "centrePassReceives": 0,
-//   "gains": 0, "deflections": 0, "penalties": 0 }
-//
-// HOCKEY:
-// { "powerPlayGoals": 0, "shorthandedGoals": 0, "gameWinningGoals": 0, "faceoffWins": 0,
-//   "hits": 0, "blockedShots": 0, "penaltyMinutes": 0, "plusMinus": 0 }
-//
-// AUSTRALIAN_RULES:
-// { "kicks": 0, "handballs": 0, "marks": 0, "hitouts": 0, "behinds": 0, "tackles": 0, "clearances": 0 }
-//
-// GAELIC_FOOTBALL:
-// { "points": 0, "goals": 0, "frees": 0, "kickouts": 0, "marks": 0, "turnovers": 0 }
-// ============================================================================
 
 model PlayerStatistic {
   id       String  @id @default(cuid())
@@ -3258,7 +4696,6 @@ model PlayerStatistic {
   crossesAttempt  Int    @default(0)
   crossesComplete Int    @default(0)
 
-  // Sport-specific stats stored as JSON (see documentation above)
   sportSpecificStats Json?
 
   averageRating Float?
@@ -3531,6 +4968,7 @@ model Injury {
 
   player             Player              @relation(fields: [playerId], references: [id], onDelete: Cascade)
   fitnessAssessments FitnessAssessment[] @relation("injuryAssessments")
+  recoveryProtocols  RecoveryProtocol[]  @relation("injuryRecoveryProtocols")
 
   @@index([playerId])
   @@index([dateFrom])
@@ -3728,7 +5166,7 @@ model Transfer {
 }
 
 // ============================================================================
-// 🏆 COACH MODELS
+// 🏆 COACH MODELS (ENHANCED v7.8.0)
 // ============================================================================
 
 model Coach {
@@ -3781,14 +5219,20 @@ model Coach {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clubMemberships       ClubMember[]      @relation("coachMemberships")
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clubMemberships       ClubMember[]            @relation("coachMemberships")
   trainingSessions      TrainingSession[]
-  timesheets            CoachTimesheet[]  @relation("coach")
+  timesheets            CoachTimesheet[]        @relation("coach")
   payments              CoachPayment[]
-  achievements          Achievement[]     @relation("achievementCoach")
-  jobApplications       JobApplication[]  @relation("coachApplications")
-  matchesCreatedByCoach Match[]           @relation("matchCreatedByCoach")
+  achievements          Achievement[]           @relation("achievementCoach")
+  jobApplications       JobApplication[]        @relation("coachApplications")
+  matchesCreatedByCoach Match[]                 @relation("matchCreatedByCoach")
+  coachRates            CoachRate[]             @relation("coachRates")
+  coachAssignments      CoachAssignment[]       @relation("coachAssignments")
+  coachCertifications   CoachCertification[]    @relation("coachCertifications")
+  coachReviews          CoachPerformanceReview[] @relation("coachReviews")
+  developmentPlans      PlayerDevelopmentPlan[] @relation("coachDevelopmentPlans")
+  skillAssessments      SkillAssessment[]       @relation("coachSkillAssessments")
 
   @@index([userId])
   @@index([isVerified])
@@ -3803,36 +5247,65 @@ model CoachTimesheet {
   id      String  @id @default(cuid())
   coachId String
   clubId  String?
+  teamId  String?
 
+  period        String
   weekStartDate DateTime
   weekEndDate   DateTime
 
-  totalHours Float   @default(0)
+  trainingHours Float @default(0)
+  matchHours    Float @default(0)
+  adminHours    Float @default(0)
+  travelHours   Float @default(0)
+  meetingHours  Float @default(0)
+  otherHours    Float @default(0)
+  totalHours    Float @default(0)
+
   hourlyRate Float?
+  dailyRate  Float?
   hourlyCost Float?
   totalCost  Float?
+  currency   String @default("GBP")
+
+  breakdown Json?
 
   description String?  @db.Text
   attachments String[]
 
-  breakdown Json?
-
   status          TimesheetStatus @default(DRAFT)
   submittedAt     DateTime?
+  submittedNotes  String?
+  
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  
   approvedAt      DateTime?
   approvedBy      String?
+  approvalNotes   String?
+  
+  rejectedAt      DateTime?
+  rejectedBy      String?
   rejectionReason String?
+  
   paidAt          DateTime?
+  paymentId       String?
+  paymentRef      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  coach Coach @relation("coach", fields: [coachId], references: [id], onDelete: Cascade)
+  coach Coach  @relation("coach", fields: [coachId], references: [id], onDelete: Cascade)
+  club  Club?  @relation("clubTimesheets", fields: [clubId], references: [id], onDelete: SetNull)
+  team  Team?  @relation("teamTimesheets", fields: [teamId], references: [id], onDelete: SetNull)
 
+  @@unique([coachId, period])
   @@index([coachId])
   @@index([clubId])
+  @@index([teamId])
   @@index([status])
   @@index([weekStartDate])
+  @@index([period])
   @@map("coach_timesheets")
 }
 
@@ -4109,8 +5582,9 @@ model Parent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  children PlayerFamily[] @relation("parentChildren")
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  children     PlayerFamily[]       @relation("parentChildren")
+  portalAccess ParentPortalAccess[] @relation("parentPortalAccess")
 
   @@index([userId])
   @@index([deletedAt])
@@ -4138,7 +5612,7 @@ model Treasurer {
 }
 
 // ============================================================================
-// 🏢 CLUB & TEAM MODELS (ENHANCED v7.7.0)
+// 🏢 CLUB & TEAM MODELS (ENHANCED v7.8.0)
 // ============================================================================
 
 model Club {
@@ -4194,27 +5668,44 @@ model Club {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organisation     Organisation?       @relation(fields: [organisationId], references: [id], onDelete: SetNull)
-  manager          User                @relation("clubManager", fields: [managerId], references: [id])
-  owner            User?               @relation("clubOwner", fields: [ownerId], references: [id])
-  members          ClubMember[]
-  teams            Team[]
-  formations       TeamFormation[]
-  tactics          Tactic[]
-  trainingSessions TrainingSession[]
-  homeMatches      Match[]             @relation("homeClub")
-  awayMatches      Match[]             @relation("awayClub")
-  aggregateStats   TeamAggregateStats?
-  announcements    Announcement[]
-  sponsors         ClubSponsor[]
-  jobPostings      JobPosting[]
-  mediaContent     MediaContent[]      @relation("clubMedia")
-  competitions     Competition[]       @relation("clubCompetitions")
-  competitionTeams CompetitionTeam[]
-  socialAccounts   SocialAccount[]     @relation("clubSocialAccounts")
-  drills           TrainingDrill[]     @relation("clubDrills")
-  budgets          Budget[]            @relation("clubBudgets")
-  expenses         Expense[]           @relation("clubExpenses")
+  organisation        Organisation?            @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  manager             User                     @relation("clubManager", fields: [managerId], references: [id])
+  owner               User?                    @relation("clubOwner", fields: [ownerId], references: [id])
+  members             ClubMember[]
+  teams               Team[]
+  formations          TeamFormation[]
+  tactics             Tactic[]
+  trainingSessions    TrainingSession[]
+  homeMatches         Match[]                  @relation("homeClub")
+  awayMatches         Match[]                  @relation("awayClub")
+  aggregateStats      TeamAggregateStats?
+  announcements       Announcement[]
+  sponsors            ClubSponsor[]
+  jobPostings         JobPosting[]
+  mediaContent        MediaContent[]           @relation("clubMedia")
+  competitions        Competition[]            @relation("clubCompetitions")
+  competitionTeams    CompetitionTeam[]
+  socialAccounts      SocialAccount[]          @relation("clubSocialAccounts")
+  drills              TrainingDrill[]          @relation("clubDrills")
+  budgets             Budget[]                 @relation("clubBudgets")
+  expenses            Expense[]                @relation("clubExpenses")
+  timesheets          CoachTimesheet[]         @relation("clubTimesheets")
+  coachRates          CoachRate[]              @relation("clubCoachRates")
+  coachAssignments    CoachAssignment[]        @relation("clubCoachAssignments")
+  coachReviews        CoachPerformanceReview[] @relation("clubCoachReviews")
+  developmentPlans    PlayerDevelopmentPlan[]  @relation("clubDevelopmentPlans")
+  mentorships         MentorshipAssignment[]   @relation("clubMentorships")
+  teamAnnouncements   TeamAnnouncement[]       @relation("clubTeamAnnouncements")
+  parentAccess        ParentPortalAccess[]     @relation("clubParentAccess")
+  paymentPlans        PaymentPlan[]            @relation("clubPaymentPlans")
+  feeStructures       FeeStructure[]           @relation("clubFeeStructures")
+  scholarships        Scholarship[]            @relation("clubScholarships")
+  challenges          Challenge[]              @relation("clubChallenges")
+  leaderboards        Leaderboard[]            @relation("clubLeaderboards")
+  seasonAwards        SeasonAward[]            @relation("clubSeasonAwards")
+  exportRequests      ExportRequest[]          @relation("clubExports")
+  exportTemplates     ExportTemplate[]         @relation("clubExportTemplates")
+  reportSchedules     ReportSchedule[]         @relation("clubReportSchedules")
 
   @@index([organisationId])
   @@index([managerId])
@@ -4336,18 +5827,25 @@ model Team {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club             Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  players          TeamPlayer[]
-  matchSquads      MatchSquad[]
-  formations       TeamFormation[]
-  competitionTeams CompetitionTeam[]
-  joinRequests     TeamJoinRequest[]
-  trainingSessions TrainingSession[] @relation("teamTraining")
-  mediaContent     MediaContent[]    @relation("teamMedia")
-  homeMatches      Match[]           @relation("homeTeam")
-  awayMatches      Match[]           @relation("awayTeam")
-  budgets          Budget[]          @relation("teamBudgets")
-  expenses         Expense[]         @relation("teamExpenses")
+  club              Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  players           TeamPlayer[]
+  matchSquads       MatchSquad[]
+  formations        TeamFormation[]
+  competitionTeams  CompetitionTeam[]
+  joinRequests      TeamJoinRequest[]
+  trainingSessions  TrainingSession[]   @relation("teamTraining")
+  mediaContent      MediaContent[]      @relation("teamMedia")
+  homeMatches       Match[]             @relation("homeTeam")
+  awayMatches       Match[]             @relation("awayTeam")
+  budgets           Budget[]            @relation("teamBudgets")
+  expenses          Expense[]           @relation("teamExpenses")
+  timesheets        CoachTimesheet[]    @relation("teamTimesheets")
+  coachAssignments  CoachAssignment[]   @relation("teamCoachAssignments")
+  teamAnnouncements TeamAnnouncement[]  @relation("teamAnnouncements")
+  feeStructures     FeeStructure[]      @relation("teamFeeStructures")
+  teamChemistry     TeamChemistry[]     @relation("teamChemistry")
+  leaderboards      Leaderboard[]       @relation("teamLeaderboards")
+  seasonAwards      SeasonAward[]       @relation("teamSeasonAwards")
 
   @@unique([clubId, name])
   @@index([clubId])
@@ -5075,7 +6573,7 @@ model PlayerMatchPerformance {
 }
 
 // ============================================================================
-// 📊 TRAINING MODELS (ENHANCED v7.7.0)
+// 📊 TRAINING MODELS
 // ============================================================================
 
 model TrainingSession {
@@ -5099,7 +6597,6 @@ model TrainingSession {
   facilityId      String?
   maxParticipants Int?
 
-  // Legacy field - use sessionDrills relation instead
   drills    Json?
   notes     String? @db.Text
   equipment String[]
@@ -6158,73 +7655,101 @@ model DatabaseBackup {
 }
 
 // ============================================================================
-// END OF SCHEMA v7.7.0
+// END OF SCHEMA v7.8.0
 // ============================================================================
 // 
-// TOTAL MODELS: 110
-// TOTAL ENUMS: 81
+// TOTAL MODELS: 145
+// TOTAL ENUMS: 95
 // 
 // ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║                         VERSION 7.7.0 SUMMARY                             ║
+// ║                         VERSION 7.8.0 SUMMARY                             ║
 // ╠═══════════════════════════════════════════════════════════════════════════╣
 // ║                                                                           ║
-// ║  NEW MODELS (8):                                                          ║
-// ║  ├─ TrainingDrill       - Reusable drill library                          ║
-// ║  ├─ TrainingSessionDrill - Session-drill junction table                   ║
-// ║  ├─ Budget              - Club/team budget management                     ║
-// ║  ├─ BudgetCategory      - Budget line items                               ║
-// ║  ├─ Expense             - Expense tracking with approval workflow         ║
-// ║  ├─ (v7.6.0) Prediction           - AI-powered predictions                ║
-// ║  ├─ (v7.6.0) PredictionFeedback   - Accuracy tracking                     ║
-// ║  ├─ (v7.6.0) ScoutWatchlist       - Player watchlist                      ║
-// ║  ├─ (v7.6.0) ScoutMatchAttendance - Scout match logging                   ║
-// ║  ├─ (v7.6.0) RefereeAvailability  - Referee calendar                      ║
-// ║  ├─ (v7.6.0) RefereeQualification - Certifications                        ║
-// ║  ├─ (v7.6.0) RefereePayment       - Fee tracking                          ║
-// ║  └─ (v7.6.0) RefereeMatchReport   - Post-match reports                    ║
+// ║  NEW MODELS IN v7.8.0 (35):                                               ║
+// ║  ├─ Coach Management (4):                                                 ║
+// ║  │  ├─ CoachRate          - Flexible rate structures                      ║
+// ║  │  ├─ CoachAssignment    - Team-level coach assignments                  ║
+// ║  │  ├─ CoachCertification - Qualification tracking                        ║
+// ║  │  └─ CoachPerformanceReview - Coach evaluations                         ║
+// ║  │                                                                        ║
+// ║  ├─ Export & Reporting (4):                                               ║
+// ║  │  ├─ ExportRequest      - Export job tracking                           ║
+// ║  │  ├─ ExportTemplate     - Saved export configurations                   ║
+// ║  │  ├─ ReportSchedule     - Automated report scheduling                   ║
+// ║  │  └─ SportFieldConfig   - Sport-aware field mapping                     ║
+// ║  │                                                                        ║
+// ║  ├─ Player Development (4):                                               ║
+// ║  │  ├─ PlayerDevelopmentPlan - Structured growth paths                    ║
+// ║  │  ├─ SkillAssessment    - Detailed skill tracking                       ║
+// ║  │  ├─ SkillMilestone     - Progress milestones                           ║
+// ║  │  └─ MentorshipAssignment - Player mentoring                            ║
+// ║  │                                                                        ║
+// ║  ├─ Communication (3):                                                    ║
+// ║  │  ├─ TeamAnnouncement   - Team-specific messaging                       ║
+// ║  │  ├─ EventRSVP          - Event attendance tracking                     ║
+// ║  │  └─ ParentPortalAccess - Parent engagement & permissions               ║
+// ║  │                                                                        ║
+// ║  ├─ Enhanced Payments (4):                                                ║
+// ║  │  ├─ PaymentPlan        - Installment payment plans                     ║
+// ║  │  ├─ InstallmentPayment - Individual payment tracking                   ║
+// ║  │  ├─ FeeStructure       - Club/team fee definitions                     ║
+// ║  │  └─ Scholarship        - Financial aid tracking                        ║
+// ║  │                                                                        ║
+// ║  ├─ Medical & Wellness (5):                                               ║
+// ║  │  ├─ RecoveryProtocol   - Injury recovery phases                        ║
+// ║  │  ├─ NutritionPlan      - Player nutrition tracking                     ║
+// ║  │  ├─ SleepLog           - Sleep/recovery monitoring                     ║
+// ║  │  ├─ WellnessCheck      - Mental health tracking                        ║
+// ║  │  └─ PerformanceBenchmark - Comparative analysis                        ║
+// ║  │                                                                        ║
+// ║  ├─ Analytics (1):                                                        ║
+// ║  │  └─ TeamChemistry      - Team dynamics tracking                        ║
+// ║  │                                                                        ║
+// ║  └─ Gamification (6):                                                     ║
+// ║     ├─ Challenge          - Player challenges                             ║
+// ║     ├─ ChallengeParticipant - Challenge tracking                          ║
+// ║     ├─ Leaderboard        - Competitive rankings                          ║
+// ║     ├─ LeaderboardEntry   - Player rankings                               ║
+// ║     ├─ Streak             - Consistency tracking                          ║
+// ║     └─ SeasonAward        - End-of-season recognition                     ║
 // ║                                                                           ║
-// ║  NEW ENUMS (9):                                                           ║
-// ║  ├─ DrillCategory       - 50+ sport-specific drill categories             ║
-// ║  ├─ DrillIntensity      - Drill intensity levels                          ║
-// ║  ├─ DrillDifficulty     - Beginner to Elite                               ║
-// ║  ├─ BudgetStatus        - Draft, Active, Frozen, Closed, Archived         ║
-// ║  ├─ BudgetPeriodType    - Season, Year, Quarter, Monthly, Custom          ║
-// ║  ├─ ExpenseCategory     - 30+ expense categories                          ║
-// ║  ├─ ExpenseStatus       - Full approval workflow                          ║
-// ║  ├─ (v7.6.0) PredictionType/Status/Impact                                 ║
-// ║  ├─ (v7.6.0) WatchlistStatus/Priority                                     ║
-// ║  └─ (v7.6.0) RefereeLevel/AvailabilityStatus                              ║
+// ║  ENHANCED MODELS:                                                         ║
+// ║  ├─ CoachTimesheet        - Added period, breakdown, workflow fields      ║
+// ║  ├─ Player                - Added development, wellness relations         ║
+// ║  ├─ Coach                 - Added rates, assignments, certifications      ║
+// ║  ├─ Club                  - Added export, payment, gamification rels      ║
+// ║  ├─ Team                  - Added chemistry, leaderboard, award rels      ║
+// ║  ├─ Season                - Added coach assignments, awards rels          ║
+// ║  ├─ Parent                - Added portal access relation                  ║
+// ║  ├─ Injury                - Added recovery protocols relation             ║
+// ║  └─ User                  - Added export, RSVP, challenge relations       ║
 // ║                                                                           ║
-// ║  ENHANCED PERMISSIONS:                                                    ║
-// ║  ├─ BUDGET_VIEW, BUDGET_CREATE, BUDGET_UPDATE, BUDGET_DELETE              ║
-// ║  ├─ EXPENSE_VIEW, EXPENSE_CREATE, EXPENSE_APPROVE, EXPENSE_DELETE         ║
-// ║  ├─ TRAINING_VIEW, TRAINING_CREATE, TRAINING_UPDATE, TRAINING_DELETE      ║
-// ║  ├─ TRAINING_MANAGE_DRILLS, DRILL_CREATE, DRILL_UPDATE, DRILL_DELETE      ║
-// ║  └─ DRILL_MANAGE_LIBRARY                                                  ║
+// ║  NEW ENUMS (14):                                                          ║
+// ║  ├─ ExportFormat, ExportStatus, ExportType                                ║
+// ║  ├─ CoachRateType, CoachAssignmentType, CertificationStatus               ║
+// ║  ├─ DevelopmentPhase, SkillCategory, MilestoneStatus                      ║
+// ║  ├─ RSVPStatus, PaymentPlanStatus, ScholarshipType                        ║
+// ║  ├─ RecoveryPhase, WellnessCategory                                       ║
+// ║  ├─ ChallengeType, ChallengeStatus, LeaderboardType                       ║
+// ║  ├─ LeaderboardScope, AwardCategory, ReportFrequency                      ║
+// ║  └─ 40+ new AuditActionType values                                        ║
 // ║                                                                           ║
-// ║  ENHANCED AUDIT ACTIONS:                                                  ║
-// ║  ├─ BUDGET_CREATED, BUDGET_UPDATED, BUDGET_DELETED                        ║
-// ║  ├─ BUDGET_STATUS_CHANGED, BUDGET_CATEGORY_ADDED/UPDATED                  ║
-// ║  ├─ EXPENSE_CREATED, EXPENSE_UPDATED, EXPENSE_DELETED                     ║
-// ║  ├─ EXPENSE_SUBMITTED, EXPENSE_APPROVED, EXPENSE_REJECTED                 ║
-// ║  ├─ EXPENSE_PAID, EXPENSE_REIMBURSED                                      ║
-// ║  └─ DRILL_CREATED, DRILL_UPDATED, DRILL_DELETED                           ║
+// ║  NEW PERMISSIONS (35+):                                                   ║
+// ║  ├─ Coach: COACH_RATE_*, COACH_ASSIGNMENT_*, COACH_CERTIFICATION_*        ║
+// ║  ├─ Export: EXPORT_*, REPORT_SCHEDULE_*                                   ║
+// ║  ├─ Development: DEVELOPMENT_PLAN_*, SKILL_ASSESSMENT_*, MENTORSHIP_*     ║
+// ║  ├─ Wellness: WELLNESS_*, RECOVERY_PROTOCOL_*, NUTRITION_*                ║
+// ║  ├─ Payments: PAYMENT_PLAN_*, SCHOLARSHIP_*                               ║
+// ║  ├─ Gamification: CHALLENGE_*, LEADERBOARD_*, SEASON_AWARD_*              ║
+// ║  └─ Parent: PARENT_PORTAL_*                                               ║
 // ║                                                                           ║
-// ║  ENHANCED WEBHOOK EVENTS:                                                 ║
-// ║  ├─ DRILL_CREATED, DRILL_LIBRARY_UPDATED                                  ║
-// ║  ├─ BUDGET_CREATED, BUDGET_ALERT, BUDGET_THRESHOLD_REACHED                ║
-// ║  └─ EXPENSE_SUBMITTED, EXPENSE_APPROVED, EXPENSE_REJECTED                 ║
-// ║                                                                           ║
-// ║  SPORT-SPECIFIC STATISTICS DOCUMENTATION:                                 ║
-// ║  ├─ Football, Futsal, Beach Football stats                                ║
-// ║  ├─ Rugby Union/League stats                                              ║
-// ║  ├─ Cricket batting/bowling/fielding stats                                ║
-// ║  ├─ Basketball stats                                                      ║
-// ║  ├─ American Football stats                                               ║
-// ║  ├─ Netball stats                                                         ║
-// ║  ├─ Hockey stats                                                          ║
-// ║  ├─ Australian Rules stats                                                ║
-// ║  └─ Gaelic Football stats                                                 ║
+// ║  NEW WEBHOOK EVENTS (25+):                                                ║
+// ║  ├─ Coach: COACH_ASSIGNED, TIMESHEET_*, CERTIFICATION_EXPIRING            ║
+// ║  ├─ Export: EXPORT_COMPLETED, REPORT_GENERATED                            ║
+// ║  ├─ Development: MILESTONE_COMPLETED, SKILL_ASSESSMENT_COMPLETED          ║
+// ║  ├─ Wellness: WELLNESS_ALERT, RECOVERY_PHASE_CHANGED                      ║
+// ║  ├─ Payments: PAYMENT_DUE, PAYMENT_OVERDUE                                ║
+// ║  └─ Gamification: CHALLENGE_*, LEADERBOARD_*, STREAK_*, AWARD_*           ║
 // ║                                                                           ║
 // ║  MULTI-SPORT SUPPORT: Full 12 sports                                      ║
 // ║  ├─ FOOTBALL, FUTSAL, BEACH_FOOTBALL                                      ║

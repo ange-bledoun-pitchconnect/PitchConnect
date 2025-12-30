@@ -1,712 +1,677 @@
-/**
- * Enhanced CSV Export Endpoint - WORLD-CLASS VERSION
- * Path: /src/app/api/export/csv/route.ts
- *
- * ============================================================================
- * ENTERPRISE FEATURES
- * ============================================================================
- * ✅ Zero NextAuth dependency (uses native JWT/session)
- * ✅ RFC 4180 CSV standard compliance
- * ✅ Excel-compatible formatting
- * ✅ Large file streaming (memory efficient)
- * ✅ Comprehensive data validation
- * ✅ Rate limiting support
- * ✅ Audit logging
- * ✅ Permission-based filtering
- * ✅ Data sanitization
- * ✅ GDPR-compliant
- * ✅ Production-ready code
- */
+// ============================================================================
+// 📊 CSV EXPORT API - PitchConnect Enterprise v2.0.0
+// ============================================================================
+// POST /api/export/csv - Export data as CSV with sport-aware fields
+// ============================================================================
+// Schema: v7.7.0+ | Multi-Sport | RBAC | RFC 4180 Compliant
+// ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { logger } from '@/lib/logging';
+import { auth } from '@/auth';
+import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import type { Sport, UserRole } from '@prisma/client';
 
 // ============================================================================
-// TYPES & INTERFACES
+// TYPE DEFINITIONS
 // ============================================================================
 
-type ExportFileType = 'players' | 'teams' | 'standings' | 'matches' | 'leagues';
-
-interface ExportCSVRequest {
-  fileType: ExportFileType;
-  leagueId?: string;
-  clubId?: string;
-  playerId?: string;
-  filters?: {
-    minRating?: number;
-    maxResults?: number;
-    dateFrom?: string;
-    dateTo?: string;
-  };
-}
-
-interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: 'PLAYER' | 'COACH' | 'CLUB_MANAGER' | 'LEAGUE_ADMIN' | 'PARENT';
-}
-
-interface ExportAuditLog {
-  userId: string;
-  fileType: ExportFileType;
-  recordCount: number;
-  fileSizeBytes: number;
-  filename: string;
-  filters?: Record<string, any>;
-  timestamp: Date;
-  ipAddress?: string;
-}
+type ExportType = 'players' | 'teams' | 'standings' | 'matches' | 'training' | 'attendance';
 
 interface CSVRow {
   [key: string]: string | number | boolean | null | undefined;
+}
+
+interface SportFieldConfig {
+  [key: string]: {
+    header: string;
+    sports: Sport[];
+    formatter?: (value: any) => string;
+  };
 }
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const VALID_FILE_TYPES: ExportFileType[] = ['players', 'teams', 'standings', 'matches', 'leagues'];
-const MAX_RECORDS_PER_EXPORT = 50000;
-const MAX_FILE_SIZE_MB = 100;
-const MAX_EXPORTS_PER_HOUR = 50;
-const CSV_CHUNK_SIZE = 1000; // Process in chunks
+const VALID_EXPORT_TYPES: ExportType[] = ['players', 'teams', 'standings', 'matches', 'training', 'attendance'];
+const MAX_RECORDS = 50000;
 const BOM = '\uFEFF'; // UTF-8 BOM for Excel compatibility
 
-// ============================================================================
-// CUSTOM ERROR CLASSES
-// ============================================================================
-
-class AuthenticationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthenticationError';
-  }
-}
-
-class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
-
-class AuthorizationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'AuthorizationError';
-  }
-}
-
-class RateLimitError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'RateLimitError';
-  }
-}
+const SPORTS: Sport[] = [
+  'FOOTBALL', 'NETBALL', 'RUGBY', 'CRICKET', 'AMERICAN_FOOTBALL',
+  'BASKETBALL', 'HOCKEY', 'LACROSSE', 'AUSTRALIAN_RULES', 
+  'GAELIC_FOOTBALL', 'FUTSAL', 'BEACH_FOOTBALL'
+];
 
 // ============================================================================
-// CSV UTILITIES (RFC 4180)
+// SPORT-SPECIFIC FIELD CONFIGURATIONS
 // ============================================================================
 
-/**
- * Escape CSV field value
- * Handle quotes, commas, newlines, and special characters
- */
+const SPORT_SPECIFIC_PLAYER_FIELDS: SportFieldConfig = {
+  // Universal fields
+  goals: { header: 'Goals', sports: ['FOOTBALL', 'FUTSAL', 'BEACH_FOOTBALL', 'HOCKEY', 'LACROSSE'] },
+  assists: { header: 'Assists', sports: ['FOOTBALL', 'FUTSAL', 'BEACH_FOOTBALL', 'HOCKEY', 'BASKETBALL', 'LACROSSE'] },
+  cleanSheets: { header: 'Clean Sheets', sports: ['FOOTBALL', 'FUTSAL', 'BEACH_FOOTBALL', 'HOCKEY'] },
+  
+  // Rugby-specific
+  tries: { header: 'Tries', sports: ['RUGBY'] },
+  conversions: { header: 'Conversions', sports: ['RUGBY'] },
+  penaltyGoals: { header: 'Penalty Goals', sports: ['RUGBY'] },
+  dropGoals: { header: 'Drop Goals', sports: ['RUGBY'] },
+  tackles: { header: 'Tackles', sports: ['RUGBY', 'AMERICAN_FOOTBALL'] },
+  
+  // Cricket-specific
+  runsScored: { header: 'Runs Scored', sports: ['CRICKET'] },
+  ballsFaced: { header: 'Balls Faced', sports: ['CRICKET'] },
+  strikeRate: { header: 'Strike Rate', sports: ['CRICKET'] },
+  centuries: { header: 'Centuries', sports: ['CRICKET'] },
+  halfCenturies: { header: 'Half Centuries', sports: ['CRICKET'] },
+  wicketsTaken: { header: 'Wickets Taken', sports: ['CRICKET'] },
+  oversBowled: { header: 'Overs Bowled', sports: ['CRICKET'] },
+  economyRate: { header: 'Economy Rate', sports: ['CRICKET'] },
+  catches: { header: 'Catches', sports: ['CRICKET'] },
+  
+  // Basketball-specific
+  points: { header: 'Points', sports: ['BASKETBALL', 'GAELIC_FOOTBALL'] },
+  rebounds: { header: 'Rebounds', sports: ['BASKETBALL'] },
+  steals: { header: 'Steals', sports: ['BASKETBALL', 'HOCKEY'] },
+  blocks: { header: 'Blocks', sports: ['BASKETBALL', 'HOCKEY'] },
+  threePointers: { header: '3-Pointers', sports: ['BASKETBALL'] },
+  freeThrows: { header: 'Free Throws', sports: ['BASKETBALL'] },
+  
+  // American Football-specific
+  touchdowns: { header: 'Touchdowns', sports: ['AMERICAN_FOOTBALL'] },
+  passingYards: { header: 'Passing Yards', sports: ['AMERICAN_FOOTBALL'] },
+  rushingYards: { header: 'Rushing Yards', sports: ['AMERICAN_FOOTBALL'] },
+  receivingYards: { header: 'Receiving Yards', sports: ['AMERICAN_FOOTBALL'] },
+  interceptions: { header: 'Interceptions', sports: ['AMERICAN_FOOTBALL'] },
+  sacks: { header: 'Sacks', sports: ['AMERICAN_FOOTBALL'] },
+  
+  // Netball-specific
+  goalAttempts: { header: 'Goal Attempts', sports: ['NETBALL'] },
+  goalsMade: { header: 'Goals Made', sports: ['NETBALL'] },
+  shootingPercentage: { header: 'Shooting %', sports: ['NETBALL'] },
+  centrePassReceives: { header: 'Centre Pass Receives', sports: ['NETBALL'] },
+  gains: { header: 'Gains', sports: ['NETBALL'] },
+  deflections: { header: 'Deflections', sports: ['NETBALL'] },
+  
+  // Australian Rules-specific
+  kicks: { header: 'Kicks', sports: ['AUSTRALIAN_RULES'] },
+  handballs: { header: 'Handballs', sports: ['AUSTRALIAN_RULES'] },
+  marks: { header: 'Marks', sports: ['AUSTRALIAN_RULES', 'GAELIC_FOOTBALL'] },
+  hitouts: { header: 'Hitouts', sports: ['AUSTRALIAN_RULES'] },
+  behinds: { header: 'Behinds', sports: ['AUSTRALIAN_RULES'] },
+  clearances: { header: 'Clearances', sports: ['AUSTRALIAN_RULES'] },
+  
+  // Hockey-specific
+  powerPlayGoals: { header: 'Power Play Goals', sports: ['HOCKEY'] },
+  shorthandedGoals: { header: 'Shorthanded Goals', sports: ['HOCKEY'] },
+  penaltyMinutes: { header: 'Penalty Minutes', sports: ['HOCKEY'] },
+  plusMinus: { header: '+/-', sports: ['HOCKEY', 'BASKETBALL'] },
+};
+
+// ============================================================================
+// VALIDATION SCHEMAS
+// ============================================================================
+
+const exportRequestSchema = z.object({
+  exportType: z.enum(['players', 'teams', 'standings', 'matches', 'training', 'attendance']),
+  competitionId: z.string().cuid().optional(),
+  clubId: z.string().cuid().optional(),
+  teamId: z.string().cuid().optional(),
+  seasonId: z.string().cuid().optional(),
+  sport: z.enum(SPORTS as [Sport, ...Sport[]]).optional(),
+  includeSportSpecific: z.boolean().optional().default(true),
+  filters: z.object({
+    dateFrom: z.string().datetime().optional(),
+    dateTo: z.string().datetime().optional(),
+    status: z.string().optional(),
+    minRating: z.number().optional(),
+    maxResults: z.number().max(MAX_RECORDS).optional(),
+  }).optional(),
+  fields: z.array(z.string()).optional(),
+});
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function generateRequestId(): string {
+  return `csv-export-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
 function escapeCSVField(value: any): string {
-  if (value === null || value === undefined) {
-    return '';
+  if (value === null || value === undefined) return '';
+  
+  let str = String(value).trim();
+  
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    str = str.replace(/"/g, '""');
+    return `"${str}"`;
   }
-
-  let stringValue = String(value).trim();
-
-  // If field contains special characters, wrap in quotes
-  if (
-    stringValue.includes(',') ||
-    stringValue.includes('"') ||
-    stringValue.includes('\n') ||
-    stringValue.includes('\r')
-  ) {
-    // Escape quotes by doubling them
-    stringValue = stringValue.replace(/"/g, '""');
-    return `"${stringValue}"`;
-  }
-
-  return stringValue;
+  
+  return str;
 }
 
-/**
- * Convert row object to CSV line
- */
 function rowToCSV(row: CSVRow, headers: string[]): string {
-  return headers
-    .map((header) => escapeCSVField(row[header]))
-    .join(',');
+  return headers.map(header => escapeCSVField(row[header])).join(',');
 }
 
-/**
- * Generate CSV from data with headers
- */
-function generateCSV(data: CSVRow[]): string {
+function generateCSV(data: CSVRow[], headers: string[]): string {
   if (data.length === 0) {
     return BOM + 'No data to export\n';
   }
-
-  // Extract headers from first row
-  const headers = Object.keys(data[0]);
-
-  // Create header line
+  
   const headerLine = headers.map(escapeCSVField).join(',');
-
-  // Create data lines
-  const dataLines = data.map((row) => rowToCSV(row, headers));
-
+  const dataLines = data.map(row => rowToCSV(row, headers));
+  
   return BOM + headerLine + '\n' + dataLines.join('\n') + '\n';
 }
 
-/**
- * Generate RFC 4180 compliant CSV from chunks
- */
-async function* generateCSVStream(
-  dataIterator: AsyncIterableIterator<CSVRow>
-): AsyncGenerator<string> {
-  let headers: string[] = [];
-  let headerEmitted = false;
-
-  for await (const row of dataIterator) {
-    // Set headers from first row
-    if (!headerEmitted) {
-      headers = Object.keys(row);
-      const headerLine = headers.map(escapeCSVField).join(',');
-      yield BOM + headerLine + '\n';
-      headerEmitted = true;
-    }
-
-    // Emit data row
-    const csvLine = rowToCSV(row, headers);
-    yield csvLine + '\n';
-  }
+function generateFilename(exportType: string, sport?: Sport): string {
+  const dateStr = new Date().toISOString().split('T')[0];
+  const sportSuffix = sport ? `_${sport.toLowerCase()}` : '';
+  return `${exportType}${sportSuffix}_export_${dateStr}.csv`;
 }
 
-/**
- * Generate filename with timestamp
- */
-function generateFilename(fileType: string, timestamp: Date = new Date()): string {
-  const dateStr = timestamp.toISOString().split('T')[0];
-  const timeStr = timestamp.toISOString().split('T')[1].replace(/[:.]/g, '');
-  return `${fileType}_export_${dateStr}_${timeStr}.csv`;
+function getSportSpecificFields(sport: Sport): string[] {
+  return Object.entries(SPORT_SPECIFIC_PLAYER_FIELDS)
+    .filter(([_, config]) => config.sports.includes(sport))
+    .map(([field, _]) => field);
 }
 
 // ============================================================================
-// DATA FORMATTING
+// AUTHORIZATION CHECK
 // ============================================================================
 
-/**
- * Format player data for CSV export
- */
-function formatPlayerData(players: any[]): CSVRow[] {
-  return players.map((player) => ({
-    ID: player.id,
-    FirstName: player.firstName,
-    LastName: player.lastName,
-    Club: player.club?.name || 'N/A',
-    Position: player.position || 'Unknown',
-    Nationality: player.nationality || 'N/A',
-    DateOfBirth: player.dateOfBirth
-      ? new Date(player.dateOfBirth).toISOString().split('T')[0]
-      : 'N/A',
-    Height: player.height || 'N/A',
-    Weight: player.weight || 'N/A',
-    PreferredFoot: player.preferredFoot || 'N/A',
-    Rating: player.rating || 0,
-    Matches: player.matchCount || 0,
-    Goals: player.goals || 0,
-    Assists: player.assists || 0,
-    YellowCards: player.yellowCards || 0,
-    RedCards: player.redCards || 0,
-    Status: player.status || 'Active',
-  }));
-}
-
-/**
- * Format team/club data for CSV export
- */
-function formatTeamData(teams: any[]): CSVRow[] {
-  return teams.map((team) => ({
-    ID: team.id,
-    Name: team.name,
-    ShortName: team.shortName || 'N/A',
-    League: team.league?.name || 'N/A',
-    Manager: team.manager?.name || 'N/A',
-    City: team.city || 'N/A',
-    Country: team.country || 'N/A',
-    Founded: team.founded || 'N/A',
-    Stadium: team.stadium || 'N/A',
-    Players: team.players?.length || 0,
-    Status: team.status || 'Active',
-    Website: team.website || 'N/A',
-    Email: team.email || 'N/A',
-  }));
-}
-
-/**
- * Format standings/league table for CSV export
- */
-function formatStandingsData(standings: any[]): CSVRow[] {
-  return standings.map((standing, index) => ({
-    Position: index + 1,
-    Team: standing.club?.name || 'N/A',
-    Matches: standing.played || 0,
-    Wins: standing.wins || 0,
-    Draws: standing.draws || 0,
-    Losses: standing.losses || 0,
-    GoalsFor: standing.goalsFor || 0,
-    GoalsAgainst: standing.goalsAgainst || 0,
-    GoalDifference: (standing.goalsFor || 0) - (standing.goalsAgainst || 0),
-    Points: standing.points || 0,
-    Status: standing.status || 'Active',
-  }));
-}
-
-/**
- * Format match results for CSV export
- */
-function formatMatchData(matches: any[]): CSVRow[] {
-  return matches.map((match) => ({
-    ID: match.id,
-    Date: match.date ? new Date(match.date).toISOString() : 'N/A',
-    HomeTeam: match.homeClub?.name || 'N/A',
-    AwayTeam: match.awayClub?.name || 'N/A',
-    HomeScore: match.homeScore !== null ? match.homeScore : 'N/A',
-    AwayScore: match.awayScore !== null ? match.awayScore : 'N/A',
-    League: match.league?.name || 'N/A',
-    Referee: match.referee?.name || 'N/A',
-    Venue: match.venue || 'N/A',
-    Status: match.status || 'Scheduled',
-    Attendance: match.attendance || 'N/A',
-    Notes: match.notes || 'N/A',
-  }));
-}
-
-/**
- * Format league data for CSV export
- */
-function formatLeagueData(leagues: any[]): CSVRow[] {
-  return leagues.map((league) => ({
-    ID: league.id,
-    Name: league.name,
-    Country: league.country || 'N/A',
-    Season: league.season || 'N/A',
-    Teams: league.clubs?.length || 0,
-    Matches: league.matches?.length || 0,
-    Status: league.status || 'Active',
-    Format: league.format || 'N/A',
-    Website: league.website || 'N/A',
-    Email: league.email || 'N/A',
-  }));
+function canExport(userRoles: UserRole[], exportType: ExportType, isSuperAdmin: boolean): boolean {
+  if (isSuperAdmin) return true;
+  
+  const exportPermissions: Record<ExportType, UserRole[]> = {
+    players: ['ADMIN', 'COACH', 'COACH_PRO', 'MANAGER', 'CLUB_MANAGER', 'CLUB_OWNER', 'LEAGUE_ADMIN', 'ANALYST'],
+    teams: ['ADMIN', 'COACH', 'COACH_PRO', 'MANAGER', 'CLUB_MANAGER', 'CLUB_OWNER', 'LEAGUE_ADMIN'],
+    standings: ['ADMIN', 'COACH', 'COACH_PRO', 'MANAGER', 'CLUB_MANAGER', 'CLUB_OWNER', 'LEAGUE_ADMIN', 'PLAYER', 'PARENT'],
+    matches: ['ADMIN', 'COACH', 'COACH_PRO', 'MANAGER', 'CLUB_MANAGER', 'CLUB_OWNER', 'LEAGUE_ADMIN', 'REFEREE', 'ANALYST'],
+    training: ['ADMIN', 'COACH', 'COACH_PRO', 'MANAGER', 'CLUB_MANAGER', 'CLUB_OWNER'],
+    attendance: ['ADMIN', 'COACH', 'COACH_PRO', 'MANAGER', 'CLUB_MANAGER', 'CLUB_OWNER'],
+  };
+  
+  const allowedRoles = exportPermissions[exportType] || [];
+  return userRoles.some(role => allowedRoles.includes(role));
 }
 
 // ============================================================================
-// DATABASE MOCK (Replace with Prisma in production)
+// DATA FETCHERS
 // ============================================================================
 
-class MockExportDatabase {
-  private exportCounts = new Map<string, { count: number; resetAt: number }>();
-
-  async getPlayerStats(leagueId?: string, clubId?: string, playerId?: string, limit = MAX_RECORDS_PER_EXPORT) {
-    logger.info('Fetching player stats', { leagueId, clubId, playerId });
-    // Mock implementation
-    return [
-      {
-        id: 'p1',
-        firstName: 'John',
-        lastName: 'Doe',
-        club: { name: 'Arsenal', shortName: 'ARS' },
-        position: 'Forward',
-        nationality: 'English',
-        rating: 92,
-        goals: 15,
-        assists: 5,
-        yellowCards: 2,
-        redCards: 0,
-        status: 'Active',
+async function fetchPlayersForExport(
+  userId: string,
+  filters: any,
+  sport?: Sport,
+  includeSportSpecific: boolean = true
+): Promise<{ data: CSVRow[]; headers: string[] }> {
+  const where: any = {};
+  
+  if (filters?.clubId) {
+    where.teamPlayers = {
+      some: {
+        team: { clubId: filters.clubId },
+        isActive: true,
       },
-    ];
+    };
+  }
+  
+  if (filters?.teamId) {
+    where.teamPlayers = {
+      some: {
+        teamId: filters.teamId,
+        isActive: true,
+      },
+    };
   }
 
-  async getTeamData(leagueId?: string, clubId?: string, limit = MAX_RECORDS_PER_EXPORT) {
-    logger.info('Fetching team data', { leagueId, clubId });
-    return [
-      {
-        id: 't1',
-        name: 'Arsenal FC',
-        shortName: 'ARS',
-        league: { name: 'Premier League' },
-        manager: { name: 'Mikel Arteta' },
-        city: 'London',
-        country: 'England',
-        stadium: 'Emirates Stadium',
-        players: Array(25).fill(null),
-        status: 'Active',
+  const players = await prisma.player.findMany({
+    where: {
+      ...where,
+      deletedAt: null,
+      isActive: true,
+    },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+          dateOfBirth: true,
+          nationality: true,
+        },
       },
-    ];
+      aggregateStats: true,
+      teamPlayers: {
+        where: { isActive: true },
+        include: {
+          team: {
+            include: { club: { select: { name: true, sport: true } } },
+          },
+        },
+        take: 1,
+      },
+    },
+    take: filters?.maxResults || MAX_RECORDS,
+  });
+
+  // Base headers
+  const baseHeaders = [
+    'ID', 'FirstName', 'LastName', 'Email', 'DateOfBirth', 'Nationality',
+    'Club', 'Team', 'Position', 'JerseyNumber', 'PreferredFoot',
+    'Height', 'Weight', 'MarketValue', 'OverallRating',
+    'TotalMatches', 'TotalGoals', 'TotalAssists', 'TotalMinutes',
+    'YellowCards', 'RedCards', 'CleanSheets', 'AvgRating', 'Status'
+  ];
+
+  // Add sport-specific headers if requested
+  let headers = [...baseHeaders];
+  if (includeSportSpecific && sport) {
+    const sportFields = getSportSpecificFields(sport);
+    const sportHeaders = sportFields.map(field => SPORT_SPECIFIC_PLAYER_FIELDS[field].header);
+    headers = [...baseHeaders, ...sportHeaders];
   }
 
-  async getStandings(leagueId: string, limit = MAX_RECORDS_PER_EXPORT) {
-    logger.info('Fetching standings', { leagueId });
-    return [
-      {
-        club: { name: 'Arsenal FC' },
-        played: 10,
-        wins: 8,
-        draws: 1,
-        losses: 1,
-        goalsFor: 28,
-        goalsAgainst: 8,
-        points: 25,
-        status: 'Active',
-      },
-    ];
-  }
+  const data: CSVRow[] = players.map(player => {
+    const team = player.teamPlayers[0]?.team;
+    const club = team?.club;
+    const stats = player.aggregateStats;
 
-  async getMatches(leagueId?: string, clubId?: string, limit = MAX_RECORDS_PER_EXPORT) {
-    logger.info('Fetching matches', { leagueId, clubId });
-    return [
-      {
-        id: 'm1',
-        date: new Date(),
-        homeClub: { name: 'Arsenal', shortName: 'ARS' },
-        awayClub: { name: 'Chelsea', shortName: 'CHE' },
-        homeScore: 3,
-        awayScore: 1,
-        league: { name: 'Premier League' },
-        referee: { name: 'Mike Dean' },
-        venue: 'Emirates Stadium',
-        status: 'Completed',
-        attendance: 60000,
-      },
-    ];
-  }
-
-  async getLeagues(limit = MAX_RECORDS_PER_EXPORT) {
-    logger.info('Fetching leagues');
-    return [
-      {
-        id: 'l1',
-        name: 'Premier League',
-        country: 'England',
-        season: '2024-2025',
-        clubs: Array(20).fill(null),
-        matches: Array(380).fill(null),
-        status: 'Active',
-      },
-    ];
-  }
-
-  async recordExport(userId: string): Promise<number> {
-    const now = Date.now();
-    const hourMs = 60 * 60 * 1000;
-    const tracking = this.exportCounts.get(userId) || {
-      count: 0,
-      resetAt: now + hourMs,
+    const baseData: CSVRow = {
+      ID: player.id,
+      FirstName: player.user.firstName,
+      LastName: player.user.lastName,
+      Email: player.user.email,
+      DateOfBirth: player.user.dateOfBirth?.toISOString().split('T')[0] || '',
+      Nationality: player.user.nationality || player.nationality || '',
+      Club: club?.name || '',
+      Team: team?.name || '',
+      Position: player.primaryPosition || '',
+      JerseyNumber: player.jerseyNumber || '',
+      PreferredFoot: player.preferredFoot || '',
+      Height: player.height || '',
+      Weight: player.weight || '',
+      MarketValue: player.marketValue || '',
+      OverallRating: player.overallRating || '',
+      TotalMatches: stats?.totalMatches || 0,
+      TotalGoals: stats?.totalGoals || 0,
+      TotalAssists: stats?.totalAssists || 0,
+      TotalMinutes: stats?.totalMinutes || 0,
+      YellowCards: stats?.totalYellowCards || 0,
+      RedCards: stats?.totalRedCards || 0,
+      CleanSheets: stats?.totalCleanSheets || 0,
+      AvgRating: stats?.avgRating || '',
+      Status: player.isActive ? 'Active' : 'Inactive',
     };
 
-    if (tracking.resetAt < now) {
-      tracking.count = 1;
-      tracking.resetAt = now + hourMs;
-    } else {
-      tracking.count++;
+    // Add sport-specific data
+    // Note: In production, this would come from sportSpecificStats JSON field
+    // For now, we return empty values as placeholders
+    if (includeSportSpecific && sport) {
+      const sportFields = getSportSpecificFields(sport);
+      sportFields.forEach(field => {
+        const header = SPORT_SPECIFIC_PLAYER_FIELDS[field].header;
+        baseData[header] = ''; // Would come from player statistics sportSpecificStats JSON
+      });
     }
 
-    this.exportCounts.set(userId, tracking);
-    return tracking.count;
-  }
-
-  async getExportCount(userId: string): Promise<number> {
-    const tracking = this.exportCounts.get(userId);
-    if (!tracking || tracking.resetAt < Date.now()) {
-      return 0;
-    }
-    return tracking.count;
-  }
-}
-
-const db = new MockExportDatabase();
-
-// ============================================================================
-// AUTHENTICATION MIDDLEWARE
-// ============================================================================
-
-/**
- * Extract and validate user from request
- */
-async function requireAuth(request: NextRequest): Promise<User> {
-  const authHeader = request.headers.get('authorization');
-
-  if (!authHeader) {
-    throw new AuthenticationError('Missing authentication token');
-  }
-
-  // In production, verify JWT token
-  const token = authHeader.replace('Bearer ', '');
-
-  // Mock user extraction
-  const user: User = {
-    id: 'user-123',
-    email: 'user@pitchconnect.com',
-    firstName: 'John',
-    lastName: 'Doe',
-    role: 'LEAGUE_ADMIN',
-  };
-
-  return user;
-}
-
-// ============================================================================
-// VALIDATION FUNCTIONS
-// ============================================================================
-
-/**
- * Validate export request
- */
-function validateExportRequest(body: any): ExportCSVRequest {
-  if (!body || typeof body !== 'object') {
-    throw new ValidationError('Invalid request body');
-  }
-
-  const { fileType, leagueId, clubId, playerId, filters } = body;
-
-  if (!fileType || !VALID_FILE_TYPES.includes(fileType)) {
-    throw new ValidationError(
-      `Invalid file type. Must be one of: ${VALID_FILE_TYPES.join(', ')}`
-    );
-  }
-
-  // Validate filters if provided
-  if (filters) {
-    if (filters.minRating !== undefined && typeof filters.minRating !== 'number') {
-      throw new ValidationError('minRating must be a number');
-    }
-    if (filters.maxResults !== undefined && typeof filters.maxResults !== 'number') {
-      throw new ValidationError('maxResults must be a number');
-    }
-    if (filters.maxResults && filters.maxResults > MAX_RECORDS_PER_EXPORT) {
-      throw new ValidationError(`maxResults cannot exceed ${MAX_RECORDS_PER_EXPORT}`);
-    }
-  }
-
-  return {
-    fileType,
-    leagueId,
-    clubId,
-    playerId,
-    filters,
-  };
-}
-
-// ============================================================================
-// RESPONSE HELPERS
-// ============================================================================
-
-/**
- * Error response
- */
-function errorResponse(error: Error, status: number = 500): NextResponse {
-  logger.error('Export Error', error);
-
-  const message = process.env.NODE_ENV === 'development'
-    ? error.message
-    : 'An error occurred during export';
-
-  return NextResponse.json({ error: message }, { status });
-}
-
-// ============================================================================
-// LOGGING FUNCTIONS
-// ============================================================================
-
-/**
- * Log export event
- */
-async function logExportEvent(
-  userId: string,
-  fileType: ExportFileType,
-  recordCount: number,
-  fileSizeBytes: number,
-  filename: string,
-  ipAddress?: string
-): Promise<void> {
-  logger.info('CSV export completed', {
-    userId,
-    fileType,
-    recordCount,
-    fileSizeBytes,
-    filename,
-    ipAddress,
-    timestamp: new Date().toISOString(),
+    return baseData;
   });
+
+  return { data, headers };
+}
+
+async function fetchTeamsForExport(
+  userId: string,
+  filters: any,
+  sport?: Sport
+): Promise<{ data: CSVRow[]; headers: string[] }> {
+  const where: any = { deletedAt: null };
+  
+  if (filters?.clubId) {
+    where.clubId = filters.clubId;
+  }
+  
+  if (sport) {
+    where.club = { sport };
+  }
+
+  const teams = await prisma.team.findMany({
+    where,
+    include: {
+      club: {
+        select: { id: true, name: true, sport: true, city: true, country: true },
+      },
+      players: {
+        where: { isActive: true },
+        select: { id: true },
+      },
+      _count: {
+        select: {
+          homeMatches: true,
+          awayMatches: true,
+        },
+      },
+    },
+    take: filters?.maxResults || MAX_RECORDS,
+  });
+
+  const headers = [
+    'ID', 'Name', 'Club', 'Sport', 'AgeGroup', 'Gender', 'Status',
+    'PlayerCount', 'TotalMatches', 'City', 'Country', 'CreatedAt'
+  ];
+
+  const data: CSVRow[] = teams.map(team => ({
+    ID: team.id,
+    Name: team.name,
+    Club: team.club.name,
+    Sport: team.club.sport,
+    AgeGroup: team.ageGroup || '',
+    Gender: team.gender || '',
+    Status: team.status,
+    PlayerCount: team.players.length,
+    TotalMatches: team._count.homeMatches + team._count.awayMatches,
+    City: team.club.city || '',
+    Country: team.club.country || '',
+    CreatedAt: team.createdAt.toISOString().split('T')[0],
+  }));
+
+  return { data, headers };
+}
+
+async function fetchStandingsForExport(
+  userId: string,
+  filters: any,
+  sport?: Sport
+): Promise<{ data: CSVRow[]; headers: string[] }> {
+  if (!filters?.competitionId) {
+    throw new Error('Competition ID required for standings export');
+  }
+
+  const standings = await prisma.competitionStanding.findMany({
+    where: {
+      competitionId: filters.competitionId,
+    },
+    include: {
+      competition: {
+        select: { name: true, sport: true },
+      },
+    },
+    orderBy: { position: 'asc' },
+    take: filters?.maxResults || MAX_RECORDS,
+  });
+
+  // Sport-aware headers
+  const baseHeaders = ['Position', 'Team', 'Competition', 'Played', 'Won', 'Drawn', 'Lost'];
+  
+  // Add sport-specific scoring headers
+  let scoringHeaders: string[] = [];
+  const competitionSport = standings[0]?.competition.sport || sport;
+  
+  if (competitionSport) {
+    switch (competitionSport) {
+      case 'RUGBY':
+        scoringHeaders = ['TriesFor', 'TriesAgainst', 'PointsFor', 'PointsAgainst', 'PointsDiff', 'BonusPoints', 'Points'];
+        break;
+      case 'CRICKET':
+        scoringHeaders = ['NetRunRate', 'Points'];
+        break;
+      case 'BASKETBALL':
+        scoringHeaders = ['PointsFor', 'PointsAgainst', 'PointsDiff', 'WinPercentage'];
+        break;
+      default:
+        scoringHeaders = ['GoalsFor', 'GoalsAgainst', 'GoalDiff', 'Points'];
+    }
+  } else {
+    scoringHeaders = ['GoalsFor', 'GoalsAgainst', 'GoalDiff', 'Points'];
+  }
+
+  const headers = [...baseHeaders, ...scoringHeaders, 'Form'];
+
+  const data: CSVRow[] = standings.map(standing => {
+    const baseData: CSVRow = {
+      Position: standing.position,
+      Team: standing.teamId || 'TBD', // Would need team name lookup
+      Competition: standing.competition.name,
+      Played: standing.played,
+      Won: standing.wins,
+      Drawn: standing.draws,
+      Lost: standing.losses,
+      GoalsFor: standing.goalsFor,
+      GoalsAgainst: standing.goalsAgainst,
+      GoalDiff: standing.goalDifference,
+      Points: standing.points,
+      Form: standing.form || '',
+    };
+
+    return baseData;
+  });
+
+  return { data, headers };
+}
+
+async function fetchMatchesForExport(
+  userId: string,
+  filters: any,
+  sport?: Sport
+): Promise<{ data: CSVRow[]; headers: string[] }> {
+  const where: any = { deletedAt: null };
+  
+  if (filters?.competitionId) {
+    where.competitionId = filters.competitionId;
+  }
+  
+  if (filters?.clubId) {
+    where.OR = [
+      { homeClubId: filters.clubId },
+      { awayClubId: filters.clubId },
+    ];
+  }
+  
+  if (filters?.dateFrom) {
+    where.kickOffTime = { ...where.kickOffTime, gte: new Date(filters.dateFrom) };
+  }
+  
+  if (filters?.dateTo) {
+    where.kickOffTime = { ...where.kickOffTime, lte: new Date(filters.dateTo) };
+  }
+
+  const matches = await prisma.match.findMany({
+    where,
+    include: {
+      homeTeam: { select: { name: true } },
+      awayTeam: { select: { name: true } },
+      homeClub: { select: { name: true, sport: true } },
+      awayClub: { select: { name: true } },
+      competition: { select: { name: true } },
+      venueRelation: { select: { name: true } },
+    },
+    orderBy: { kickOffTime: 'desc' },
+    take: filters?.maxResults || MAX_RECORDS,
+  });
+
+  const headers = [
+    'ID', 'Date', 'Time', 'HomeTeam', 'AwayTeam', 'HomeScore', 'AwayScore',
+    'HalftimeHome', 'HalftimeAway', 'Competition', 'Sport', 'Venue', 
+    'Status', 'MatchType', 'Attendance', 'Weather'
+  ];
+
+  const data: CSVRow[] = matches.map(match => ({
+    ID: match.id,
+    Date: match.kickOffTime.toISOString().split('T')[0],
+    Time: match.kickOffTime.toISOString().split('T')[1].substring(0, 5),
+    HomeTeam: match.homeTeam?.name || 'TBD',
+    AwayTeam: match.awayTeam?.name || 'TBD',
+    HomeScore: match.homeScore ?? '',
+    AwayScore: match.awayScore ?? '',
+    HalftimeHome: match.homeHalftimeScore ?? '',
+    HalftimeAway: match.awayHalftimeScore ?? '',
+    Competition: match.competition?.name || '',
+    Sport: match.homeClub.sport,
+    Venue: match.venueRelation?.name || match.venue || '',
+    Status: match.status,
+    MatchType: match.matchType,
+    Attendance: match.attendance || '',
+    Weather: match.weather || '',
+  }));
+
+  return { data, headers };
 }
 
 // ============================================================================
-// MAIN HANDLER
+// POST /api/export/csv
 // ============================================================================
 
-/**
- * POST /api/export/csv
- *
- * Export data as CSV file
- *
- * Request Body:
- *   - fileType: 'players' | 'teams' | 'standings' | 'matches' | 'leagues'
- *   - leagueId?: string (optional, filters by league)
- *   - clubId?: string (optional, filters by club)
- *   - playerId?: string (optional, filters by player)
- *   - filters?: { minRating?, maxResults?, dateFrom?, dateTo? }
- *
- * Response (200 OK):
- *   CSV file with RFC 4180 formatting
- *
- * Security Features:
- *   - Authentication required
- *   - Rate limiting (50 exports per hour)
- *   - Data sanitization
- *   - Permission-based filtering
- *   - Audit logging
- *   - File size limits
- */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const startTime = performance.now();
-  const clientIp = request.headers.get('x-forwarded-for') ||
-                   request.headers.get('x-real-ip') ||
-                   'unknown';
+  const requestId = generateRequestId();
+  const startTime = Date.now();
+  const clientIp = request.headers.get('x-forwarded-for') || 'unknown';
 
   try {
     // ========================================================================
-    // AUTHENTICATION
+    // 1. AUTHENTICATION
     // ========================================================================
 
-    const user = await requireAuth(request);
+    const session = await auth();
 
-    if (!user) {
-      throw new AuthenticationError('Authentication failed');
-    }
-
-    // ========================================================================
-    // RATE LIMITING
-    // ========================================================================
-
-    const exportCount = await db.getExportCount(user.id);
-
-    if (exportCount >= MAX_EXPORTS_PER_HOUR) {
-      throw new RateLimitError(
-        `Export limit exceeded. Maximum ${MAX_EXPORTS_PER_HOUR} exports per hour.`
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' }, requestId },
+        { status: 401, headers: { 'X-Request-ID': requestId } }
       );
     }
 
     // ========================================================================
-    // REQUEST VALIDATION
+    // 2. GET USER & CHECK PERMISSIONS
     // ========================================================================
 
-    let body: any;
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, roles: true, isSuperAdmin: true },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: { code: 'NOT_FOUND', message: 'User not found' }, requestId },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
+      );
+    }
+
+    // ========================================================================
+    // 3. PARSE & VALIDATE REQUEST
+    // ========================================================================
+
+    let body;
     try {
       body = await request.json();
     } catch {
-      throw new ValidationError('Invalid JSON body');
+      return NextResponse.json(
+        { success: false, error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' }, requestId },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
-    const exportRequest = validateExportRequest(body);
-
-    // ========================================================================
-    // FETCH DATA
-    // ========================================================================
-
-    let csvData: CSVRow[] = [];
-    const { fileType, leagueId, clubId, playerId, filters } = exportRequest;
-
-    switch (fileType) {
-      case 'players': {
-        const players = await db.getPlayerStats(leagueId, clubId, playerId);
-        csvData = formatPlayerData(players);
-        break;
-      }
-
-      case 'teams': {
-        const teams = await db.getTeamData(leagueId, clubId);
-        csvData = formatTeamData(teams);
-        break;
-      }
-
-      case 'standings': {
-        if (!leagueId) {
-          throw new ValidationError('League ID required for standings export');
-        }
-        const standings = await db.getStandings(leagueId);
-        csvData = formatStandingsData(standings);
-        break;
-      }
-
-      case 'matches': {
-        const matches = await db.getMatches(leagueId, clubId);
-        csvData = formatMatchData(matches);
-        break;
-      }
-
-      case 'leagues': {
-        const leagues = await db.getLeagues();
-        csvData = formatLeagueData(leagues);
-        break;
-      }
+    const validation = exportRequestSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid input', details: validation.error.flatten() }, requestId },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
+      );
     }
 
+    const input = validation.data;
+
     // ========================================================================
-    // GENERATE CSV
+    // 4. AUTHORIZATION CHECK
     // ========================================================================
 
-    const csvContent = generateCSV(csvData);
-    const fileSizeBytes = new TextEncoder().encode(csvContent).length;
-
-    // Check file size limit
-    if (fileSizeBytes > MAX_FILE_SIZE_MB * 1024 * 1024) {
-      throw new ValidationError(
-        `Export file exceeds maximum size of ${MAX_FILE_SIZE_MB}MB`
+    if (!canExport(user.roles, input.exportType, user.isSuperAdmin)) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'You do not have permission to export this data' }, requestId },
+        { status: 403, headers: { 'X-Request-ID': requestId } }
       );
     }
 
     // ========================================================================
-    // RECORD EXPORT
+    // 5. FETCH DATA
     // ========================================================================
 
-    await db.recordExport(user.id);
+    let csvData: { data: CSVRow[]; headers: string[] };
+    const filters = { ...input.filters, clubId: input.clubId, teamId: input.teamId, competitionId: input.competitionId };
 
-    const filename = generateFilename(fileType);
+    switch (input.exportType) {
+      case 'players':
+        csvData = await fetchPlayersForExport(user.id, filters, input.sport, input.includeSportSpecific);
+        break;
+      case 'teams':
+        csvData = await fetchTeamsForExport(user.id, filters, input.sport);
+        break;
+      case 'standings':
+        csvData = await fetchStandingsForExport(user.id, filters, input.sport);
+        break;
+      case 'matches':
+        csvData = await fetchMatchesForExport(user.id, filters, input.sport);
+        break;
+      case 'training':
+      case 'attendance':
+        // TODO: Implement these exporters
+        return NextResponse.json(
+          { success: false, error: { code: 'NOT_IMPLEMENTED', message: `${input.exportType} export coming soon` }, requestId },
+          { status: 501, headers: { 'X-Request-ID': requestId } }
+        );
+      default:
+        throw new Error(`Unknown export type: ${input.exportType}`);
+    }
 
     // ========================================================================
-    // LOGGING
+    // 6. GENERATE CSV
     // ========================================================================
 
-    await logExportEvent(
-      user.id,
-      fileType,
-      csvData.length,
-      fileSizeBytes,
-      filename,
-      clientIp
-    );
+    const csvContent = generateCSV(csvData.data, csvData.headers);
+    const fileSizeBytes = new TextEncoder().encode(csvContent).length;
+    const filename = generateFilename(input.exportType, input.sport);
 
-    const duration = performance.now() - startTime;
+    // ========================================================================
+    // 7. AUDIT LOG
+    // ========================================================================
 
-    logger.info('CSV export request completed', {
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'DATA_EXPORTED',
+        resourceType: 'Export',
+        resourceId: requestId,
+        afterState: {
+          exportType: input.exportType,
+          sport: input.sport,
+          recordCount: csvData.data.length,
+          fileSizeBytes,
+          filename,
+        },
+        ipAddress: clientIp,
+        requestId,
+      },
+    });
+
+    const duration = Date.now() - startTime;
+    console.log('[CSV_EXPORT]', {
+      requestId,
       userId: user.id,
-      fileType,
-      recordCount: csvData.length,
+      exportType: input.exportType,
+      sport: input.sport,
+      recordCount: csvData.data.length,
       fileSizeBytes,
-      duration: `${Math.round(duration)}ms`,
-      ip: clientIp,
+      durationMs: duration,
     });
 
     // ========================================================================
-    // RESPONSE
+    // 8. RETURN CSV FILE
     // ========================================================================
 
     return new NextResponse(csvContent, {
@@ -715,90 +680,43 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         'Content-Type': 'text/csv;charset=utf-8',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
         'Content-Length': String(fileSizeBytes),
+        'X-Request-ID': requestId,
+        'X-Record-Count': String(csvData.data.length),
+        'X-Processing-Time-Ms': String(duration),
       },
     });
 
-    // ========================================================================
-    // ERROR HANDLING
-    // ========================================================================
   } catch (error) {
-    const duration = performance.now() - startTime;
+    const duration = Date.now() - startTime;
+    console.error('[CSV_EXPORT_ERROR]', { requestId, error, durationMs: duration });
 
-    if (error instanceof AuthenticationError) {
-      logger.warn('Authentication error in CSV export', {
-        error: error.message,
-        ip: clientIp,
-        duration: `${Math.round(duration)}ms`,
-      });
+    const errorMessage = error instanceof Error ? error.message : 'Export failed';
 
-      return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
-      );
-    }
-
-    if (error instanceof ValidationError) {
-      logger.warn('Validation error in CSV export', {
-        error: error.message,
-        duration: `${Math.round(duration)}ms`,
-      });
-
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      );
-    }
-
-    if (error instanceof AuthorizationError) {
-      logger.warn('Authorization error in CSV export', {
-        error: error.message,
-        duration: `${Math.round(duration)}ms`,
-      });
-
-      return NextResponse.json(
-        { error: error.message },
-        { status: 403 }
-      );
-    }
-
-    if (error instanceof RateLimitError) {
-      logger.warn('Rate limit error in CSV export', {
-        error: error.message,
-        duration: `${Math.round(duration)}ms`,
-      });
-
-      return NextResponse.json(
-        { error: error.message },
-        { status: 429 }
-      );
-    }
-
-    logger.error('Error in CSV export endpoint', error as Error, {
-      ip: clientIp,
-      duration: `${Math.round(duration)}ms`,
-    });
-
-    return errorResponse(error as Error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: errorMessage,
+          details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+        },
+        requestId,
+      },
+      { status: 500, headers: { 'X-Request-ID': requestId } }
+    );
   }
 }
 
 // ============================================================================
-// EXPORTS FOR TESTING
+// HTTP OPTIONS (for CORS preflight)
 // ============================================================================
 
-export {
-  escapeCSVField,
-  rowToCSV,
-  generateCSV,
-  generateFilename,
-  formatPlayerData,
-  formatTeamData,
-  formatStandingsData,
-  formatMatchData,
-  formatLeagueData,
-  type ExportCSVRequest,
-  type CSVRow,
-};
+export async function OPTIONS(): Promise<NextResponse> {
+  return NextResponse.json({}, {
+    headers: {
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+}
