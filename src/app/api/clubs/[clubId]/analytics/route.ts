@@ -1,24 +1,25 @@
-// =============================================================================
-// 📊 CLUB ANALYTICS API - Enterprise-Grade Implementation
-// =============================================================================
-// GET /api/clubs/[clubId]/analytics
-// Returns comprehensive club analytics including:
-// - Team performance metrics
-// - Match statistics
-// - Player performance summaries
-// - Form analysis
-// - Comparison data
-// =============================================================================
+// ============================================================================
+// 📊 CLUB ANALYTICS API - PitchConnect Enterprise v2.0.0
+// ============================================================================
+// GET /api/clubs/[clubId]/analytics - Comprehensive club analytics
+// ============================================================================
+// Schema: v7.7.0 | Multi-Sport: All 12 Sports | RBAC: Full
+// ============================================================================
+// 
+// Integrates with the PitchConnect Analytics Library (/src/lib/analytics)
+// Provides quick club-level summaries + links to detailed analytics
+// 
+// ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import type { Sport, Prisma } from '@prisma/client';
 
-// =============================================================================
+// ============================================================================
 // TYPES
-// =============================================================================
+// ============================================================================
 
 interface ClubAnalytics {
   overview: {
@@ -33,6 +34,7 @@ interface ClubAnalytics {
     cleanSheets: number;
     avgGoalsPerMatch: number;
     avgGoalsConcededPerMatch: number;
+    points: number;
   };
   form: {
     last5: string[];
@@ -43,6 +45,7 @@ interface ClubAnalytics {
     };
     homeForm: string[];
     awayForm: string[];
+    formRating: 'EXCELLENT' | 'GOOD' | 'AVERAGE' | 'POOR' | 'CRITICAL';
   };
   homeVsAway: {
     home: {
@@ -52,6 +55,7 @@ interface ClubAnalytics {
       losses: number;
       goalsFor: number;
       goalsAgainst: number;
+      winRate: number;
     };
     away: {
       played: number;
@@ -60,6 +64,7 @@ interface ClubAnalytics {
       losses: number;
       goalsFor: number;
       goalsAgainst: number;
+      winRate: number;
     };
   };
   topPerformers: {
@@ -70,7 +75,7 @@ interface ClubAnalytics {
       matches: number;
       goalsPerMatch: number;
     }>;
-    topAssists: Array<{
+    topAssisters: Array<{
       playerId: string;
       playerName: string;
       assists: number;
@@ -93,6 +98,7 @@ interface ClubAnalytics {
     result: 'W' | 'D' | 'L';
     date: string;
     competition: string | null;
+    sport: Sport;
   }>;
   monthlyTrends: Array<{
     month: string;
@@ -102,25 +108,47 @@ interface ClubAnalytics {
     losses: number;
     goalsFor: number;
     goalsAgainst: number;
+    winRate: number;
+  }>;
+  sportBreakdown?: Array<{
+    sport: Sport;
+    matches: number;
+    wins: number;
+    draws: number;
+    losses: number;
+    winRate: number;
   }>;
 }
 
-// =============================================================================
-// QUERY PARAMS VALIDATION
-// =============================================================================
+// ============================================================================
+// VALIDATION
+// ============================================================================
 
 const querySchema = z.object({
   season: z.string().optional(),
-  leagueId: z.string().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  competitionId: z.string().cuid().optional(),
+  teamId: z.string().cuid().optional(),
+  sport: z.enum([
+    'FOOTBALL', 'NETBALL', 'RUGBY', 'CRICKET', 'AMERICAN_FOOTBALL',
+    'BASKETBALL', 'HOCKEY', 'LACROSSE', 'AUSTRALIAN_RULES',
+    'GAELIC_FOOTBALL', 'FUTSAL', 'BEACH_FOOTBALL'
+  ]).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  includeMonthlyTrends: z.string().transform(v => v === 'true').default('true'),
+  includeTopPerformers: z.string().transform(v => v === 'true').default('true'),
+  topLimit: z.coerce.number().min(3).max(20).default(5),
 });
 
-// =============================================================================
+// ============================================================================
 // HELPER FUNCTIONS
-// =============================================================================
+// ============================================================================
 
-function getResult(
+function generateRequestId(): string {
+  return `analytics-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function getMatchResult(
   homeScore: number | null,
   awayScore: number | null,
   isHome: boolean
@@ -172,21 +200,35 @@ function calculateStreak(results: ('W' | 'D' | 'L')[]): { type: 'WIN' | 'DRAW' |
   };
 }
 
-// =============================================================================
-// GET HANDLER
-// =============================================================================
+function getFormRating(results: ('W' | 'D' | 'L')[]): 'EXCELLENT' | 'GOOD' | 'AVERAGE' | 'POOR' | 'CRITICAL' {
+  const last5 = results.slice(0, 5);
+  const wins = last5.filter(r => r === 'W').length;
+  
+  if (wins >= 4) return 'EXCELLENT';
+  if (wins >= 3) return 'GOOD';
+  if (wins >= 2) return 'AVERAGE';
+  if (wins >= 1) return 'POOR';
+  return 'CRITICAL';
+}
+
+// ============================================================================
+// GET /api/clubs/[clubId]/analytics
+// ============================================================================
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { clubId: string } }
-) {
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const startTime = Date.now();
+
   try {
     // 1. Authentication
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(
-        { error: 'Unauthorized', message: 'You must be logged in to access analytics' },
-        { status: 401 }
+        { success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' }, requestId },
+        { status: 401, headers: { 'X-Request-ID': requestId } }
       );
     }
 
@@ -194,21 +236,16 @@ export async function GET(
 
     // 2. Parse query parameters
     const { searchParams } = new URL(request.url);
-    const queryResult = querySchema.safeParse({
-      season: searchParams.get('season'),
-      leagueId: searchParams.get('leagueId'),
-      from: searchParams.get('from'),
-      to: searchParams.get('to'),
-    });
+    const queryResult = querySchema.safeParse(Object.fromEntries(searchParams));
 
     if (!queryResult.success) {
       return NextResponse.json(
-        { error: 'Invalid query parameters', details: queryResult.error.flatten() },
-        { status: 400 }
+        { success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid query parameters', details: queryResult.error.flatten() }, requestId },
+        { status: 400, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    const { season, leagueId, from, to } = queryResult.data;
+    const { season, competitionId, teamId, sport, from, to, includeMonthlyTrends, includeTopPerformers, topLimit } = queryResult.data;
 
     // 3. Verify club exists and user has access
     const club = await prisma.club.findUnique({
@@ -216,57 +253,72 @@ export async function GET(
       include: {
         members: {
           where: { userId: session.user.id, isActive: true },
+          select: { role: true },
         },
         aggregateStats: true,
+        teams: {
+          where: { deletedAt: null },
+          select: { id: true, name: true },
+        },
       },
     });
 
-    if (!club) {
+    if (!club || club.deletedAt) {
       return NextResponse.json(
-        { error: 'Not found', message: 'Club not found' },
-        { status: 404 }
+        { success: false, error: { code: 'NOT_FOUND', message: 'Club not found' }, requestId },
+        { status: 404, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // Check if user has access (is member, manager, or owner)
-    const hasAccess =
-      club.members.length > 0 ||
-      club.managerId === session.user.id ||
-      club.ownerId === session.user.id;
+    // Check access for private clubs
+    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { isSuperAdmin: true } });
+    const hasAccess = club.isPublic || 
+                      club.members.length > 0 || 
+                      club.managerId === session.user.id || 
+                      club.ownerId === session.user.id ||
+                      !!user?.isSuperAdmin;
 
     if (!hasAccess) {
       return NextResponse.json(
-        { error: 'Forbidden', message: 'You do not have access to this club\'s analytics' },
-        { status: 403 }
+        { success: false, error: { code: 'FORBIDDEN', message: 'You do not have access to this club\'s analytics' }, requestId },
+        { status: 403, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // 4. Build date filter
-    const dateFilter: { kickOffTime?: { gte?: Date; lte?: Date } } = {};
-    if (from) {
-      dateFilter.kickOffTime = { ...dateFilter.kickOffTime, gte: new Date(from) };
+    // 4. Build match filter
+    const matchWhere: Prisma.MatchWhereInput = {
+      OR: [
+        { homeClubId: clubId },
+        { awayClubId: clubId },
+      ],
+      status: 'FINISHED',
+      deletedAt: null,
+    };
+
+    if (competitionId) matchWhere.competitionId = competitionId;
+    if (teamId) {
+      matchWhere.OR = [
+        { homeTeamId: teamId },
+        { awayTeamId: teamId },
+      ];
     }
-    if (to) {
-      dateFilter.kickOffTime = { ...dateFilter.kickOffTime, lte: new Date(to) };
-    }
+    if (from) matchWhere.kickOffTime = { ...matchWhere.kickOffTime as any, gte: new Date(from) };
+    if (to) matchWhere.kickOffTime = { ...matchWhere.kickOffTime as any, lte: new Date(to) };
 
     // 5. Fetch matches
     const matches = await prisma.match.findMany({
-      where: {
-        OR: [{ homeClubId: clubId }, { awayClubId: clubId }],
-        status: 'FINISHED',
-        ...(leagueId ? { leagueId } : {}),
-        ...dateFilter,
-      },
+      where: matchWhere,
       include: {
-        homeTeam: { select: { id: true, name: true, logo: true } },
-        awayTeam: { select: { id: true, name: true, logo: true } },
-        league: { select: { name: true } },
+        homeTeam: { select: { id: true, name: true } },
+        awayTeam: { select: { id: true, name: true } },
+        homeClub: { select: { id: true, name: true, logo: true, sport: true } },
+        awayClub: { select: { id: true, name: true, logo: true, sport: true } },
+        competition: { select: { id: true, name: true, sport: true } },
       },
       orderBy: { kickOffTime: 'desc' },
     });
 
-    // 6. Calculate overview statistics
+    // 6. Calculate statistics
     let wins = 0, draws = 0, losses = 0;
     let goalsFor = 0, goalsAgainst = 0, cleanSheets = 0;
     let homeWins = 0, homeDraws = 0, homeLosses = 0, homeGoalsFor = 0, homeGoalsAgainst = 0;
@@ -275,13 +327,15 @@ export async function GET(
     const homeResults: ('W' | 'D' | 'L')[] = [];
     const awayResults: ('W' | 'D' | 'L')[] = [];
 
-    const monthlyData: Map<string, { matches: number; wins: number; draws: number; losses: number; goalsFor: number; goalsAgainst: number }> = new Map();
+    const monthlyData = new Map<string, { matches: number; wins: number; draws: number; losses: number; goalsFor: number; goalsAgainst: number }>();
+    const sportData = new Map<Sport, { matches: number; wins: number; draws: number; losses: number }>();
 
     for (const match of matches) {
       const isHome = match.homeClubId === clubId;
       const teamGoals = isHome ? (match.homeScore ?? 0) : (match.awayScore ?? 0);
       const opponentGoals = isHome ? (match.awayScore ?? 0) : (match.homeScore ?? 0);
-      const result = getResult(match.homeScore, match.awayScore, isHome);
+      const result = getMatchResult(match.homeScore, match.awayScore, isHome);
+      const matchSport = match.competition?.sport || club.sport;
 
       results.push(result);
       goalsFor += teamGoals;
@@ -311,129 +365,171 @@ export async function GET(
       }
 
       // Monthly trends
-      const monthKey = match.kickOffTime.toISOString().slice(0, 7); // YYYY-MM
-      const monthData = monthlyData.get(monthKey) || { matches: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 };
-      monthData.matches++;
-      monthData.goalsFor += teamGoals;
-      monthData.goalsAgainst += opponentGoals;
-      if (result === 'W') monthData.wins++;
-      else if (result === 'D') monthData.draws++;
-      else monthData.losses++;
-      monthlyData.set(monthKey, monthData);
+      if (includeMonthlyTrends) {
+        const monthKey = match.kickOffTime.toISOString().slice(0, 7);
+        const monthStats = monthlyData.get(monthKey) || { matches: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0 };
+        monthStats.matches++;
+        monthStats.goalsFor += teamGoals;
+        monthStats.goalsAgainst += opponentGoals;
+        if (result === 'W') monthStats.wins++;
+        else if (result === 'D') monthStats.draws++;
+        else monthStats.losses++;
+        monthlyData.set(monthKey, monthStats);
+      }
+
+      // Sport breakdown (for multi-sport clubs)
+      const sportStats = sportData.get(matchSport) || { matches: 0, wins: 0, draws: 0, losses: 0 };
+      sportStats.matches++;
+      if (result === 'W') sportStats.wins++;
+      else if (result === 'D') sportStats.draws++;
+      else sportStats.losses++;
+      sportData.set(matchSport, sportStats);
     }
 
     const totalMatches = matches.length;
     const winRate = totalMatches > 0 ? Math.round((wins / totalMatches) * 100) : 0;
 
-    // 7. Fetch top performers from player statistics
-    const playerStats = await prisma.playerStatistic.findMany({
-      where: {
-        player: {
-          teamPlayers: {
-            some: {
-              team: { clubId },
-              isActive: true,
+    // 7. Get top performers
+    let topScorers: ClubAnalytics['topPerformers']['topScorers'] = [];
+    let topAssisters: ClubAnalytics['topPerformers']['topAssisters'] = [];
+    let topRated: ClubAnalytics['topPerformers']['topRated'] = [];
+
+    if (includeTopPerformers) {
+      // Get team IDs for this club
+      const clubTeamIds = club.teams.map(t => t.id);
+
+      // Aggregate from player match performances
+      const performances = await prisma.playerMatchPerformance.findMany({
+        where: {
+          teamId: { in: clubTeamIds },
+          match: {
+            status: 'FINISHED',
+            deletedAt: null,
+            ...(from ? { kickOffTime: { gte: new Date(from) } } : {}),
+            ...(to ? { kickOffTime: { lte: new Date(to) } } : {}),
+          },
+        },
+        include: {
+          player: {
+            include: {
+              user: { select: { firstName: true, lastName: true } },
             },
           },
         },
-        ...(season ? { season: parseInt(season) } : {}),
-      },
-      include: {
-        player: {
-          include: {
-            user: { select: { firstName: true, lastName: true } },
-          },
-        },
-      },
-    });
+      });
 
-    // Aggregate player stats
-    const playerAggregates = new Map<string, { goals: number; assists: number; matches: number; totalRating: number; ratingCount: number; name: string }>();
-    
-    for (const stat of playerStats) {
-      const existing = playerAggregates.get(stat.playerId) || {
-        goals: 0,
-        assists: 0,
-        matches: 0,
-        totalRating: 0,
-        ratingCount: 0,
-        name: `${stat.player.user.firstName} ${stat.player.user.lastName}`,
-      };
-      
-      existing.goals += stat.goals;
-      existing.assists += stat.assists;
-      existing.matches += stat.matches;
-      if (stat.averageRating) {
-        existing.totalRating += stat.averageRating * stat.matches;
-        existing.ratingCount += stat.matches;
+      // Aggregate stats by player
+      const playerAggregates = new Map<string, {
+        goals: number;
+        assists: number;
+        matches: number;
+        totalRating: number;
+        ratingCount: number;
+        name: string;
+      }>();
+
+      for (const perf of performances) {
+        const existing = playerAggregates.get(perf.playerId) || {
+          goals: 0,
+          assists: 0,
+          matches: 0,
+          totalRating: 0,
+          ratingCount: 0,
+          name: `${perf.player.user.firstName} ${perf.player.user.lastName}`.trim(),
+        };
+
+        existing.goals += perf.goals;
+        existing.assists += perf.assists;
+        existing.matches++;
+        if (perf.rating) {
+          existing.totalRating += perf.rating;
+          existing.ratingCount++;
+        }
+
+        playerAggregates.set(perf.playerId, existing);
       }
-      
-      playerAggregates.set(stat.playerId, existing);
+
+      // Sort and pick top performers
+      topScorers = Array.from(playerAggregates.entries())
+        .map(([id, data]) => ({
+          playerId: id,
+          playerName: data.name,
+          goals: data.goals,
+          matches: data.matches,
+          goalsPerMatch: data.matches > 0 ? Math.round((data.goals / data.matches) * 100) / 100 : 0,
+        }))
+        .sort((a, b) => b.goals - a.goals)
+        .slice(0, topLimit);
+
+      topAssisters = Array.from(playerAggregates.entries())
+        .map(([id, data]) => ({
+          playerId: id,
+          playerName: data.name,
+          assists: data.assists,
+          matches: data.matches,
+          assistsPerMatch: data.matches > 0 ? Math.round((data.assists / data.matches) * 100) / 100 : 0,
+        }))
+        .sort((a, b) => b.assists - a.assists)
+        .slice(0, topLimit);
+
+      topRated = Array.from(playerAggregates.entries())
+        .filter(([, data]) => data.ratingCount >= 3)
+        .map(([id, data]) => ({
+          playerId: id,
+          playerName: data.name,
+          avgRating: data.ratingCount > 0 ? Math.round((data.totalRating / data.ratingCount) * 10) / 10 : 0,
+          matches: data.matches,
+        }))
+        .sort((a, b) => b.avgRating - a.avgRating)
+        .slice(0, topLimit);
     }
-
-    const topScorers = Array.from(playerAggregates.entries())
-      .map(([id, data]) => ({
-        playerId: id,
-        playerName: data.name,
-        goals: data.goals,
-        matches: data.matches,
-        goalsPerMatch: data.matches > 0 ? Math.round((data.goals / data.matches) * 100) / 100 : 0,
-      }))
-      .sort((a, b) => b.goals - a.goals)
-      .slice(0, 5);
-
-    const topAssists = Array.from(playerAggregates.entries())
-      .map(([id, data]) => ({
-        playerId: id,
-        playerName: data.name,
-        assists: data.assists,
-        matches: data.matches,
-        assistsPerMatch: data.matches > 0 ? Math.round((data.assists / data.matches) * 100) / 100 : 0,
-      }))
-      .sort((a, b) => b.assists - a.assists)
-      .slice(0, 5);
-
-    const topRated = Array.from(playerAggregates.entries())
-      .filter(([, data]) => data.ratingCount >= 3) // Minimum 3 rated matches
-      .map(([id, data]) => ({
-        playerId: id,
-        playerName: data.name,
-        avgRating: data.ratingCount > 0 ? Math.round((data.totalRating / data.ratingCount) * 10) / 10 : 0,
-        matches: data.matches,
-      }))
-      .sort((a, b) => b.avgRating - a.avgRating)
-      .slice(0, 5);
 
     // 8. Format recent matches
     const recentMatches = matches.slice(0, 10).map((match) => {
       const isHome = match.homeClubId === clubId;
-      const opponent = isHome ? match.awayTeam : match.homeTeam;
+      const opponent = isHome ? match.awayClub : match.homeClub;
       const score = isHome
         ? `${match.homeScore ?? 0} - ${match.awayScore ?? 0}`
         : `${match.awayScore ?? 0} - ${match.homeScore ?? 0}`;
-      
+
       return {
         id: match.id,
         opponent: opponent.name,
         opponentLogo: opponent.logo,
         isHome,
         score,
-        result: getResult(match.homeScore, match.awayScore, isHome),
+        result: getMatchResult(match.homeScore, match.awayScore, isHome),
         date: match.kickOffTime.toISOString(),
-        competition: match.league?.name ?? null,
+        competition: match.competition?.name ?? null,
+        sport: match.competition?.sport || club.sport,
       };
     });
 
     // 9. Format monthly trends
-    const monthlyTrends = Array.from(monthlyData.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-12) // Last 12 months
-      .map(([month, data]) => ({
-        month,
-        ...data,
-      }));
+    const monthlyTrends = includeMonthlyTrends
+      ? Array.from(monthlyData.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .slice(-12)
+          .map(([month, data]) => ({
+            month,
+            ...data,
+            winRate: data.matches > 0 ? Math.round((data.wins / data.matches) * 100) : 0,
+          }))
+      : [];
 
-    // 10. Build response
+    // 10. Sport breakdown (for multi-sport clubs)
+    const sportBreakdown = sportData.size > 1
+      ? Array.from(sportData.entries()).map(([sport, data]) => ({
+          sport,
+          ...data,
+          winRate: data.matches > 0 ? Math.round((data.wins / data.matches) * 100) : 0,
+        }))
+      : undefined;
+
+    // 11. Build response
+    const homePlayed = homeWins + homeDraws + homeLosses;
+    const awayPlayed = awayWins + awayDraws + awayLosses;
+
     const analytics: ClubAnalytics = {
       overview: {
         totalMatches,
@@ -447,6 +543,7 @@ export async function GET(
         cleanSheets,
         avgGoalsPerMatch: totalMatches > 0 ? Math.round((goalsFor / totalMatches) * 100) / 100 : 0,
         avgGoalsConcededPerMatch: totalMatches > 0 ? Math.round((goalsAgainst / totalMatches) * 100) / 100 : 0,
+        points: wins * 3 + draws,
       },
       form: {
         last5: results.slice(0, 5),
@@ -454,50 +551,65 @@ export async function GET(
         currentStreak: calculateStreak(results),
         homeForm: homeResults.slice(0, 5),
         awayForm: awayResults.slice(0, 5),
+        formRating: getFormRating(results),
       },
       homeVsAway: {
         home: {
-          played: homeWins + homeDraws + homeLosses,
+          played: homePlayed,
           wins: homeWins,
           draws: homeDraws,
           losses: homeLosses,
           goalsFor: homeGoalsFor,
           goalsAgainst: homeGoalsAgainst,
+          winRate: homePlayed > 0 ? Math.round((homeWins / homePlayed) * 100) : 0,
         },
         away: {
-          played: awayWins + awayDraws + awayLosses,
+          played: awayPlayed,
           wins: awayWins,
           draws: awayDraws,
           losses: awayLosses,
           goalsFor: awayGoalsFor,
           goalsAgainst: awayGoalsAgainst,
+          winRate: awayPlayed > 0 ? Math.round((awayWins / awayPlayed) * 100) : 0,
         },
       },
       topPerformers: {
         topScorers,
-        topAssists,
+        topAssisters,
         topRated,
       },
       recentMatches,
       monthlyTrends,
+      sportBreakdown,
     };
 
     return NextResponse.json({
       success: true,
       data: analytics,
       meta: {
+        requestId,
         clubId,
         clubName: club.name,
-        generatedAt: new Date().toISOString(),
-        filters: { season, leagueId, from, to },
+        sport: club.sport,
+        filters: { season, competitionId, teamId, sport, from, to },
+        timestamp: new Date().toISOString(),
+        processingTimeMs: Date.now() - startTime,
       },
+    }, {
+      status: 200,
+      headers: { 'X-Request-ID': requestId },
     });
 
   } catch (error) {
-    console.error('[CLUB_ANALYTICS_ERROR]', error);
+    console.error('[CLUB_ANALYTICS_ERROR]', { requestId, error });
+
     return NextResponse.json(
-      { error: 'Internal server error', message: 'Failed to fetch club analytics' },
-      { status: 500 }
+      {
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch club analytics' },
+        requestId,
+      },
+      { status: 500, headers: { 'X-Request-ID': requestId } }
     );
   }
 }
