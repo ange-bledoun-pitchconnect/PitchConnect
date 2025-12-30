@@ -1,57 +1,50 @@
 /**
- * Preferences Settings Page - WORLD-CLASS VERSION
- * Path: /dashboard/settings/preferences
+ * Preferences Settings Page - ENTERPRISE EDITION
+ * Path: /dashboard/settings/preferences/page.tsx
  *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * FEATURES (Display & Theme Only - No Notifications)
  * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
- * ✅ Display and theme preferences
- * ✅ Notification settings (Email and Push)
- * ✅ Privacy and visibility controls
- * ✅ Language and timezone settings
- * ✅ Font size customization
+ * ✅ Theme selection (Light, Dark, System)
+ * ✅ Language selection
+ * ✅ Timezone configuration
  * ✅ Display options (Compact mode, Reduce animations)
- * ✅ Real-time settings preview
- * ✅ Unsaved changes detection
- * ✅ Reset to defaults functionality
- * ✅ Loading states with spinners
- * ✅ Error handling with detailed feedback
+ * ✅ Font size customization
+ * ✅ Date/Time format preferences
+ * ✅ Currency preferences
+ * ✅ Measurement units (Metric/Imperial)
  * ✅ Custom toast notifications
- * ✅ Form validation
- * ✅ Responsive design (mobile-first)
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Performance optimization with memoization
- * ✅ Smooth animations and transitions
- * ✅ Production-ready code
+ * ✅ Dark mode support
+ * ✅ Accessibility compliance
  */
 
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-  Bell,
-  Moon,
   Sun,
+  Moon,
   Globe,
-  Eye,
-  Volume2,
-  Mail,
-  MessageSquare,
-  Smartphone,
+  Monitor,
+  Palette,
+  Type,
+  Calendar,
+  Clock,
+  DollarSign,
+  Ruler,
   Save,
   RotateCcw,
-  CheckCircle,
-  X,
   Check,
+  X,
   Info,
   Loader2,
   AlertCircle,
+  Zap,
+  Eye,
 } from 'lucide-react';
 
 // ============================================================================
-// IMPORTS - UI COMPONENTS
+// UI COMPONENTS
 // ============================================================================
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,12 +61,8 @@ interface ToastMessage {
   id: string;
   type: ToastType;
   message: string;
-  timestamp: number;
 }
 
-/**
- * Custom Toast Component
- */
 const Toast = ({
   message,
   type,
@@ -105,61 +94,40 @@ const Toast = ({
   return (
     <div
       className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}
-      role="status"
-      aria-live="polite"
     >
       {icons[type]}
       <span className="text-sm font-medium flex-1">{message}</span>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-white/20 rounded transition-colors"
-        aria-label="Close notification"
-      >
+      <button onClick={onClose} className="p-1 hover:bg-white/20 rounded transition-colors">
         <X className="w-4 h-4" />
       </button>
     </div>
   );
 };
 
-/**
- * Toast Container
- */
 const ToastContainer = ({
   toasts,
   onRemove,
 }: {
   toasts: ToastMessage[];
   onRemove: (id: string) => void;
-}) => {
-  return (
-    <div className="fixed bottom-4 right-4 z-40 space-y-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
+}) => (
+  <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none">
+    {toasts.map((toast) => (
+      <div key={toast.id} className="pointer-events-auto">
+        <Toast message={toast.message} type={toast.type} onClose={() => onRemove(toast.id)} />
+      </div>
+    ))}
+  </div>
+);
 
-/**
- * useToast Hook
- */
 const useToast = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const addToast = useCallback(
-    (message: string, type: ToastType = 'default') => {
-      const id = `toast-${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, message, type, timestamp: Date.now() }]);
-      return id;
-    },
-    []
-  );
+  const addToast = useCallback((message: string, type: ToastType = 'default') => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    return id;
+  }, []);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -167,7 +135,6 @@ const useToast = () => {
 
   return {
     toasts,
-    addToast,
     removeToast,
     success: (message: string) => addToast(message, 'success'),
     error: (message: string) => addToast(message, 'error'),
@@ -176,36 +143,24 @@ const useToast = () => {
 };
 
 // ============================================================================
-// TYPES & INTERFACES
+// TYPES
 // ============================================================================
 
 interface PreferencesData {
-  theme: 'light' | 'dark' | 'auto';
+  // Theme
+  theme: 'light' | 'dark' | 'system';
+  // Regional
   language: string;
   timezone: string;
-  emailNotifications: {
-    matchReminders: boolean;
-    teamInvites: boolean;
-    performanceUpdates: boolean;
-    weeklyDigest: boolean;
-    systemUpdates: boolean;
-  };
-  pushNotifications: {
-    enabled: boolean;
-    matchEvents: boolean;
-    teamMessages: boolean;
-    achievements: boolean;
-  };
-  privacy: {
-    profileVisibility: 'public' | 'friends' | 'private';
-    showActivity: boolean;
-    showStats: boolean;
-  };
-  display: {
-    compactMode: boolean;
-    reduceAnimations: boolean;
-    fontSize: 'small' | 'normal' | 'large';
-  };
+  dateFormat: string;
+  timeFormat: '12h' | '24h';
+  currency: string;
+  measurementUnit: 'metric' | 'imperial';
+  // Display
+  fontSize: 'small' | 'normal' | 'large';
+  compactMode: boolean;
+  reduceAnimations: boolean;
+  highContrastMode: boolean;
 }
 
 // ============================================================================
@@ -213,51 +168,68 @@ interface PreferencesData {
 // ============================================================================
 
 const DEFAULT_PREFERENCES: PreferencesData = {
-  theme: 'auto',
+  theme: 'system',
   language: 'en',
   timezone: 'Europe/London',
-  emailNotifications: {
-    matchReminders: true,
-    teamInvites: true,
-    performanceUpdates: true,
-    weeklyDigest: true,
-    systemUpdates: false,
-  },
-  pushNotifications: {
-    enabled: true,
-    matchEvents: true,
-    teamMessages: true,
-    achievements: true,
-  },
-  privacy: {
-    profileVisibility: 'friends',
-    showActivity: true,
-    showStats: true,
-  },
-  display: {
-    compactMode: false,
-    reduceAnimations: false,
-    fontSize: 'normal',
-  },
+  dateFormat: 'DD/MM/YYYY',
+  timeFormat: '24h',
+  currency: 'GBP',
+  measurementUnit: 'metric',
+  fontSize: 'normal',
+  compactMode: false,
+  reduceAnimations: false,
+  highContrastMode: false,
 };
 
-const LANGUAGE_OPTIONS = [
-  { value: 'en', label: 'English' },
-  { value: 'es', label: 'Español (Spanish)' },
-  { value: 'fr', label: 'Français (French)' },
-  { value: 'de', label: 'Deutsch (German)' },
-  { value: 'it', label: 'Italiano (Italian)' },
-  { value: 'pt', label: 'Português (Portuguese)' },
+const LANGUAGES = [
+  { value: 'en', label: 'English', flag: '🇬🇧' },
+  { value: 'en-US', label: 'English (US)', flag: '🇺🇸' },
+  { value: 'es', label: 'Español', flag: '🇪🇸' },
+  { value: 'fr', label: 'Français', flag: '🇫🇷' },
+  { value: 'de', label: 'Deutsch', flag: '🇩🇪' },
+  { value: 'it', label: 'Italiano', flag: '🇮🇹' },
+  { value: 'pt', label: 'Português', flag: '🇵🇹' },
+  { value: 'nl', label: 'Nederlands', flag: '🇳🇱' },
+  { value: 'pl', label: 'Polski', flag: '🇵🇱' },
+  { value: 'ja', label: '日本語', flag: '🇯🇵' },
+  { value: 'zh', label: '中文', flag: '🇨🇳' },
+  { value: 'ar', label: 'العربية', flag: '🇸🇦' },
 ];
 
-const TIMEZONE_OPTIONS = [
-  { value: 'Europe/London', label: 'Europe/London (GMT)' },
-  { value: 'Europe/Paris', label: 'Europe/Paris (CET)' },
-  { value: 'Europe/Berlin', label: 'Europe/Berlin (CET)' },
-  { value: 'America/New_York', label: 'America/New_York (EST)' },
-  { value: 'America/Los_Angeles', label: 'America/Los_Angeles (PST)' },
-  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (JST)' },
-  { value: 'Australia/Sydney', label: 'Australia/Sydney (AEDT)' },
+const TIMEZONES = [
+  { value: 'Europe/London', label: 'London (GMT/BST)' },
+  { value: 'Europe/Paris', label: 'Paris (CET)' },
+  { value: 'Europe/Berlin', label: 'Berlin (CET)' },
+  { value: 'Europe/Madrid', label: 'Madrid (CET)' },
+  { value: 'Europe/Rome', label: 'Rome (CET)' },
+  { value: 'Europe/Amsterdam', label: 'Amsterdam (CET)' },
+  { value: 'America/New_York', label: 'New York (EST)' },
+  { value: 'America/Chicago', label: 'Chicago (CST)' },
+  { value: 'America/Denver', label: 'Denver (MST)' },
+  { value: 'America/Los_Angeles', label: 'Los Angeles (PST)' },
+  { value: 'Asia/Tokyo', label: 'Tokyo (JST)' },
+  { value: 'Asia/Shanghai', label: 'Shanghai (CST)' },
+  { value: 'Asia/Dubai', label: 'Dubai (GST)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEDT)' },
+  { value: 'Pacific/Auckland', label: 'Auckland (NZDT)' },
+];
+
+const DATE_FORMATS = [
+  { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY', example: '25/12/2025' },
+  { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY', example: '12/25/2025' },
+  { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD', example: '2025-12-25' },
+  { value: 'DD MMM YYYY', label: 'DD MMM YYYY', example: '25 Dec 2025' },
+  { value: 'MMM DD, YYYY', label: 'MMM DD, YYYY', example: 'Dec 25, 2025' },
+];
+
+const CURRENCIES = [
+  { value: 'GBP', label: 'British Pound', symbol: '£' },
+  { value: 'EUR', label: 'Euro', symbol: '€' },
+  { value: 'USD', label: 'US Dollar', symbol: '$' },
+  { value: 'AUD', label: 'Australian Dollar', symbol: 'A$' },
+  { value: 'CAD', label: 'Canadian Dollar', symbol: 'C$' },
+  { value: 'JPY', label: 'Japanese Yen', symbol: '¥' },
+  { value: 'CHF', label: 'Swiss Franc', symbol: 'CHF' },
 ];
 
 // ============================================================================
@@ -265,137 +237,172 @@ const TIMEZONE_OPTIONS = [
 // ============================================================================
 
 /**
- * Theme Button Component
+ * Theme Card Component
  */
-interface ThemeButtonProps {
-  theme: 'light' | 'dark' | 'auto';
-  selected: boolean;
-  icon: React.ReactNode;
-  onClick: () => void;
-}
-
-const ThemeButton = ({ theme, selected, icon, onClick }: ThemeButtonProps) => {
-  return (
-    <button
-      onClick={onClick}
-      className={`p-4 rounded-lg border-2 transition-all transform hover:scale-105 ${
-        selected
-          ? 'border-gold-500 dark:border-gold-600 bg-gold-50 dark:bg-gold-900/20 shadow-md'
-          : 'border-neutral-200 dark:border-charcoal-600 bg-neutral-50 dark:bg-charcoal-700 hover:border-gold-300 dark:hover:border-gold-900/60'
-      }`}
-    >
-      <div className="flex items-center justify-center mb-2">{icon}</div>
-      <p className="font-semibold text-charcoal-900 dark:text-white capitalize text-sm">
-        {theme}
-      </p>
-    </button>
-  );
-};
-
-/**
- * Font Size Button Component
- */
-interface FontSizeButtonProps {
-  size: 'small' | 'normal' | 'large';
+interface ThemeCardProps {
+  theme: 'light' | 'dark' | 'system';
   selected: boolean;
   onClick: () => void;
 }
 
-const FontSizeButton = ({ size, selected, onClick }: FontSizeButtonProps) => {
-  const sizeClasses = {
-    small: 'text-sm',
-    normal: 'text-base',
-    large: 'text-lg',
+const ThemeCard = ({ theme, selected, onClick }: ThemeCardProps) => {
+  const config = {
+    light: {
+      icon: Sun,
+      label: 'Light',
+      description: 'Light theme for bright environments',
+      preview: 'bg-white border-neutral-200',
+      previewAccent: 'bg-neutral-100',
+    },
+    dark: {
+      icon: Moon,
+      label: 'Dark',
+      description: 'Dark theme to reduce eye strain',
+      preview: 'bg-charcoal-800 border-charcoal-700',
+      previewAccent: 'bg-charcoal-700',
+    },
+    system: {
+      icon: Monitor,
+      label: 'System',
+      description: 'Follow your device settings',
+      preview: 'bg-gradient-to-r from-white to-charcoal-800 border-neutral-300',
+      previewAccent: 'bg-gradient-to-r from-neutral-100 to-charcoal-700',
+    },
   };
 
+  const { icon: Icon, label, description, preview, previewAccent } = config[theme];
+
   return (
     <button
       onClick={onClick}
-      className={`p-4 rounded-lg border-2 transition-all text-center ${
+      className={`p-4 rounded-xl border-2 transition-all text-left ${
         selected
-          ? 'border-gold-500 dark:border-gold-600 bg-gold-50 dark:bg-gold-900/20'
-          : 'border-neutral-200 dark:border-charcoal-600 bg-neutral-50 dark:bg-charcoal-700 hover:border-gold-300 dark:hover:border-gold-900/60'
+          ? 'border-gold-500 dark:border-gold-400 bg-gold-50 dark:bg-gold-900/20 shadow-md'
+          : 'border-neutral-200 dark:border-charcoal-600 hover:border-gold-300 dark:hover:border-gold-700'
       }`}
     >
-      <p className={`font-semibold text-charcoal-900 dark:text-white capitalize ${sizeClasses[size]}`}>
-        {size}
-      </p>
+      {/* Preview */}
+      <div className={`w-full h-16 rounded-lg border mb-3 ${preview} overflow-hidden`}>
+        <div className={`h-4 ${previewAccent}`} />
+        <div className="p-2 space-y-1">
+          <div className={`h-1.5 w-3/4 rounded ${previewAccent}`} />
+          <div className={`h-1.5 w-1/2 rounded ${previewAccent}`} />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div
+          className={`p-2 rounded-lg ${
+            selected
+              ? 'bg-gold-100 dark:bg-gold-900/30'
+              : 'bg-neutral-100 dark:bg-charcoal-700'
+          }`}
+        >
+          <Icon
+            className={`w-5 h-5 ${
+              selected ? 'text-gold-600 dark:text-gold-400' : 'text-charcoal-600 dark:text-charcoal-400'
+            }`}
+          />
+        </div>
+        <div>
+          <p className="font-bold text-charcoal-900 dark:text-white">{label}</p>
+          <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{description}</p>
+        </div>
+      </div>
+
+      {selected && (
+        <div className="mt-3 flex items-center gap-1 text-gold-600 dark:text-gold-400">
+          <Check className="w-4 h-4" />
+          <span className="text-xs font-semibold">Selected</span>
+        </div>
+      )}
     </button>
   );
 };
 
 /**
- * Checkbox Option Component
+ * Font Size Selector Component
  */
-interface CheckboxOptionProps {
+interface FontSizeSelectorProps {
+  value: 'small' | 'normal' | 'large';
+  onChange: (value: 'small' | 'normal' | 'large') => void;
+}
+
+const FontSizeSelector = ({ value, onChange }: FontSizeSelectorProps) => {
+  const sizes = [
+    { id: 'small' as const, label: 'Small', textClass: 'text-sm' },
+    { id: 'normal' as const, label: 'Normal', textClass: 'text-base' },
+    { id: 'large' as const, label: 'Large', textClass: 'text-lg' },
+  ];
+
+  return (
+    <div className="flex gap-3">
+      {sizes.map((size) => (
+        <button
+          key={size.id}
+          onClick={() => onChange(size.id)}
+          className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+            value === size.id
+              ? 'border-gold-500 dark:border-gold-400 bg-gold-50 dark:bg-gold-900/20'
+              : 'border-neutral-200 dark:border-charcoal-600 hover:border-gold-300 dark:hover:border-gold-700'
+          }`}
+        >
+          <span className={`font-semibold text-charcoal-900 dark:text-white ${size.textClass}`}>
+            Aa
+          </span>
+          <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-1">{size.label}</p>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * Toggle Switch Component
+ */
+interface ToggleSwitchProps {
   label: string;
   description: string;
   checked: boolean;
   onChange: () => void;
-  disabled?: boolean;
+  icon: React.ElementType;
 }
 
-const CheckboxOption = ({
-  label,
-  description,
-  checked,
-  onChange,
-  disabled = false,
-}: CheckboxOptionProps) => {
+const ToggleSwitch = ({ label, description, checked, onChange, icon: Icon }: ToggleSwitchProps) => {
   return (
-    <label className={`flex items-center gap-3 p-3 rounded-lg border border-neutral-200 dark:border-charcoal-600 cursor-pointer hover:border-gold-300 dark:hover:border-gold-900/60 transition-all ${
-      disabled ? 'opacity-50 cursor-not-allowed' : ''
-    } ${
-      checked
-        ? 'bg-gold-50 dark:bg-gold-900/20 border-gold-300 dark:border-gold-900/60'
-        : 'bg-neutral-50 dark:bg-charcoal-700'
-    }`}>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onChange}
-        disabled={disabled}
-        className="w-5 h-5 rounded border-neutral-300 dark:border-charcoal-500 text-gold-600 dark:text-gold-500 cursor-pointer accent-gold-500 disabled:cursor-not-allowed"
-        aria-label={label}
-      />
-      <div>
-        <p className="font-semibold text-charcoal-900 dark:text-white text-sm">{label}</p>
-        <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{description}</p>
+    <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-charcoal-700/50 rounded-xl">
+      <div className="flex items-center gap-3">
+        <div
+          className={`p-2 rounded-lg ${
+            checked ? 'bg-gold-100 dark:bg-gold-900/30' : 'bg-neutral-200 dark:bg-charcoal-600'
+          }`}
+        >
+          <Icon
+            className={`w-5 h-5 ${
+              checked ? 'text-gold-600 dark:text-gold-400' : 'text-charcoal-500 dark:text-charcoal-400'
+            }`}
+          />
+        </div>
+        <div>
+          <p className="font-semibold text-charcoal-900 dark:text-white">{label}</p>
+          <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{description}</p>
+        </div>
       </div>
-    </label>
-  );
-};
-
-/**
- * Privacy Button Component
- */
-interface PrivacyButtonProps {
-  visibility: 'public' | 'friends' | 'private';
-  selected: boolean;
-  description: string;
-  onClick: () => void;
-}
-
-const PrivacyButton = ({
-  visibility,
-  selected,
-  description,
-  onClick,
-}: PrivacyButtonProps) => {
-  return (
-    <button
-      onClick={onClick}
-      className={`p-4 rounded-lg border-2 transition-all text-center ${
-        selected
-          ? 'border-purple-500 dark:border-purple-600 bg-purple-50 dark:bg-purple-900/20'
-          : 'border-neutral-200 dark:border-charcoal-600 bg-neutral-50 dark:bg-charcoal-700 hover:border-purple-300 dark:hover:border-purple-900/60'
-      }`}
-    >
-      <p className="font-semibold text-charcoal-900 dark:text-white capitalize text-sm">
-        {visibility}
-      </p>
-      <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-1">{description}</p>
-    </button>
+      <button
+        onClick={onChange}
+        className={`relative w-12 h-7 rounded-full transition-colors ${
+          checked ? 'bg-gold-500 dark:bg-gold-600' : 'bg-neutral-300 dark:bg-charcoal-600'
+        }`}
+        role="switch"
+        aria-checked={checked}
+      >
+        <span
+          className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+            checked ? 'translate-x-6' : 'translate-x-1'
+          }`}
+        />
+      </button>
+    </div>
   );
 };
 
@@ -405,107 +412,92 @@ const PrivacyButton = ({
 
 export default function PreferencesPage() {
   const { toasts, removeToast, success, error: showError } = useToast();
-
-  // State management
-  const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
   const [preferences, setPreferences] = useState<PreferencesData>(DEFAULT_PREFERENCES);
 
-  // =========================================================================
-  // HANDLERS
-  // =========================================================================
-
-  const updatePreference = useCallback((key: string, value: any) => {
-    setPreferences((prev) => {
-      const updated = { ...prev };
-      const keys = key.split('.');
-      let current = updated as any;
-
-      for (let i = 0; i < keys.length - 1; i++) {
-        current = current[keys[i]];
+  // Load preferences from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('pitchconnect-preferences');
+    if (saved) {
+      try {
+        setPreferences(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to parse saved preferences');
       }
+    }
+  }, []);
 
-      current[keys[keys.length - 1]] = value;
-      return updated;
-    });
+  const updatePreference = useCallback(<K extends keyof PreferencesData>(
+    key: K,
+    value: PreferencesData[K]
+  ) => {
+    setPreferences((prev) => ({ ...prev, [key]: value }));
     setHasChanges(true);
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-      // Save to localStorage
       localStorage.setItem('pitchconnect-preferences', JSON.stringify(preferences));
 
-      success('✅ Preferences saved successfully!');
+      // Apply theme
+      const html = document.documentElement;
+      if (preferences.theme === 'dark') {
+        html.classList.add('dark');
+      } else if (preferences.theme === 'light') {
+        html.classList.remove('dark');
+      } else {
+        // System preference
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          html.classList.add('dark');
+        } else {
+          html.classList.remove('dark');
+        }
+      }
+
+      success('Preferences saved successfully!');
       setHasChanges(false);
-    } catch (error) {
-      console.error('Error saving preferences:', error);
-      showError('❌ Failed to save preferences');
+    } catch (err) {
+      showError('Failed to save preferences');
     } finally {
       setIsSaving(false);
     }
-  }, [preferences, success, showError]);
+  };
 
-  const handleReset = useCallback(async () => {
-    if (!window.confirm('Are you sure you want to reset preferences to defaults?')) {
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      setPreferences(DEFAULT_PREFERENCES);
-      localStorage.setItem('pitchconnect-preferences', JSON.stringify(DEFAULT_PREFERENCES));
-      success('🔄 Preferences reset to defaults');
-      setHasChanges(false);
-    } catch (error) {
-      console.error('Error resetting preferences:', error);
-      showError('❌ Failed to reset preferences');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [success, showError]);
-
-  // =========================================================================
-  // RENDER
-  // =========================================================================
+  const handleReset = () => {
+    setPreferences(DEFAULT_PREFERENCES);
+    setHasChanges(true);
+  };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight text-charcoal-900 dark:text-white">
-            Preferences
-          </h1>
-          <p className="mt-2 text-charcoal-600 dark:text-charcoal-400">
-            Customize your experience and notification settings
+          <h2 className="text-2xl font-bold text-charcoal-900 dark:text-white">Preferences</h2>
+          <p className="text-charcoal-600 dark:text-charcoal-400 mt-1">
+            Customize your display, language, and regional settings
           </p>
         </div>
         {hasChanges && (
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2">
             <Button
-              onClick={handleReset}
               variant="outline"
-              className="border-charcoal-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 hover:bg-charcoal-50 dark:hover:bg-charcoal-700 font-semibold whitespace-nowrap"
-              disabled={isSaving || isLoading}
+              onClick={handleReset}
+              className="border-charcoal-300 dark:border-charcoal-600"
             >
               <RotateCcw className="w-4 h-4 mr-2" />
               Reset
             </Button>
             <Button
               onClick={handleSave}
-              disabled={isSaving || isLoading}
-              className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 dark:from-gold-600 dark:to-orange-500 dark:hover:from-gold-700 dark:hover:to-orange-600 text-white font-bold shadow-md disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              disabled={isSaving}
+              className="bg-gradient-to-r from-gold-500 to-orange-500 text-white"
             >
               {isSaving ? (
                 <>
@@ -515,7 +507,7 @@ export default function PreferencesPage() {
               ) : (
                 <>
                   <Save className="w-4 h-4 mr-2" />
-                  Save Changes
+                  Save
                 </>
               )}
             </Button>
@@ -523,364 +515,253 @@ export default function PreferencesPage() {
         )}
       </div>
 
-      {/* DISPLAY & THEME */}
-      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-        <CardHeader className="bg-gradient-to-r from-blue-50 to-transparent dark:from-blue-900/20 dark:to-transparent pb-4">
+      {/* Theme Selection */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
           <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-            <Sun className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            Display & Theme
+            <Palette className="w-5 h-5 text-purple-500" />
+            Theme
           </CardTitle>
-          <CardDescription>Customize how the app looks</CardDescription>
+          <CardDescription>Choose your preferred color theme</CardDescription>
         </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          {/* Theme Selection */}
-          <div className="space-y-3">
-            <Label className="text-charcoal-700 dark:text-charcoal-300 font-semibold">Theme</Label>
-            <div className="grid md:grid-cols-3 gap-4">
-              <ThemeButton
-                theme="light"
-                selected={preferences.theme === 'light'}
-                icon={<Sun className="w-6 h-6 text-yellow-500 dark:text-yellow-400" />}
-                onClick={() => updatePreference('theme', 'light')}
-              />
-              <ThemeButton
-                theme="dark"
-                selected={preferences.theme === 'dark'}
-                icon={<Moon className="w-6 h-6 text-purple-600 dark:text-purple-400" />}
-                onClick={() => updatePreference('theme', 'dark')}
-              />
-              <ThemeButton
-                theme="auto"
-                selected={preferences.theme === 'auto'}
-                icon={<Globe className="w-6 h-6 text-blue-600 dark:text-blue-400" />}
-                onClick={() => updatePreference('theme', 'auto')}
-              />
-            </div>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <ThemeCard
+              theme="light"
+              selected={preferences.theme === 'light'}
+              onClick={() => updatePreference('theme', 'light')}
+            />
+            <ThemeCard
+              theme="dark"
+              selected={preferences.theme === 'dark'}
+              onClick={() => updatePreference('theme', 'dark')}
+            />
+            <ThemeCard
+              theme="system"
+              selected={preferences.theme === 'system'}
+              onClick={() => updatePreference('theme', 'system')}
+            />
           </div>
+        </CardContent>
+      </Card>
 
+      {/* Display Options */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
+            <Eye className="w-5 h-5 text-blue-500" />
+            Display
+          </CardTitle>
+          <CardDescription>Customize the interface appearance</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
           {/* Font Size */}
-          <div className="space-y-3 pt-4 border-t border-neutral-200 dark:border-charcoal-700">
-            <Label className="text-charcoal-700 dark:text-charcoal-300 font-semibold">Font Size</Label>
-            <div className="grid md:grid-cols-3 gap-4">
-              <FontSizeButton
-                size="small"
-                selected={preferences.display.fontSize === 'small'}
-                onClick={() => updatePreference('display.fontSize', 'small')}
-              />
-              <FontSizeButton
-                size="normal"
-                selected={preferences.display.fontSize === 'normal'}
-                onClick={() => updatePreference('display.fontSize', 'normal')}
-              />
-              <FontSizeButton
-                size="large"
-                selected={preferences.display.fontSize === 'large'}
-                onClick={() => updatePreference('display.fontSize', 'large')}
-              />
-            </div>
-          </div>
-
-          {/* Display Options */}
-          <div className="space-y-3 pt-4 border-t border-neutral-200 dark:border-charcoal-700">
-            <Label className="text-charcoal-700 dark:text-charcoal-300 font-semibold">
-              Display Options
+          <div>
+            <Label className="flex items-center gap-2 mb-3">
+              <Type className="w-4 h-4" />
+              Font Size
             </Label>
-            <div className="space-y-3">
-              <CheckboxOption
-                label="Compact Mode"
-                description="Reduce spacing and make content denser"
-                checked={preferences.display.compactMode}
-                onChange={() =>
-                  updatePreference('display.compactMode', !preferences.display.compactMode)
-                }
-              />
-              <CheckboxOption
-                label="Reduce Animations"
-                description="Minimize motion for accessibility"
-                checked={preferences.display.reduceAnimations}
-                onChange={() =>
-                  updatePreference(
-                    'display.reduceAnimations',
-                    !preferences.display.reduceAnimations
-                  )
-                }
-              />
-            </div>
+            <FontSizeSelector
+              value={preferences.fontSize}
+              onChange={(v) => updatePreference('fontSize', v)}
+            />
           </div>
-        </CardContent>
-      </Card>
 
-      {/* NOTIFICATIONS */}
-      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-        <CardHeader className="bg-gradient-to-r from-gold-50 to-transparent dark:from-gold-900/20 dark:to-transparent pb-4">
-          <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-            <Bell className="w-6 h-6 text-gold-600 dark:text-gold-400" />
-            Notifications
-          </CardTitle>
-          <CardDescription>Choose what you want to be notified about</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          {/* Email Notifications */}
+          {/* Toggle Options */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2 mb-3">
-              <Mail className="w-5 h-5 text-gold-600 dark:text-gold-400" />
-              <h3 className="font-bold text-charcoal-900 dark:text-white">Email Notifications</h3>
-            </div>
-            <div className="space-y-2">
-              <CheckboxOption
-                label="Match Reminders"
-                description="Get notified before upcoming matches"
-                checked={preferences.emailNotifications.matchReminders}
-                onChange={() =>
-                  updatePreference(
-                    'emailNotifications.matchReminders',
-                    !preferences.emailNotifications.matchReminders
-                  )
-                }
-              />
-              <CheckboxOption
-                label="Team Invites"
-                description="Receive team join invitations"
-                checked={preferences.emailNotifications.teamInvites}
-                onChange={() =>
-                  updatePreference(
-                    'emailNotifications.teamInvites',
-                    !preferences.emailNotifications.teamInvites
-                  )
-                }
-              />
-              <CheckboxOption
-                label="Performance Updates"
-                description="Weekly performance statistics"
-                checked={preferences.emailNotifications.performanceUpdates}
-                onChange={() =>
-                  updatePreference(
-                    'emailNotifications.performanceUpdates',
-                    !preferences.emailNotifications.performanceUpdates
-                  )
-                }
-              />
-              <CheckboxOption
-                label="Weekly Digest"
-                description="Summary of league activities"
-                checked={preferences.emailNotifications.weeklyDigest}
-                onChange={() =>
-                  updatePreference(
-                    'emailNotifications.weeklyDigest',
-                    !preferences.emailNotifications.weeklyDigest
-                  )
-                }
-              />
-              <CheckboxOption
-                label="System Updates"
-                description="Important platform announcements"
-                checked={preferences.emailNotifications.systemUpdates}
-                onChange={() =>
-                  updatePreference(
-                    'emailNotifications.systemUpdates',
-                    !preferences.emailNotifications.systemUpdates
-                  )
-                }
-              />
-            </div>
-          </div>
-
-          {/* Push Notifications */}
-          <div className="space-y-3 pt-6 border-t border-neutral-200 dark:border-charcoal-700">
-            <div className="flex items-center gap-2 mb-3">
-              <Smartphone className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              <h3 className="font-bold text-charcoal-900 dark:text-white">Push Notifications</h3>
-            </div>
-            <label className="flex items-center gap-3 p-4 rounded-lg border-2 border-purple-200 dark:border-purple-900/40 bg-purple-50 dark:bg-purple-900/20 cursor-pointer hover:border-purple-300 dark:hover:border-purple-900/60 transition-all">
-              <input
-                type="checkbox"
-                checked={preferences.pushNotifications.enabled}
-                onChange={() =>
-                  updatePreference(
-                    'pushNotifications.enabled',
-                    !preferences.pushNotifications.enabled
-                  )
-                }
-                className="w-5 h-5 rounded border-neutral-300 dark:border-charcoal-500 text-purple-600 dark:text-purple-500 cursor-pointer accent-purple-500"
-                aria-label="Enable Push Notifications"
-              />
-              <div className="flex-1">
-                <p className="font-bold text-charcoal-900 dark:text-white">
-                  Enable Push Notifications
-                </p>
-                <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
-                  Get instant alerts on your device
-                </p>
-              </div>
-            </label>
-
-            {preferences.pushNotifications.enabled && (
-              <div className="space-y-2 mt-3">
-                <CheckboxOption
-                  label="Match Events"
-                  description="Live match updates"
-                  checked={preferences.pushNotifications.matchEvents}
-                  onChange={() =>
-                    updatePreference(
-                      'pushNotifications.matchEvents',
-                      !preferences.pushNotifications.matchEvents
-                    )
-                  }
-                />
-                <CheckboxOption
-                  label="Team Messages"
-                  description="Team chat alerts"
-                  checked={preferences.pushNotifications.teamMessages}
-                  onChange={() =>
-                    updatePreference(
-                      'pushNotifications.teamMessages',
-                      !preferences.pushNotifications.teamMessages
-                    )
-                  }
-                />
-                <CheckboxOption
-                  label="Achievements"
-                  description="New achievements earned"
-                  checked={preferences.pushNotifications.achievements}
-                  onChange={() =>
-                    updatePreference(
-                      'pushNotifications.achievements',
-                      !preferences.pushNotifications.achievements
-                    )
-                  }
-                />
-              </div>
-            )}
+            <ToggleSwitch
+              label="Compact Mode"
+              description="Reduce spacing for more content"
+              checked={preferences.compactMode}
+              onChange={() => updatePreference('compactMode', !preferences.compactMode)}
+              icon={Zap}
+            />
+            <ToggleSwitch
+              label="Reduce Animations"
+              description="Minimize motion for accessibility"
+              checked={preferences.reduceAnimations}
+              onChange={() => updatePreference('reduceAnimations', !preferences.reduceAnimations)}
+              icon={Zap}
+            />
+            <ToggleSwitch
+              label="High Contrast Mode"
+              description="Increase contrast for better visibility"
+              checked={preferences.highContrastMode}
+              onChange={() => updatePreference('highContrastMode', !preferences.highContrastMode)}
+              icon={Eye}
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* PRIVACY & VISIBILITY */}
-      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-        <CardHeader className="bg-gradient-to-r from-purple-50 to-transparent dark:from-purple-900/20 dark:to-transparent pb-4">
+      {/* Regional Settings */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
           <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-            <Eye className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-            Privacy & Visibility
+            <Globe className="w-5 h-5 text-green-500" />
+            Regional Settings
           </CardTitle>
-          <CardDescription>Control who can see your information</CardDescription>
+          <CardDescription>Language, timezone, and format preferences</CardDescription>
         </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          {/* Profile Visibility */}
-          <div className="space-y-3">
-            <Label className="text-charcoal-700 dark:text-charcoal-300 font-semibold">
-              Profile Visibility
-            </Label>
-            <div className="grid md:grid-cols-3 gap-4">
-              <PrivacyButton
-                visibility="public"
-                selected={preferences.privacy.profileVisibility === 'public'}
-                description="Everyone can see"
-                onClick={() => updatePreference('privacy.profileVisibility', 'public')}
-              />
-              <PrivacyButton
-                visibility="friends"
-                selected={preferences.privacy.profileVisibility === 'friends'}
-                description="Friends only"
-                onClick={() => updatePreference('privacy.profileVisibility', 'friends')}
-              />
-              <PrivacyButton
-                visibility="private"
-                selected={preferences.privacy.profileVisibility === 'private'}
-                description="Only you"
-                onClick={() => updatePreference('privacy.profileVisibility', 'private')}
-              />
+        <CardContent className="space-y-6">
+          {/* Language & Timezone */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label className="flex items-center gap-2 mb-2">
+                <Globe className="w-4 h-4" />
+                Language
+              </Label>
+              <select
+                value={preferences.language}
+                onChange={(e) => updatePreference('language', e.target.value)}
+                className="w-full p-3 rounded-lg border border-neutral-200 dark:border-charcoal-600 bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white"
+              >
+                {LANGUAGES.map((lang) => (
+                  <option key={lang.value} value={lang.value}>
+                    {lang.flag} {lang.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4" />
+                Timezone
+              </Label>
+              <select
+                value={preferences.timezone}
+                onChange={(e) => updatePreference('timezone', e.target.value)}
+                className="w-full p-3 rounded-lg border border-neutral-200 dark:border-charcoal-600 bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white"
+              >
+                {TIMEZONES.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Privacy Options */}
-          <div className="space-y-3 pt-4 border-t border-neutral-200 dark:border-charcoal-700">
-            <Label className="text-charcoal-700 dark:text-charcoal-300 font-semibold">
-              Activity & Statistics
-            </Label>
-            <div className="space-y-2">
-              <CheckboxOption
-                label="Show Activity Status"
-                description="Let others see when you're online"
-                checked={preferences.privacy.showActivity}
-                onChange={() =>
-                  updatePreference('privacy.showActivity', !preferences.privacy.showActivity)
-                }
-              />
-              <CheckboxOption
-                label="Show Statistics"
-                description="Allow others to view your stats"
-                checked={preferences.privacy.showStats}
-                onChange={() =>
-                  updatePreference('privacy.showStats', !preferences.privacy.showStats)
-                }
-              />
+          {/* Date & Time Format */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label className="flex items-center gap-2 mb-2">
+                <Calendar className="w-4 h-4" />
+                Date Format
+              </Label>
+              <select
+                value={preferences.dateFormat}
+                onChange={(e) => updatePreference('dateFormat', e.target.value)}
+                className="w-full p-3 rounded-lg border border-neutral-200 dark:border-charcoal-600 bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white"
+              >
+                {DATE_FORMATS.map((fmt) => (
+                  <option key={fmt.value} value={fmt.value}>
+                    {fmt.label} ({fmt.example})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4" />
+                Time Format
+              </Label>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => updatePreference('timeFormat', '12h')}
+                  className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                    preferences.timeFormat === '12h'
+                      ? 'border-gold-500 bg-gold-50 dark:bg-gold-900/20'
+                      : 'border-neutral-200 dark:border-charcoal-600'
+                  }`}
+                >
+                  <span className="font-semibold text-charcoal-900 dark:text-white">12-hour</span>
+                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400">2:30 PM</p>
+                </button>
+                <button
+                  onClick={() => updatePreference('timeFormat', '24h')}
+                  className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                    preferences.timeFormat === '24h'
+                      ? 'border-gold-500 bg-gold-50 dark:bg-gold-900/20'
+                      : 'border-neutral-200 dark:border-charcoal-600'
+                  }`}
+                >
+                  <span className="font-semibold text-charcoal-900 dark:text-white">24-hour</span>
+                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400">14:30</p>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Currency & Units */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-4 h-4" />
+                Currency
+              </Label>
+              <select
+                value={preferences.currency}
+                onChange={(e) => updatePreference('currency', e.target.value)}
+                className="w-full p-3 rounded-lg border border-neutral-200 dark:border-charcoal-600 bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white"
+              >
+                {CURRENCIES.map((curr) => (
+                  <option key={curr.value} value={curr.value}>
+                    {curr.symbol} - {curr.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label className="flex items-center gap-2 mb-2">
+                <Ruler className="w-4 h-4" />
+                Measurement Units
+              </Label>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => updatePreference('measurementUnit', 'metric')}
+                  className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                    preferences.measurementUnit === 'metric'
+                      ? 'border-gold-500 bg-gold-50 dark:bg-gold-900/20'
+                      : 'border-neutral-200 dark:border-charcoal-600'
+                  }`}
+                >
+                  <span className="font-semibold text-charcoal-900 dark:text-white">Metric</span>
+                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400">km, kg, °C</p>
+                </button>
+                <button
+                  onClick={() => updatePreference('measurementUnit', 'imperial')}
+                  className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                    preferences.measurementUnit === 'imperial'
+                      ? 'border-gold-500 bg-gold-50 dark:bg-gold-900/20'
+                      : 'border-neutral-200 dark:border-charcoal-600'
+                  }`}
+                >
+                  <span className="font-semibold text-charcoal-900 dark:text-white">Imperial</span>
+                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400">mi, lb, °F</p>
+                </button>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* LANGUAGE & REGIONAL */}
-      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-        <CardHeader className="bg-gradient-to-r from-green-50 to-transparent dark:from-green-900/20 dark:to-transparent pb-4">
-          <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-            <Globe className="w-6 h-6 text-green-600 dark:text-green-400" />
-            Language & Regional
-          </CardTitle>
-          <CardDescription>Language and timezone preferences</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          {/* Language */}
-          <div className="space-y-2">
-            <Label htmlFor="language" className="text-charcoal-700 dark:text-charcoal-300 font-semibold">
-              Language
-            </Label>
-            <select
-              id="language"
-              value={preferences.language}
-              onChange={(e) => updatePreference('language', e.target.value)}
-              className="w-full p-3 border-2 border-neutral-200 dark:border-charcoal-600 rounded-lg bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white font-medium hover:border-gold-300 dark:hover:border-gold-900/60 focus:border-gold-500 dark:focus:border-gold-600 focus:ring-2 focus:ring-gold-200 dark:focus:ring-gold-900/40 transition-all"
-            >
-              {LANGUAGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Timezone */}
-          <div className="space-y-2">
-            <Label htmlFor="timezone" className="text-charcoal-700 dark:text-charcoal-300 font-semibold">
-              Timezone
-            </Label>
-            <select
-              id="timezone"
-              value={preferences.timezone}
-              onChange={(e) => updatePreference('timezone', e.target.value)}
-              className="w-full p-3 border-2 border-neutral-200 dark:border-charcoal-600 rounded-lg bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white font-medium hover:border-gold-300 dark:hover:border-gold-900/60 focus:border-gold-500 dark:focus:border-gold-600 focus:ring-2 focus:ring-gold-200 dark:focus:ring-gold-900/40 transition-all"
-            >
-              {TIMEZONE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* SAVE REMINDER */}
+      {/* Unsaved Changes Banner */}
       {hasChanges && (
-        <div className="p-4 bg-gold-50 dark:bg-gold-900/20 border-l-4 border-gold-500 dark:border-gold-600 rounded-lg flex items-start gap-3">
-          <CheckCircle className="w-5 h-5 text-gold-600 dark:text-gold-400 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-semibold text-charcoal-900 dark:text-white">
-              You have unsaved changes
-            </p>
-            <p className="text-sm text-charcoal-700 dark:text-charcoal-300 mt-1">
-              Click the "Save Changes" button to apply your preferences.
-            </p>
-          </div>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 px-6 py-3 bg-gold-500 dark:bg-gold-600 text-white rounded-full shadow-lg flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
+          <AlertCircle className="w-5 h-5" />
+          <span className="font-semibold">You have unsaved changes</span>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="bg-white text-gold-600 hover:bg-gold-50"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Now'}
+          </Button>
         </div>
       )}
     </div>

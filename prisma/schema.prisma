@@ -1,5 +1,5 @@
 // ============================================================================
-// 🏆 PITCHCONNECT DATABASE SCHEMA v7.5.0 - ENTERPRISE EDITION
+// 🏆 PITCHCONNECT DATABASE SCHEMA v7.6.0 - ENTERPRISE EDITION
 // ============================================================================
 // 
 // Version History:
@@ -9,53 +9,28 @@
 // - v7.3.0: Added MediaContent, Hybrid Training, Enhanced Attendance
 // - v7.4.0: Competition System, Match Enhancements, Multi-Sport
 // - v7.5.0: Social Accounts, Fitness Assessments, Parent-Child Relations
+// - v7.6.0: AI Predictions, Enhanced Referee/Scout, Watchlists, Analytics
 //
 // ============================================================================
-// NEW IN v7.5.0:
+// NEW IN v7.6.0:
 // ============================================================================
 //
-// 📱 SOCIAL MEDIA INTEGRATION:
-//   - SocialAccount model for connected social platforms
-//   - SocialPlatform enum (Instagram, Twitter, Facebook, YouTube, TikTok, LinkedIn)
-//   - Token management for OAuth connections
-//   - Follower tracking and sync status
+// 🤖 AI PREDICTION SYSTEM:
+//   - Prediction model for AI-powered insights
+//   - PredictionFeedback model for accuracy tracking
+//   - 18 PredictionTypes (PERFORMANCE, INJURY_RISK, MARKET_VALUE, etc.)
+//   - Confidence scoring and impact levels
 //
-// 🏥 FITNESS ASSESSMENTS:
-//   - FitnessAssessment model for comprehensive player fitness tracking
-//   - Return-to-Play (RTP) protocol support with graduated stages
-//   - Physical metrics (weight, body fat, VO2 max, etc.)
-//   - Sport-specific strength tests stored as JSON
-//   - Integration with Injury model for RTP assessments
+// ⚫ ENHANCED REFEREE SYSTEM:
+//   - RefereeAvailability model for calendar support
+//   - RefereeQualification model for certifications
+//   - RefereePayment model for fee tracking
+//   - RefereeMatchReport model for post-match reports
 //
-// 👨‍👩‍👧 PARENT-CHILD RELATIONS:
-//   - Fixed Parent ↔ PlayerFamily bidirectional relation
-//   - Parents can now query their linked children
-//   - Proper cascade handling for family relationships
-//
-// 🔔 PUSH NOTIFICATIONS:
-//   - Added FCM token storage on User model
-//   - Support for both in-app and Firebase Cloud Messaging
-//   - Device-specific notification targeting
-//
-// 🔒 MEDICAL ACCESS CONTROL:
-//   - MEDICAL_STAFF: Full access to all medical records
-//   - HEAD_COACH: Availability status only
-//   - PARENT: Access to their children's records
-//   - PLAYER: Access to their own records
-//
-// ============================================================================
-// MIGRATION NOTES:
-// ============================================================================
-// 
-// ADDITIONS from v7.4.0:
-// 1. New SocialAccount model + SocialPlatform enum
-// 2. New FitnessAssessment model + FitnessAssessmentType, FitnessStatus enums
-// 3. Parent.children relation added
-// 4. PlayerFamily.parent relation added
-// 5. User.fcmTokens field added for push notifications
-// 6. User.fitnessAssessmentsCreated relation added
-// 7. Injury.fitnessAssessments relation added
-// 8. Club.socialAccounts relation added
+// 🔍 ENHANCED SCOUT SYSTEM:
+//   - ScoutWatchlist model for tracking prospects
+//   - ScoutMatchAttendance model for match logging
+//   - WatchlistStatus & WatchlistPriority enums
 //
 // ============================================================================
 
@@ -148,27 +123,111 @@ enum VerificationType {
 }
 
 // ============================================================================
-// 📋 ENUMS - PERMISSIONS & DATA GOVERNANCE
+// 📋 ENUMS - AI PREDICTIONS (NEW v7.6.0)
+// ============================================================================
+
+enum PredictionType {
+  PERFORMANCE
+  FORM_TREND
+  GOALS_ASSISTS
+  INJURY_RISK
+  FATIGUE_LEVEL
+  RECOVERY_TIME
+  MARKET_VALUE
+  TRANSFER_LIKELIHOOD
+  CONTRACT_VALUE
+  FORMATION
+  LINEUP
+  TACTICAL_MATCHUP
+  MATCH_OUTCOME
+  SCORE_PREDICTION
+  POTENTIAL_RATING
+  DEVELOPMENT_PATH
+  TEAM_CHEMISTRY
+  RECRUITMENT_FIT
+}
+
+enum PredictionStatus {
+  PENDING
+  ACTIVE
+  VERIFIED_CORRECT
+  VERIFIED_INCORRECT
+  PARTIALLY_CORRECT
+  EXPIRED
+  INVALIDATED
+}
+
+enum PredictionImpact {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFORMATIONAL
+}
+
+// ============================================================================
+// 📋 ENUMS - SCOUT WATCHLIST (NEW v7.6.0)
+// ============================================================================
+
+enum WatchlistStatus {
+  MONITORING
+  INTERESTED
+  HOT_PROSPECT
+  RECOMMENDED
+  IN_NEGOTIATION
+  SIGNED
+  PASSED
+  UNAVAILABLE
+}
+
+enum WatchlistPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  WATCHING
+}
+
+// ============================================================================
+// 📋 ENUMS - REFEREE (ENHANCED v7.6.0)
+// ============================================================================
+
+enum RefereeLevel {
+  TRAINEE
+  GRASSROOTS
+  COUNTY
+  NATIONAL
+  FIFA
+  UEFA
+  ELITE
+}
+
+enum RefereeAvailabilityStatus {
+  AVAILABLE
+  UNAVAILABLE
+  TENTATIVE
+  ASSIGNED
+  BLOCKED
+}
+
+
+// ============================================================================
+// 📋 ENUMS - PERMISSIONS (ENHANCED v7.6.0)
 // ============================================================================
 
 enum PermissionType {
-  // User Management
   USER_CREATE
   USER_READ
   USER_UPDATE
   USER_DELETE
   USER_SUSPEND
   USER_BAN
-  
-  // Team Management
   TEAM_CREATE
   TEAM_READ
   TEAM_UPDATE
   TEAM_DELETE
   TEAM_INVITE
   TEAM_REMOVE_MEMBER
-  
-  // Match Management
   MATCH_CREATE
   MATCH_READ
   MATCH_UPDATE
@@ -178,74 +237,63 @@ enum PermissionType {
   MATCH_RECORD_STATS
   MATCH_MANAGE_LINEUP
   MATCH_RECORD_EVENTS
-  
-  // Competition Management
   COMPETITION_CREATE
   COMPETITION_READ
   COMPETITION_UPDATE
   COMPETITION_DELETE
   COMPETITION_MANAGE_TEAMS
-  
-  // Player Management
   PLAYER_CREATE
   PLAYER_READ
   PLAYER_UPDATE
   PLAYER_DELETE
   PLAYER_VERIFY
   PLAYER_TRANSFER
-  
-  // Medical
   MEDICAL_READ
   MEDICAL_CREATE
   MEDICAL_UPDATE
-  MEDICAL_READ_FULL        // Full medical record access
-  MEDICAL_READ_AVAILABILITY // Availability only (for coaches)
-  
-  // Billing
+  MEDICAL_READ_FULL
+  MEDICAL_READ_AVAILABILITY
   BILLING_READ
   BILLING_UPDATE
   BILLING_MANAGE_SUBSCRIPTIONS
-  
-  // Analytics
   ANALYTICS_VIEW
   ANALYTICS_EXPORT
-  
-  // API
+  PREDICTIONS_VIEW
+  PREDICTIONS_CREATE
+  PREDICTIONS_MANAGE
+  SCOUTING_VIEW
+  SCOUTING_CREATE_REPORT
+  SCOUTING_MANAGE_WATCHLIST
+  REFEREE_VIEW_ASSIGNMENTS
+  REFEREE_MANAGE_AVAILABILITY
+  REFEREE_SUBMIT_REPORTS
+  REFEREE_VIEW_FEES
   API_ACCESS
   API_KEY_CREATE
   API_KEY_REVOKE
-  
-  // Facilities & Venues
   FACILITY_MANAGE
   FACILITY_BOOK
   VENUE_CREATE
   VENUE_UPDATE
-  
-  // System
   SYSTEM_ADMIN
   AUDIT_LOG_VIEW
-  
-  // Media
   MEDIA_UPLOAD
   MEDIA_DELETE
   MEDIA_MANAGE
-  
-  // Social Media (NEW v7.5.0)
   SOCIAL_CONNECT
   SOCIAL_POST
   SOCIAL_MANAGE
 }
 
 enum DataRetentionPolicy {
-  EPHEMERAL    // Delete after session
-  TEMPORARY    // Delete after 30 days
-  STANDARD     // Delete after 2 years
-  PERMANENT    // Never auto-delete
-  DELETED      // Marked for deletion
+  EPHEMERAL
+  TEMPORARY
+  STANDARD
+  PERMANENT
+  DELETED
 }
 
 enum AuditActionType {
-  // User Lifecycle
   USER_CREATED
   USER_UPDATED
   USER_DELETED
@@ -254,8 +302,6 @@ enum AuditActionType {
   USER_REACTIVATED
   ROLE_ASSIGNED
   ROLE_REMOVED
-  
-  // Authentication
   USER_REGISTERED
   USER_LOGIN
   USER_LOGOUT
@@ -270,15 +316,11 @@ enum AuditActionType {
   TWO_FACTOR_DISABLED
   TWO_FACTOR_VERIFIED
   TWO_FACTOR_BACKUP_USED
-  
-  // Session
   SESSION_CREATED
   SESSION_REVOKED
   SESSION_EXPIRED
   VERIFICATION_EMAIL_SENT
   VERIFICATION_EMAIL_RESENT
-  
-  // Subscription & Payment
   SUBSCRIPTION_GRANTED
   SUBSCRIPTION_UPGRADED
   SUBSCRIPTION_DOWNGRADED
@@ -286,21 +328,15 @@ enum AuditActionType {
   PAYMENT_PROCESSED
   PAYMENT_FAILED
   REFUND_PROCESSED
-  
-  // Data Operations
   DATA_EXPORTED
   DATA_DELETED
   DATA_IMPORTED
-  
-  // Team & Club
   TEAM_CREATED
   TEAM_UPDATED
   TEAM_DELETED
   CLUB_CREATED
   CLUB_UPDATED
   CLUB_DELETED
-  
-  // Match Operations
   MATCH_CREATED
   MATCH_UPDATED
   MATCH_RESULT_UPDATED
@@ -308,27 +344,19 @@ enum AuditActionType {
   MATCH_LINEUP_SET
   MATCH_EVENT_RECORDED
   MATCH_STATUS_CHANGED
-  
-  // Competition Operations
   COMPETITION_CREATED
   COMPETITION_UPDATED
   COMPETITION_DELETED
   COMPETITION_TEAM_ADDED
   COMPETITION_TEAM_REMOVED
-  
-  // Player Operations
   PLAYER_TRANSFER
   PLAYER_CONTRACT_SIGNED
   PLAYER_PERFORMANCE_RECORDED
-  
-  // Medical (ENHANCED v7.5.0)
   MEDICAL_RECORD_ACCESSED
   MEDICAL_RECORD_CREATED
   FITNESS_ASSESSMENT_CREATED
   FITNESS_ASSESSMENT_UPDATED
   PLAYER_CLEARED_TO_PLAY
-  
-  // Join Requests & Jobs
   JOIN_REQUEST_SUBMITTED
   JOIN_REQUEST_APPROVED
   JOIN_REQUEST_REJECTED
@@ -339,28 +367,29 @@ enum AuditActionType {
   JOB_APPLICATION_REVIEWED
   JOB_APPLICATION_ACCEPTED
   JOB_APPLICATION_REJECTED
-  
-  // Training
   TRAINING_CREATED
   TRAINING_UPDATED
   TRAINING_CANCELLED
-  
-  // Media
   MEDIA_UPLOADED
   MEDIA_DELETED
   MEDIA_SHARED
-  
-  // Social Media (NEW v7.5.0)
   SOCIAL_ACCOUNT_CONNECTED
   SOCIAL_ACCOUNT_DISCONNECTED
   SOCIAL_POST_PUBLISHED
-  
-  // Compliance
+  PREDICTION_CREATED
+  PREDICTION_VERIFIED
+  PREDICTION_FEEDBACK_SUBMITTED
+  SCOUTING_REPORT_CREATED
+  WATCHLIST_PLAYER_ADDED
+  WATCHLIST_PLAYER_UPDATED
+  WATCHLIST_PLAYER_REMOVED
+  REFEREE_ASSIGNED
+  REFEREE_AVAILABILITY_UPDATED
+  REFEREE_REPORT_SUBMITTED
+  REFEREE_PAYMENT_PROCESSED
   CONSENT_UPDATED
   GDPR_REQUEST
   DATA_RETENTION_APPLIED
-  
-  // System
   SYSTEM_MAINTENANCE
   API_KEY_GENERATED
   API_KEY_REVOKED
@@ -369,7 +398,7 @@ enum AuditActionType {
 }
 
 // ============================================================================
-// 📋 ENUMS - SPORT & POSITION
+// 📋 ENUMS - SPORT & POSITION (Full 12-Sport Support)
 // ============================================================================
 
 enum Sport {
@@ -388,9 +417,6 @@ enum Sport {
 }
 
 enum Position {
-  // ========================
-  // FOOTBALL (SOCCER)
-  // ========================
   GOALKEEPER
   LEFT_BACK
   CENTER_BACK
@@ -407,10 +433,6 @@ enum Position {
   STRIKER
   CENTER_FORWARD
   SECOND_STRIKER
-
-  // ========================
-  // NETBALL
-  // ========================
   GOALKEEPER_NETBALL
   GOAL_ATTACK
   WING_ATTACK
@@ -418,10 +440,6 @@ enum Position {
   WING_DEFENSE
   GOAL_DEFENSE
   GOAL_SHOOTER
-
-  // ========================
-  // RUGBY UNION
-  // ========================
   PROP
   HOOKER
   LOCK
@@ -432,18 +450,10 @@ enum Position {
   INSIDE_CENTER
   OUTSIDE_CENTER
   FULLBACK
-
-  // ========================
-  // RUGBY LEAGUE
-  // ========================
   HOOKER_LEAGUE
   PROP_LEAGUE
   SECOND_ROW
   LOOSE_FORWARD
-
-  // ========================
-  // AMERICAN FOOTBALL
-  // ========================
   QUARTERBACK
   RUNNING_BACK
   WIDE_RECEIVER
@@ -460,36 +470,20 @@ enum Position {
   CORNERBACK
   PUNTER
   KICKER
-
-  // ========================
-  // BASKETBALL
-  // ========================
   POINT_GUARD
   SHOOTING_GUARD
   SMALL_FORWARD
   POWER_FORWARD
   CENTER_BASKETBALL
-
-  // ========================
-  // CRICKET
-  // ========================
   BATSMAN
   BOWLER
   ALL_ROUNDER
   FIELDER
   WICKET_KEEPER
-
-  // ========================
-  // HOCKEY
-  // ========================
   GOALTENDER
   DEFENSEMAN
   WINGER
   CENTER_HOCKEY
-
-  // ========================
-  // GENERIC / MULTI-SPORT
-  // ========================
   UTILITY
   SUBSTITUTE
 }
@@ -501,9 +495,6 @@ enum PreferredFoot {
 }
 
 enum FormationType {
-  // ========================
-  // FOOTBALL (SOCCER)
-  // ========================
   FOUR_FOUR_TWO
   FOUR_THREE_THREE
   THREE_FIVE_TWO
@@ -519,19 +510,11 @@ enum FormationType {
   FOUR_FOUR_ONE_ONE
   FOUR_THREE_TWO_ONE
   FOUR_FIVE_ONE
-
-  // ========================
-  // BASKETBALL
-  // ========================
   ONE_THREE_ONE
   TWO_THREE
   TWO_ONE_TWO
   THREE_TWO
   ONE_TWO_TWO
-
-  // ========================
-  // AMERICAN FOOTBALL
-  // ========================
   I_FORMATION
   SHOTGUN
   PISTOL
@@ -539,38 +522,31 @@ enum FormationType {
   SINGLE_BACK
   PRO_SET
   WILDCAT
-
-  // ========================
-  // RUGBY
-  // ========================
   PODS
   DIAMOND
   FLAT_LINE
-
-  // ========================
-  // GENERIC
-  // ========================
   CUSTOM
 }
+
 
 // ============================================================================
 // 📋 ENUMS - MATCH & COMPETITION
 // ============================================================================
 
 enum MatchType {
-  LEAGUE           // Regular season league match
-  CUP              // Cup/knockout competition
-  FRIENDLY         // Non-competitive friendly match
-  PLAYOFF          // Post-season playoff match
-  TOURNAMENT       // Tournament match
-  QUALIFIER        // Qualifying round match
-  FINAL            // Championship final
-  SEMI_FINAL       // Semi-final match
-  QUARTER_FINAL    // Quarter-final match
-  GROUP_STAGE      // Group stage match
-  TRAINING_MATCH   // Training/practice match
-  PRACTICE         // Practice session match
-  EXHIBITION       // Exhibition/showcase match
+  LEAGUE
+  CUP
+  FRIENDLY
+  PLAYOFF
+  TOURNAMENT
+  QUALIFIER
+  FINAL
+  SEMI_FINAL
+  QUARTER_FINAL
+  GROUP_STAGE
+  TRAINING_MATCH
+  PRACTICE
+  EXHIBITION
 }
 
 enum MatchStatus {
@@ -593,15 +569,15 @@ enum MatchStatus {
 }
 
 enum CompetitionType {
-  LEAGUE                 // Round-robin league
-  CUP                    // Knockout cup
-  TOURNAMENT             // Multi-stage tournament
-  FRIENDLY_SERIES        // Series of friendly matches
-  SUPER_CUP              // One-off super cup
-  PLAYOFF                // Post-season playoffs
-  QUALIFIER              // Qualification competition
-  CHAMPIONSHIP           // Championship tournament
-  INVITATIONAL           // Invitation-only event
+  LEAGUE
+  CUP
+  TOURNAMENT
+  FRIENDLY_SERIES
+  SUPER_CUP
+  PLAYOFF
+  QUALIFIER
+  CHAMPIONSHIP
+  INVITATIONAL
 }
 
 enum CompetitionStage {
@@ -669,14 +645,7 @@ enum MatchAttendanceStatus {
   LOAN
 }
 
-// ============================================================================
-// 📋 ENUMS - MATCH EVENTS (80+ EVENT TYPES)
-// ============================================================================
-
 enum MatchEventType {
-  // ========================
-  // FOOTBALL (SOCCER)
-  // ========================
   GOAL
   ASSIST
   YELLOW_CARD
@@ -701,10 +670,6 @@ enum MatchEventType {
   CORNER
   THROW_IN
   GOAL_KICK
-
-  // ========================
-  // GENERAL EVENTS
-  // ========================
   CHALLENGE_REVIEW
   TIMEOUT
   INTERCEPT
@@ -716,20 +681,12 @@ enum MatchEventType {
   PERIOD_END
   OVERTIME_START
   SHOOTOUT_START
-
-  // ========================
-  // NETBALL
-  // ========================
   CENTER_PASS
   OBSTRUCTION
   CONTACT
   HELD_BALL
   STEPPING
   OVER_THIRD
-
-  // ========================
-  // RUGBY
-  // ========================
   TRY
   CONVERSION
   PENALTY_GOAL
@@ -743,10 +700,6 @@ enum MatchEventType {
   SIN_BIN
   YELLOW_CARD_RUGBY
   RED_CARD_RUGBY
-
-  // ========================
-  // CRICKET
-  // ========================
   WICKET
   BOUNDARY
   SIX
@@ -761,10 +714,6 @@ enum MatchEventType {
   BOWLED
   LBW
   STUMPED
-
-  // ========================
-  // BASKETBALL
-  // ========================
   THREE_POINTER
   TWO_POINTER
   FREE_THROW_MADE
@@ -779,10 +728,6 @@ enum MatchEventType {
   STEAL
   DUNK
   ALLEY_OOP
-
-  // ========================
-  // AMERICAN FOOTBALL
-  // ========================
   TOUCHDOWN
   FIELD_GOAL
   SAFETY_SCORE
@@ -794,10 +739,6 @@ enum MatchEventType {
   PUNT
   KICKOFF_RETURN
   FAIR_CATCH
-
-  // ========================
-  // HOCKEY
-  // ========================
   HAT_TRICK
   MAJOR_PENALTY
   MINOR_PENALTY
@@ -805,10 +746,6 @@ enum MatchEventType {
   POWER_PLAY_GOAL
   SHORTHANDED_GOAL
   EMPTY_NET_GOAL
-
-  // ========================
-  // AUSTRALIAN RULES
-  // ========================
   BEHIND
   RUSHED_BEHIND
   MARK
@@ -817,7 +754,7 @@ enum MatchEventType {
 }
 
 // ============================================================================
-// 📋 ENUMS - CLUB & TEAM
+// 📋 ENUMS - CLUB, TRAINING, MEDIA, BILLING
 // ============================================================================
 
 enum ClubMemberRole {
@@ -860,10 +797,6 @@ enum TeamStatus {
   DISSOLVED
 }
 
-// ============================================================================
-// 📋 ENUMS - TRAINING
-// ============================================================================
-
 enum TrainingIntensity {
   RECOVERY
   LOW
@@ -874,42 +807,29 @@ enum TrainingIntensity {
 }
 
 enum TrainingCategory {
-  // Technical Skills
   PASSING
   SHOOTING
   DEFENDING
   POSSESSION
   SET_PIECES
   DRIBBLING
-
-  // Physical
   CONDITIONING
   STRENGTH_POWER
   SPEED_AGILITY
   FLEXIBILITY
   BALANCE_COORDINATION
   ENDURANCE
-
-  // Tactical
   TACTICAL
   FORMATION_WORK
   GAME_STRATEGY
   TRANSITIONS
-
-  // Recovery & Mental
   RECOVERY
   MENTAL_PREPARATION
   VIDEO_ANALYSIS
   TEAM_BUILDING
-
-  // Position Specific
   GOALKEEPER_SPECIFIC
   POSITION_SPECIFIC
-
-  // Sport-Specific
   SPORT_SPECIFIC
-
-  // Generic
   WARM_UP
   COOL_DOWN
   SCRIMMAGE
@@ -939,10 +859,6 @@ enum AttendanceStatus {
   SUSPENDED
 }
 
-// ============================================================================
-// 📋 ENUMS - MEDIA
-// ============================================================================
-
 enum MediaType {
   VIDEO
   IMAGE
@@ -951,37 +867,26 @@ enum MediaType {
 }
 
 enum MediaCategory {
-  // Match Related
   MATCH_HIGHLIGHT
   MATCH_FULL
   MATCH_ANALYSIS
   GOAL_CLIP
   SAVE_CLIP
   INCIDENT_CLIP
-
-  // Training Related
   TRAINING_SESSION
   TRAINING_DRILL
   TRAINING_EXERCISE
   TRAINING_ANALYSIS
-
-  // Player Related
   PLAYER_HIGHLIGHT
   PLAYER_INTERVIEW
   PLAYER_PROFILE
-
-  // Team Related
   TEAM_PROMO
   TEAM_ANNOUNCEMENT
   PRESS_CONFERENCE
-
-  // Documents
   TACTICS_DOCUMENT
   MEDICAL_DOCUMENT
   CONTRACT_DOCUMENT
   REPORT
-
-  // General
   THUMBNAIL
   PROFILE_PHOTO
   BANNER
@@ -1035,10 +940,6 @@ enum VideoProcessingProvider {
   VERCEL_BLOB
 }
 
-// ============================================================================
-// 📋 ENUMS - SOCIAL MEDIA (NEW v7.5.0)
-// ============================================================================
-
 enum SocialPlatform {
   INSTAGRAM
   TWITTER
@@ -1047,10 +948,6 @@ enum SocialPlatform {
   TIKTOK
   LINKEDIN
 }
-
-// ============================================================================
-// 📋 ENUMS - FITNESS & MEDICAL (ENHANCED v7.5.0)
-// ============================================================================
 
 enum FitnessAssessmentType {
   PRE_SEASON
@@ -1087,10 +984,6 @@ enum InjuryStatus {
   CLEARED
   CHRONIC
 }
-
-// ============================================================================
-// 📋 ENUMS - HR & JOBS
-// ============================================================================
 
 enum TimesheetStatus {
   DRAFT
@@ -1171,10 +1064,6 @@ enum ExperienceLevel {
   EXECUTIVE
 }
 
-// ============================================================================
-// 📋 ENUMS - TRANSFERS
-// ============================================================================
-
 enum TransferType {
   PERMANENT
   LOAN
@@ -1193,10 +1082,6 @@ enum TransferStatus {
   REJECTED
   EXPIRED
 }
-
-// ============================================================================
-// 📋 ENUMS - FACILITIES & VENUES
-// ============================================================================
 
 enum FacilityType {
   STADIUM
@@ -1233,10 +1118,6 @@ enum BookingStatus {
   COMPLETED
   NO_SHOW
 }
-
-// ============================================================================
-// 📋 ENUMS - BILLING & SUBSCRIPTIONS
-// ============================================================================
 
 enum SubscriptionStatus {
   ACTIVE
@@ -1278,12 +1159,10 @@ enum PaymentType {
   TRANSFER_FEE
   LOAN_FEE
   SPONSORSHIP
+  REFEREE_FEE
+  REFEREE_EXPENSES
   OTHER
 }
-
-// ============================================================================
-// 📋 ENUMS - NOTIFICATIONS & SOCIAL
-// ============================================================================
 
 enum ChatType {
   DIRECT
@@ -1346,42 +1225,34 @@ enum InvitationStatus {
 }
 
 enum WebhookEvent {
-  // Match Events
   MATCH_CREATED
   MATCH_STARTED
   MATCH_FINISHED
   MATCH_CANCELLED
   MATCH_LINEUP_SET
-  
-  // Player Events
   PLAYER_ADDED
   PLAYER_UPDATED
   PLAYER_INJURED
   PLAYER_TRANSFERRED
   PLAYER_CLEARED
-  
-  // Team Events
   TEAM_UPDATED
   TEAM_CREATED
-  
-  // Competition Events
   COMPETITION_CREATED
   COMPETITION_STARTED
   COMPETITION_FINISHED
-  
-  // Subscription Events
   SUBSCRIPTION_UPDATED
   PAYMENT_RECEIVED
-  
-  // User Events
   USER_CREATED
   USER_DELETED
-  
-  // Medical Events (NEW v7.5.0)
   FITNESS_ASSESSMENT_COMPLETED
   PLAYER_RTP_CLEARED
-  
-  // Other Events
+  PREDICTION_CREATED
+  PREDICTION_VERIFIED
+  HIGH_RISK_PREDICTION
+  SCOUTING_REPORT_SUBMITTED
+  WATCHLIST_ALERT
+  REFEREE_ASSIGNED
+  REFEREE_REPORT_SUBMITTED
   RESULT_APPROVED
   TRAINING_SCHEDULED
   TRAINING_COMPLETED
@@ -1393,8 +1264,353 @@ enum WebhookEvent {
   MEDIA_PROCESSED
 }
 
+
 // ============================================================================
-// 🏢 ORGANISATION & MULTI-TENANCY MODELS
+// 🤖 AI PREDICTION SYSTEM (NEW v7.6.0)
+// ============================================================================
+
+model Prediction {
+  id             String  @id @default(cuid())
+  organisationId String?
+  clubId         String?
+
+  type   PredictionType
+  status PredictionStatus @default(PENDING)
+  impact PredictionImpact @default(MEDIUM)
+
+  title       String
+  description String  @db.Text
+  summary     String?
+
+  confidence       Float
+  actualOutcome    String?
+  accuracyScore    Float?
+  
+  modelVersion     String?
+  modelName        String?
+  dataSourcesUsed  String[]
+
+  relatedEntityType String?
+  relatedEntityId   String?
+  relatedEntityName String?
+
+  secondaryEntityType String?
+  secondaryEntityId   String?
+  secondaryEntityName String?
+
+  recommendedActions String[] @default([])
+  riskFactors        String[] @default([])
+  opportunities      String[] @default([])
+
+  predictionData Json?
+
+  predictionPeriod   String?
+  validFrom          DateTime?
+  validUntil         DateTime?
+  outcomeDate        DateTime?
+
+  isPublic       Boolean        @default(false)
+  visibleToRoles ClubMemberRole[] @default([])
+
+  createdBy   String?
+  verifiedBy  String?
+  verifiedAt  DateTime?
+  reviewNotes String?
+
+  tags     String[] @default([])
+  sport    Sport?
+  priority Int      @default(0)
+
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  feedback PredictionFeedback[]
+
+  @@index([organisationId])
+  @@index([clubId])
+  @@index([type])
+  @@index([status])
+  @@index([impact])
+  @@index([relatedEntityType, relatedEntityId])
+  @@index([createdAt])
+  @@index([validUntil])
+  @@index([sport])
+  @@index([deletedAt])
+  @@map("predictions")
+}
+
+model PredictionFeedback {
+  id           String @id @default(cuid())
+  predictionId String
+
+  wasAccurate    Boolean?
+  accuracyRating Int?
+  comments       String?  @db.Text
+
+  actualOutcome     String?
+  outcomeDetails    Json?
+  deviationFromPrediction Float?
+
+  submittedBy     String
+  submitterRole   UserRole?
+  submitterNotes  String?
+
+  usedForTraining Boolean   @default(false)
+  trainingBatchId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prediction Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+
+  @@index([predictionId])
+  @@index([wasAccurate])
+  @@index([submittedBy])
+  @@index([createdAt])
+  @@map("prediction_feedback")
+}
+
+// ============================================================================
+// 🔍 SCOUT WATCHLIST & ATTENDANCE (NEW v7.6.0)
+// ============================================================================
+
+model ScoutWatchlist {
+  id       String @id @default(cuid())
+  scoutId  String
+  playerId String
+
+  status   WatchlistStatus   @default(MONITORING)
+  priority WatchlistPriority @default(MEDIUM)
+
+  playerName        String?
+  playerPosition    Position?
+  playerAge         Int?
+  playerClub        String?
+  playerNationality String?
+
+  overallRating    Float?
+  technicalRating  Float?
+  tacticalRating   Float?
+  physicalRating   Float?
+  mentalRating     Float?
+  potentialRating  Float?
+
+  estimatedValue    Float?
+  currency          String  @default("GBP")
+  salaryExpectation Float?
+
+  matchesWatched   Int      @default(0)
+  reportsWritten   Int      @default(0)
+  lastWatched      DateTime?
+  firstAddedAt     DateTime @default(now())
+
+  strengths         String[] @default([])
+  weaknesses        String[] @default([])
+  comparablePlayers String[] @default([])
+  notes             String?  @db.Text
+  tags              String[] @default([])
+
+  recommendedTo       String?
+  recommendedAt       DateTime?
+  recommendationNotes String?
+
+  alertOnTransfer  Boolean @default(false)
+  alertOnInjury    Boolean @default(false)
+  alertOnForm      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scout  Scout  @relation(fields: [scoutId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([scoutId, playerId])
+  @@index([scoutId])
+  @@index([playerId])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+  @@map("scout_watchlist")
+}
+
+model ScoutMatchAttendance {
+  id      String @id @default(cuid())
+  scoutId String
+  matchId String
+
+  matchDate   DateTime
+  homeTeam    String?
+  awayTeam    String?
+  competition String?
+  venue       String?
+
+  playersWatched String[] @default([])
+
+  preMatchNotes  String? @db.Text
+  postMatchNotes String? @db.Text
+
+  reportsGenerated Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scout Scout @relation(fields: [scoutId], references: [id], onDelete: Cascade)
+
+  @@unique([scoutId, matchId])
+  @@index([scoutId])
+  @@index([matchId])
+  @@index([matchDate])
+  @@map("scout_match_attendance")
+}
+
+// ============================================================================
+// ⚫ REFEREE SUPPORT MODELS (NEW v7.6.0)
+// ============================================================================
+
+model RefereeAvailability {
+  id        String @id @default(cuid())
+  refereeId String
+
+  date      DateTime @db.Date
+  startTime DateTime?
+  endTime   DateTime?
+  
+  status RefereeAvailabilityStatus @default(AVAILABLE)
+
+  matchId String?
+  venue   String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+
+  @@unique([refereeId, date])
+  @@index([refereeId])
+  @@index([date])
+  @@index([status])
+  @@map("referee_availability")
+}
+
+model RefereeQualification {
+  id        String @id @default(cuid())
+  refereeId String
+
+  name            String
+  issuingBody     String
+  certificateNumber String?
+
+  sport Sport?
+
+  level        String?
+  dateObtained DateTime
+  expiryDate   DateTime?
+
+  documentUrl  String?
+  isVerified   Boolean @default(false)
+  verifiedBy   String?
+  verifiedAt   DateTime?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+
+  @@index([refereeId])
+  @@index([sport])
+  @@index([expiryDate])
+  @@map("referee_qualifications")
+}
+
+model RefereePayment {
+  id        String @id @default(cuid())
+  refereeId String
+  matchId   String?
+
+  amount        Float
+  currency      String        @default("GBP")
+  paymentType   PaymentType   @default(REFEREE_FEE)
+  status        PaymentStatus @default(PENDING)
+
+  matchFee    Float?
+  travelFee   Float?
+  expenses    Float?
+  deductions  Float?
+
+  invoiceNumber String? @unique
+  invoiceDate   DateTime?
+  dueDate       DateTime?
+  paidDate      DateTime?
+
+  paymentMethod String?
+  reference     String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+
+  @@index([refereeId])
+  @@index([matchId])
+  @@index([status])
+  @@index([paymentType])
+  @@index([paidDate])
+  @@map("referee_payments")
+}
+
+model RefereeMatchReport {
+  id        String @id @default(cuid())
+  refereeId String
+  matchId   String @unique
+
+  homeScore Int?
+  awayScore Int?
+
+  yellowCardsHome Int @default(0)
+  yellowCardsAway Int @default(0)
+  redCardsHome    Int @default(0)
+  redCardsAway    Int @default(0)
+
+  incidents Json?
+
+  pitchCondition String?
+  weather        String?
+  attendance     Int?
+
+  matchDifficulty Int?
+  playerBehavior  Int?
+  crowdBehavior   Int?
+
+  matchNotes        String? @db.Text
+  incidentReport    String? @db.Text
+  improvementAreas  String? @db.Text
+
+  submittedAt DateTime?
+  approvedBy  String?
+  approvedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+
+  @@index([refereeId])
+  @@index([matchId])
+  @@index([submittedAt])
+  @@map("referee_match_reports")
+}
+
+
+// ============================================================================
+// 🏢 ORGANISATION MODELS
 // ============================================================================
 
 model Organisation {
@@ -1452,7 +1668,6 @@ model Organisation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   owner                User                     @relation("organisationOwner", fields: [ownerId], references: [id])
   ownerId              String
   members              OrganisationMember[]
@@ -1492,7 +1707,6 @@ model OrganisationMember {
   roleId         String?
 
   role OrganisationRole @default(MEMBER)
-
   customPermissions String[]
 
   joinedAt  DateTime  @default(now())
@@ -1532,7 +1746,6 @@ model OrganisationInvitation {
   acceptedBy String?
 
   status InvitationStatus @default(PENDING)
-
   token String @unique @default(cuid())
 
   organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
@@ -1555,7 +1768,6 @@ model Season {
 
   isActive  Boolean @default(false)
   isCurrent Boolean @default(false)
-
   description String?
 
   deletedAt DateTime?
@@ -1624,8 +1836,7 @@ model User {
   twoFactorSecret      String?  @unique
   twoFactorBackupCodes String[]
 
-  // Push Notification Tokens (NEW v7.5.0)
-  fcmTokens String[] @default([]) // Firebase Cloud Messaging tokens for multiple devices
+  fcmTokens String[] @default([])
 
   emailNotificationsEnabled Boolean @default(true)
   pushNotificationsEnabled  Boolean @default(true)
@@ -1652,52 +1863,51 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  organisationMemberships  OrganisationMember[]
-  organisationsOwned       Organisation[]          @relation("organisationOwner")
-  accounts                 Account[]
-  sessions                 Session[]
-  refreshTokens            RefreshToken[]
-  twoFactorAuth            TwoFactorAuth?
-  apiKeys                  ApiKey[]
-  player                   Player?
-  coach                    Coach?
-  referee                  Referee?
-  scout                    Scout?
-  analyst                  Analyst?
-  clubManager              ClubManager?
-  clubOwner                ClubOwner?
-  parent                   Parent?
-  treasurer                Treasurer?
-  clubMemberships          ClubMember[]
-  managedClubs             Club[]                  @relation("clubManager")
-  ownedClubs               Club[]                  @relation("clubOwner")
-  notifications            Notification[]
-  notificationPrefs        NotificationPreference?
-  messages                 Message[]
-  chatMembers              ChatMember[]
-  chatsCreated             Chat[]                  @relation("chatCreator")
-  socialActions            SocialAction[]
-  followers                Follow[]                @relation("follower")
-  following                Follow[]                @relation("following")
-  blocks                   UserBlock[]             @relation("blocker")
-  blockedBy                UserBlock[]             @relation("blocked")
-  achievements             Achievement[]           @relation("achievementUser")
-  badges                   Badge[]                 @relation("badgeUser")
-  subscriptions            Subscription[]
-  payments                 Payment[]
-  invoices                 Invoice[]
-  auditLogsCreated         AuditLog[]              @relation("auditLogUser")
-  announcementsCreated     Announcement[]          @relation("announcementCreator")
-  performanceGoals         PerformanceGoal[]       @relation("goalUser")
-  goalsCreated             PerformanceGoal[]       @relation("goalCreator")
-  jobApplications          JobApplication[]        @relation("applicant")
-  reviewedApplications     JobApplication[]        @relation("applicationReviewer")
-  jobPostingsCreated       JobPosting[]            @relation("jobCreator")
-  mediaUploaded            MediaContent[]          @relation("mediaUploader")
-  matchesCreated           Match[]                 @relation("matchCreator")
-  competitionsCreated      Competition[]           @relation("competitionCreator")
-  fitnessAssessmentsCreated FitnessAssessment[]   @relation("fitnessAssessor")
+  organisationMemberships   OrganisationMember[]
+  organisationsOwned        Organisation[]          @relation("organisationOwner")
+  accounts                  Account[]
+  sessions                  Session[]
+  refreshTokens             RefreshToken[]
+  twoFactorAuth             TwoFactorAuth?
+  apiKeys                   ApiKey[]
+  player                    Player?
+  coach                     Coach?
+  referee                   Referee?
+  scout                     Scout?
+  analyst                   Analyst?
+  clubManager               ClubManager?
+  clubOwner                 ClubOwner?
+  parent                    Parent?
+  treasurer                 Treasurer?
+  clubMemberships           ClubMember[]
+  managedClubs              Club[]                  @relation("clubManager")
+  ownedClubs                Club[]                  @relation("clubOwner")
+  notifications             Notification[]
+  notificationPrefs         NotificationPreference?
+  messages                  Message[]
+  chatMembers               ChatMember[]
+  chatsCreated              Chat[]                  @relation("chatCreator")
+  socialActions             SocialAction[]
+  followers                 Follow[]                @relation("follower")
+  following                 Follow[]                @relation("following")
+  blocks                    UserBlock[]             @relation("blocker")
+  blockedBy                 UserBlock[]             @relation("blocked")
+  achievements              Achievement[]           @relation("achievementUser")
+  badges                    Badge[]                 @relation("badgeUser")
+  subscriptions             Subscription[]
+  payments                  Payment[]
+  invoices                  Invoice[]
+  auditLogsCreated          AuditLog[]              @relation("auditLogUser")
+  announcementsCreated      Announcement[]          @relation("announcementCreator")
+  performanceGoals          PerformanceGoal[]       @relation("goalUser")
+  goalsCreated              PerformanceGoal[]       @relation("goalCreator")
+  jobApplications           JobApplication[]        @relation("applicant")
+  reviewedApplications      JobApplication[]        @relation("applicationReviewer")
+  jobPostingsCreated        JobPosting[]            @relation("jobCreator")
+  mediaUploaded             MediaContent[]          @relation("mediaUploader")
+  matchesCreated            Match[]                 @relation("matchCreator")
+  competitionsCreated       Competition[]           @relation("competitionCreator")
+  fitnessAssessmentsCreated FitnessAssessment[]     @relation("fitnessAssessor")
 
   @@index([email])
   @@index([phone])
@@ -1904,8 +2114,9 @@ model ResourcePermission {
   @@map("resource_permissions")
 }
 
+
 // ============================================================================
-// 📋 AUDIT, COMPLIANCE & DATA GOVERNANCE
+// 📋 AUDIT & DATA GOVERNANCE
 // ============================================================================
 
 model AuditLog {
@@ -2052,7 +2263,7 @@ model DataDeletionRequest {
 }
 
 // ============================================================================
-// 🏃 PLAYER MODELS
+// 🏃 PLAYER MODEL (ENHANCED v7.6.0 - Added scoutWatchlists)
 // ============================================================================
 
 model Player {
@@ -2109,6 +2320,7 @@ model Player {
   matchAttendance         MatchAttendance[]
   familyLinks             PlayerFamily[]
   scoutingReports         ScoutingReport[]
+  scoutWatchlists         ScoutWatchlist[]
   highlights              PlayerHighlight[]
   badges                  Badge[]                   @relation("badgePlayer")
   achievements            Achievement[]             @relation("achievementPlayer")
@@ -2181,7 +2393,6 @@ model PlayerStatistic {
   crossesAttempt  Int    @default(0)
   crossesComplete Int    @default(0)
 
-  // Sport-specific stats stored as JSON for flexibility
   sportSpecificStats Json?
 
   averageRating Float?
@@ -2493,59 +2704,44 @@ model MedicalRecord {
   @@map("medical_records")
 }
 
-// ============================================================================
-// 🏥 FITNESS ASSESSMENT MODEL (NEW v7.5.0)
-// ============================================================================
-
 model FitnessAssessment {
   id         String @id @default(cuid())
   playerId   String
-  assessorId String // User who conducted assessment
+  assessorId String
 
   type FitnessAssessmentType
   date DateTime
 
-  // Physical metrics
-  weight    Float? // kg
-  bodyFat   Float? // percentage
-  restingHR Int?   // bpm
-  maxHR     Int?   // bpm
-  vo2Max    Float? // ml/kg/min
+  weight    Float?
+  bodyFat   Float?
+  restingHR Int?
+  maxHR     Int?
+  vo2Max    Float?
 
-  // Test results
-  sprintTime    Float? // 40m sprint in seconds
-  agilityTime   Float? // T-test or similar in seconds
-  verticalJump  Float? // cm
-  beepTestLevel Float? // Yo-yo/beep test level (e.g., 15.2)
+  sprintTime    Float?
+  agilityTime   Float?
+  verticalJump  Float?
+  beepTestLevel Float?
 
-  // Flexibility & mobility
   flexibilityScore Float?
   mobilityNotes    String? @db.Text
 
-  // Strength tests (sport-specific JSON)
-  // Example: {"benchPress": 80, "squat": 120, "deadlift": 140}
   strengthTests Json?
 
-  // Overall assessment
-  overallScore Float? // 0-100
+  overallScore Float?
   status       FitnessStatus @default(PENDING_REVIEW)
 
-  // Return to Play specific
   isRTPAssessment Boolean   @default(false)
   injuryId        String?
-  rtpStage        Int?      // 1-6 for graduated RTP protocol
+  rtpStage        Int?
   rtpCleared      Boolean   @default(false)
   rtpClearedDate  DateTime?
 
-  // Recommendations
   notes               String?  @db.Text
   recommendations     String[] @default([])
   attachments         String[]
   nextAssessmentDue   DateTime?
 
-  // Sport-specific metrics (JSON for flexibility)
-  // Rugby: {"scrumStrength": 85, "tackleAccuracy": 90}
-  // Basketball: {"verticalReach": 320, "shuttleRun": 12.5}
   sportSpecificMetrics Json?
 
   createdAt DateTime @default(now())
@@ -2665,6 +2861,7 @@ model Transfer {
   @@map("transfers")
 }
 
+
 // ============================================================================
 // 🏆 COACH MODELS
 // ============================================================================
@@ -2706,7 +2903,6 @@ model Coach {
   isAvailable       Boolean @default(true)
   availabilityNotes String?
 
-  // Job Seeking Fields
   isOpenToOpportunities  Boolean  @default(false)
   preferredRoles         String[]
   preferredLocations     String[]
@@ -2806,77 +3002,163 @@ model CoachPayment {
 }
 
 // ============================================================================
-// 🤝 OTHER STAFF MODELS
+// ⚫ REFEREE MODEL (ENHANCED v7.6.0)
 // ============================================================================
 
 model Referee {
   id     String @id @default(cuid())
   userId String @unique
 
-  licenseNumber     String?  @unique
-  licenseLevel      String?
+  licenseNumber     String?      @unique
+  licenseLevel      RefereeLevel @default(GRASSROOTS)
   yearsOfExperience Int?
-  specialization    String[]
+
+  certifiedSports Sport[] @default([])
+  specializations String[]
 
   certificationDate     DateTime?
   certificationExpiry   DateTime?
   backgroundCheckExpiry DateTime?
   fitnessTestDate       DateTime?
   fitnessTestExpiry     DateTime?
+  safeguardingExpiry    DateTime?
+  firstAidExpiry        DateTime?
 
-  assignedMatches Int     @default(0)
-  isVerified      Boolean @default(false)
-  isActive        Boolean @default(true)
+  matchesOfficiated   Int    @default(0)
+  averageRating       Float?
+  totalReviews        Int    @default(0)
+  cardsIssued         Int    @default(0)
+  penaltiesAwarded    Int    @default(0)
+  
+  sportRatings Json?
 
-  averageRating Float?
-  totalReviews  Int   @default(0)
+  matchFee        Float?
+  travelFee       Float?
+  currency        String  @default("GBP")
+  bankDetails     Json?
+  taxId           String?
+  invoiceEmail    String?
+  paymentMethod   String?
+
+  homeCity        String?
+  homeCountry     String?
+  travelRadiusKm  Int?    @default(50)
+  preferredVenues String[] @default([])
+  hasOwnTransport Boolean  @default(true)
+
+  availableWeekdays  Boolean @default(true)
+  availableWeekends  Boolean @default(true)
+  availableEvenings  Boolean @default(true)
+  blackoutDates      Json?
+  maxMatchesPerWeek  Int     @default(3)
+
+  emergencyContact      String?
+  emergencyContactPhone String?
+
+  isVerified        Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  isSuspended       Boolean   @default(false)
+  suspensionReason  String?
+  suspensionEndDate DateTime?
+
+  notes String? @db.Text
+  bio   String? @db.Text
+
+  assignedMatches Int @default(0)
 
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   matchOfficials MatchOfficial[]
+  availability   RefereeAvailability[]
+  qualifications RefereeQualification[]
+  payments       RefereePayment[]
+  matchReports   RefereeMatchReport[]
 
   @@index([userId])
   @@index([isVerified])
   @@index([licenseLevel])
+  @@index([isActive])
+  @@index([homeCity])
+  @@index([homeCountry])
   @@index([deletedAt])
   @@map("referees")
 }
+
+// ============================================================================
+// 🔍 SCOUT MODEL (ENHANCED v7.6.0)
+// ============================================================================
 
 model Scout {
   id     String @id @default(cuid())
   userId String @unique
 
+  specializations Position[] @default([])
+  regions         String[]   @default([])
+  focusAgeGroups  String[]   @default([])
+  focusSports     Sport[]    @default([])
+
   specialization  String[]
   region          String?
-  regions         String[]
-  yearsExperience Int?
   focusAgeGroup   String?
   focusPositions  Position[]
 
-  isVerified Boolean @default(false)
-  isActive   Boolean @default(true)
+  yearsExperience Int?
+  bio             String? @db.Text
+
+  primaryClubId String?
 
   playersRecommended Int @default(0)
   playersSigned      Int @default(0)
+  successRate        Float?
+  totalReports       Int @default(0)
+
+  averageRating Float?
+  totalReviews  Int   @default(0)
+
+  matchesAttended    Int       @default(0)
+  lastMatchAttended  DateTime?
+  lastReportDate     DateTime?
+
+  isAvailableForHire Boolean @default(false)
+  hourlyRate         Float?
+  dailyRate          Float?
+  currency           String  @default("GBP")
+
+  isVerified    Boolean   @default(false)
+  verifiedAt    DateTime?
+  verifiedBy    String?
+  credentials   String[]  @default([])
+
+  isActive Boolean @default(true)
+
+  notes String? @db.Text
 
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   scoutingReports ScoutingReport[]
+  watchlist       ScoutWatchlist[]
+  matchAttendance ScoutMatchAttendance[]
 
   @@index([userId])
   @@index([isVerified])
+  @@index([isActive])
+  @@index([primaryClubId])
   @@index([region])
   @@index([deletedAt])
   @@map("scouts")
 }
+
+// ============================================================================
+// 🤝 OTHER STAFF MODELS
+// ============================================================================
 
 model Analyst {
   id     String @id @default(cuid())
@@ -2946,12 +3228,10 @@ model Parent {
 
   childrenCount Int @default(0)
 
-  // Emergency contact preferences
-  preferredContactMethod String? // 'PHONE', 'EMAIL', 'SMS'
+  preferredContactMethod String?
   alternatePhone         String?
   workPhone              String?
 
-  // Consent tracking
   photoVideoConsent       Boolean   @default(false)
   photoVideoConsentDate   DateTime?
   medicalConsentGiven     Boolean   @default(false)
@@ -2991,6 +3271,7 @@ model Treasurer {
   @@index([deletedAt])
   @@map("treasurers")
 }
+
 
 // ============================================================================
 // 🏢 CLUB & TEAM MODELS
@@ -3082,10 +3363,6 @@ model Club {
   @@map("clubs")
 }
 
-// ============================================================================
-// 📱 SOCIAL ACCOUNT MODEL (NEW v7.5.0)
-// ============================================================================
-
 model SocialAccount {
   id     String @id @default(cuid())
   clubId String
@@ -3094,27 +3371,22 @@ model SocialAccount {
   accountName String
   accountId   String?
 
-  // OAuth tokens (encrypted in production)
   accessToken  String? @db.Text
   refreshToken String? @db.Text
   tokenExpiry  DateTime?
 
-  // Profile information
-  profileUrl    String?
-  followerCount Int     @default(0)
-  followingCount Int    @default(0)
+  profileUrl     String?
+  followerCount  Int     @default(0)
+  followingCount Int     @default(0)
 
-  // Connection status
   isConnected    Boolean   @default(false)
   connectedAt    DateTime?
-  connectedBy    String?   // User ID who connected
+  connectedBy    String?
   lastSyncAt     DateTime?
   lastPostAt     DateTime?
 
-  // Permissions granted
   permissions String[] @default([])
 
-  // Error tracking
   lastError   String?
   errorCount  Int      @default(0)
   lastErrorAt DateTime?
@@ -3357,10 +3629,10 @@ model Competition {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organisation Organisation?          @relation(fields: [organisationId], references: [id], onDelete: SetNull)
-  club         Club?                  @relation("clubCompetitions", fields: [clubId], references: [id], onDelete: SetNull)
-  season       Season?                @relation(fields: [seasonId], references: [id], onDelete: SetNull)
-  creator      User                   @relation("competitionCreator", fields: [createdBy], references: [id])
+  organisation Organisation?            @relation(fields: [organisationId], references: [id], onDelete: SetNull)
+  club         Club?                    @relation("clubCompetitions", fields: [clubId], references: [id], onDelete: SetNull)
+  season       Season?                  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  creator      User                     @relation("competitionCreator", fields: [createdBy], references: [id])
   teams        CompetitionTeam[]
   matches      Match[]
   standings    CompetitionStanding[]
@@ -3498,7 +3770,7 @@ model TournamentBracket {
 }
 
 // ============================================================================
-// 🏟️ VENUE MODEL
+// 🏟️ VENUE & FACILITY MODELS
 // ============================================================================
 
 model Venue {
@@ -3549,8 +3821,84 @@ model Venue {
   @@map("venues")
 }
 
+model Facility {
+  id             String @id @default(cuid())
+  organisationId String
+
+  name        String
+  type        FacilityType
+  description String?      @db.Text
+
+  address     String?
+  city        String?
+  postcode    String?
+  country     String?
+  coordinates Json?
+
+  capacity Int?
+
+  isActive       Boolean @default(true)
+  operatingHours Json?
+
+  amenities String[]
+  images    String[]
+
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  bookings     FacilityBooking[]
+  matches      Match[]           @relation("matchFacility")
+
+  @@index([organisationId])
+  @@index([type])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("facilities")
+}
+
+model FacilityBooking {
+  id         String @id @default(cuid())
+  facilityId String
+
+  startTime DateTime
+  endTime   DateTime
+
+  purpose     String
+  description String?
+  bookedBy    String
+
+  status BookingStatus @default(PENDING)
+
+  isRecurring     Boolean @default(false)
+  recurrenceRule  String?
+  parentBookingId String?
+
+  cost     Float?
+  currency String  @default("GBP")
+  paid     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId])
+  @@index([startTime, endTime])
+  @@index([status])
+  @@index([bookedBy])
+  @@map("facility_bookings")
+}
+
+
 // ============================================================================
-// ⚽ MATCH MODEL
+// ⚽ MATCH MODELS
 // ============================================================================
 
 model Match {
@@ -3668,110 +4016,6 @@ model Match {
   @@map("matches")
 }
 
-// ============================================================================
-// 📊 PLAYER MATCH PERFORMANCE
-// ============================================================================
-
-model PlayerMatchPerformance {
-  id       String @id @default(cuid())
-  matchId  String
-  playerId String
-  teamId   String
-
-  minutesPlayed Int     @default(0)
-  startedMatch  Boolean @default(false)
-  substituteOn  Int?
-  substituteOff Int?
-
-  goals        Int     @default(0)
-  assists      Int     @default(0)
-  yellowCards  Int     @default(0)
-  redCard      Boolean @default(false)
-  secondYellow Boolean @default(false)
-
-  passes         Int    @default(0)
-  passesComplete Int    @default(0)
-  passAccuracy   Float?
-  keyPasses      Int    @default(0)
-  longBalls      Int    @default(0)
-  throughBalls   Int    @default(0)
-  crosses        Int    @default(0)
-  crossesComplete Int   @default(0)
-
-  tackles       Int @default(0)
-  tacklesWon    Int @default(0)
-  interceptions Int @default(0)
-  clearances    Int @default(0)
-  blocks        Int @default(0)
-
-  shots         Int @default(0)
-  shotsOnTarget Int @default(0)
-  dribbles      Int @default(0)
-  dribblesWon   Int @default(0)
-
-  aerialsWon  Int @default(0)
-  aerialsLost Int @default(0)
-  duelsWon    Int @default(0)
-  duelsLost   Int @default(0)
-
-  fouls  Int @default(0)
-  fouled Int @default(0)
-
-  saves         Int     @default(0)
-  goalsConceded Int     @default(0)
-  cleanSheet    Boolean @default(false)
-  penaltySaves  Int     @default(0)
-
-  touches    Int    @default(0)
-  possession Float?
-
-  rating      Float?
-  coachRating Float?
-
-  coachNotes String? @db.Text
-
-  sportSpecificStats Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  player Player @relation("playerPerformances", fields: [playerId], references: [id], onDelete: Cascade)
-
-  @@unique([matchId, playerId])
-  @@index([matchId])
-  @@index([playerId])
-  @@index([teamId])
-  @@index([rating])
-  @@map("player_match_performances")
-}
-
-// ============================================================================
-// ⚽ MATCH SUPPORTING MODELS
-// ============================================================================
-
-model MatchOfficial {
-  id        String @id @default(cuid())
-  matchId   String
-  refereeId String
-
-  role MatchOfficialRole
-
-  performanceRating Float?
-  notes             String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  match   Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
-
-  @@unique([matchId, role])
-  @@index([matchId])
-  @@index([refereeId])
-  @@map("match_officials")
-}
-
 model MatchEvent {
   id       String  @id @default(cuid())
   matchId  String
@@ -3864,6 +4108,102 @@ model MatchAttendance {
   @@index([playerId])
   @@index([status])
   @@map("match_attendance")
+}
+
+model MatchOfficial {
+  id        String @id @default(cuid())
+  matchId   String
+  refereeId String
+
+  role MatchOfficialRole
+
+  performanceRating Float?
+  notes             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  match   Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  referee Referee @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, role])
+  @@index([matchId])
+  @@index([refereeId])
+  @@map("match_officials")
+}
+
+model PlayerMatchPerformance {
+  id       String @id @default(cuid())
+  matchId  String
+  playerId String
+  teamId   String
+
+  minutesPlayed Int     @default(0)
+  startedMatch  Boolean @default(false)
+  substituteOn  Int?
+  substituteOff Int?
+
+  goals        Int     @default(0)
+  assists      Int     @default(0)
+  yellowCards  Int     @default(0)
+  redCard      Boolean @default(false)
+  secondYellow Boolean @default(false)
+
+  passes         Int    @default(0)
+  passesComplete Int    @default(0)
+  passAccuracy   Float?
+  keyPasses      Int    @default(0)
+  longBalls      Int    @default(0)
+  throughBalls   Int    @default(0)
+  crosses        Int    @default(0)
+  crossesComplete Int   @default(0)
+
+  tackles       Int @default(0)
+  tacklesWon    Int @default(0)
+  interceptions Int @default(0)
+  clearances    Int @default(0)
+  blocks        Int @default(0)
+
+  shots         Int @default(0)
+  shotsOnTarget Int @default(0)
+  dribbles      Int @default(0)
+  dribblesWon   Int @default(0)
+
+  aerialsWon  Int @default(0)
+  aerialsLost Int @default(0)
+  duelsWon    Int @default(0)
+  duelsLost   Int @default(0)
+
+  fouls  Int @default(0)
+  fouled Int @default(0)
+
+  saves         Int     @default(0)
+  goalsConceded Int     @default(0)
+  cleanSheet    Boolean @default(false)
+  penaltySaves  Int     @default(0)
+
+  touches    Int    @default(0)
+  possession Float?
+
+  rating      Float?
+  coachRating Float?
+
+  coachNotes String? @db.Text
+
+  sportSpecificStats Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player Player @relation("playerPerformances", fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, playerId])
+  @@index([matchId])
+  @@index([playerId])
+  @@index([teamId])
+  @@index([rating])
+  @@map("player_match_performances")
 }
 
 // ============================================================================
@@ -4094,87 +4434,9 @@ model PerformanceGoal {
   @@map("performance_goals")
 }
 
-// ============================================================================
-// 🏟️ FACILITY MANAGEMENT
-// ============================================================================
-
-model Facility {
-  id             String @id @default(cuid())
-  organisationId String
-
-  name        String
-  type        FacilityType
-  description String?      @db.Text
-
-  address     String?
-  city        String?
-  postcode    String?
-  country     String?
-  coordinates Json?
-
-  capacity Int?
-
-  isActive       Boolean @default(true)
-  operatingHours Json?
-
-  amenities String[]
-  images    String[]
-
-  contactName  String?
-  contactPhone String?
-  contactEmail String?
-
-  deletedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  bookings     FacilityBooking[]
-  matches      Match[]           @relation("matchFacility")
-
-  @@index([organisationId])
-  @@index([type])
-  @@index([isActive])
-  @@index([deletedAt])
-  @@map("facilities")
-}
-
-model FacilityBooking {
-  id         String @id @default(cuid())
-  facilityId String
-
-  startTime DateTime
-  endTime   DateTime
-
-  purpose     String
-  description String?
-  bookedBy    String
-
-  status BookingStatus @default(PENDING)
-
-  isRecurring     Boolean @default(false)
-  recurrenceRule  String?
-  parentBookingId String?
-
-  cost     Float?
-  currency String  @default("GBP")
-  paid     Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
-
-  @@index([facilityId])
-  @@index([startTime, endTime])
-  @@index([status])
-  @@index([bookedBy])
-  @@map("facility_bookings")
-}
 
 // ============================================================================
-// 📹 MEDIA CONTENT
+// 📹 MEDIA MODELS
 // ============================================================================
 
 model MediaContent {
@@ -4214,8 +4476,8 @@ model MediaContent {
 
   qualityVariants Json?
 
-  visibility  MediaVisibility @default(CLUB_ONLY)
-  isPublic    Boolean         @default(false)
+  visibility  MediaVisibility  @default(CLUB_ONLY)
+  isPublic    Boolean          @default(false)
   accessRoles ClubMemberRole[]
 
   viewCount     Int @default(0)
@@ -4296,7 +4558,7 @@ model MediaAsset {
 }
 
 // ============================================================================
-// 💼 JOB POSTING & APPLICATION SYSTEM
+// 💼 JOB & APPLICATION MODELS
 // ============================================================================
 
 model JobPosting {
@@ -4433,10 +4695,6 @@ model JobApplication {
   @@index([rating])
   @@map("job_applications")
 }
-
-// ============================================================================
-// 📢 ANNOUNCEMENTS
-// ============================================================================
 
 model Announcement {
   id     String @id @default(cuid())
@@ -4587,7 +4845,7 @@ model Invoice {
 }
 
 // ============================================================================
-// 🤝 SPONSORS
+// 🤝 SPONSOR MODELS
 // ============================================================================
 
 model Sponsor {
@@ -4644,7 +4902,7 @@ model ClubSponsor {
 }
 
 // ============================================================================
-// 📱 NOTIFICATIONS & MESSAGING
+// 📱 NOTIFICATION & CHAT MODELS
 // ============================================================================
 
 model Notification {
@@ -4711,10 +4969,6 @@ model NotificationPreference {
   @@index([userId])
   @@map("notification_preferences")
 }
-
-// ============================================================================
-// 💬 CHAT SYSTEM
-// ============================================================================
 
 model Chat {
   id String @id @default(cuid())
@@ -4797,7 +5051,7 @@ model ChatMember {
 }
 
 // ============================================================================
-// 👥 SOCIAL & GAMIFICATION
+// 👥 SOCIAL & GAMIFICATION MODELS
 // ============================================================================
 
 model Follow {
@@ -4904,7 +5158,7 @@ model Badge {
 }
 
 // ============================================================================
-// 🔌 API & INTEGRATIONS
+// 🔌 API & INTEGRATION MODELS
 // ============================================================================
 
 model Webhook {
@@ -5009,10 +5263,6 @@ model QuotaUsage {
   @@map("quota_usage")
 }
 
-// ============================================================================
-// 🔄 BACKUP & MAINTENANCE
-// ============================================================================
-
 model DatabaseBackup {
   id             String @id @default(cuid())
   organisationId String
@@ -5037,3 +5287,23 @@ model DatabaseBackup {
   @@index([status])
   @@map("database_backups")
 }
+
+// ============================================================================
+// END OF SCHEMA v7.6.0
+// ============================================================================
+// 
+// TOTAL MODELS: 102
+// TOTAL ENUMS: 72
+// 
+// NEW IN v7.6.0:
+// - 8 New Models (Prediction, PredictionFeedback, ScoutWatchlist, 
+//   ScoutMatchAttendance, RefereeAvailability, RefereeQualification,
+//   RefereePayment, RefereeMatchReport)
+// - 7 New Enums (PredictionType, PredictionStatus, PredictionImpact,
+//   WatchlistStatus, WatchlistPriority, RefereeLevel, RefereeAvailabilityStatus)
+// - Enhanced Referee model with availability, fees, sport-specific ratings
+// - Enhanced Scout model with watchlist, match attendance, success metrics
+// - Enhanced Player model with scoutWatchlists relation
+// - New webhook events and audit actions
+// - New permission types for predictions, scouting, and referee features
+// ============================================================================

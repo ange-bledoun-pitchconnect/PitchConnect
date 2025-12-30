@@ -1,58 +1,60 @@
 /**
- * Notifications Settings Page - WORLD-CLASS VERSION
- * Path: /dashboard/settings/notifications
+ * Notifications Settings Page - ENTERPRISE EDITION
+ * Path: /dashboard/settings/notifications/page.tsx
  *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * FEATURES
  * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
  * ✅ Notification channel management (Email, Push, In-App, SMS)
- * ✅ Category-based notification preferences
+ * ✅ Per-sport notification preferences (12 sports)
+ * ✅ Category-based notification settings
  * ✅ Quiet hours scheduling
- * ✅ Notification frequency control (Instant, Hourly, Daily, Weekly)
- * ✅ Real-time settings preview
- * ✅ Unsaved changes detection
- * ✅ Reset to defaults functionality
- * ✅ Loading states with spinners
- * ✅ Error handling with detailed feedback
+ * ✅ Notification frequency control
+ * ✅ Real-time preview
  * ✅ Custom toast notifications
- * ✅ Form validation
- * ✅ Responsive design (mobile-first)
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Performance optimization with memoization
- * ✅ Smooth animations and transitions
- * ✅ Production-ready code
+ * ✅ Dark mode support
+ * ✅ Accessibility compliance
  */
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Bell,
   Mail,
-  MessageSquare,
   Smartphone,
+  MessageSquare,
   Clock,
   Volume2,
-  AlertCircle,
-  CheckCircle,
-  Eye,
+  VolumeX,
   Save,
   RotateCcw,
-  Zap,
-  Loader2,
-  X,
   Check,
+  X,
   Info,
+  Loader2,
+  AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Trophy,
+  Calendar,
+  Users,
+  TrendingUp,
+  CreditCard,
+  MessageCircle,
+  Settings,
+  Megaphone,
 } from 'lucide-react';
 
 // ============================================================================
-// IMPORTS - UI COMPONENTS
+// UI COMPONENTS
 // ============================================================================
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 
 // ============================================================================
 // CUSTOM TOAST SYSTEM
@@ -64,12 +66,8 @@ interface ToastMessage {
   id: string;
   type: ToastType;
   message: string;
-  timestamp: number;
 }
 
-/**
- * Custom Toast Component
- */
 const Toast = ({
   message,
   type,
@@ -101,61 +99,40 @@ const Toast = ({
   return (
     <div
       className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}
-      role="status"
-      aria-live="polite"
     >
       {icons[type]}
       <span className="text-sm font-medium flex-1">{message}</span>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-white/20 rounded transition-colors"
-        aria-label="Close notification"
-      >
+      <button onClick={onClose} className="p-1 hover:bg-white/20 rounded transition-colors">
         <X className="w-4 h-4" />
       </button>
     </div>
   );
 };
 
-/**
- * Toast Container
- */
 const ToastContainer = ({
   toasts,
   onRemove,
 }: {
   toasts: ToastMessage[];
   onRemove: (id: string) => void;
-}) => {
-  return (
-    <div className="fixed bottom-4 right-4 z-40 space-y-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
+}) => (
+  <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none">
+    {toasts.map((toast) => (
+      <div key={toast.id} className="pointer-events-auto">
+        <Toast message={toast.message} type={toast.type} onClose={() => onRemove(toast.id)} />
+      </div>
+    ))}
+  </div>
+);
 
-/**
- * useToast Hook
- */
 const useToast = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const addToast = useCallback(
-    (message: string, type: ToastType = 'default') => {
-      const id = `toast-${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, message, type, timestamp: Date.now() }]);
-      return id;
-    },
-    []
-  );
+  const addToast = useCallback((message: string, type: ToastType = 'default') => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    return id;
+  }, []);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -163,7 +140,6 @@ const useToast = () => {
 
   return {
     toasts,
-    addToast,
     removeToast,
     success: (message: string) => addToast(message, 'success'),
     error: (message: string) => addToast(message, 'error'),
@@ -172,22 +148,38 @@ const useToast = () => {
 };
 
 // ============================================================================
-// TYPES & INTERFACES
+// TYPES
 // ============================================================================
 
+type Sport =
+  | 'FOOTBALL'
+  | 'RUGBY'
+  | 'BASKETBALL'
+  | 'CRICKET'
+  | 'AMERICAN_FOOTBALL'
+  | 'NETBALL'
+  | 'HOCKEY'
+  | 'LACROSSE'
+  | 'AUSTRALIAN_RULES'
+  | 'GAELIC_FOOTBALL'
+  | 'FUTSAL'
+  | 'BEACH_FOOTBALL';
+
 interface NotificationChannel {
-  id: string;
-  name: string;
-  icon: React.ReactNode;
-  description: string;
+  id: 'email' | 'push' | 'inApp' | 'sms';
   enabled: boolean;
-  color: string;
 }
 
-interface NotificationCategory {
+interface SportNotificationSettings {
+  sport: Sport;
+  matchReminders: boolean;
+  scoreUpdates: boolean;
+  teamAnnouncements: boolean;
+  trainingReminders: boolean;
+}
+
+interface CategorySettings {
   id: string;
-  name: string;
-  description: string;
   email: boolean;
   push: boolean;
   inApp: boolean;
@@ -198,461 +190,231 @@ interface QuietHours {
   enabled: boolean;
   startTime: string;
   endTime: string;
+  allowUrgent: boolean;
 }
 
 interface NotificationSettings {
   channels: NotificationChannel[];
-  categories: NotificationCategory[];
+  sportSettings: SportNotificationSettings[];
+  categorySettings: CategorySettings[];
   quietHours: QuietHours;
-  frequency: string;
+  frequency: 'instant' | 'hourly' | 'daily' | 'weekly';
 }
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const DEFAULT_CHANNELS: NotificationChannel[] = [
-  {
-    id: 'email',
-    name: 'Email',
-    icon: <Mail className="w-6 h-6" />,
-    description: 'Receive notifications via email',
-    enabled: true,
-    color: 'from-blue-500 to-blue-600',
-  },
-  {
-    id: 'push',
-    name: 'Push Notifications',
-    icon: <Smartphone className="w-6 h-6" />,
-    description: 'Get instant alerts on your device',
-    enabled: true,
-    color: 'from-purple-500 to-purple-600',
-  },
-  {
-    id: 'inapp',
-    name: 'In-App Notifications',
-    icon: <Bell className="w-6 h-6" />,
-    description: 'See alerts within the app',
-    enabled: true,
-    color: 'from-gold-500 to-orange-400',
-  },
-  {
-    id: 'sms',
-    name: 'SMS',
-    icon: <MessageSquare className="w-6 h-6" />,
-    description: 'Receive text messages (Premium)',
-    enabled: false,
-    color: 'from-green-500 to-green-600',
-  },
+const SPORTS: { id: Sport; label: string; icon: string }[] = [
+  { id: 'FOOTBALL', label: 'Football', icon: '⚽' },
+  { id: 'RUGBY', label: 'Rugby', icon: '🏉' },
+  { id: 'BASKETBALL', label: 'Basketball', icon: '🏀' },
+  { id: 'CRICKET', label: 'Cricket', icon: '🏏' },
+  { id: 'AMERICAN_FOOTBALL', label: 'American Football', icon: '🏈' },
+  { id: 'NETBALL', label: 'Netball', icon: '🏐' },
+  { id: 'HOCKEY', label: 'Hockey', icon: '🏑' },
+  { id: 'LACROSSE', label: 'Lacrosse', icon: '🥍' },
+  { id: 'AUSTRALIAN_RULES', label: 'Australian Rules', icon: '🏉' },
+  { id: 'GAELIC_FOOTBALL', label: 'Gaelic Football', icon: '🏐' },
+  { id: 'FUTSAL', label: 'Futsal', icon: '⚽' },
+  { id: 'BEACH_FOOTBALL', label: 'Beach Football', icon: '🏖️' },
 ];
 
-const DEFAULT_CATEGORIES: NotificationCategory[] = [
-  {
-    id: 'matches',
-    name: 'Match Notifications',
-    description: 'Match schedules, results, and updates',
-    email: true,
-    push: true,
-    inApp: true,
-    sms: false,
-  },
-  {
-    id: 'team',
-    name: 'Team Activities',
-    description: 'Team invites, member changes, and announcements',
-    email: true,
-    push: true,
-    inApp: true,
-    sms: false,
-  },
-  {
-    id: 'training',
-    name: 'Training Sessions',
-    description: 'Training reminders and session updates',
-    email: true,
-    push: true,
-    inApp: true,
-    sms: false,
-  },
-  {
-    id: 'performance',
-    name: 'Performance Updates',
-    description: 'Stats, achievements, and progress',
-    email: true,
-    push: false,
-    inApp: true,
-    sms: false,
-  },
-  {
-    id: 'payments',
-    name: 'Payment Alerts',
-    description: 'Timesheet approvals and payment notifications',
-    email: true,
-    push: true,
-    inApp: true,
-    sms: false,
-  },
-  {
-    id: 'social',
-    name: 'Social Interactions',
-    description: 'Comments, messages, and interactions',
-    email: false,
-    push: true,
-    inApp: true,
-    sms: false,
-  },
-  {
-    id: 'system',
-    name: 'System Updates',
-    description: 'Important platform announcements',
-    email: true,
-    push: false,
-    inApp: true,
-    sms: false,
-  },
-  {
-    id: 'marketing',
-    name: 'Marketing & Promotions',
-    description: 'New features, offers, and news',
-    email: false,
-    push: false,
-    inApp: false,
-    sms: false,
-  },
+const NOTIFICATION_CATEGORIES = [
+  { id: 'matches', label: 'Match Notifications', description: 'Schedules, results, and updates', icon: Trophy },
+  { id: 'team', label: 'Team Activities', description: 'Invites, changes, and announcements', icon: Users },
+  { id: 'training', label: 'Training Sessions', description: 'Reminders and session updates', icon: Calendar },
+  { id: 'performance', label: 'Performance Updates', description: 'Stats, achievements, and progress', icon: TrendingUp },
+  { id: 'payments', label: 'Payment Alerts', description: 'Billing and payment notifications', icon: CreditCard },
+  { id: 'social', label: 'Social Interactions', description: 'Comments, messages, and reactions', icon: MessageCircle },
+  { id: 'system', label: 'System Updates', description: 'Platform announcements', icon: Settings },
+  { id: 'marketing', label: 'Marketing & Promotions', description: 'New features and offers', icon: Megaphone },
 ];
 
 const FREQUENCY_OPTIONS = [
-  {
-    value: 'instant',
-    label: 'Instant',
-    description: 'Get notified immediately',
-  },
-  {
-    value: 'hourly',
-    label: 'Hourly Digest',
-    description: 'Consolidated notifications every hour',
-  },
-  {
-    value: 'daily',
-    label: 'Daily Digest',
-    description: 'Summary at the end of the day',
-  },
-  {
-    value: 'weekly',
-    label: 'Weekly Digest',
-    description: 'Weekly summary on Sundays',
-  },
+  { value: 'instant', label: 'Instant', description: 'Get notified immediately' },
+  { value: 'hourly', label: 'Hourly Digest', description: 'Consolidated every hour' },
+  { value: 'daily', label: 'Daily Digest', description: 'Summary at end of day' },
+  { value: 'weekly', label: 'Weekly Digest', description: 'Weekly summary on Sundays' },
 ];
+
+const DEFAULT_SETTINGS: NotificationSettings = {
+  channels: [
+    { id: 'email', enabled: true },
+    { id: 'push', enabled: true },
+    { id: 'inApp', enabled: true },
+    { id: 'sms', enabled: false },
+  ],
+  sportSettings: SPORTS.map((sport) => ({
+    sport: sport.id,
+    matchReminders: true,
+    scoreUpdates: true,
+    teamAnnouncements: true,
+    trainingReminders: true,
+  })),
+  categorySettings: NOTIFICATION_CATEGORIES.map((cat) => ({
+    id: cat.id,
+    email: cat.id !== 'marketing',
+    push: cat.id !== 'marketing' && cat.id !== 'system',
+    inApp: true,
+    sms: cat.id === 'payments',
+  })),
+  quietHours: {
+    enabled: true,
+    startTime: '22:00',
+    endTime: '08:00',
+    allowUrgent: true,
+  },
+  frequency: 'instant',
+};
 
 // ============================================================================
 // COMPONENTS
 // ============================================================================
 
 /**
- * Channel Card Component
+ * Channel Toggle Card
  */
 interface ChannelCardProps {
-  channel: NotificationChannel;
-  onToggle: (id: string) => void;
+  channel: { id: string; label: string; description: string; icon: React.ElementType; color: string };
+  enabled: boolean;
+  onToggle: () => void;
 }
 
-const ChannelCard = ({ channel, onToggle }: ChannelCardProps) => {
+const ChannelCard = ({ channel, enabled, onToggle }: ChannelCardProps) => {
+  const Icon = channel.icon;
+
   return (
     <button
-      onClick={() => onToggle(channel.id)}
-      className={`p-6 rounded-xl border-2 transition-all transform hover:scale-105 text-left ${
-        channel.enabled
-          ? 'border-blue-500 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-md'
-          : 'border-neutral-200 dark:border-charcoal-600 bg-neutral-50 dark:bg-charcoal-700 hover:border-neutral-300 dark:hover:border-charcoal-500'
+      onClick={onToggle}
+      className={`p-4 rounded-xl border-2 transition-all text-left ${
+        enabled
+          ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/20'
+          : 'border-neutral-200 dark:border-charcoal-600 opacity-60'
       }`}
-      aria-pressed={channel.enabled}
-      role="switch"
     >
-      <div className="flex items-start justify-between mb-3">
-        <div
-          className={`p-3 rounded-lg bg-gradient-to-br ${channel.color} text-white dark:text-white flex-shrink-0`}
-        >
-          {channel.icon}
+      <div className="flex items-center justify-between mb-2">
+        <div className={`p-2 rounded-lg ${channel.color}`}>
+          <Icon className="w-5 h-5 text-white" />
         </div>
-        {channel.enabled && (
-          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
-        )}
+        <div
+          className={`w-10 h-6 rounded-full transition-colors ${
+            enabled ? 'bg-green-500' : 'bg-neutral-300 dark:bg-charcoal-600'
+          }`}
+        >
+          <span
+            className={`block w-4 h-4 mt-1 bg-white rounded-full shadow transition-transform ${
+              enabled ? 'translate-x-5' : 'translate-x-1'
+            }`}
+          />
+        </div>
       </div>
-      <h3 className="font-bold text-charcoal-900 dark:text-white mb-1">{channel.name}</h3>
-      <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{channel.description}</p>
+      <p className="font-bold text-charcoal-900 dark:text-white">{channel.label}</p>
+      <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{channel.description}</p>
     </button>
   );
 };
 
 /**
- * Notification Preferences Table Component
+ * Sport Notification Card
  */
-interface NotificationTableProps {
-  categories: NotificationCategory[];
-  channels: NotificationChannel[];
-  onCategoryChange: (
-    categoryId: string,
-    channel: keyof Omit<NotificationCategory, 'id' | 'name' | 'description'>
-  ) => void;
+interface SportNotificationCardProps {
+  sport: { id: Sport; label: string; icon: string };
+  settings: SportNotificationSettings;
+  onUpdate: (key: keyof SportNotificationSettings, value: boolean) => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }
 
-const NotificationTable = ({
-  categories,
-  channels,
-  onCategoryChange,
-}: NotificationTableProps) => {
-  const smsSmsEnabled = channels.find((c) => c.id === 'sms')?.enabled ?? false;
+const SportNotificationCard = ({
+  sport,
+  settings,
+  onUpdate,
+  isExpanded,
+  onToggleExpand,
+}: SportNotificationCardProps) => {
+  const allEnabled =
+    settings.matchReminders &&
+    settings.scoreUpdates &&
+    settings.teamAnnouncements &&
+    settings.trainingReminders;
+
+  const toggleAll = () => {
+    const newValue = !allEnabled;
+    onUpdate('matchReminders', newValue);
+    onUpdate('scoreUpdates', newValue);
+    onUpdate('teamAnnouncements', newValue);
+    onUpdate('trainingReminders', newValue);
+  };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-neutral-200 dark:border-charcoal-700">
-            <th className="px-4 py-3 text-left text-xs font-bold text-charcoal-700 dark:text-charcoal-300 uppercase tracking-wider">
-              Category
-            </th>
-            <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 dark:text-charcoal-300 uppercase tracking-wider">
-              <Mail className="w-4 h-4 inline mr-1" />
-              Email
-            </th>
-            <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 dark:text-charcoal-300 uppercase tracking-wider">
-              <Smartphone className="w-4 h-4 inline mr-1" />
-              Push
-            </th>
-            <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 dark:text-charcoal-300 uppercase tracking-wider">
-              <Bell className="w-4 h-4 inline mr-1" />
-              In-App
-            </th>
-            <th className="px-4 py-3 text-center text-xs font-bold text-charcoal-700 dark:text-charcoal-300 uppercase tracking-wider">
-              <MessageSquare className="w-4 h-4 inline mr-1" />
-              SMS
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-neutral-200 dark:divide-charcoal-700">
-          {categories.map((category, idx) => (
-            <tr
-              key={category.id}
-              className={`hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors ${
-                idx % 2 === 0
-                  ? 'bg-white dark:bg-charcoal-800'
-                  : 'bg-neutral-50/50 dark:bg-charcoal-700/30'
-              }`}
-            >
-              <td className="px-4 py-4">
-                <div>
-                  <p className="font-bold text-charcoal-900 dark:text-white">{category.name}</p>
-                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
-                    {category.description}
-                  </p>
-                </div>
-              </td>
-              <td className="px-4 py-4 text-center">
-                <label className="flex items-center justify-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={category.email}
-                    onChange={() => onCategoryChange(category.id, 'email')}
-                    className="w-5 h-5 rounded border-neutral-300 dark:border-charcoal-500 text-blue-600 dark:text-blue-500 cursor-pointer focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-600"
-                    aria-label={`Email notifications for ${category.name}`}
-                  />
-                </label>
-              </td>
-              <td className="px-4 py-4 text-center">
-                <label className="flex items-center justify-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={category.push}
-                    onChange={() => onCategoryChange(category.id, 'push')}
-                    className="w-5 h-5 rounded border-neutral-300 dark:border-charcoal-500 text-purple-600 dark:text-purple-500 cursor-pointer focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-600"
-                    aria-label={`Push notifications for ${category.name}`}
-                  />
-                </label>
-              </td>
-              <td className="px-4 py-4 text-center">
-                <label className="flex items-center justify-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={category.inApp}
-                    onChange={() => onCategoryChange(category.id, 'inApp')}
-                    className="w-5 h-5 rounded border-neutral-300 dark:border-charcoal-500 text-gold-600 dark:text-gold-500 cursor-pointer focus:ring-2 focus:ring-gold-500 dark:focus:ring-gold-600"
-                    aria-label={`In-app notifications for ${category.name}`}
-                  />
-                </label>
-              </td>
-              <td className="px-4 py-4 text-center">
-                <label className="flex items-center justify-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={category.sms}
-                    onChange={() => onCategoryChange(category.id, 'sms')}
-                    disabled={!smsSmsEnabled}
-                    className="w-5 h-5 rounded border-neutral-300 dark:border-charcoal-500 text-green-600 dark:text-green-500 cursor-pointer focus:ring-2 focus:ring-green-500 dark:focus:ring-green-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                    aria-label={`SMS notifications for ${category.name}`}
-                  />
-                </label>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-/**
- * Quiet Hours Card Component
- */
-interface QuietHoursCardProps {
-  quietHours: QuietHours;
-  onToggle: () => void;
-  onChange: (field: 'startTime' | 'endTime', value: string) => void;
-}
-
-const QuietHoursCard = ({ quietHours, onToggle, onChange }: QuietHoursCardProps) => {
-  return (
-    <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-      <CardHeader className="bg-gradient-to-r from-orange-50 to-transparent dark:from-orange-900/20 dark:to-transparent pb-4">
-        <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-          <Clock className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-          Quiet Hours
-        </CardTitle>
-        <CardDescription>Set times when you don't want to receive notifications</CardDescription>
-      </CardHeader>
-      <CardContent className="pt-6 space-y-4">
-        <label className="flex items-center gap-3 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-900/40 cursor-pointer hover:border-orange-300 dark:hover:border-orange-900/60 transition-all">
-          <input
-            type="checkbox"
-            checked={quietHours.enabled}
-            onChange={onToggle}
-            className="w-5 h-5 rounded border-neutral-300 dark:border-charcoal-500 text-orange-600 dark:text-orange-500 cursor-pointer focus:ring-2 focus:ring-orange-500 dark:focus:ring-orange-600"
-          />
-          <div className="flex-1">
-            <p className="font-semibold text-charcoal-900 dark:text-white">Enable Quiet Hours</p>
+    <div className="border border-neutral-200 dark:border-charcoal-600 rounded-xl overflow-hidden">
+      <button
+        onClick={onToggleExpand}
+        className="w-full p-4 flex items-center justify-between bg-neutral-50 dark:bg-charcoal-700/50 hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{sport.icon}</span>
+          <div className="text-left">
+            <p className="font-bold text-charcoal-900 dark:text-white">{sport.label}</p>
             <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
-              Mute non-urgent notifications during set times
+              {allEnabled ? 'All notifications enabled' : 'Custom settings'}
             </p>
           </div>
-        </label>
-
-        {quietHours.enabled && (
-          <div className="grid md:grid-cols-2 gap-4 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-900/40">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-charcoal-900 dark:text-white">
-                Start Time
-              </label>
-              <input
-                type="time"
-                value={quietHours.startTime}
-                onChange={(e) => onChange('startTime', e.target.value)}
-                className="w-full p-3 rounded-lg border-2 border-neutral-200 dark:border-charcoal-600 bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white hover:border-orange-300 dark:hover:border-orange-900/60 focus:border-orange-500 dark:focus:border-orange-600 focus:ring-2 focus:ring-orange-200 dark:focus:ring-orange-900/40"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-charcoal-900 dark:text-white">
-                End Time
-              </label>
-              <input
-                type="time"
-                value={quietHours.endTime}
-                onChange={(e) => onChange('endTime', e.target.value)}
-                className="w-full p-3 rounded-lg border-2 border-neutral-200 dark:border-charcoal-600 bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white hover:border-orange-300 dark:hover:border-orange-900/60 focus:border-orange-500 dark:focus:border-orange-600 focus:ring-2 focus:ring-orange-200 dark:focus:ring-orange-900/40"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-900/40 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-blue-700 dark:text-blue-300">
-            During quiet hours, you'll still receive urgent notifications related to active matches
-            and critical team updates.
-          </p>
         </div>
-      </CardContent>
-    </Card>
-  );
-};
-
-/**
- * Frequency Selection Card Component
- */
-interface FrequencyCardProps {
-  frequency: string;
-  onChange: (value: string) => void;
-}
-
-const FrequencyCard = ({ frequency, onChange }: FrequencyCardProps) => {
-  return (
-    <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-      <CardHeader className="bg-gradient-to-r from-green-50 to-transparent dark:from-green-900/20 dark:to-transparent pb-4">
-        <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-          <Clock className="w-6 h-6 text-green-600 dark:text-green-400" />
-          Notification Frequency
-        </CardTitle>
-        <CardDescription>How often you receive notification digests</CardDescription>
-      </CardHeader>
-      <CardContent className="pt-6 space-y-3">
-        {FREQUENCY_OPTIONS.map((option) => (
-          <label
-            key={option.value}
-            className="flex items-center gap-3 p-4 bg-neutral-50 dark:bg-charcoal-700 rounded-lg border border-neutral-200 dark:border-charcoal-600 cursor-pointer hover:border-green-300 dark:hover:border-green-900/60 transition-all"
+        <div className="flex items-center gap-3">
+          <Badge
+            className={
+              allEnabled
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+            }
           >
-            <input
-              type="radio"
-              name="frequency"
-              value={option.value}
-              checked={frequency === option.value}
-              onChange={(e) => onChange(e.target.value)}
-              className="w-5 h-5 cursor-pointer text-green-600 dark:text-green-500 focus:ring-2 focus:ring-green-500 dark:focus:ring-green-600"
-              aria-label={option.label}
-            />
-            <div className="flex-1">
-              <p className="font-semibold text-charcoal-900 dark:text-white">{option.label}</p>
-              <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{option.description}</p>
-            </div>
-          </label>
-        ))}
-      </CardContent>
-    </Card>
-  );
-};
+            {allEnabled ? 'All On' : 'Custom'}
+          </Badge>
+          {isExpanded ? (
+            <ChevronUp className="w-5 h-5 text-charcoal-500" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-charcoal-500" />
+          )}
+        </div>
+      </button>
 
-/**
- * Unsaved Changes Alert Component
- */
-interface UnsavedChangesAlertProps {
-  onSave: () => void;
-  isSaving: boolean;
-}
+      {isExpanded && (
+        <div className="p-4 space-y-3 border-t border-neutral-200 dark:border-charcoal-600">
+          <button
+            onClick={toggleAll}
+            className="w-full p-2 text-sm font-semibold text-gold-600 dark:text-gold-400 hover:bg-gold-50 dark:hover:bg-gold-900/20 rounded-lg transition-colors"
+          >
+            {allEnabled ? 'Disable All' : 'Enable All'}
+          </button>
 
-const UnsavedChangesAlert = ({ onSave, isSaving }: UnsavedChangesAlertProps) => {
-  return (
-    <div className="p-4 bg-gold-50 dark:bg-gold-900/20 border-l-4 border-gold-500 dark:border-gold-600 rounded-lg flex items-start gap-3 sticky bottom-4 shadow-lg z-30">
-      <AlertCircle className="w-5 h-5 text-gold-600 dark:text-gold-400 flex-shrink-0 mt-0.5" />
-      <div className="flex-1">
-        <p className="font-semibold text-charcoal-900 dark:text-white">You have unsaved changes</p>
-        <p className="text-sm text-charcoal-700 dark:text-charcoal-300 mt-1">
-          Click "Save Now" to apply your notification preferences.
-        </p>
-      </div>
-      <Button
-        onClick={onSave}
-        disabled={isSaving}
-        className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 dark:from-gold-600 dark:to-orange-500 dark:hover:from-gold-700 dark:hover:to-orange-600 text-white font-bold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-      >
-        {isSaving ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Saving...
-          </>
-        ) : (
-          <>
-            <Save className="w-4 h-4 mr-2" />
-            Save Now
-          </>
-        )}
-      </Button>
+          {[
+            { key: 'matchReminders', label: 'Match Reminders', desc: 'Before upcoming matches' },
+            { key: 'scoreUpdates', label: 'Score Updates', desc: 'Live score notifications' },
+            { key: 'teamAnnouncements', label: 'Team Announcements', desc: 'Team news and updates' },
+            { key: 'trainingReminders', label: 'Training Reminders', desc: 'Session reminders' },
+          ].map((item) => (
+            <label
+              key={item.key}
+              className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-charcoal-700/50 rounded-lg cursor-pointer hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-colors"
+            >
+              <div>
+                <p className="font-medium text-charcoal-900 dark:text-white text-sm">{item.label}</p>
+                <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{item.desc}</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings[item.key as keyof SportNotificationSettings] as boolean}
+                onChange={(e) =>
+                  onUpdate(item.key as keyof SportNotificationSettings, e.target.checked)
+                }
+                className="w-5 h-5 rounded border-neutral-300 text-gold-500 cursor-pointer"
+              />
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -663,269 +425,383 @@ const UnsavedChangesAlert = ({ onSave, isSaving }: UnsavedChangesAlertProps) => 
 
 export default function NotificationsPage() {
   const { toasts, removeToast, success, error: showError } = useToast();
-
-  // State management
-  const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [frequency, setFrequency] = useState('instant');
-  const [quietHours, setQuietHours] = useState<QuietHours>({
-    enabled: true,
-    startTime: '22:00',
-    endTime: '08:00',
-  });
-  const [channels, setChannels] = useState<NotificationChannel[]>(DEFAULT_CHANNELS);
-  const [categories, setCategories] = useState<NotificationCategory[]>(DEFAULT_CATEGORIES);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
+  const [expandedSport, setExpandedSport] = useState<Sport | null>(null);
 
-  // =========================================================================
-  // LIFECYCLE HOOKS
-  // =========================================================================
+  // Channel toggle
+  const toggleChannel = (channelId: string) => {
+    setSettings((prev) => ({
+      ...prev,
+      channels: prev.channels.map((ch) =>
+        ch.id === channelId ? { ...ch, enabled: !ch.enabled } : ch
+      ),
+    }));
+    setHasChanges(true);
+  };
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
+  // Sport settings update
+  const updateSportSetting = (
+    sport: Sport,
+    key: keyof SportNotificationSettings,
+    value: boolean
+  ) => {
+    setSettings((prev) => ({
+      ...prev,
+      sportSettings: prev.sportSettings.map((s) =>
+        s.sport === sport ? { ...s, [key]: value } : s
+      ),
+    }));
+    setHasChanges(true);
+  };
 
-  // =========================================================================
-  // API CALLS
-  // =========================================================================
+  // Category settings update
+  const updateCategorySetting = (
+    categoryId: string,
+    channel: 'email' | 'push' | 'inApp' | 'sms',
+    value: boolean
+  ) => {
+    setSettings((prev) => ({
+      ...prev,
+      categorySettings: prev.categorySettings.map((c) =>
+        c.id === categoryId ? { ...c, [channel]: value } : c
+      ),
+    }));
+    setHasChanges(true);
+  };
 
-  const fetchSettings = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 800));
+  // Quiet hours update
+  const updateQuietHours = (key: keyof QuietHours, value: any) => {
+    setSettings((prev) => ({
+      ...prev,
+      quietHours: { ...prev.quietHours, [key]: value },
+    }));
+    setHasChanges(true);
+  };
 
-      // In production, fetch from API
-      // const response = await fetch('/api/settings/notifications');
-      // if (!response.ok) throw new Error('Failed to fetch settings');
-      // const data = await response.json();
-      // if (data.settings) {
-      //   if (data.settings.channels) setChannels(data.settings.channels);
-      //   if (data.settings.categories) setCategories(data.settings.categories);
-      //   if (data.settings.quietHours) setQuietHours(data.settings.quietHours);
-      //   if (data.settings.frequency) setFrequency(data.settings.frequency);
-      // }
-    } catch (error) {
-      console.error('Error fetching settings:', error);
-      showError('❌ Failed to load notification settings');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [showError]);
-
-  const saveSettings = useCallback(async () => {
+  const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-
-      // In production, save to API
-      // const response = await fetch('/api/settings/notifications', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     channels,
-      //     categories,
-      //     quietHours,
-      //     frequency,
-      //   }),
-      // });
-      // if (!response.ok) throw new Error('Failed to save settings');
-
-      success('✅ Notification settings saved successfully!');
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      localStorage.setItem('pitchconnect-notifications', JSON.stringify(settings));
+      success('Notification settings saved!');
       setHasChanges(false);
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      showError('❌ Failed to save notification settings');
+    } catch (err) {
+      showError('Failed to save settings');
     } finally {
       setIsSaving(false);
     }
-  }, [channels, categories, quietHours, frequency, success, showError]);
+  };
 
-  const resetSettings = useCallback(async () => {
-    if (!window.confirm('Are you sure you want to reset to default settings?')) {
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      await fetchSettings();
-      success('🔄 Settings reset to defaults');
-      setHasChanges(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchSettings, success]);
-
-  // =========================================================================
-  // HANDLERS
-  // =========================================================================
-
-  const handleChannelToggle = useCallback((channelId: string) => {
-    setChannels((prev) =>
-      prev.map((ch) =>
-        ch.id === channelId ? { ...ch, enabled: !ch.enabled } : ch
-      )
-    );
+  const handleReset = () => {
+    setSettings(DEFAULT_SETTINGS);
     setHasChanges(true);
-  }, []);
+  };
 
-  const handleCategoryChange = useCallback(
-    (
-      categoryId: string,
-      channel: keyof Omit<NotificationCategory, 'id' | 'name' | 'description'>
-    ) => {
-      setCategories((prev) =>
-        prev.map((cat) =>
-          cat.id === categoryId ? { ...cat, [channel]: !cat[channel] } : cat
-        )
-      );
-      setHasChanges(true);
-    },
-    []
-  );
-
-  const handleQuietHoursToggle = useCallback(() => {
-    setQuietHours((prev) => ({ ...prev, enabled: !prev.enabled }));
-    setHasChanges(true);
-  }, []);
-
-  const handleQuietHoursChange = useCallback(
-    (field: 'startTime' | 'endTime', value: string) => {
-      setQuietHours((prev) => ({ ...prev, [field]: value }));
-      setHasChanges(true);
-    },
-    []
-  );
-
-  const handleFrequencyChange = useCallback((value: string) => {
-    setFrequency(value);
-    setHasChanges(true);
-  }, []);
-
-  // =========================================================================
-  // LOADING STATE
-  // =========================================================================
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-gold-50/10 to-purple-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
-        <ToastContainer toasts={toasts} onRemove={removeToast} />
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 dark:text-blue-400 mx-auto mb-4" />
-          <p className="text-charcoal-600 dark:text-charcoal-400">
-            Loading notification settings...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // RENDER
-  // =========================================================================
+  const channelConfigs = [
+    { id: 'email', label: 'Email', description: 'Receive via email', icon: Mail, color: 'bg-blue-500' },
+    { id: 'push', label: 'Push', description: 'Device notifications', icon: Smartphone, color: 'bg-purple-500' },
+    { id: 'inApp', label: 'In-App', description: 'App notifications', icon: Bell, color: 'bg-gold-500' },
+    { id: 'sms', label: 'SMS', description: 'Text messages (Premium)', icon: MessageSquare, color: 'bg-green-500' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-purple-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 transition-colors duration-200 p-4 sm:p-6 lg:p-8">
+    <div className="space-y-6">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
 
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* HEADER */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight text-charcoal-900 dark:text-white">
-              Notifications
-            </h1>
-            <p className="mt-2 text-charcoal-600 dark:text-charcoal-400">
-              Manage how and when you receive notifications
-            </p>
-          </div>
-          {hasChanges && (
-            <div className="flex gap-2 flex-shrink-0">
-              <Button
-                onClick={resetSettings}
-                variant="outline"
-                className="border-charcoal-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 hover:bg-charcoal-50 dark:hover:bg-charcoal-700 font-semibold whitespace-nowrap"
-                disabled={isSaving}
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Reset
-              </Button>
-              <Button
-                onClick={saveSettings}
-                disabled={isSaving}
-                className="bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 dark:from-gold-600 dark:to-orange-500 dark:hover:from-gold-700 dark:hover:to-orange-600 text-white font-bold shadow-md disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-charcoal-900 dark:text-white">Notifications</h2>
+          <p className="text-charcoal-600 dark:text-charcoal-400 mt-1">
+            Configure how and when you receive notifications
+          </p>
         </div>
+        {hasChanges && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleReset}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="bg-gradient-to-r from-gold-500 to-orange-500 text-white"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
 
-        {/* NOTIFICATION CHANNELS */}
-        <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-          <CardHeader className="bg-gradient-to-r from-blue-50 to-transparent dark:from-blue-900/20 dark:to-transparent pb-4">
-            <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-              <Zap className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              Notification Channels
-            </CardTitle>
-            <CardDescription>Choose how you want to receive notifications</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid md:grid-cols-2 gap-4">
-              {channels.map((channel) => (
+      {/* Notification Channels */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
+            <Zap className="w-5 h-5 text-blue-500" />
+            Notification Channels
+          </CardTitle>
+          <CardDescription>Choose how you receive notifications</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {channelConfigs.map((channel) => {
+              const channelSetting = settings.channels.find((c) => c.id === channel.id);
+              return (
                 <ChannelCard
                   key={channel.id}
                   channel={channel}
-                  onToggle={handleChannelToggle}
+                  enabled={channelSetting?.enabled || false}
+                  onToggle={() => toggleChannel(channel.id)}
                 />
-              ))}
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Per-Sport Settings */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
+            <Trophy className="w-5 h-5 text-gold-500" />
+            Sport-Specific Notifications
+          </CardTitle>
+          <CardDescription>Configure notifications for each sport individually</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {SPORTS.map((sport) => {
+              const sportSetting = settings.sportSettings.find((s) => s.sport === sport.id);
+              if (!sportSetting) return null;
+
+              return (
+                <SportNotificationCard
+                  key={sport.id}
+                  sport={sport}
+                  settings={sportSetting}
+                  onUpdate={(key, value) => updateSportSetting(sport.id, key, value)}
+                  isExpanded={expandedSport === sport.id}
+                  onToggleExpand={() =>
+                    setExpandedSport(expandedSport === sport.id ? null : sport.id)
+                  }
+                />
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Category Preferences */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
+            <Bell className="w-5 h-5 text-purple-500" />
+            Category Preferences
+          </CardTitle>
+          <CardDescription>Fine-tune notifications by category</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-neutral-200 dark:border-charcoal-700">
+                  <th className="text-left py-3 px-2 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase">
+                    Category
+                  </th>
+                  <th className="text-center py-3 px-2 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase">
+                    <Mail className="w-4 h-4 inline" />
+                  </th>
+                  <th className="text-center py-3 px-2 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase">
+                    <Smartphone className="w-4 h-4 inline" />
+                  </th>
+                  <th className="text-center py-3 px-2 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase">
+                    <Bell className="w-4 h-4 inline" />
+                  </th>
+                  <th className="text-center py-3 px-2 text-xs font-bold text-charcoal-600 dark:text-charcoal-400 uppercase">
+                    <MessageSquare className="w-4 h-4 inline" />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {NOTIFICATION_CATEGORIES.map((cat, idx) => {
+                  const catSetting = settings.categorySettings.find((c) => c.id === cat.id);
+                  const Icon = cat.icon;
+
+                  return (
+                    <tr
+                      key={cat.id}
+                      className={`border-b border-neutral-100 dark:border-charcoal-700 ${
+                        idx % 2 === 0 ? 'bg-neutral-50/50 dark:bg-charcoal-700/30' : ''
+                      }`}
+                    >
+                      <td className="py-3 px-2">
+                        <div className="flex items-center gap-2">
+                          <Icon className="w-4 h-4 text-charcoal-500" />
+                          <div>
+                            <p className="font-medium text-charcoal-900 dark:text-white text-sm">
+                              {cat.label}
+                            </p>
+                            <p className="text-xs text-charcoal-500 dark:text-charcoal-400">
+                              {cat.description}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      {(['email', 'push', 'inApp', 'sms'] as const).map((channel) => (
+                        <td key={channel} className="text-center py-3 px-2">
+                          <input
+                            type="checkbox"
+                            checked={catSetting?.[channel] || false}
+                            onChange={(e) =>
+                              updateCategorySetting(cat.id, channel, e.target.checked)
+                            }
+                            disabled={
+                              !settings.channels.find((c) => c.id === channel)?.enabled
+                            }
+                            className="w-5 h-5 rounded border-neutral-300 text-gold-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quiet Hours */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
+            <Clock className="w-5 h-5 text-orange-500" />
+            Quiet Hours
+          </CardTitle>
+          <CardDescription>Set times when notifications are muted</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label className="flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-900/40 cursor-pointer">
+            <div className="flex items-center gap-3">
+              {settings.quietHours.enabled ? (
+                <VolumeX className="w-6 h-6 text-orange-600" />
+              ) : (
+                <Volume2 className="w-6 h-6 text-orange-600" />
+              )}
+              <div>
+                <p className="font-bold text-charcoal-900 dark:text-white">Enable Quiet Hours</p>
+                <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
+                  Mute non-urgent notifications during set times
+                </p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* NOTIFICATION PREFERENCES */}
-        <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-sm">
-          <CardHeader className="bg-gradient-to-r from-purple-50 to-transparent dark:from-purple-900/20 dark:to-transparent pb-4">
-            <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-              <Bell className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-              Notification Preferences
-            </CardTitle>
-            <CardDescription>Customize notifications by category</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <NotificationTable
-              categories={categories}
-              channels={channels}
-              onCategoryChange={handleCategoryChange}
+            <input
+              type="checkbox"
+              checked={settings.quietHours.enabled}
+              onChange={(e) => updateQuietHours('enabled', e.target.checked)}
+              className="w-5 h-5 rounded text-orange-500"
             />
-          </CardContent>
-        </Card>
+          </label>
 
-        {/* QUIET HOURS */}
-        <QuietHoursCard
-          quietHours={quietHours}
-          onToggle={handleQuietHoursToggle}
-          onChange={handleQuietHoursChange}
-        />
+          {settings.quietHours.enabled && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
+              <div>
+                <Label className="text-sm font-semibold">Start Time</Label>
+                <input
+                  type="time"
+                  value={settings.quietHours.startTime}
+                  onChange={(e) => updateQuietHours('startTime', e.target.value)}
+                  className="w-full mt-1 p-2 rounded-lg border border-neutral-200 dark:border-charcoal-600 bg-white dark:bg-charcoal-700"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-semibold">End Time</Label>
+                <input
+                  type="time"
+                  value={settings.quietHours.endTime}
+                  onChange={(e) => updateQuietHours('endTime', e.target.value)}
+                  className="w-full mt-1 p-2 rounded-lg border border-neutral-200 dark:border-charcoal-600 bg-white dark:bg-charcoal-700"
+                />
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 p-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.quietHours.allowUrgent}
+                    onChange={(e) => updateQuietHours('allowUrgent', e.target.checked)}
+                    className="w-4 h-4 rounded text-orange-500"
+                  />
+                  <span className="text-sm text-charcoal-700 dark:text-charcoal-300">
+                    Allow urgent notifications
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* FREQUENCY */}
-        <FrequencyCard frequency={frequency} onChange={handleFrequencyChange} />
-      </div>
+      {/* Frequency */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
+            <Clock className="w-5 h-5 text-green-500" />
+            Notification Frequency
+          </CardTitle>
+          <CardDescription>How often you receive notification digests</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            {FREQUENCY_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  setSettings((prev) => ({
+                    ...prev,
+                    frequency: option.value as NotificationSettings['frequency'],
+                  }));
+                  setHasChanges(true);
+                }}
+                className={`p-4 rounded-xl border-2 transition-all text-left ${
+                  settings.frequency === option.value
+                    ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/20'
+                    : 'border-neutral-200 dark:border-charcoal-600 hover:border-green-300'
+                }`}
+              >
+                <p className="font-bold text-charcoal-900 dark:text-white">{option.label}</p>
+                <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{option.description}</p>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* UNSAVED CHANGES ALERT */}
+      {/* Unsaved Changes Banner */}
       {hasChanges && (
-        <UnsavedChangesAlert onSave={saveSettings} isSaving={isSaving} />
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 px-6 py-3 bg-gold-500 text-white rounded-full shadow-lg flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
+          <AlertCircle className="w-5 h-5" />
+          <span className="font-semibold">Unsaved changes</span>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="bg-white text-gold-600 hover:bg-gold-50"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Now'}
+          </Button>
+        </div>
       )}
     </div>
   );

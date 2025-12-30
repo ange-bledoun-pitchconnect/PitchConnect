@@ -1,374 +1,239 @@
 /**
- * Settings Page - WORLD-CLASS VERSION
- * Path: /dashboard/settings
+ * Settings Overview Page - ENTERPRISE EDITION
+ * Path: /dashboard/settings/page.tsx
  *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * FEATURES
  * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
- * ✅ Theme preference management (Light, Dark, System)
- * ✅ Notification settings control
- * ✅ Security settings (2FA, password, sessions)
- * ✅ Account information display
- * ✅ Tab-based navigation
- * ✅ Real-time settings preview
- * ✅ LocalStorage persistence
- * ✅ Loading states with spinners
- * ✅ Error handling with detailed feedback
- * ✅ Custom toast notifications
- * ✅ Form validation
- * ✅ Responsive design (mobile-first)
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Performance optimization with memoization
- * ✅ Smooth animations and transitions
- * ✅ Production-ready code
+ * ✅ Settings overview with quick action cards
+ * ✅ Account summary display
+ * ✅ Quick links to all settings sections
+ * ✅ Role-based visibility
+ * ✅ Recent activity summary
+ * ✅ Security status indicators
+ * ✅ Dark mode support
+ * ✅ Responsive design
+ * ✅ Accessibility compliance
  */
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { useSession } from 'next-auth/react';
+import Link from 'next/link';
+import Image from 'next/image';
 import {
-  Bell,
-  Moon,
-  Sun,
-  Lock,
   User,
+  Bell,
+  Lock,
+  CreditCard,
+  Palette,
+  Users,
+  Building2,
+  Shield,
+  CheckCircle,
+  AlertTriangle,
+  ChevronRight,
+  Settings,
+  Mail,
+  Smartphone,
+  Key,
   Globe,
-  LogOut,
-  X,
-  Check,
-  Info,
-  Loader2,
-  AlertCircle,
+  Activity,
 } from 'lucide-react';
 
 // ============================================================================
-// CUSTOM TOAST SYSTEM
+// TYPES
 // ============================================================================
 
-type ToastType = 'success' | 'error' | 'info' | 'default';
-
-interface ToastMessage {
+interface SessionUser {
   id: string;
-  type: ToastType;
-  message: string;
-  timestamp: number;
+  email?: string;
+  name?: string;
+  image?: string;
+  isSuperAdmin?: boolean;
+  roles?: string[];
 }
 
-/**
- * Custom Toast Component
- */
-const Toast = ({
-  message,
-  type,
-  onClose,
-}: {
-  message: string;
-  type: ToastType;
-  onClose: () => void;
-}) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  const colors = {
-    success: 'bg-green-500 dark:bg-green-600',
-    error: 'bg-red-500 dark:bg-red-600',
-    info: 'bg-blue-500 dark:bg-blue-600',
-    default: 'bg-charcoal-800 dark:bg-charcoal-700',
-  };
-
-  const icons = {
-    success: <Check className="w-5 h-5 text-white" />,
-    error: <AlertCircle className="w-5 h-5 text-white" />,
-    info: <Info className="w-5 h-5 text-white" />,
-    default: <Loader2 className="w-5 h-5 text-white animate-spin" />,
-  };
-
-  return (
-    <div
-      className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}
-      role="status"
-      aria-live="polite"
-    >
-      {icons[type]}
-      <span className="text-sm font-medium flex-1">{message}</span>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-white/20 rounded transition-colors"
-        aria-label="Close notification"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-};
-
-/**
- * Toast Container
- */
-const ToastContainer = ({
-  toasts,
-  onRemove,
-}: {
-  toasts: ToastMessage[];
-  onRemove: (id: string) => void;
-}) => {
-  return (
-    <div className="fixed bottom-4 right-4 z-40 space-y-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * useToast Hook
- */
-const useToast = () => {
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = useCallback(
-    (message: string, type: ToastType = 'default') => {
-      const id = `toast-${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, message, type, timestamp: Date.now() }]);
-      return id;
-    },
-    []
-  );
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  return {
-    toasts,
-    addToast,
-    removeToast,
-    success: (message: string) => addToast(message, 'success'),
-    error: (message: string) => addToast(message, 'error'),
-    info: (message: string) => addToast(message, 'info'),
-  };
-};
-
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
-
-interface UserSettings {
-  theme: 'light' | 'dark' | 'system';
-  emailNotifications: boolean;
-  pushNotifications: boolean;
-  matchReminders: boolean;
-  weeklyDigest: boolean;
-  twoFactorEnabled: boolean;
+interface QuickAction {
+  href: string;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  color: string;
+  bgColor: string;
+  adminOnly?: boolean;
 }
 
-type SettingsTab = 'appearance' | 'notifications' | 'security' | 'account';
+interface SecurityStatus {
+  label: string;
+  status: 'secure' | 'warning' | 'action';
+  description: string;
+  icon: React.ElementType;
+}
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const DEFAULT_SETTINGS: UserSettings = {
-  theme: 'light',
-  emailNotifications: true,
-  pushNotifications: true,
-  matchReminders: true,
-  weeklyDigest: true,
-  twoFactorEnabled: false,
-};
-
-const NOTIFICATION_OPTIONS = [
+const QUICK_ACTIONS: QuickAction[] = [
   {
-    key: 'emailNotifications',
-    label: 'Email Notifications',
-    description: 'Receive updates via email',
+    href: '/dashboard/settings/profile',
+    label: 'Profile',
+    description: 'Update your personal information and sport preferences',
+    icon: User,
+    color: 'text-blue-600 dark:text-blue-400',
+    bgColor: 'bg-blue-100 dark:bg-blue-900/30',
   },
   {
-    key: 'pushNotifications',
-    label: 'Push Notifications',
-    description: 'Receive browser push notifications',
+    href: '/dashboard/settings/preferences',
+    label: 'Preferences',
+    description: 'Customize display, theme, and language settings',
+    icon: Palette,
+    color: 'text-purple-600 dark:text-purple-400',
+    bgColor: 'bg-purple-100 dark:bg-purple-900/30',
   },
   {
-    key: 'matchReminders',
-    label: 'Match Reminders',
-    description: 'Get reminded before matches',
+    href: '/dashboard/settings/notifications',
+    label: 'Notifications',
+    description: 'Manage notification channels and sport-specific alerts',
+    icon: Bell,
+    color: 'text-gold-600 dark:text-gold-400',
+    bgColor: 'bg-gold-100 dark:bg-gold-900/30',
   },
   {
-    key: 'weeklyDigest',
-    label: 'Weekly Digest',
-    description: 'Receive a weekly summary email',
+    href: '/dashboard/settings/security',
+    label: 'Security',
+    description: 'Password, two-factor authentication, and sessions',
+    icon: Lock,
+    color: 'text-green-600 dark:text-green-400',
+    bgColor: 'bg-green-100 dark:bg-green-900/30',
+  },
+  {
+    href: '/dashboard/settings/teams',
+    label: 'Clubs & Teams',
+    description: 'Manage your club memberships and team associations',
+    icon: Users,
+    color: 'text-orange-600 dark:text-orange-400',
+    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
+  },
+  {
+    href: '/dashboard/settings/account',
+    label: 'Account',
+    description: 'Account data, export, and management options',
+    icon: Settings,
+    color: 'text-charcoal-600 dark:text-charcoal-400',
+    bgColor: 'bg-charcoal-100 dark:bg-charcoal-700',
+  },
+  {
+    href: '/dashboard/settings/billing',
+    label: 'Billing',
+    description: 'Subscription plans, payment methods, and invoices',
+    icon: CreditCard,
+    color: 'text-pink-600 dark:text-pink-400',
+    bgColor: 'bg-pink-100 dark:bg-pink-900/30',
+  },
+  {
+    href: '/dashboard/settings/organisation',
+    label: 'Organisation',
+    description: 'Manage organisation settings and permissions',
+    icon: Building2,
+    color: 'text-indigo-600 dark:text-indigo-400',
+    bgColor: 'bg-indigo-100 dark:bg-indigo-900/30',
+    adminOnly: true,
   },
 ];
+
+const ADMIN_ROLES = ['SUPERADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'LEAGUE_ADMIN'];
+
+const ROLE_LABELS: Record<string, string> = {
+  SUPERADMIN: 'Super Admin',
+  PLAYER: 'Player',
+  PLAYER_PRO: 'Pro Player',
+  COACH: 'Coach',
+  CLUB_MANAGER: 'Club Manager',
+  CLUB_OWNER: 'Club Owner',
+  LEAGUE_ADMIN: 'League Admin',
+  PARENT: 'Parent',
+  TREASURER: 'Treasurer',
+  REFEREE: 'Referee',
+  SCOUT: 'Scout',
+  ANALYST: 'Analyst',
+};
 
 // ============================================================================
 // COMPONENTS
 // ============================================================================
 
 /**
- * Theme Option Component
+ * Quick Action Card Component
  */
-interface ThemeOptionProps {
-  value: 'light' | 'dark' | 'system';
-  label: string;
-  description: string;
-  icon: React.ReactNode;
-  isSelected: boolean;
-  onChange: (value: 'light' | 'dark' | 'system') => void;
+interface QuickActionCardProps {
+  action: QuickAction;
 }
 
-const ThemeOption = ({
-  value,
-  label,
-  description,
-  icon,
-  isSelected,
-  onChange,
-}: ThemeOptionProps) => {
+const QuickActionCard = ({ action }: QuickActionCardProps) => {
+  const Icon = action.icon;
+
   return (
-    <label className="flex cursor-pointer items-start gap-4 rounded-lg p-4 transition-all hover:bg-neutral-50 dark:hover:bg-charcoal-700 border-2 border-transparent hover:border-gold-300 dark:hover:border-gold-900/60">
-      <input
-        type="radio"
-        name="theme"
-        value={value}
-        checked={isSelected}
-        onChange={() => onChange(value)}
-        className="mt-1 h-5 w-5 text-gold-500 dark:text-gold-400 cursor-pointer accent-gold-500"
-      />
-      <div className="flex-1">
-        <p className="font-semibold text-charcoal-900 dark:text-white">{label}</p>
-        <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{description}</p>
+    <Link
+      href={action.href}
+      className="group p-5 bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 hover:border-gold-300 dark:hover:border-gold-700 hover:shadow-lg transition-all duration-200"
+    >
+      <div className="flex items-start gap-4">
+        <div className={`p-3 rounded-xl ${action.bgColor} flex-shrink-0`}>
+          <Icon className={`w-6 h-6 ${action.color}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-bold text-charcoal-900 dark:text-white group-hover:text-gold-600 dark:group-hover:text-gold-400 transition-colors">
+              {action.label}
+            </h3>
+            <ChevronRight className="w-5 h-5 text-charcoal-400 dark:text-charcoal-600 group-hover:text-gold-500 dark:group-hover:text-gold-400 group-hover:translate-x-1 transition-all" />
+          </div>
+          <p className="text-sm text-charcoal-600 dark:text-charcoal-400 line-clamp-2">
+            {action.description}
+          </p>
+        </div>
       </div>
-      <div className="text-gold-500 dark:text-gold-400 flex-shrink-0">{icon}</div>
-    </label>
+    </Link>
   );
 };
 
 /**
- * Toggle Switch Component
+ * Security Status Card Component
  */
-interface ToggleSwitchProps {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: () => void;
-  disabled?: boolean;
+interface SecurityStatusCardProps {
+  status: SecurityStatus;
 }
 
-const ToggleSwitch = ({
-  label,
-  description,
-  checked,
-  onChange,
-  disabled = false,
-}: ToggleSwitchProps) => {
+const SecurityStatusCard = ({ status }: SecurityStatusCardProps) => {
+  const Icon = status.icon;
+
+  const statusColors = {
+    secure: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
+    warning: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400',
+    action: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
+  };
+
+  const statusIcons = {
+    secure: CheckCircle,
+    warning: AlertTriangle,
+    action: AlertTriangle,
+  };
+
+  const StatusIcon = statusIcons[status.status];
+
   return (
-    <div className="flex items-center justify-between rounded-lg p-4 hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors">
-      <div className={disabled ? 'opacity-50' : ''}>
-        <p className="font-semibold text-charcoal-900 dark:text-white">{label}</p>
-        <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{description}</p>
+    <div className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-charcoal-700/50 rounded-lg">
+      <div className={`p-2 rounded-lg ${statusColors[status.status]}`}>
+        <Icon className="w-4 h-4" />
       </div>
-      <label className="relative flex h-8 w-14 cursor-pointer items-center rounded-full bg-neutral-300 dark:bg-charcoal-700 transition-colors"
-        style={{
-          backgroundColor: checked
-            ? 'var(--color-primary, #2180a8)'
-            : undefined,
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={onChange}
-          disabled={disabled}
-          className="sr-only"
-          aria-label={label}
-        />
-        <span
-          className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${
-            checked ? 'translate-x-7' : 'translate-x-1'
-          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        />
-      </label>
-    </div>
-  );
-};
-
-/**
- * Settings Section Component
- */
-interface SettingsSectionProps {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}
-
-const SettingsSection = ({
-  title,
-  description,
-  children,
-}: SettingsSectionProps) => {
-  return (
-    <div className="rounded-lg border border-neutral-200 dark:border-charcoal-700 bg-white dark:bg-charcoal-800 p-6">
-      <h2 className="mb-1 text-xl font-bold text-charcoal-900 dark:text-white">
-        {title}
-      </h2>
-      {description && (
-        <p className="mb-6 text-sm text-charcoal-600 dark:text-charcoal-400">
-          {description}
-        </p>
-      )}
-      <div className="space-y-4">{children}</div>
-    </div>
-  );
-};
-
-/**
- * Tab Navigation Component
- */
-interface TabNavProps {
-  activeTab: SettingsTab;
-  onTabChange: (tab: SettingsTab) => void;
-}
-
-const TabNav = ({ activeTab, onTabChange }: TabNavProps) => {
-  const tabs: Array<{ id: SettingsTab; label: string; icon: React.ReactNode }> = [
-    { id: 'appearance', label: 'Appearance', icon: <Sun className="h-5 w-5" /> },
-    { id: 'notifications', label: 'Notifications', icon: <Bell className="h-5 w-5" /> },
-    { id: 'security', label: 'Security', icon: <Lock className="h-5 w-5" /> },
-    { id: 'account', label: 'Account', icon: <User className="h-5 w-5" /> },
-  ];
-
-  return (
-    <div className="border-b border-neutral-200 dark:border-charcoal-700">
-      <div className="flex gap-1 sm:gap-8 overflow-x-auto">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className={`px-4 py-4 font-medium transition-colors border-b-2 whitespace-nowrap flex items-center gap-2 ${
-              activeTab === tab.id
-                ? 'border-gold-500 text-gold-600 dark:text-gold-400'
-                : 'border-transparent text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-white'
-            }`}
-            aria-selected={activeTab === tab.id}
-            role="tab"
-          >
-            {tab.icon}
-            <span className="hidden sm:inline">{tab.label}</span>
-          </button>
-        ))}
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-sm text-charcoal-900 dark:text-white">{status.label}</p>
+        <p className="text-xs text-charcoal-600 dark:text-charcoal-400">{status.description}</p>
       </div>
+      <StatusIcon className={`w-5 h-5 ${statusColors[status.status].split(' ')[1]}`} />
     </div>
   );
 };
@@ -377,337 +242,202 @@ const TabNav = ({ activeTab, onTabChange }: TabNavProps) => {
 // MAIN COMPONENT
 // ============================================================================
 
-export default function SettingsPage() {
+export default function SettingsOverviewPage() {
   const { data: session } = useSession();
-  const { toasts, removeToast, success, error: showError } = useToast();
+  const user = session?.user as SessionUser;
 
-  // State management
-  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
-  const [hasChanges, setHasChanges] = useState(false);
+  // Check if user has admin roles
+  const userRoles = user?.roles || [];
+  const isAdmin = useMemo(
+    () => userRoles.some((role) => ADMIN_ROLES.includes(role)),
+    [userRoles]
+  );
 
-  // =========================================================================
-  // LIFECYCLE HOOKS
-  // =========================================================================
+  // Filter quick actions based on role
+  const visibleActions = useMemo(
+    () => QUICK_ACTIONS.filter((action) => !action.adminOnly || isAdmin),
+    [isAdmin]
+  );
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  // =========================================================================
-  // LOCAL STORAGE
-  // =========================================================================
-
-  const loadSettings = useCallback(() => {
-    try {
-      setIsLoading(true);
-      const saved = localStorage.getItem('pitchconnect-settings');
-      const theme = (localStorage.getItem('pitchconnect-theme') as 'light' | 'dark' | 'system') || 'light';
-
-      if (saved) {
-        const parsedSettings = JSON.parse(saved);
-        setSettings({
-          ...parsedSettings,
-          theme,
-        });
-      } else {
-        setSettings((prev) => ({
-          ...prev,
-          theme,
-        }));
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-      showError('❌ Failed to load settings');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [showError]);
-
-  const saveSettings = useCallback(async () => {
-    setIsSaving(true);
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      // Save to localStorage
-      localStorage.setItem('pitchconnect-settings', JSON.stringify(settings));
-      localStorage.setItem('pitchconnect-theme', settings.theme);
-
-      // Apply theme to document
-      const htmlElement = document.documentElement;
-      if (settings.theme === 'dark') {
-        htmlElement.classList.add('dark');
-      } else {
-        htmlElement.classList.remove('dark');
-      }
-
-      success('✅ Settings saved successfully!');
-      setHasChanges(false);
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      showError('❌ Failed to save settings');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [settings, success, showError]);
-
-  // =========================================================================
-  // HANDLERS
-  // =========================================================================
-
-  const handleThemeChange = useCallback((newTheme: 'light' | 'dark' | 'system') => {
-    setSettings((prev) => ({ ...prev, theme: newTheme }));
-    setHasChanges(true);
-  }, []);
-
-  const handleToggle = useCallback((key: keyof UserSettings) => {
-    setSettings((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-    setHasChanges(true);
-  }, []);
-
-  const handleCancel = useCallback(() => {
-    loadSettings();
-    setHasChanges(false);
-  }, [loadSettings]);
-
-  // =========================================================================
-  // LOADING STATE
-  // =========================================================================
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <ToastContainer toasts={toasts} onRemove={removeToast} />
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 dark:text-blue-400 mx-auto mb-4" />
-          <p className="text-charcoal-600 dark:text-charcoal-400">Loading settings...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // =========================================================================
-  // RENDER
-  // =========================================================================
+  // Mock security statuses (would come from API in production)
+  const securityStatuses: SecurityStatus[] = [
+    {
+      label: 'Email Verified',
+      status: 'secure',
+      description: 'Your email is verified',
+      icon: Mail,
+    },
+    {
+      label: 'Two-Factor Auth',
+      status: 'warning',
+      description: 'Not enabled - recommended',
+      icon: Smartphone,
+    },
+    {
+      label: 'Password Strength',
+      status: 'secure',
+      description: 'Strong password set',
+      icon: Key,
+    },
+    {
+      label: 'Active Sessions',
+      status: 'secure',
+      description: '1 active session',
+      icon: Globe,
+    },
+  ];
 
   return (
     <div className="space-y-8">
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
-
-      {/* HEADER */}
-      <div>
-        <h1 className="text-4xl font-bold tracking-tight text-charcoal-900 dark:text-white">
-          Settings
-        </h1>
-        <p className="mt-2 text-charcoal-600 dark:text-charcoal-400">
-          Manage your account preferences and settings
-        </p>
-      </div>
-
-      {/* TABS */}
-      <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
-
-      {/* CONTENT */}
-      <div className="space-y-6">
-        {/* APPEARANCE TAB */}
-        {activeTab === 'appearance' && (
-          <SettingsSection title="Theme Preference" description="Choose your preferred appearance mode">
-            <ThemeOption
-              value="light"
-              label="Light Mode"
-              description="Use light colors for the interface"
-              icon={<Sun className="h-6 w-6" />}
-              isSelected={settings.theme === 'light'}
-              onChange={handleThemeChange}
-            />
-            <ThemeOption
-              value="dark"
-              label="Dark Mode"
-              description="Use dark colors to reduce eye strain"
-              icon={<Moon className="h-6 w-6" />}
-              isSelected={settings.theme === 'dark'}
-              onChange={handleThemeChange}
-            />
-            <ThemeOption
-              value="system"
-              label="System"
-              description="Follow your device settings"
-              icon={<Globe className="h-6 w-6" />}
-              isSelected={settings.theme === 'system'}
-              onChange={handleThemeChange}
-            />
-          </SettingsSection>
-        )}
-
-        {/* NOTIFICATIONS TAB */}
-        {activeTab === 'notifications' && (
-          <SettingsSection title="Notification Settings" description="Control how you receive notifications">
-            {NOTIFICATION_OPTIONS.map((option) => (
-              <ToggleSwitch
-                key={option.key}
-                label={option.label}
-                description={option.description}
-                checked={settings[option.key as keyof UserSettings] as boolean}
-                onChange={() => handleToggle(option.key as keyof UserSettings)}
-              />
-            ))}
-          </SettingsSection>
-        )}
-
-        {/* SECURITY TAB */}
-        {activeTab === 'security' && (
-          <div className="space-y-6">
-            <SettingsSection title="Security Settings">
-              {/* Two Factor Auth */}
-              <div className="flex items-center justify-between rounded-lg p-4 hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors border-b border-neutral-200 dark:border-charcoal-700 pb-4 last:border-0 last:pb-0">
-                <div>
-                  <p className="font-semibold text-charcoal-900 dark:text-white">
-                    Two-Factor Authentication
-                  </p>
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                    Add an extra layer of security to your account
-                  </p>
-                </div>
-                <button
-                  className="rounded-lg bg-gold-500 hover:bg-gold-600 dark:bg-gold-600 dark:hover:bg-gold-700 px-4 py-2 font-semibold text-white transition-all whitespace-nowrap"
-                  onClick={() =>
-                    settings.twoFactorEnabled
-                      ? showError('⚠️ 2FA disable feature coming soon')
-                      : success('📱 2FA setup feature coming soon')
-                  }
-                >
-                  {settings.twoFactorEnabled ? 'Disable' : 'Enable'}
-                </button>
-              </div>
-
-              {/* Password */}
-              <div className="flex items-center justify-between rounded-lg p-4 hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors border-b border-neutral-200 dark:border-charcoal-700 pb-4">
-                <div>
-                  <p className="font-semibold text-charcoal-900 dark:text-white">
-                    Password
-                  </p>
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                    Change your password
-                  </p>
-                </div>
-                <button className="rounded-lg border-2 border-neutral-300 dark:border-charcoal-600 hover:border-gold-400 dark:hover:border-gold-900/60 px-4 py-2 font-semibold text-charcoal-900 dark:text-white transition-all whitespace-nowrap">
-                  Change
-                </button>
-              </div>
-
-              {/* Sessions */}
-              <div className="flex items-center justify-between rounded-lg p-4 hover:bg-neutral-50 dark:hover:bg-charcoal-700 transition-colors">
-                <div>
-                  <p className="font-semibold text-charcoal-900 dark:text-white">
-                    Active Sessions
-                  </p>
-                  <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
-                    Manage your login sessions
-                  </p>
-                </div>
-                <button className="rounded-lg border-2 border-neutral-300 dark:border-charcoal-600 hover:border-gold-400 dark:hover:border-gold-900/60 px-4 py-2 font-semibold text-charcoal-900 dark:text-white transition-all whitespace-nowrap">
-                  View
-                </button>
-              </div>
-            </SettingsSection>
-          </div>
-        )}
-
-        {/* ACCOUNT TAB */}
-        {activeTab === 'account' && (
-          <div className="space-y-6">
-            {/* Account Info */}
-            <SettingsSection title="Account Information">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue={session?.user?.name || 'Not Set'}
-                    className="w-full rounded-lg border border-neutral-200 dark:border-charcoal-700 bg-neutral-50 dark:bg-charcoal-700 px-4 py-2 text-charcoal-900 dark:text-white disabled:opacity-60"
-                    disabled
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 mb-2">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    defaultValue={session?.user?.email || 'Not Set'}
-                    className="w-full rounded-lg border border-neutral-200 dark:border-charcoal-700 bg-neutral-50 dark:bg-charcoal-700 px-4 py-2 text-charcoal-900 dark:text-white disabled:opacity-60"
-                    disabled
-                  />
-                </div>
-              </div>
-            </SettingsSection>
-
-            {/* Danger Zone */}
-            <div className="rounded-lg border-2 border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 p-6">
-              <h2 className="mb-4 text-xl font-bold text-red-900 dark:text-red-400 flex items-center gap-2">
-                <AlertCircle className="w-6 h-6" />
-                Danger Zone
-              </h2>
-
-              <div className="space-y-3">
-                <button
-                  onClick={() => success('🔓 Sign out feature coming soon')}
-                  className="flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 px-4 py-2 font-semibold text-white transition-all w-full sm:w-auto"
-                >
-                  <LogOut className="h-5 w-5" />
-                  Sign Out of All Devices
-                </button>
-
-                <button
-                  onClick={() => showError('⚠️ Account deletion is permanent and cannot be undone')}
-                  className="flex items-center gap-2 rounded-lg border-2 border-red-600 dark:border-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 font-semibold text-red-600 dark:text-red-400 transition-all w-full sm:w-auto"
-                >
-                  Delete Account
-                </button>
-              </div>
+      {/* Account Summary Card */}
+      <div className="bg-gradient-to-r from-gold-50 via-orange-50 to-purple-50 dark:from-gold-900/20 dark:via-orange-900/20 dark:to-purple-900/20 rounded-xl border border-gold-200 dark:border-gold-900/40 p-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
+          {/* Avatar */}
+          <div className="relative flex-shrink-0">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-gold-400 to-orange-500 dark:from-gold-500 dark:to-orange-600 flex items-center justify-center overflow-hidden border-4 border-white dark:border-charcoal-700 shadow-lg">
+              {user?.image ? (
+                <Image
+                  src={user.image}
+                  alt="Profile"
+                  width={80}
+                  height={80}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-2xl font-bold text-white">
+                  {user?.name?.charAt(0) || 'U'}
+                </span>
+              )}
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 dark:bg-green-400 rounded-full border-2 border-white dark:border-charcoal-700 flex items-center justify-center">
+              <CheckCircle className="w-4 h-4 text-white" />
             </div>
           </div>
-        )}
+
+          {/* User Info */}
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold text-charcoal-900 dark:text-white">
+              {user?.name || 'Welcome!'}
+            </h2>
+            <p className="text-charcoal-600 dark:text-charcoal-400">{user?.email}</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {userRoles.map((role) => (
+                <span
+                  key={role}
+                  className="px-3 py-1 bg-white/80 dark:bg-charcoal-700/80 text-charcoal-700 dark:text-charcoal-300 rounded-full text-xs font-semibold border border-charcoal-200 dark:border-charcoal-600"
+                >
+                  {ROLE_LABELS[role] || role}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Edit Button */}
+          <Link
+            href="/dashboard/settings/profile"
+            className="px-4 py-2 bg-white dark:bg-charcoal-800 hover:bg-neutral-50 dark:hover:bg-charcoal-700 text-charcoal-700 dark:text-charcoal-300 rounded-lg border border-neutral-200 dark:border-charcoal-600 font-semibold text-sm transition-colors flex items-center gap-2"
+          >
+            <User className="w-4 h-4" />
+            Edit Profile
+          </Link>
+        </div>
       </div>
 
-      {/* ACTION BUTTONS */}
-      <div className="flex flex-col sm:flex-row justify-end gap-4 pt-8 border-t border-neutral-200 dark:border-charcoal-700">
-        <button
-          onClick={handleCancel}
-          disabled={!hasChanges || isSaving}
-          className="rounded-lg border-2 border-neutral-300 dark:border-charcoal-600 hover:border-neutral-400 dark:hover:border-charcoal-500 px-6 py-2 font-semibold text-charcoal-900 dark:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={saveSettings}
-          disabled={!hasChanges || isSaving}
-          className="rounded-lg bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 dark:from-gold-600 dark:to-orange-500 dark:hover:from-gold-700 dark:hover:to-orange-600 px-6 py-2 font-semibold text-white shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Check className="w-4 h-4" />
-              Save Changes
-            </>
-          )}
-        </button>
+      {/* Security Overview */}
+      <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+              <Shield className="w-5 h-5 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <h3 className="font-bold text-charcoal-900 dark:text-white">Security Status</h3>
+              <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
+                Your account security overview
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/settings/security"
+            className="text-sm font-semibold text-gold-600 dark:text-gold-400 hover:text-gold-700 dark:hover:text-gold-300 flex items-center gap-1"
+          >
+            Manage
+            <ChevronRight className="w-4 h-4" />
+          </Link>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          {securityStatuses.map((status, idx) => (
+            <SecurityStatusCard key={idx} status={status} />
+          ))}
+        </div>
+      </div>
+
+      {/* Quick Actions Grid */}
+      <div>
+        <h3 className="font-bold text-charcoal-900 dark:text-white mb-4 flex items-center gap-2">
+          <Activity className="w-5 h-5 text-gold-500" />
+          Quick Actions
+        </h3>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-2 gap-4">
+          {visibleActions.map((action) => (
+            <QuickActionCard key={action.href} action={action} />
+          ))}
+        </div>
+      </div>
+
+      {/* Recent Activity */}
+      <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 p-6">
+        <h3 className="font-bold text-charcoal-900 dark:text-white mb-4">Recent Account Activity</h3>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-charcoal-700/50 rounded-lg">
+            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+              <Key className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-sm text-charcoal-900 dark:text-white">
+                Successful login
+              </p>
+              <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
+                Chrome on Windows • London, UK
+              </p>
+            </div>
+            <span className="text-xs text-charcoal-500 dark:text-charcoal-500">Just now</span>
+          </div>
+
+          <div className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-charcoal-700/50 rounded-lg">
+            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+              <Settings className="w-4 h-4 text-green-600 dark:text-green-400" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-sm text-charcoal-900 dark:text-white">
+                Preferences updated
+              </p>
+              <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
+                Theme changed to dark mode
+              </p>
+            </div>
+            <span className="text-xs text-charcoal-500 dark:text-charcoal-500">2 hours ago</span>
+          </div>
+
+          <div className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-charcoal-700/50 rounded-lg">
+            <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+              <Bell className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-sm text-charcoal-900 dark:text-white">
+                Notification settings updated
+              </p>
+              <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
+                Email notifications enabled
+              </p>
+            </div>
+            <span className="text-xs text-charcoal-500 dark:text-charcoal-500">Yesterday</span>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-SettingsPage.displayName = 'SettingsPage';
+SettingsOverviewPage.displayName = 'SettingsOverviewPage';

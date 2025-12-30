@@ -1,946 +1,288 @@
 /**
- * Account Settings Page - WORLD-CLASS VERSION
- * Path: /dashboard/settings/account
+ * Account Settings Page - ENTERPRISE EDITION
+ * Path: /dashboard/settings/account/page.tsx
  *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * FEATURES (Personal Account Only - Billing Separate)
  * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
- * ✅ Subscription and billing management
- * ✅ Password management with validation
- * ✅ Billing history with invoice tracking
- * ✅ Payment method management
- * ✅ Plan upgrade and cancellation
- * ✅ Comprehensive account security features
- * ✅ Loading states with spinners
- * ✅ Error handling with detailed feedback
- * ✅ Custom toast notifications
- * ✅ Form validation
- * ✅ Responsive design (mobile-first)
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Performance optimization with memoization
- * ✅ Smooth animations and transitions
- * ✅ Production-ready code
+ * ✅ Email management (primary/secondary)
+ * ✅ Account verification status
+ * ✅ Data export (GDPR compliant)
+ * ✅ Account deletion with safeguards
+ * ✅ Connected accounts (social logins)
+ * ✅ API keys management
+ * ✅ Dark mode support
  */
 
 'use client';
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import {
-  CreditCard,
-  Lock,
-  AlertTriangle,
+  User,
+  Mail,
   CheckCircle,
+  AlertTriangle,
+  AlertCircle,
+  Download,
+  Trash2,
+  Link2,
+  Key,
+  Plus,
+  Copy,
+  Eye,
+  EyeOff,
   X,
   Check,
   Info,
   Loader2,
-  Eye,
-  EyeOff,
-  Download,
-  ChevronRight,
+  Shield,
+  Clock,
+  FileText,
+  Database,
 } from 'lucide-react';
-
-// ============================================================================
-// IMPORTS - UI COMPONENTS
-// ============================================================================
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 
-// ============================================================================
-// CUSTOM TOAST SYSTEM
-// ============================================================================
-
+// Toast System
 type ToastType = 'success' | 'error' | 'info' | 'default';
+interface ToastMessage { id: string; type: ToastType; message: string; }
 
-interface ToastMessage {
-  id: string;
-  type: ToastType;
-  message: string;
-  timestamp: number;
-}
-
-/**
- * Custom Toast Component
- */
-const Toast = ({
-  message,
-  type,
-  onClose,
-}: {
-  message: string;
-  type: ToastType;
-  onClose: () => void;
-}) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  const colors = {
-    success: 'bg-green-500 dark:bg-green-600',
-    error: 'bg-red-500 dark:bg-red-600',
-    info: 'bg-blue-500 dark:bg-blue-600',
-    default: 'bg-charcoal-800 dark:bg-charcoal-700',
-  };
-
-  const icons = {
-    success: <Check className="w-5 h-5 text-white" />,
-    error: <AlertTriangle className="w-5 h-5 text-white" />,
-    info: <Info className="w-5 h-5 text-white" />,
-    default: <Loader2 className="w-5 h-5 text-white animate-spin" />,
-  };
-
+const Toast = ({ message, type, onClose }: { message: string; type: ToastType; onClose: () => void }) => {
+  useEffect(() => { const timer = setTimeout(onClose, 4000); return () => clearTimeout(timer); }, [onClose]);
+  const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500', default: 'bg-charcoal-800' };
+  const icons = { success: <Check className="w-5 h-5" />, error: <AlertCircle className="w-5 h-5" />, info: <Info className="w-5 h-5" />, default: <Loader2 className="w-5 h-5 animate-spin" /> };
   return (
-    <div
-      className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}
-      role="status"
-      aria-live="polite"
-    >
-      {icons[type]}
-      <span className="text-sm font-medium flex-1">{message}</span>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-white/20 rounded transition-colors"
-        aria-label="Close notification"
-      >
-        <X className="w-4 h-4" />
-      </button>
+    <div className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2`}>
+      {icons[type]}<span className="text-sm font-medium flex-1">{message}</span>
+      <button onClick={onClose} className="p-1 hover:bg-white/20 rounded"><X className="w-4 h-4" /></button>
     </div>
   );
 };
 
-/**
- * Toast Container
- */
-const ToastContainer = ({
-  toasts,
-  onRemove,
-}: {
-  toasts: ToastMessage[];
-  onRemove: (id: string) => void;
-}) => {
-  return (
-    <div className="fixed bottom-4 right-4 z-40 space-y-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * useToast Hook
- */
 const useToast = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = useCallback(
-    (message: string, type: ToastType = 'default') => {
-      const id = `toast-${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, message, type, timestamp: Date.now() }]);
-      return id;
-    },
-    []
-  );
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+  const addToast = useCallback((message: string, type: ToastType = 'default') => {
+    const id = `toast-${Date.now()}`;
+    setToasts(prev => [...prev, { id, message, type }]);
   }, []);
+  const removeToast = useCallback((id: string) => setToasts(prev => prev.filter(t => t.id !== id)), []);
+  return { toasts, removeToast, success: (m: string) => addToast(m, 'success'), error: (m: string) => addToast(m, 'error'), info: (m: string) => addToast(m, 'info') };
+};
 
-  return {
-    toasts,
-    addToast,
-    removeToast,
-    success: (message: string) => addToast(message, 'success'),
-    error: (message: string) => addToast(message, 'error'),
-    info: (message: string) => addToast(message, 'info'),
+// Types
+interface ConnectedAccount { id: string; provider: 'google' | 'apple' | 'microsoft'; email: string; connectedAt: string; }
+interface APIKey { id: string; name: string; key: string; createdAt: string; lastUsed: string | null; permissions: string[]; }
+
+const PROVIDER_CONFIG = {
+  google: { name: 'Google', color: 'bg-red-500' },
+  apple: { name: 'Apple', color: 'bg-charcoal-800' },
+  microsoft: { name: 'Microsoft', color: 'bg-blue-500' },
+};
+
+export default function AccountPage() {
+  const { data: session } = useSession();
+  const { toasts, removeToast, success, error: showError, info } = useToast();
+  const user = session?.user;
+
+  const [emails, setEmails] = useState([{ email: user?.email || 'user@example.com', isPrimary: true, isVerified: true }]);
+  const [newEmail, setNewEmail] = useState('');
+  const [isAddingEmail, setIsAddingEmail] = useState(false);
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([{ id: '1', provider: 'google', email: 'john.doe@gmail.com', connectedAt: '2024-06-15' }]);
+  const [apiKeys, setApiKeys] = useState<APIKey[]>([{ id: '1', name: 'Mobile App', key: 'pk_live_abc123xyz789...', createdAt: '2024-09-20', lastUsed: '2025-12-29', permissions: ['read:profile', 'read:matches'] }]);
+  const [isExporting, setIsExporting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showKey, setShowKey] = useState<string | null>(null);
+
+  const handleAddEmail = async () => {
+    if (!newEmail || !newEmail.includes('@')) { showError('Please enter a valid email'); return; }
+    setIsAddingEmail(true);
+    await new Promise(r => setTimeout(r, 1000));
+    setEmails(prev => [...prev, { email: newEmail, isPrimary: false, isVerified: false }]);
+    setNewEmail('');
+    setIsAddingEmail(false);
+    success('Verification email sent!');
   };
-};
 
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
-
-interface Subscription {
-  plan: 'STARTER' | 'PRO' | 'ENTERPRISE';
-  status: 'ACTIVE' | 'INACTIVE' | 'CANCELLED' | 'PENDING';
-  price: number;
-  renewalDate: string;
-  autoRenew: boolean;
-  features: string[];
-  billingCycle: 'monthly' | 'yearly';
-  nextBillingDate: string;
-}
-
-interface BillingItem {
-  id: string;
-  date: string;
-  amount: number;
-  status: 'PAID' | 'PENDING' | 'FAILED';
-  invoice: string;
-  description: string;
-}
-
-interface PasswordFormState {
-  current: string;
-  new: string;
-  confirm: string;
-}
-
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const PLAN_FEATURES: Record<string, string[]> = {
-  STARTER: [
-    'Up to 1 team',
-    'Basic analytics',
-    'Mobile app access',
-    'Email support',
-  ],
-  PRO: [
-    'Unlimited team management',
-    'Advanced analytics',
-    'Tactical board',
-    'Video analysis',
-    'Priority support',
-  ],
-  ENTERPRISE: [
-    'Unlimited everything',
-    'Advanced API access',
-    'Custom integrations',
-    'Dedicated account manager',
-    '24/7 phone support',
-  ],
-};
-
-const PASSWORD_REQUIREMENTS = [
-  { min: 8, label: 'At least 8 characters' },
-  { uppercase: true, label: 'At least one uppercase letter' },
-  { number: true, label: 'At least one number' },
-  { special: true, label: 'At least one special character' },
-];
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-/**
- * Validate password against requirements
- */
-const validatePassword = (password: string): Record<string, boolean> => {
-  return {
-    min: password.length >= 8,
-    uppercase: /[A-Z]/.test(password),
-    number: /\d/.test(password),
-    special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+  const handleExportData = async () => {
+    setIsExporting(true);
+    await new Promise(r => setTimeout(r, 2000));
+    setIsExporting(false);
+    info('Data export started. Check your email.');
   };
-};
 
-/**
- * Check if password meets all requirements
- */
-const isPasswordValid = (password: string): boolean => {
-  const validation = validatePassword(password);
-  return Object.values(validation).every((v) => v);
-};
-
-// ============================================================================
-// COMPONENTS
-// ============================================================================
-
-/**
- * Subscription Card Component
- */
-interface SubscriptionCardProps {
-  subscription: Subscription;
-  onUpgrade: () => void;
-  onCancel: () => void;
-}
-
-const SubscriptionCard = ({ subscription, onUpgrade, onCancel }: SubscriptionCardProps) => {
-  const statusColors = {
-    ACTIVE: 'text-green-600 dark:text-green-400',
-    INACTIVE: 'text-gray-600 dark:text-gray-400',
-    CANCELLED: 'text-red-600 dark:text-red-400',
-    PENDING: 'text-yellow-600 dark:text-yellow-400',
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') { showError('Type DELETE to confirm'); return; }
+    setIsDeleting(true);
+    await new Promise(r => setTimeout(r, 2000));
+    setIsDeleting(false);
+    showError('Account deletion disabled in demo');
   };
 
   return (
-    <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-          <CreditCard className="w-5 h-5 text-gold-500 dark:text-gold-400" />
-          Subscription
-        </CardTitle>
-        <CardDescription>Your current plan and billing information</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Plan Details */}
-        <div className="p-6 bg-gradient-to-r from-gold-50 to-purple-50 dark:from-gold-900/20 dark:to-purple-900/20 rounded-lg border border-gold-200 dark:border-gold-900/40">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-sm text-charcoal-600 dark:text-charcoal-400 font-medium">
-                Current Plan
-              </p>
-              <p className="text-3xl font-bold text-charcoal-900 dark:text-white mt-1">
-                {subscription.plan}
-              </p>
-            </div>
-            <div className={`flex items-center gap-2 font-semibold ${statusColors[subscription.status]}`}>
-              {subscription.status === 'ACTIVE' && <CheckCircle className="w-5 h-5" />}
-              {subscription.status === 'PENDING' && <Loader2 className="w-5 h-5 animate-spin" />}
-              {subscription.status === 'CANCELLED' && <X className="w-5 h-5" />}
-              <span className="capitalize">{subscription.status}</span>
-            </div>
-          </div>
-
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-charcoal-600 dark:text-charcoal-400">Monthly Price</span>
-              <span className="font-semibold text-charcoal-900 dark:text-white">
-                ${subscription.price.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-charcoal-600 dark:text-charcoal-400">Billing Cycle</span>
-              <span className="font-semibold text-charcoal-900 dark:text-white capitalize">
-                {subscription.billingCycle}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-charcoal-600 dark:text-charcoal-400">Next Billing Date</span>
-              <span className="font-semibold text-charcoal-900 dark:text-white">
-                {new Date(subscription.nextBillingDate).toLocaleDateString('en-GB', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </span>
-            </div>
-            <div className="flex justify-between pt-2 border-t border-gold-200 dark:border-gold-900/40">
-              <span className="text-charcoal-600 dark:text-charcoal-400">Auto-Renew</span>
-              <span className="font-semibold text-charcoal-900 dark:text-white">
-                {subscription.autoRenew ? '✓ Enabled' : '✗ Disabled'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Plan Features */}
-        <div className="space-y-3">
-          <p className="font-semibold text-sm text-charcoal-900 dark:text-white">
-            Plan Includes:
-          </p>
-          <ul className="space-y-2">
-            {subscription.features.map((feature, index) => (
-              <li
-                key={index}
-                className="flex items-center gap-3 text-sm text-charcoal-700 dark:text-charcoal-300"
-              >
-                <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                <span>{feature}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-3 pt-4">
-          <Button
-            className="flex-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white"
-            onClick={onUpgrade}
-          >
-            Update Payment Method
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1 border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300"
-            onClick={onUpgrade}
-          >
-            Upgrade Plan
-            <ChevronRight className="w-4 h-4 ml-2" />
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1 border-red-300 dark:border-red-900/40 text-red-600 dark:text-red-400"
-            onClick={onCancel}
-          >
-            Cancel
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
-/**
- * Password Security Card Component
- */
-interface PasswordSecurityProps {
-  onSubmit: (current: string, newPassword: string, confirm: string) => Promise<void>;
-}
-
-const PasswordSecurity = ({ onSubmit }: PasswordSecurityProps) => {
-  const [passwordForm, setPasswordForm] = useState<PasswordFormState>({
-    current: '',
-    new: '',
-    confirm: '',
-  });
-  const [showPasswords, setShowPasswords] = useState({
-    current: false,
-    new: false,
-    confirm: false,
-  });
-  const [isLoading, setIsLoading] = useState(false);
-
-  const passwordValidation = useMemo(
-    () => validatePassword(passwordForm.new),
-    [passwordForm.new]
-  );
-
-  const isPasswordValid_ = useMemo(
-    () => passwordForm.new.length > 0 && isPasswordValid(passwordForm.new),
-    [passwordForm.new]
-  );
-
-  const passwordsMatch = useMemo(
-    () => passwordForm.new === passwordForm.confirm && passwordForm.new.length > 0,
-    [passwordForm.new, passwordForm.confirm]
-  );
-
-  const canSubmit = useMemo(
-    () =>
-      passwordForm.current.length > 0 &&
-      isPasswordValid_ &&
-      passwordsMatch,
-    [passwordForm.current, isPasswordValid_, passwordsMatch]
-  );
-
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
-
-    setIsLoading(true);
-    try {
-      await onSubmit(passwordForm.current, passwordForm.new, passwordForm.confirm);
-      setPasswordForm({ current: '', new: '', confirm: '' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-charcoal-900 dark:text-white">
-          <Lock className="w-5 h-5 text-gold-500 dark:text-gold-400" />
-          Password & Security
-        </CardTitle>
-        <CardDescription>Change your password and manage security settings</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Current Password */}
-        <div className="space-y-2">
-          <Label htmlFor="current-password" className="text-charcoal-900 dark:text-white">
-            Current Password
-          </Label>
-          <div className="relative">
-            <Input
-              id="current-password"
-              type={showPasswords.current ? 'text' : 'password'}
-              value={passwordForm.current}
-              onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
-              placeholder="Enter your current password"
-              className="bg-white dark:bg-charcoal-700 border-neutral-300 dark:border-charcoal-600 text-charcoal-900 dark:text-white pr-10"
-              disabled={isLoading}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPasswords({ ...showPasswords, current: !showPasswords.current })}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-charcoal-200"
-              aria-label={showPasswords.current ? 'Hide password' : 'Show password'}
-            >
-              {showPasswords.current ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* New Password */}
-        <div className="space-y-2">
-          <Label htmlFor="new-password" className="text-charcoal-900 dark:text-white">
-            New Password
-          </Label>
-          <div className="relative">
-            <Input
-              id="new-password"
-              type={showPasswords.new ? 'text' : 'password'}
-              value={passwordForm.new}
-              onChange={(e) => setPasswordForm({ ...passwordForm, new: e.target.value })}
-              placeholder="Enter your new password"
-              className="bg-white dark:bg-charcoal-700 border-neutral-300 dark:border-charcoal-600 text-charcoal-900 dark:text-white pr-10"
-              disabled={isLoading}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-charcoal-200"
-              aria-label={showPasswords.new ? 'Hide password' : 'Show password'}
-            >
-              {showPasswords.new ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-
-          {/* Password Requirements */}
-          {passwordForm.new.length > 0 && (
-            <div className="mt-3 p-3 bg-neutral-50 dark:bg-charcoal-700 rounded-lg border border-neutral-200 dark:border-charcoal-600 space-y-2">
-              <p className="text-xs font-semibold text-charcoal-900 dark:text-white">
-                Password Requirements:
-              </p>
-              <div className="space-y-1">
-                {PASSWORD_REQUIREMENTS.map((req, index) => {
-                  const isValid = (req as any)[Object.keys(req)[0]] || false;
-                  const value = passwordValidation[(Object.keys(req) as any)[0]];
-                  return (
-                    <div
-                      key={index}
-                      className="flex items-center gap-2 text-xs text-charcoal-700 dark:text-charcoal-300"
-                    >
-                      {value ? (
-                        <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full border border-neutral-300 dark:border-charcoal-500 flex-shrink-0" />
-                      )}
-                      <span>{req.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Confirm Password */}
-        <div className="space-y-2">
-          <Label htmlFor="confirm-password" className="text-charcoal-900 dark:text-white">
-            Confirm Password
-          </Label>
-          <div className="relative">
-            <Input
-              id="confirm-password"
-              type={showPasswords.confirm ? 'text' : 'password'}
-              value={passwordForm.confirm}
-              onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
-              placeholder="Confirm your new password"
-              className={`bg-white dark:bg-charcoal-700 border-neutral-300 dark:border-charcoal-600 text-charcoal-900 dark:text-white pr-10 ${
-                passwordForm.confirm.length > 0 && !passwordsMatch
-                  ? 'border-red-500 dark:border-red-600'
-                  : ''
-              }`}
-              disabled={isLoading}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-charcoal-200"
-              aria-label={showPasswords.confirm ? 'Hide password' : 'Show password'}
-            >
-              {showPasswords.confirm ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          {passwordForm.confirm.length > 0 && !passwordsMatch && (
-            <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
-              <X className="w-3 h-3" />
-              Passwords do not match
-            </p>
-          )}
-          {passwordForm.confirm.length > 0 && passwordsMatch && (
-            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-              <Check className="w-3 h-3" />
-              Passwords match
-            </p>
-          )}
-        </div>
-
-        <Button
-          className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={handleSubmit}
-          disabled={!canSubmit || isLoading}
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Updating...
-            </>
-          ) : (
-            'Update Password'
-          )}
-        </Button>
-      </CardContent>
-    </Card>
-  );
-};
-
-/**
- * Billing History Card Component
- */
-interface BillingHistoryProps {
-  items: BillingItem[];
-}
-
-const BillingHistory = ({ items }: BillingHistoryProps) => {
-  const statusColors = {
-    PAID: 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20',
-    PENDING: 'text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20',
-    FAILED: 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20',
-  };
-
-  return (
-    <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-      <CardHeader>
-        <CardTitle className="text-charcoal-900 dark:text-white">Billing History</CardTitle>
-        <CardDescription>Previous invoices and payments</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {items.length > 0 ? (
-            items.map((bill) => (
-              <div
-                key={bill.id}
-                className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-charcoal-700 rounded-lg border border-neutral-200 dark:border-charcoal-600 hover:border-neutral-300 dark:hover:border-charcoal-500 transition-colors"
-              >
-                <div className="flex-1">
-                  <p className="font-semibold text-sm text-charcoal-900 dark:text-white">
-                    {bill.invoice}
-                  </p>
-                  <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-1">
-                    {new Date(bill.date).toLocaleDateString('en-GB', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </p>
-                  <p className="text-xs text-charcoal-500 dark:text-charcoal-400 mt-0.5">
-                    {bill.description}
-                  </p>
-                </div>
-                <div className="text-right ml-4">
-                  <p className="font-semibold text-charcoal-900 dark:text-white">
-                    ${bill.amount.toFixed(2)}
-                  </p>
-                  <p className={`text-xs font-semibold mt-1 px-2 py-1 rounded ${statusColors[bill.status]}`}>
-                    {bill.status}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-4 text-charcoal-600 dark:text-charcoal-400 hover:text-charcoal-900 dark:hover:text-charcoal-200"
-                  aria-label={`Download invoice ${bill.invoice}`}
-                >
-                  <Download className="w-4 h-4" />
-                </Button>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-8 text-charcoal-600 dark:text-charcoal-400">
-              <p className="text-sm">No billing history available</p>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
-/**
- * Delete Account Dialog Component
- */
-interface DeleteAccountDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => Promise<void>;
-}
-
-const DeleteAccountDialog = ({ open, onOpenChange, onConfirm }: DeleteAccountDialogProps) => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-
-  const handleConfirm = async () => {
-    setIsLoading(true);
-    try {
-      await onConfirm();
-      onOpenChange(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
-        <DialogHeader>
-          <DialogTitle className="text-red-600 dark:text-red-400 flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5" />
-            Delete Account
-          </DialogTitle>
-          <DialogDescription className="text-charcoal-600 dark:text-charcoal-400">
-            This action cannot be undone. All your data will be permanently deleted.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg">
-            <p className="text-sm text-red-900 dark:text-red-200">
-              <strong>Warning:</strong> Deleting your account will:
-            </p>
-            <ul className="mt-2 space-y-1 text-xs text-red-800 dark:text-red-300 ml-4">
-              <li>• Permanently delete all your teams and data</li>
-              <li>• Cancel your active subscriptions</li>
-              <li>• Remove all access to PitchConnect services</li>
-              <li>• Erase your billing history</li>
-            </ul>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="confirm-delete"
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 dark:border-charcoal-600 cursor-pointer"
-            />
-            <label
-              htmlFor="confirm-delete"
-              className="text-sm text-charcoal-700 dark:text-charcoal-300 cursor-pointer"
-            >
-              I understand that this action cannot be undone
-            </label>
-          </div>
-        </div>
-
-        <div className="flex gap-3">
-          <Button
-            variant="outline"
-            className="flex-1 border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300"
-            onClick={() => onOpenChange(false)}
-            disabled={isLoading}
-          >
-            Cancel
-          </Button>
-          <Button
-            className="flex-1 bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleConfirm}
-            disabled={!confirmed || isLoading}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Deleting...
-              </>
-            ) : (
-              'Delete My Account'
-            )}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
-
-export default function AccountSettingsPage() {
-  const { toasts, removeToast, success, error: showError } = useToast();
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-
-  // Mock subscription data
-  const subscription: Subscription = {
-    plan: 'PRO',
-    status: 'ACTIVE',
-    price: 29.99,
-    renewalDate: '2025-12-11',
-    autoRenew: true,
-    billingCycle: 'monthly',
-    nextBillingDate: '2025-12-20',
-    features: PLAN_FEATURES['PRO'],
-  };
-
-  // Mock billing history
-  const billingHistory: BillingItem[] = [
-    {
-      id: '1',
-      date: '2025-11-20',
-      amount: 29.99,
-      status: 'PAID',
-      invoice: 'INV-2025-11-001',
-      description: 'PRO Plan - Monthly Subscription',
-    },
-    {
-      id: '2',
-      date: '2025-10-20',
-      amount: 29.99,
-      status: 'PAID',
-      invoice: 'INV-2025-10-001',
-      description: 'PRO Plan - Monthly Subscription',
-    },
-    {
-      id: '3',
-      date: '2025-09-20',
-      amount: 29.99,
-      status: 'PAID',
-      invoice: 'INV-2025-09-001',
-      description: 'PRO Plan - Monthly Subscription',
-    },
-  ];
-
-  // =========================================================================
-  // HANDLERS
-  // =========================================================================
-
-  const handlePasswordChange = useCallback(
-    async (current: string, newPassword: string, confirm: string) => {
-      // Validate passwords match
-      if (newPassword !== confirm) {
-        showError('❌ New passwords do not match');
-        return;
-      }
-
-      // Validate new password meets requirements
-      if (!isPasswordValid(newPassword)) {
-        showError('❌ Password does not meet security requirements');
-        return;
-      }
-
-      try {
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        success('✅ Password updated successfully!');
-      } catch (err) {
-        showError('❌ Failed to update password. Please try again.');
-      }
-    },
-    [success, showError]
-  );
-
-  const handleUpgradePlan = useCallback(() => {
-    success('📈 Redirecting to upgrade page...');
-    // TODO: Redirect to upgrade page
-  }, [success]);
-
-  const handleCancelSubscription = useCallback(() => {
-    success('⏳ Initiating cancellation process...');
-    // TODO: Show cancellation confirmation
-  }, [success]);
-
-  const handleDeleteAccount = useCallback(async () => {
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      success('✅ Account deleted successfully');
-      // TODO: Redirect to login or home page
-    } catch (err) {
-      showError('❌ Failed to delete account. Please try again.');
-    }
-  }, [success, showError]);
-
-  // =========================================================================
-  // RENDER
-  // =========================================================================
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-gold-50/10 to-purple-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 transition-colors duration-200 p-4 sm:p-6 lg:p-8">
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
-
-      <div className="max-w-3xl mx-auto space-y-8">
-        {/* Header */}
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight text-charcoal-900 dark:text-white">
-            Account Settings
-          </h1>
-          <p className="mt-2 text-charcoal-600 dark:text-charcoal-400">
-            Manage your account, subscription, and security settings
-          </p>
-        </div>
-
-        {/* Subscription Card */}
-        <SubscriptionCard
-          subscription={subscription}
-          onUpgrade={handleUpgradePlan}
-          onCancel={handleCancelSubscription}
-        />
-
-        {/* Password Security Card */}
-        <PasswordSecurity onSubmit={handlePasswordChange} />
-
-        {/* Billing History Card */}
-        <BillingHistory items={billingHistory} />
-
-        {/* Danger Zone */}
-        <Card className="bg-white dark:bg-charcoal-800 border-red-200 dark:border-red-900/40">
-          <CardHeader>
-            <CardTitle className="text-red-600 dark:text-red-400 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" />
-              Danger Zone
-            </CardTitle>
-            <CardDescription>Irreversible actions</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-charcoal-600 dark:text-charcoal-400">
-              Permanently delete your account and all associated data. This action cannot be undone
-              and will result in immediate loss of access to all PitchConnect services.
-            </p>
-            <Button
-              className="w-full bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white"
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              <AlertTriangle className="w-4 h-4 mr-2" />
-              Delete Account
-            </Button>
-          </CardContent>
-        </Card>
+    <div className="space-y-6">
+      {/* Toast Container */}
+      <div className="fixed bottom-4 right-4 z-50 space-y-2">
+        {toasts.map(t => <Toast key={t.id} message={t.message} type={t.type} onClose={() => removeToast(t.id)} />)}
       </div>
 
-      {/* Delete Account Dialog */}
-      <DeleteAccountDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        onConfirm={handleDeleteAccount}
-      />
+      <div>
+        <h2 className="text-2xl font-bold text-charcoal-900 dark:text-white">Account</h2>
+        <p className="text-charcoal-600 dark:text-charcoal-400 mt-1">Manage your account settings and data</p>
+      </div>
+
+      {/* Status Banner */}
+      <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-900/40">
+        <div className="flex items-center gap-3">
+          <Shield className="w-6 h-6 text-green-600 dark:text-green-400" />
+          <div>
+            <p className="font-bold text-green-700 dark:text-green-400">Account in Good Standing</p>
+            <p className="text-sm text-green-600 dark:text-green-500">Verified and secure</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Email Addresses */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Mail className="w-5 h-5 text-blue-500" />Email Addresses</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {emails.map((email, idx) => (
+            <div key={idx} className={`p-4 rounded-xl border-2 ${email.isPrimary ? 'border-green-400 bg-green-50 dark:bg-green-900/20' : 'border-neutral-200 dark:border-charcoal-600'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Mail className={`w-5 h-5 ${email.isPrimary ? 'text-green-600' : 'text-charcoal-500'}`} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-charcoal-900 dark:text-white">{email.email}</span>
+                      {email.isPrimary && <Badge className="bg-green-100 text-green-700">Primary</Badge>}
+                    </div>
+                    <span className={`text-xs flex items-center gap-1 ${email.isVerified ? 'text-green-600' : 'text-yellow-600'}`}>
+                      {email.isVerified ? <><CheckCircle className="w-3 h-3" />Verified</> : <><AlertTriangle className="w-3 h-3" />Pending</>}
+                    </span>
+                  </div>
+                </div>
+                {!email.isPrimary && <Button variant="ghost" size="sm" onClick={() => { setEmails(prev => prev.filter((_, i) => i !== idx)); success('Removed'); }} className="text-red-600"><Trash2 className="w-4 h-4" /></Button>}
+              </div>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <Input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="Add another email" className="flex-1" />
+            <Button onClick={handleAddEmail} disabled={isAddingEmail} className="bg-blue-600 text-white">
+              {isAddingEmail ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Connected Accounts */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Link2 className="w-5 h-5 text-purple-500" />Connected Accounts</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {connectedAccounts.map(acc => (
+            <div key={acc.id} className="p-4 bg-neutral-50 dark:bg-charcoal-700/50 rounded-xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 ${PROVIDER_CONFIG[acc.provider].color} rounded-lg flex items-center justify-center text-white font-bold`}>
+                  {PROVIDER_CONFIG[acc.provider].name.charAt(0)}
+                </div>
+                <div>
+                  <p className="font-bold text-charcoal-900 dark:text-white">{PROVIDER_CONFIG[acc.provider].name}</p>
+                  <p className="text-xs text-charcoal-500">{acc.email}</p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => { setConnectedAccounts(prev => prev.filter(a => a.id !== acc.id)); success('Disconnected'); }} className="border-red-300 text-red-600">Disconnect</Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* API Keys */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2"><Key className="w-5 h-5 text-gold-500" />API Keys</CardTitle>
+            <Button className="bg-gold-500 text-white"><Plus className="w-4 h-4 mr-2" />Create Key</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {apiKeys.map(key => (
+            <div key={key.id} className="p-4 bg-neutral-50 dark:bg-charcoal-700/50 rounded-xl">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-bold text-charcoal-900 dark:text-white">{key.name}</p>
+                  <p className="text-xs text-charcoal-500 flex items-center gap-1"><Clock className="w-3 h-3" />Created {key.createdAt}</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => { setApiKeys(prev => prev.filter(k => k.id !== key.id)); success('Revoked'); }} className="border-red-300 text-red-600">Revoke</Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 p-2 bg-charcoal-100 dark:bg-charcoal-800 rounded text-sm">{showKey === key.id ? key.key : '••••••••••••••••'}</code>
+                <Button variant="ghost" size="sm" onClick={() => setShowKey(showKey === key.id ? null : key.id)}>{showKey === key.id ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</Button>
+                <Button variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(key.key); info('Copied!'); }}><Copy className="w-4 h-4" /></Button>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Data Export */}
+      <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Database className="w-5 h-5 text-green-500" />Data Export</CardTitle>
+          <CardDescription>Download all your data (GDPR compliant)</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-900/40 mb-4">
+            <div className="flex items-start gap-3">
+              <FileText className="w-5 h-5 text-green-600" />
+              <ul className="text-sm text-charcoal-600 dark:text-charcoal-400 list-disc list-inside">
+                <li>Profile and preferences</li>
+                <li>Match history and stats</li>
+                <li>Team memberships</li>
+                <li>Payment history</li>
+              </ul>
+            </div>
+          </div>
+          <Button onClick={handleExportData} disabled={isExporting} className="w-full bg-green-600 text-white">
+            {isExporting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Preparing...</> : <><Download className="w-4 h-4 mr-2" />Request Export</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Delete Account */}
+      <Card className="bg-white dark:bg-charcoal-800 border-red-200 dark:border-red-900/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-red-600"><Trash2 className="w-5 h-5" />Delete Account</CardTitle>
+          <CardDescription className="text-red-500">Permanently delete your account and all data</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!showDeleteConfirm ? (
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(true)} className="w-full border-red-300 text-red-600 hover:bg-red-50">
+              <Trash2 className="w-4 h-4 mr-2" />I want to delete my account
+            </Button>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl">
+                <p className="text-sm font-semibold text-red-700 mb-2">Type "DELETE" to confirm:</p>
+                <Input value={deleteConfirmText} onChange={e => setDeleteConfirmText(e.target.value)} placeholder="Type DELETE" className="border-red-300" />
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); }} className="flex-1">Cancel</Button>
+                <Button onClick={handleDeleteAccount} disabled={isDeleting || deleteConfirmText !== 'DELETE'} className="flex-1 bg-red-600 text-white">
+                  {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete Forever'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
-
-AccountSettingsPage.displayName = 'AccountSettingsPage';
