@@ -1,237 +1,262 @@
-/**
- * ============================================================================
- * PENDING TIMESHEETS ROUTE - World-Class Sports Management Implementation
- * ============================================================================
- *
- * @file src/app/api/manager/timesheets/pending/route.ts
- * @description Retrieve pending timesheets for manager review and approval
- * @version 2.0.0 (Production-Ready)
- *
- * FEATURES:
- * ✅ Full TypeScript type safety
- * ✅ Schema-aligned role-based access control
- * ✅ Optimized batch queries (N+1 prevention)
- * ✅ Comprehensive pagination support
- * ✅ Request ID tracking for debugging
- * ✅ Performance monitoring
- * ✅ Audit logging
- * ✅ JSDoc documentation
- */
+// =============================================================================
+// 📋 PENDING TIMESHEETS API - Enterprise-Grade Implementation
+// =============================================================================
+// GET /api/manager/clubs/[clubId]/timesheets/pending
+// =============================================================================
+// Schema: v7.8.0 | Model: CoachTimesheet
+// Field Mapping: weekStartDate, weekEndDate, totalCost (NOT startDate/endDate/totalAmount)
+// Permission: Owner, Manager, Treasurer
+// =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { ClubMemberRole, TimesheetStatus } from '@prisma/client';
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-interface CoachInfo {
-  name: string;
-  email: string;
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  message?: string;
+  requestId: string;
+  timestamp: string;
+}
+
+interface RouteParams {
+  params: {
+    clubId: string;
+  };
 }
 
 interface TimesheetItem {
   id: string;
-  coachId: string;
-  coach: CoachInfo;
   period: string;
-  startDate: string;
-  endDate: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  
+  // Hours breakdown
   trainingHours: number;
   matchHours: number;
   adminHours: number;
+  travelHours: number;
+  meetingHours: number;
   otherHours: number;
   totalHours: number;
-  hourlyRate: number;
-  totalAmount: number;
-  status: string;
+  
+  // Cost
+  hourlyRate: number | null;
+  totalCost: number | null;
+  currency: string;
+  
+  // Coach info
+  coach: {
+    id: string;
+    name: string;
+    avatar: string | null;
+    email: string;
+    coachType: string;
+  };
+  
+  // Team info (optional)
+  team: {
+    id: string;
+    name: string;
+  } | null;
+  
+  // Submission details
+  status: TimesheetStatus;
   submittedAt: string | null;
-  createdAt: string;
+  submittedNotes: string | null;
+  description: string | null;
+  
+  // Age of submission
+  daysWaiting: number;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 interface PendingTimesheetsResponse {
-  success: boolean;
   timesheets: TimesheetItem[];
   summary: {
-    totalPending: number;
-    totalPendingAmount: number;
-    approvedThisMonth: number;
-    rejectedThisMonth: number;
-    uniqueCoaches: number;
-    averageHoursPerTimesheet: number;
+    total: number;
+    totalHours: number;
+    totalCost: number;
+    avgWaitDays: number;
+    highPriority: number;
   };
   pagination: {
-    total: number;
     page: number;
     limit: number;
+    total: number;
     pages: number;
   };
 }
 
-interface ErrorResponse {
-  success: boolean;
-  error: string;
-  code: string;
-  details?: string;
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `ts_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: string;
+    code?: string;
+    message?: string;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
 
-const ERROR_CODES = {
-  UNAUTHORIZED: 'UNAUTHORIZED',
-  FORBIDDEN: 'FORBIDDEN',
-  INTERNAL_ERROR: 'INTERNAL_ERROR',
-} as const;
+  if (options.success && data !== null) response.data = data;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
+  if (options.message) response.message = options.message;
 
-// Manager roles that can view pending timesheets
-const MANAGER_ROLES = ['CLUB_MANAGER', 'CLUB_OWNER', 'TREASURER'] as const;
+  return NextResponse.json(response, { status: options.status || 200 });
+}
 
-const DEFAULT_PAGE_LIMIT = 20;
-const MAX_PAGE_LIMIT = 100;
+const APPROVER_ROLES: ClubMemberRole[] = [
+  ClubMemberRole.OWNER,
+  ClubMemberRole.MANAGER,
+  ClubMemberRole.TREASURER,
+];
 
-// ============================================================================
-// VALIDATION HELPERS
-// ============================================================================
-
-/**
- * Validate session and user authorization
- */
-async function validateManagerAccess(email: string) {
+async function hasApproverPermission(userId: string, clubId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
-    where: { email },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      roles: true,
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+
+  if (user?.isSuperAdmin) return true;
+
+  // Check if user is club owner
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { ownerId: true },
+  });
+
+  if (club?.ownerId === userId) return true;
+
+  // Check club membership
+  const clubMember = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: { in: APPROVER_ROLES },
     },
   });
 
-  if (!user) {
-    return {
-      isValid: false,
-      error: 'User not found',
-      user: null,
-    };
-  }
-
-  // Check if user has any manager role
-  const hasManagerRole = user.roles.some((role) =>
-    MANAGER_ROLES.includes(role as typeof MANAGER_ROLES[number])
-  );
-
-  if (!hasManagerRole) {
-    return {
-      isValid: false,
-      error: 'Manager role required',
-      user: null,
-    };
-  }
-
-  return {
-    isValid: true,
-    error: null,
-    user,
-  };
+  return !!clubMember;
 }
 
-/**
- * Parse and validate pagination parameters
- */
-function parsePaginationParams(url: URL): {
-  page: number;
-  limit: number;
-} {
-  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const limit = Math.min(
-    MAX_PAGE_LIMIT,
-    Math.max(1, parseInt(url.searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10))
-  );
-
-  return { page, limit };
+function calculateDaysWaiting(submittedAt: Date | null): number {
+  if (!submittedAt) return 0;
+  const now = new Date();
+  const diff = now.getTime() - submittedAt.getTime();
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
 }
 
-// ============================================================================
-// MAIN HANDLER
-// ============================================================================
+function getPriority(daysWaiting: number, totalCost: number | null): 'HIGH' | 'MEDIUM' | 'LOW' {
+  // High priority: waiting > 7 days OR high value (> £500)
+  if (daysWaiting > 7) return 'HIGH';
+  if (totalCost && totalCost > 500) return 'HIGH';
+  
+  // Medium priority: waiting 3-7 days OR medium value (£200-500)
+  if (daysWaiting >= 3) return 'MEDIUM';
+  if (totalCost && totalCost > 200) return 'MEDIUM';
+  
+  return 'LOW';
+}
 
-/**
- * GET /api/manager/timesheets/pending
- *
- * Retrieve pending timesheets for manager review (Manager only)
- *
- * @param request NextRequest
- * @returns PendingTimesheetsResponse on success, ErrorResponse on failure
- */
+// =============================================================================
+// GET HANDLER - List Pending Timesheets
+// =============================================================================
+
 export async function GET(
-  request: NextRequest
-): Promise<NextResponse<PendingTimesheetsResponse | ErrorResponse>> {
-  const requestId = crypto.randomUUID();
-  const startTime = performance.now();
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId } = params;
 
   try {
-    // ========================================================================
-    // 1. AUTHENTICATION
-    // ========================================================================
-
-    const session = await auth();
-
-    if (!session) {
-      console.warn('Unauthorized pending timesheets access - no session', { requestId });
-      return Response.json(
-        {
-          success: false,
-          error: 'Authentication required',
-          code: ERROR_CODES.UNAUTHORIZED,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 2. VALIDATE MANAGER AUTHORIZATION
-    // ========================================================================
-
-    const { isValid: isAuthorized, error: authError, user } =
-      await validateManagerAccess(session.user.email);
-
-    if (!isAuthorized || !user) {
-      console.warn('Manager authorization failed for pending timesheets', {
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
         requestId,
-        email: session.user.email,
-        error: authError,
+        status: 401,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: authError || 'Manager role required',
-          code: ERROR_CODES.FORBIDDEN,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
     }
 
-    // ========================================================================
-    // 3. PARSE PAGINATION
-    // ========================================================================
+    // 2. Authorization
+    const hasPermission = await hasApproverPermission(session.user.id, clubId);
+    if (!hasPermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to view pending timesheets',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
+    }
 
-    const { page, limit } = parsePaginationParams(request.nextUrl);
+    // 3. Verify club exists
+    const club = await prisma.club.findUnique({
+      where: { id: clubId },
+      select: { id: true, name: true },
+    });
+
+    if (!club) {
+      return createResponse(null, {
+        success: false,
+        error: 'Club not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
+
+    // 4. Parse query parameters
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20')));
+    const coachId = searchParams.get('coachId');
+    const teamId = searchParams.get('teamId');
     const skip = (page - 1) * limit;
 
-    // ========================================================================
-    // 4. GET PENDING TIMESHEETS (Batch Query - N+1 Prevention)
-    // ========================================================================
+    // 5. Build where clause - filter for SUBMITTED status (pending approval)
+    const where: Record<string, unknown> = {
+      clubId,
+      status: TimesheetStatus.SUBMITTED, // Only timesheets awaiting approval
+    };
 
-    const [pendingTimesheets, totalPendingCount] = await Promise.all([
+    if (coachId) where.coachId = coachId;
+    if (teamId) where.teamId = teamId;
+
+    // 6. Fetch pending timesheets
+    const [timesheets, total] = await Promise.all([
       prisma.coachTimesheet.findMany({
-        where: {
-          status: 'SUBMITTED',
-        },
+        where,
         include: {
           coach: {
             include: {
@@ -240,153 +265,111 @@ export async function GET(
                   firstName: true,
                   lastName: true,
                   email: true,
+                  avatar: true,
                 },
               },
             },
           },
+          team: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
         },
-        orderBy: {
-          submittedAt: 'asc',
-        },
+        orderBy: [
+          { submittedAt: 'asc' }, // Oldest first (FIFO)
+        ],
         skip,
         take: limit,
       }),
-
-      prisma.coachTimesheet.count({
-        where: {
-          status: 'SUBMITTED',
-        },
-      }),
+      prisma.coachTimesheet.count({ where }),
     ]);
 
-    // ========================================================================
-    // 5. GET SUMMARY STATISTICS
-    // ========================================================================
+    // 7. Transform timesheets
+    const timesheetItems: TimesheetItem[] = timesheets.map((ts) => {
+      const daysWaiting = calculateDaysWaiting(ts.submittedAt);
+      const priority = getPriority(daysWaiting, ts.totalCost);
 
-    const currentMonth = new Date();
-    currentMonth.setDate(1);
-    currentMonth.setHours(0, 0, 0, 0);
-
-    const [approvedThisMonth, rejectedThisMonth] = await Promise.all([
-      prisma.coachTimesheet.count({
-        where: {
-          status: 'APPROVED',
-          approvedAt: {
-            gte: currentMonth,
-          },
+      return {
+        id: ts.id,
+        period: ts.period,
+        weekStartDate: ts.weekStartDate.toISOString(),
+        weekEndDate: ts.weekEndDate.toISOString(),
+        
+        trainingHours: ts.trainingHours,
+        matchHours: ts.matchHours,
+        adminHours: ts.adminHours,
+        travelHours: ts.travelHours,
+        meetingHours: ts.meetingHours,
+        otherHours: ts.otherHours,
+        totalHours: ts.totalHours,
+        
+        hourlyRate: ts.hourlyRate,
+        totalCost: ts.totalCost,
+        currency: ts.currency,
+        
+        coach: {
+          id: ts.coachId,
+          name: `${ts.coach.user.firstName} ${ts.coach.user.lastName}`,
+          avatar: ts.coach.user.avatar,
+          email: ts.coach.user.email,
+          coachType: ts.coach.coachType,
         },
-      }),
+        
+        team: ts.team ? {
+          id: ts.team.id,
+          name: ts.team.name,
+        } : null,
+        
+        status: ts.status,
+        submittedAt: ts.submittedAt?.toISOString() || null,
+        submittedNotes: ts.submittedNotes,
+        description: ts.description,
+        
+        daysWaiting,
+        priority,
+      };
+    });
 
-      prisma.coachTimesheet.count({
-        where: {
-          status: 'REJECTED',
-          approvedAt: {
-            gte: currentMonth,
-          },
-        },
-      }),
-    ]);
+    // 8. Calculate summary stats
+    const totalHours = timesheetItems.reduce((sum, ts) => sum + ts.totalHours, 0);
+    const totalCost = timesheetItems.reduce((sum, ts) => sum + (ts.totalCost || 0), 0);
+    const avgWaitDays = timesheetItems.length > 0
+      ? Math.round(timesheetItems.reduce((sum, ts) => sum + ts.daysWaiting, 0) / timesheetItems.length)
+      : 0;
+    const highPriority = timesheetItems.filter((ts) => ts.priority === 'HIGH').length;
 
-    // ========================================================================
-    // 6. TRANSFORM DATA & CALCULATE METRICS
-    // ========================================================================
-
-    const uniqueCoaches = new Set(pendingTimesheets.map((t) => t.coachId)).size;
-    const totalAmount = pendingTimesheets.reduce((sum, t) => sum + t.totalAmount, 0);
-    const totalHours = pendingTimesheets.reduce((sum, t) => sum + t.totalHours, 0);
-    const averageHoursPerTimesheet = pendingTimesheets.length > 0 ? totalHours / pendingTimesheets.length : 0;
-
-    const timesheets: TimesheetItem[] = pendingTimesheets.map((t) => ({
-      id: t.id,
-      coachId: t.coachId,
-      coach: {
-        name: `${t.coach.user?.firstName || ''} ${t.coach.user?.lastName || ''}`.trim(),
-        email: t.coach.user?.email || '',
-      },
-      period: t.period,
-      startDate: t.startDate.toISOString(),
-      endDate: t.endDate.toISOString(),
-      trainingHours: t.trainingHours,
-      matchHours: t.matchHours,
-      adminHours: t.adminHours,
-      otherHours: t.otherHours,
-      totalHours: t.totalHours,
-      hourlyRate: t.hourlyRate,
-      totalAmount: t.totalAmount,
-      status: t.status,
-      submittedAt: t.submittedAt?.toISOString() || null,
-      createdAt: t.createdAt.toISOString(),
-    }));
-
-    const pages = Math.ceil(totalPendingCount / limit);
-
-    // ========================================================================
-    // 7. BUILD RESPONSE
-    // ========================================================================
-
+    // 9. Build response
     const response: PendingTimesheetsResponse = {
-      success: true,
-      timesheets,
+      timesheets: timesheetItems,
       summary: {
-        totalPending: totalPendingCount,
-        totalPendingAmount: totalAmount,
-        approvedThisMonth,
-        rejectedThisMonth,
-        uniqueCoaches,
-        averageHoursPerTimesheet: Math.round(averageHoursPerTimesheet * 10) / 10,
+        total,
+        totalHours: Math.round(totalHours * 10) / 10,
+        totalCost: Math.round(totalCost * 100) / 100,
+        avgWaitDays,
+        highPriority,
       },
       pagination: {
-        total: totalPendingCount,
         page,
         limit,
-        pages,
+        total,
+        pages: Math.ceil(total / limit),
       },
     };
 
-    // ========================================================================
-    // 8. LOG & RESPOND
-    // ========================================================================
-
-    const duration = performance.now() - startTime;
-
-    console.log('Pending timesheets retrieved successfully', {
+    return createResponse(response, {
+      success: true,
       requestId,
-      managerId: user.id,
-      totalPending: totalPendingCount,
-      returned: timesheets.length,
-      page,
-      pages,
-      totalAmount,
-      duration: `${Math.round(duration)}ms`,
-    });
-
-    return NextResponse.json(response, {
-      status: 200,
-      headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
-        'X-Request-ID': requestId,
-        'X-Response-Time': `${Math.round(duration)}ms`,
-      },
     });
   } catch (error) {
-    const duration = performance.now() - startTime;
-
-    console.error('Pending timesheets error', {
+    console.error(`[${requestId}] List Pending Timesheets error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to fetch pending timesheets',
+      code: 'INTERNAL_ERROR',
       requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      duration: `${Math.round(duration)}ms`,
+      status: 500,
     });
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to retrieve pending timesheets',
-        code: ERROR_CODES.INTERNAL_ERROR,
-        details:
-          error instanceof Error ? error.message : 'Unknown error occurred',
-      },
-      { status: 500, headers: { 'X-Request-ID': requestId } }
-    );
   }
 }

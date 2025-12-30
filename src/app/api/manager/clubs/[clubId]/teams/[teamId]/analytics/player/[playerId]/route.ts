@@ -1,153 +1,358 @@
-/**
- * Player Performance Analytics API
- *
- * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId]
- *
- * Returns: Detailed performance analytics for a specific player including:
- * - Goals, assists, discipline records
- * - Match-by-match breakdown with detailed events
- * - Aggregate statistics and performance trends
- *
- * Authorization: Only club owner can access
- *
- * Response:
- * {
- *   success: boolean,
- *   data: {
- *     player: {
- *       id: string,
- *       userId: string,
- *       name: string,
- *       position: string,
- *       shirtNumber: number | null,
- *       preferredFoot: string
- *     },
- *     performance: Array<{
- *       date: Date,
- *       matchId: string,
- *       opponent: string,
- *       goals: number,
- *       assists: number,
- *       yellowCards: number,
- *       redCards: number,
- *       minutesPlayed: number,
- *       performanceRating: number | null,
- *       isStarting: boolean,
- *       events: Array<{
- *         type: string,
- *         minute: number,
- *         note?: string
- *       }>
- *     }>,
- *     stats: {
- *       totalGoals: number,
- *       totalAssists: number,
- *       totalYellowCards: number,
- *       totalRedCards: number,
- *       totalAppearances: number,
- *       startingAppearances: number,
- *       substitutedAppearances: number,
- *       totalMinutesPlayed: number,
- *       avgPerformanceRating: number
- *     }
- *   }
- * }
- */
+// =============================================================================
+// 👤 PLAYER PERFORMANCE ANALYTICS API - Enterprise-Grade Multi-Sport
+// =============================================================================
+// GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId]
+// Detailed individual player performance with match-by-match breakdown
+// =============================================================================
+// Schema: v7.8.0 | Multi-Sport: ✅ All 12 sports
+// Permission: Club Owner, Manager, Head Coach, Assistant Coach, Analyst
+// =============================================================================
 
-import { auth } from '@/auth';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import {
+  Sport,
+  MatchStatus,
+  MatchEventType,
+  ClubMemberRole,
+} from '@prisma/client';
 
-interface MatchEvent {
-  type: string;
-  minute: number;
-  note?: string;
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  requestId: string;
+  timestamp: string;
 }
 
-interface PerformanceRecord {
-  date: Date;
+interface RouteParams {
+  params: {
+    clubId: string;
+    teamId: string;
+    playerId: string;
+  };
+}
+
+interface MatchPerformance {
   matchId: string;
+  date: string;
   opponent: string;
-  goals: number;
-  assists: number;
+  opponentLogo?: string | null;
+  result: 'W' | 'D' | 'L';
+  score: string;
+  isHome: boolean;
+  competitionName?: string;
+  
+  // Lineup info
+  wasStarter: boolean;
+  minutesPlayed: number;
+  position?: string;
+  shirtNumber?: number;
+  rating?: number | null;
+  
+  // Events in this match
+  events: Array<{
+    type: MatchEventType;
+    minute: number;
+    description?: string;
+  }>;
+  
+  // Sport-specific stats for this match
+  matchStats: Record<string, number>;
+}
+
+interface PlayerSeasonStats {
+  // Universal
+  appearances: number;
+  starts: number;
+  substitutes: number;
+  minutesPlayed: number;
+  
+  // Performance
+  avgRating: number | null;
+  wins: number;
+  draws: number;
+  losses: number;
+  winRate: number;
+  
+  // Contribution (sport-specific)
+  contributions: number;
+  contributionsPerGame: number;
+  
+  // Discipline
   yellowCards: number;
   redCards: number;
-  minutesPlayed: number;
-  performanceRating: number | null;
-  isStarting: boolean;
-  events: MatchEvent[];
+  disciplinaryPoints: number;
+  
+  // Sport-specific stats
+  sportStats: Record<string, number>;
 }
 
-interface PlayerStats {
-  totalGoals: number;
-  totalAssists: number;
-  totalYellowCards: number;
-  totalRedCards: number;
-  totalAppearances: number;
-  startingAppearances: number;
-  substitutedAppearances: number;
-  totalMinutesPlayed: number;
-  avgPerformanceRating: number;
+interface PlayerPerformanceResponse {
+  player: {
+    id: string;
+    userId: string;
+    name: string;
+    firstName: string;
+    lastName: string;
+    position: string | null;
+    shirtNumber: number | null;
+    preferredFoot?: string | null;
+    height?: number | null;
+    weight?: number | null;
+    photo?: string | null;
+    dateOfBirth?: string | null;
+    nationality?: string | null;
+  };
+  
+  team: {
+    id: string;
+    name: string;
+  };
+  
+  club: {
+    id: string;
+    name: string;
+    sport: Sport;
+  };
+  
+  // Overall statistics
+  overallStats: PlayerSeasonStats;
+  
+  // Home/Away split
+  homeStats: Partial<PlayerSeasonStats>;
+  awayStats: Partial<PlayerSeasonStats>;
+  
+  // Competition split (if multiple competitions)
+  competitionStats?: Array<{
+    competitionId: string;
+    competitionName: string;
+    stats: Partial<PlayerSeasonStats>;
+  }>;
+  
+  // Match-by-match performance (most recent first)
+  matchPerformances: MatchPerformance[];
+  
+  // Form trend (last 5 ratings)
+  formTrend: Array<{
+    matchId: string;
+    date: string;
+    rating: number | null;
+    result: 'W' | 'D' | 'L';
+  }>;
+  
+  // Sport context
+  sportContext: {
+    sport: Sport;
+    contributionLabel: string;
+    keyStats: string[];
+  };
+  
+  period: string;
 }
+
+// =============================================================================
+// SPORT-SPECIFIC CONFIGURATIONS
+// =============================================================================
+
+const SPORT_CONTRIBUTION_EVENTS: Record<Sport, MatchEventType[]> = {
+  FOOTBALL: ['GOAL', 'ASSIST'],
+  FUTSAL: ['GOAL', 'ASSIST'],
+  BEACH_FOOTBALL: ['GOAL', 'ASSIST'],
+  RUGBY: ['TRY', 'CONVERSION', 'PENALTY_KICK', 'DROP_GOAL'],
+  CRICKET: ['WICKET', 'CATCH', 'RUN_OUT', 'STUMPING'],
+  AMERICAN_FOOTBALL: ['TOUCHDOWN', 'FIELD_GOAL', 'INTERCEPTION'],
+  BASKETBALL: ['FIELD_GOAL', 'THREE_POINTER', 'ASSIST', 'BLOCK', 'STEAL'],
+  HOCKEY: ['GOAL', 'ASSIST'],
+  LACROSSE: ['GOAL', 'ASSIST'],
+  NETBALL: ['GOAL', 'ASSIST', 'INTERCEPTION'],
+  AUSTRALIAN_RULES: ['GOAL', 'BEHIND', 'MARK'],
+  GAELIC_FOOTBALL: ['GOAL', 'POINT', 'ASSIST'],
+};
+
+const SPORT_CONTRIBUTION_LABELS: Record<Sport, string> = {
+  FOOTBALL: 'Goals + Assists',
+  FUTSAL: 'Goals + Assists',
+  BEACH_FOOTBALL: 'Goals + Assists',
+  RUGBY: 'Points',
+  CRICKET: 'Wickets',
+  AMERICAN_FOOTBALL: 'Touchdowns',
+  BASKETBALL: 'Points',
+  HOCKEY: 'Goals + Assists',
+  LACROSSE: 'Goals + Assists',
+  NETBALL: 'Goals',
+  AUSTRALIAN_RULES: 'Goals + Behinds',
+  GAELIC_FOOTBALL: 'Goals + Points',
+};
+
+const SPORT_KEY_STATS: Record<Sport, string[]> = {
+  FOOTBALL: ['Goals', 'Assists', 'Yellow Cards', 'Red Cards', 'Minutes'],
+  FUTSAL: ['Goals', 'Assists', 'Yellow Cards', 'Red Cards', 'Minutes'],
+  BEACH_FOOTBALL: ['Goals', 'Assists', 'Yellow Cards', 'Minutes'],
+  RUGBY: ['Tries', 'Conversions', 'Penalties', 'Drop Goals', 'Minutes'],
+  CRICKET: ['Runs', 'Wickets', 'Catches', 'Strike Rate'],
+  AMERICAN_FOOTBALL: ['Touchdowns', 'Passing Yards', 'Rushing Yards', 'Interceptions'],
+  BASKETBALL: ['Points', 'Rebounds', 'Assists', 'Steals', 'Blocks'],
+  HOCKEY: ['Goals', 'Assists', 'Yellow Cards', 'Minutes'],
+  LACROSSE: ['Goals', 'Assists', 'Ground Balls', 'Saves'],
+  NETBALL: ['Goals', 'Goal Assists', 'Interceptions', 'Rebounds'],
+  AUSTRALIAN_RULES: ['Goals', 'Behinds', 'Marks', 'Tackles', 'Disposals'],
+  GAELIC_FOOTBALL: ['Goals', 'Points', 'Assists', 'Yellow Cards'],
+};
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `player_perf_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: string;
+    code?: string;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (options.success && data !== null) response.data = data;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
+
+  return NextResponse.json(response, { status: options.status || 200 });
+}
+
+async function hasAnalyticsPermission(userId: string, clubId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+  if (user?.isSuperAdmin) return true;
+
+  const clubMember = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: {
+        in: [
+          ClubMemberRole.OWNER,
+          ClubMemberRole.MANAGER,
+          ClubMemberRole.HEAD_COACH,
+          ClubMemberRole.ASSISTANT_COACH,
+          ClubMemberRole.ANALYST,
+        ],
+      },
+    },
+  });
+
+  return !!clubMember;
+}
+
+function getMatchResult(
+  teamId: string,
+  match: { homeTeamId: string; awayTeamId: string; homeScore: number | null; awayScore: number | null }
+): 'W' | 'D' | 'L' {
+  if (match.homeScore === null || match.awayScore === null) return 'D';
+  
+  const isHome = match.homeTeamId === teamId;
+  const teamScore = isHome ? match.homeScore : match.awayScore;
+  const oppScore = isHome ? match.awayScore : match.homeScore;
+  
+  if (teamScore > oppScore) return 'W';
+  if (teamScore === oppScore) return 'D';
+  return 'L';
+}
+
+// =============================================================================
+// GET HANDLER - Player Performance Analytics
+// =============================================================================
 
 export async function GET(
-  _req: NextRequest,
-  { params }: { params: { clubId: string; teamId: string; playerId: string } }
-) {
-  const session = await auth();
-
-  if (!session) {
-    return Response.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    );
-  }
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, teamId, playerId } = params;
 
   try {
-    const { clubId, teamId, playerId } = params;
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
+    }
 
-    // Verify club exists and user owns it
+    // 2. Authorization
+    const hasPermission = await hasAnalyticsPermission(session.user.id, clubId);
+    if (!hasPermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to view this player\'s analytics',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
+    }
+
+    // 3. Parse query parameters
+    const { searchParams } = new URL(request.url);
+    const seasonId = searchParams.get('seasonId');
+    const matchLimit = Math.min(parseInt(searchParams.get('matchLimit') || '20'), 50);
+
+    // 4. Fetch club and verify team
     const club = await prisma.club.findUnique({
       where: { id: clubId },
-      select: {
-        id: true,
-        ownerId: true,
-      },
+      select: { id: true, name: true, sport: true },
     });
 
     if (!club) {
-      return NextResponse.json(
-        { error: 'Club not found' },
-        { status: 404 }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Club not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
-    if (club.ownerId !== session.user.id) {
-      return NextResponse.json(
-        { error: 'Forbidden - You are not the club owner' },
-        { status: 403 }
-      );
-    }
-
-    // Verify team exists and belongs to club (using Team model from new schema)
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      select: {
-        id: true,
-        name: true,
-        clubId: true,
-      },
+      select: { id: true, name: true, clubId: true },
     });
 
     if (!team || team.clubId !== clubId) {
-      return NextResponse.json(
-        { error: 'Team not found or does not belong to this club' },
-        { status: 404 }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Team not found or does not belong to this club',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
-    // Get player with user details
+    // 5. Fetch player
     const player = await prisma.player.findUnique({
       where: { id: playerId },
       include: {
@@ -156,19 +361,25 @@ export async function GET(
             id: true,
             firstName: true,
             lastName: true,
+            avatar: true,
+            dateOfBirth: true,
+            nationality: true,
           },
         },
       },
     });
 
     if (!player) {
-      return NextResponse.json(
-        { error: 'Player not found' },
-        { status: 404 }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Player not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
-    // Verify player belongs to the team using TeamMember relation
+    // 6. Verify player is in team via TeamMember
     const teamMember = await prisma.teamMember.findFirst({
       where: {
         teamId,
@@ -177,219 +388,254 @@ export async function GET(
     });
 
     if (!teamMember) {
-      return NextResponse.json(
-        { error: 'Player not found in this team' },
-        { status: 404 }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Player not found in this team',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
-    // Get all match events for this player
+    // 7. Build match filter
+    const matchFilter: Record<string, unknown> = {
+      status: MatchStatus.COMPLETED,
+      deletedAt: null,
+      OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+    };
+    
+    if (seasonId) {
+      matchFilter.seasonId = seasonId;
+    }
+
+    // 8. Fetch player's match lineups
+    const lineups = await prisma.matchLineup.findMany({
+      where: {
+        playerId,
+        match: matchFilter,
+      },
+      include: {
+        match: {
+          include: {
+            homeTeam: { select: { id: true, name: true, logo: true } },
+            awayTeam: { select: { id: true, name: true, logo: true } },
+            competition: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { match: { kickOffTime: 'desc' } },
+    });
+
+    // 9. Fetch all events for this player
     const events = await prisma.matchEvent.findMany({
       where: {
         playerId,
-        match: {
-          status: 'FINISHED',
-        },
+        match: matchFilter,
       },
-      include: {
-        match: {
-          select: {
-            id: true,
-            date: true,
-            homeTeamId: true,
-            homeTeam: {
-              select: {
-                name: true,
-              },
-            },
-            awayTeam: {
-              select: {
-                name: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: {
-        match: {
-          date: 'asc',
-        },
-      },
+      orderBy: { minute: 'asc' },
     });
 
-    // Get all match attendances for this player (tracks lineup/participation)
-    const matchAttendances = await prisma.matchAttendance.findMany({
-      where: {
-        playerId,
-        match: {
-          status: 'FINISHED',
-        },
-      },
-      include: {
-        match: {
-          select: {
-            id: true,
-            date: true,
-          },
-        },
-      },
-      orderBy: {
-        match: {
-          date: 'asc',
-        },
-      },
-    });
+    // Group events by match
+    const eventsByMatch = new Map<string, typeof events>();
+    for (const event of events) {
+      const matchEvents = eventsByMatch.get(event.matchId) || [];
+      matchEvents.push(event);
+      eventsByMatch.set(event.matchId, matchEvents);
+    }
 
-    // Build performance history by match using matchId as key for uniqueness
-    const performanceByMatch = new Map<string, PerformanceRecord>();
+    // 10. Get contribution event types for this sport
+    const contributionEvents = SPORT_CONTRIBUTION_EVENTS[club.sport] || ['GOAL', 'ASSIST'];
 
-    // First, add match attendances to establish match presence
-    matchAttendances.forEach((attendance) => {
-      const matchId = attendance.match.id;
+    // 11. Build match performances and aggregate stats
+    const matchPerformances: MatchPerformance[] = [];
+    let totalMinutes = 0;
+    let totalRatings = 0;
+    let ratingCount = 0;
+    let starts = 0;
+    let subs = 0;
+    let wins = 0;
+    let draws = 0;
+    let losses = 0;
+    let homeApps = 0;
+    let homeWins = 0;
+    let awayApps = 0;
+    let awayWins = 0;
+    let contributions = 0;
+    let yellowCards = 0;
+    let redCards = 0;
+    const sportStats: Record<string, number> = {};
+    const formTrend: PlayerPerformanceResponse['formTrend'] = [];
 
-      // Determine if player was starting
-      const isStarting = attendance.status === 'STARTING_LINEUP';
+    for (const lineup of lineups) {
+      const match = lineup.match;
+      const isHome = match.homeTeamId === teamId;
+      const opponent = isHome ? match.awayTeam : match.homeTeam;
+      const result = getMatchResult(teamId, match);
+      const matchEvents = eventsByMatch.get(match.id) || [];
 
-      if (!performanceByMatch.has(matchId)) {
-        performanceByMatch.set(matchId, {
-          date: attendance.match.date,
-          matchId,
-          opponent: 'Unknown',
-          goals: 0,
-          assists: 0,
-          yellowCards: 0,
-          redCards: 0,
-          minutesPlayed: attendance.minutesPlayed || 0,
-          performanceRating: attendance.performanceRating || null,
-          isStarting,
-          events: [],
-        });
+      // Aggregate stats
+      totalMinutes += lineup.minutesPlayed || 0;
+      if (lineup.isStarter) starts++; else if (lineup.minutesPlayed && lineup.minutesPlayed > 0) subs++;
+      
+      if (lineup.rating !== null) {
+        totalRatings += lineup.rating;
+        ratingCount++;
+      }
+
+      if (result === 'W') wins++;
+      else if (result === 'D') draws++;
+      else losses++;
+
+      if (isHome) {
+        homeApps++;
+        if (result === 'W') homeWins++;
       } else {
-        // Update starting status and minutes if needed
-        const perf = performanceByMatch.get(matchId)!;
-        if (isStarting) {
-          perf.isStarting = true;
-        }
-        if (!perf.minutesPlayed && attendance.minutesPlayed) {
-          perf.minutesPlayed = attendance.minutesPlayed;
-        }
-        if (!perf.performanceRating && attendance.performanceRating) {
-          perf.performanceRating = attendance.performanceRating;
-        }
+        awayApps++;
+        if (result === 'W') awayWins++;
       }
-    });
 
-    // Add all events to corresponding matches
-    events.forEach((event) => {
-      const matchId = event.match.id;
+      // Count event types
+      const matchStats: Record<string, number> = {};
+      for (const event of matchEvents) {
+        // Global counts
+        sportStats[event.eventType] = (sportStats[event.eventType] || 0) + 1;
+        // Match-level counts
+        matchStats[event.eventType] = (matchStats[event.eventType] || 0) + 1;
+        
+        // Contributions
+        if (contributionEvents.includes(event.eventType as MatchEventType)) {
+          contributions++;
+        }
+        
+        // Discipline
+        if (event.eventType === 'YELLOW_CARD') yellowCards++;
+        if (event.eventType === 'RED_CARD') redCards++;
+      }
 
-      if (!performanceByMatch.has(matchId)) {
-        // Determine opponent
-        const isHomeTeam = event.match.homeTeamId === teamId;
-        const opponentName = isHomeTeam
-          ? event.match.awayTeam?.name || 'Unknown'
-          : event.match.homeTeam?.name || 'Unknown';
-
-        performanceByMatch.set(matchId, {
-          date: event.match.date,
-          matchId,
-          opponent: opponentName,
-          goals: 0,
-          assists: 0,
-          yellowCards: 0,
-          redCards: 0,
-          minutesPlayed: 0,
-          performanceRating: null,
-          isStarting: false,
-          events: [],
+      // Build match performance object
+      if (matchPerformances.length < matchLimit) {
+        matchPerformances.push({
+          matchId: match.id,
+          date: match.kickOffTime.toISOString(),
+          opponent: opponent.name,
+          opponentLogo: opponent.logo,
+          result,
+          score: `${match.homeScore ?? 0}-${match.awayScore ?? 0}`,
+          isHome,
+          competitionName: match.competition?.name,
+          wasStarter: lineup.isStarter,
+          minutesPlayed: lineup.minutesPlayed || 0,
+          position: lineup.position || undefined,
+          shirtNumber: lineup.shirtNumber || undefined,
+          rating: lineup.rating,
+          events: matchEvents.map((e) => ({
+            type: e.eventType as MatchEventType,
+            minute: e.minute || 0,
+            description: e.description || undefined,
+          })),
+          matchStats,
         });
       }
 
-      const perf = performanceByMatch.get(matchId)!;
-
-      // Set opponent if not already set
-      if (perf.opponent === 'Unknown') {
-        const isHomeTeam = event.match.homeTeamId === teamId;
-        const opponentName = isHomeTeam
-          ? event.match.awayTeam?.name || 'Unknown'
-          : event.match.homeTeam?.name || 'Unknown';
-        perf.opponent = opponentName;
+      // Form trend (last 5)
+      if (formTrend.length < 5) {
+        formTrend.push({
+          matchId: match.id,
+          date: match.kickOffTime.toISOString(),
+          rating: lineup.rating,
+          result,
+        });
       }
+    }
 
-      // Count event types using correct schema field name 'type'
-      if (event.type === 'GOAL') {
-        perf.goals++;
-      } else if (event.type === 'ASSIST') {
-        perf.assists++;
-      } else if (event.type === 'YELLOW_CARD') {
-        perf.yellowCards++;
-      } else if (event.type === 'RED_CARD') {
-        perf.redCards++;
-      }
+    const totalAppearances = lineups.length;
+    const avgRating = ratingCount > 0 ? Math.round((totalRatings / ratingCount) * 10) / 10 : null;
 
-      perf.events.push({
-        type: event.type,
-        minute: event.minute,
-        note: event.additionalInfo || undefined,
-      });
-    });
-
-    // Convert to array and sort by date
-    const performance = Array.from(performanceByMatch.values()).sort(
-      (a, b) => a.date.getTime() - b.date.getTime()
-    );
-
-    // Calculate aggregate statistics
-    const startingAppearances = performance.filter((p) => p.isStarting).length;
-    const substitutedAppearances = performance.filter((p) => !p.isStarting).length;
-    const totalMinutesPlayed = performance.reduce((sum, p) => sum + p.minutesPlayed, 0);
-    const performanceRatings = performance
-      .filter((p) => p.performanceRating !== null)
-      .map((p) => p.performanceRating as number);
-    const avgPerformanceRating = performanceRatings.length > 0
-      ? parseFloat((
-          performanceRatings.reduce((a, b) => a + b, 0) / performanceRatings.length
-        ).toFixed(2))
-      : 0;
-
-    const stats: PlayerStats = {
-      totalGoals: performance.reduce((sum, p) => sum + p.goals, 0),
-      totalAssists: performance.reduce((sum, p) => sum + p.assists, 0),
-      totalYellowCards: performance.reduce((sum, p) => sum + p.yellowCards, 0),
-      totalRedCards: performance.reduce((sum, p) => sum + p.redCards, 0),
-      totalAppearances: performance.length,
-      startingAppearances,
-      substitutedAppearances,
-      totalMinutesPlayed,
-      avgPerformanceRating,
+    // 12. Build overall stats
+    const overallStats: PlayerSeasonStats = {
+      appearances: totalAppearances,
+      starts,
+      substitutes: subs,
+      minutesPlayed: totalMinutes,
+      avgRating,
+      wins,
+      draws,
+      losses,
+      winRate: totalAppearances > 0 ? Math.round((wins / totalAppearances) * 100) : 0,
+      contributions,
+      contributionsPerGame: totalAppearances > 0
+        ? Math.round((contributions / totalAppearances) * 100) / 100
+        : 0,
+      yellowCards,
+      redCards,
+      disciplinaryPoints: yellowCards + (redCards * 3),
+      sportStats,
     };
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        player: {
-          id: player.id,
-          userId: player.user.id,
-          name: `${player.user.firstName} ${player.user.lastName}`,
-          position: player.position,
-          shirtNumber: player.shirtNumber,
-          preferredFoot: player.preferredFoot,
-        },
-        performance,
-        stats,
+    // 13. Build home/away splits
+    const homeStats: Partial<PlayerSeasonStats> = {
+      appearances: homeApps,
+      wins: homeWins,
+      winRate: homeApps > 0 ? Math.round((homeWins / homeApps) * 100) : 0,
+    };
+
+    const awayStats: Partial<PlayerSeasonStats> = {
+      appearances: awayApps,
+      wins: awayWins,
+      winRate: awayApps > 0 ? Math.round((awayWins / awayApps) * 100) : 0,
+    };
+
+    // 14. Build response
+    const response: PlayerPerformanceResponse = {
+      player: {
+        id: player.id,
+        userId: player.userId,
+        name: `${player.user.firstName} ${player.user.lastName}`,
+        firstName: player.user.firstName,
+        lastName: player.user.lastName,
+        position: player.position,
+        shirtNumber: player.shirtNumber,
+        preferredFoot: player.preferredFoot,
+        height: player.height,
+        weight: player.weight,
+        photo: player.user.avatar,
+        dateOfBirth: player.user.dateOfBirth?.toISOString() || null,
+        nationality: player.user.nationality,
       },
+      team: {
+        id: team.id,
+        name: team.name,
+      },
+      club: {
+        id: club.id,
+        name: club.name,
+        sport: club.sport,
+      },
+      overallStats,
+      homeStats,
+      awayStats,
+      matchPerformances,
+      formTrend,
+      sportContext: {
+        sport: club.sport,
+        contributionLabel: SPORT_CONTRIBUTION_LABELS[club.sport],
+        keyStats: SPORT_KEY_STATS[club.sport],
+      },
+      period: seasonId ? `Season ${seasonId}` : 'All Time',
+    };
+
+    return createResponse(response, {
+      success: true,
+      requestId,
     });
   } catch (error) {
-    console.error(
-      'GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics/player/[playerId] error:',
-      error
-    );
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch player performance analytics',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    console.error(`[${requestId}] Player Performance error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to fetch player performance analytics',
+      code: 'INTERNAL_ERROR',
+      requestId,
+      status: 500,
+    });
   }
 }

@@ -1,465 +1,506 @@
-/**
- * 🌟 PITCHCONNECT - Team Analytics API (NextAuth v5)
- * Path: /src/app/api/manager/clubs/[clubId]/teams/[teamId]/analytics/route.ts
- *
- * ============================================================================
- * MIGRATION NOTES
- * ============================================================================
- * ✅ Updated from NextAuth v4 (getServerSession, authOptions)
- * ✅ Now uses NextAuth v5 auth() function
- * ✅ Simplified imports - removed authOptions dependency
- * ✅ Maintains all analytics functionality
- * ✅ Type-safe session handling
- * ✅ Production-ready
- *
- * ============================================================================
- * ENDPOINT: GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics
- * ============================================================================
- *
- * Returns: Comprehensive team statistics including:
- * - Match results and performance metrics
- * - Player statistics (goals, assists, appearances)
- * - Win rate, goal differential, clean sheets
- * - Individual player performance breakdown
- *
- * Authorization: Only club owner can access their club's analytics
- *
- * Query Parameters (optional):
- *   - period: 'season' | 'month' | 'all' (default: 'all')
- *   - format: 'json' | 'csv' (default: 'json')
- *
- * Response (200 OK):
- * {
- *   success: true,
- *   data: {
- *     team: {
- *       id: string,
- *       name: string
- *     },
- *     teamStats: {
- *       totalMatches: number,
- *       wins: number,
- *       draws: number,
- *       losses: number,
- *       totalGoalsFor: number,
- *       totalGoalsAgainst: number,
- *       goalDifference: number,
- *       winRate: number,
- *       drawRate: number,
- *       lossRate: number,
- *       goalsPerGame: number,
- *       goalsAgainstPerGame: number,
- *       cleanSheets: number,
- *       avgAppearances: number
- *     },
- *     playerStats: Array<{
- *       playerId: string,
- *       userId: string,
- *       playerName: string,
- *       position: string,
- *       shirtNumber: number | null,
- *       goals: number,
- *       assists: number,
- *       appearances: number,
- *       minutesPlayed: number,
- *       goalsPerGame: number,
- *       assistsPerGame: number,
- *       startingAppearances: number,
- *       substitutedOn: number,
- *       yellowCards: number,
- *       redCards: number,
- *       avgPerformanceRating: number
- *     }>
- *   },
- *   timestamp: string
- * }
- *
- * Error Responses:
- * - 401 Unauthorized: No valid session
- * - 403 Forbidden: User is not the club owner
- * - 404 Not Found: Club or team not found
- * - 500 Internal Server Error: Server error
- *
- * ============================================================================
- * ENTERPRISE FEATURES
- * ============================================================================
- * ✅ Comprehensive team statistics aggregation
- * ✅ Per-player performance metrics
- * ✅ Match-by-match analysis
- * ✅ Performance ratings tracking
- * ✅ Clean sheets and win rate calculations
- * ✅ Role-based access control
- * ✅ Error handling with detailed messages
- * ✅ Performance optimized with proper indexing
- * ✅ Type-safe response structure
- * ✅ Audit logging integration ready
- * ✅ CSV export ready
- * ✅ Caching strategy support
- * ============================================================================
- */
+// =============================================================================
+// 🏆 TEAM ANALYTICS API - Enterprise-Grade Implementation
+// =============================================================================
+// GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics
+// Comprehensive team statistics with multi-sport support
+// =============================================================================
+// Schema: v7.8.0 | Multi-Sport: ✅ All 12 sports
+// Permission: Club Owner, Manager, Head Coach, Assistant Coach
+// =============================================================================
 
-
-import { auth } from '@/auth';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import {
+  Sport,
+  MatchStatus,
+  MatchEventType,
+  ClubMemberRole,
+} from '@prisma/client';
 
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  message?: string;
+  requestId: string;
+  timestamp: string;
+}
 
+interface RouteParams {
+  params: {
+    clubId: string;
+    teamId: string;
+  };
+}
 
-interface TeamStatistics {
+// Core stats that apply to ALL sports
+interface CoreTeamStatistics {
   totalMatches: number;
   wins: number;
   draws: number;
   losses: number;
-  totalGoalsFor: number;
-  totalGoalsAgainst: number;
-  goalDifference: number;
   winRate: number;
   drawRate: number;
   lossRate: number;
-  goalsPerGame: number;
-  goalsAgainstPerGame: number;
   cleanSheets: number;
-  avgAppearances: number;
+  pointsEarned: number;
+  pointsPossible: number;
+  form: string; // Last 5 matches: WWDLW
 }
 
+// Sport-specific scoring stats
+interface ScoringStatistics {
+  // Universal
+  totalScored: number;
+  totalConceded: number;
+  scoreDifference: number;
+  scoredPerGame: number;
+  concededPerGame: number;
+  
+  // Sport-specific breakdown (stored as JSON)
+  breakdown: Record<string, number>;
+}
 
-interface PlayerStatistic {
+// Player performance summary
+interface PlayerPerformanceSummary {
   playerId: string;
   userId: string;
   playerName: string;
-  position: string;
+  position: string | null;
   shirtNumber: number | null;
-  goals: number;
-  assists: number;
+  
+  // Appearances
   appearances: number;
-  minutesPlayed: number;
-  goalsPerGame: number;
-  assistsPerGame: number;
   startingAppearances: number;
-  substitutedOn: number;
-  yellowCards: number;
-  redCards: number;
-  avgPerformanceRating: number;
+  substituteAppearances: number;
+  minutesPlayed: number;
+  
+  // Core metrics (sport-agnostic)
+  contributions: number; // Goals + assists or equivalent
+  disciplinaryPoints: number; // Yellow = 1, Red = 3
+  
+  // Sport-specific stats
+  sportStats: Record<string, number>;
+  
+  // Ratings
+  avgRating: number | null;
 }
 
-
-interface AnalyticsResponse {
-  success: true;
-  data: {
-    team: {
-      id: string;
-      name: string;
-    };
-    teamStats: TeamStatistics;
-    playerStats: PlayerStatistic[];
+interface TeamAnalyticsResponse {
+  team: {
+    id: string;
+    name: string;
+    shortName: string | null;
+    logo: string | null;
   };
-  timestamp: string;
+  club: {
+    id: string;
+    name: string;
+    sport: Sport;
+  };
+  
+  // Period info
+  period: {
+    type: 'season' | 'month' | 'custom' | 'all';
+    label: string;
+    from?: string;
+    to?: string;
+  };
+  
+  // Statistics
+  coreStats: CoreTeamStatistics;
+  scoringStats: ScoringStatistics;
+  
+  // Home/Away split
+  homeStats: Partial<CoreTeamStatistics & ScoringStatistics>;
+  awayStats: Partial<CoreTeamStatistics & ScoringStatistics>;
+  
+  // Player statistics
+  playerStats: PlayerPerformanceSummary[];
+  
+  // Sport context
+  sportContext: {
+    sport: Sport;
+    scoringLabels: {
+      scored: string;
+      conceded: string;
+      difference: string;
+    };
+    eventTypes: string[];
+  };
+  
+  // Recent form
+  recentMatches: Array<{
+    id: string;
+    opponent: string;
+    result: 'W' | 'D' | 'L';
+    score: string;
+    date: string;
+    isHome: boolean;
+  }>;
 }
 
+// =============================================================================
+// SPORT-SPECIFIC CONFIGURATIONS
+// =============================================================================
 
-interface ErrorResponse {
-  success: false;
-  error: string;
-  details?: string;
-  timestamp: string;
+const SPORT_SCORING_LABELS: Record<Sport, { scored: string; conceded: string; difference: string }> = {
+  FOOTBALL: { scored: 'Goals For', conceded: 'Goals Against', difference: 'Goal Difference' },
+  FUTSAL: { scored: 'Goals For', conceded: 'Goals Against', difference: 'Goal Difference' },
+  BEACH_FOOTBALL: { scored: 'Goals For', conceded: 'Goals Against', difference: 'Goal Difference' },
+  RUGBY: { scored: 'Points For', conceded: 'Points Against', difference: 'Point Difference' },
+  CRICKET: { scored: 'Runs For', conceded: 'Runs Against', difference: 'Net Run Rate' },
+  AMERICAN_FOOTBALL: { scored: 'Points For', conceded: 'Points Against', difference: 'Point Differential' },
+  BASKETBALL: { scored: 'Points For', conceded: 'Points Against', difference: 'Point Differential' },
+  HOCKEY: { scored: 'Goals For', conceded: 'Goals Against', difference: 'Goal Difference' },
+  LACROSSE: { scored: 'Goals For', conceded: 'Goals Against', difference: 'Goal Difference' },
+  NETBALL: { scored: 'Goals For', conceded: 'Goals Against', difference: 'Goal Difference' },
+  AUSTRALIAN_RULES: { scored: 'Points For', conceded: 'Points Against', difference: 'Percentage' },
+  GAELIC_FOOTBALL: { scored: 'Scores For', conceded: 'Scores Against', difference: 'Score Difference' },
+};
+
+const SPORT_EVENT_TYPES: Record<Sport, MatchEventType[]> = {
+  FOOTBALL: ['GOAL', 'ASSIST', 'YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION', 'PENALTY_SCORED', 'PENALTY_MISSED', 'OWN_GOAL'],
+  FUTSAL: ['GOAL', 'ASSIST', 'YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION', 'PENALTY_SCORED'],
+  BEACH_FOOTBALL: ['GOAL', 'ASSIST', 'YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION'],
+  RUGBY: ['TRY', 'CONVERSION', 'PENALTY_KICK', 'DROP_GOAL', 'YELLOW_CARD', 'RED_CARD', 'SUBSTITUTION'],
+  CRICKET: ['WICKET', 'CATCH', 'RUN_OUT', 'STUMPING', 'BOUNDARY_FOUR', 'BOUNDARY_SIX'],
+  AMERICAN_FOOTBALL: ['TOUCHDOWN', 'FIELD_GOAL', 'EXTRA_POINT', 'TWO_POINT_CONVERSION', 'SAFETY', 'INTERCEPTION', 'FUMBLE'],
+  BASKETBALL: ['FIELD_GOAL', 'THREE_POINTER', 'FREE_THROW', 'REBOUND', 'ASSIST', 'BLOCK', 'STEAL', 'TURNOVER'],
+  HOCKEY: ['GOAL', 'ASSIST', 'YELLOW_CARD', 'RED_CARD', 'PENALTY_CORNER', 'SUBSTITUTION'],
+  LACROSSE: ['GOAL', 'ASSIST', 'GROUND_BALL', 'SAVE', 'TURNOVER'],
+  NETBALL: ['GOAL', 'ASSIST', 'INTERCEPTION', 'REBOUND'],
+  AUSTRALIAN_RULES: ['GOAL', 'BEHIND', 'MARK', 'TACKLE', 'HANDBALL'],
+  GAELIC_FOOTBALL: ['GOAL', 'POINT', 'ASSIST', 'YELLOW_CARD', 'RED_CARD'],
+};
+
+// Contribution event types per sport (what counts as positive contribution)
+const SPORT_CONTRIBUTION_EVENTS: Record<Sport, MatchEventType[]> = {
+  FOOTBALL: ['GOAL', 'ASSIST'],
+  FUTSAL: ['GOAL', 'ASSIST'],
+  BEACH_FOOTBALL: ['GOAL', 'ASSIST'],
+  RUGBY: ['TRY', 'CONVERSION', 'PENALTY_KICK', 'DROP_GOAL'],
+  CRICKET: ['WICKET', 'CATCH', 'RUN_OUT', 'STUMPING'],
+  AMERICAN_FOOTBALL: ['TOUCHDOWN', 'FIELD_GOAL', 'INTERCEPTION'],
+  BASKETBALL: ['FIELD_GOAL', 'THREE_POINTER', 'ASSIST', 'BLOCK', 'STEAL'],
+  HOCKEY: ['GOAL', 'ASSIST'],
+  LACROSSE: ['GOAL', 'ASSIST'],
+  NETBALL: ['GOAL', 'ASSIST', 'INTERCEPTION'],
+  AUSTRALIAN_RULES: ['GOAL', 'BEHIND', 'MARK'],
+  GAELIC_FOOTBALL: ['GOAL', 'POINT', 'ASSIST'],
+};
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `analytics_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    message?: string;
+    error?: string;
+    code?: string;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
+  if (options.success && data !== null) response.data = data;
+  if (options.message) response.message = options.message;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
 
+  return NextResponse.json(response, { status: options.status || 200 });
+}
 
-/**
- * Safe percentage calculation
- */
 function calculatePercentage(value: number, total: number): number {
   if (total === 0) return 0;
-  return parseFloat(((value / total) * 100).toFixed(2));
+  return Math.round((value / total) * 10000) / 100;
 }
 
-
-/**
- * Safe average calculation
- */
 function calculateAverage(sum: number, count: number, decimals: number = 2): number {
   if (count === 0) return 0;
-  return parseFloat((sum / count).toFixed(decimals));
+  return Math.round((sum / count) * Math.pow(10, decimals)) / Math.pow(10, decimals);
 }
 
-
 /**
- * Format response timestamp
+ * Check if user has permission to view team analytics
  */
-function getTimestamp(): string {
-  return new Date().toISOString();
-}
-
-
-/**
- * Log analytics request
- */
-function logAnalyticsRequest(
-  clubId: string,
-  teamId: string,
+async function hasAnalyticsPermission(
   userId: string,
-  status: number
-): void {
-  console.log('[Analytics API]', {
-    timestamp: getTimestamp(),
-    clubId,
-    teamId,
-    userId,
-    status,
+  clubId: string
+): Promise<boolean> {
+  // Check super admin
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
   });
+  if (user?.isSuperAdmin) return true;
+
+  // Check club membership with appropriate role
+  const clubMember = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: {
+        in: [
+          ClubMemberRole.OWNER,
+          ClubMemberRole.MANAGER,
+          ClubMemberRole.HEAD_COACH,
+          ClubMemberRole.ASSISTANT_COACH,
+          ClubMemberRole.ANALYST,
+        ],
+      },
+    },
+  });
+
+  return !!clubMember;
 }
 
-
-// ============================================================================
-// ROUTE HANDLER
-// ============================================================================
-
+/**
+ * Get match result from team's perspective
+ */
+function getMatchResult(
+  teamId: string,
+  match: { homeTeamId: string; awayTeamId: string; homeScore: number | null; awayScore: number | null }
+): 'W' | 'D' | 'L' | null {
+  if (match.homeScore === null || match.awayScore === null) return null;
+  
+  const isHome = match.homeTeamId === teamId;
+  const teamScore = isHome ? match.homeScore : match.awayScore;
+  const oppScore = isHome ? match.awayScore : match.homeScore;
+  
+  if (teamScore > oppScore) return 'W';
+  if (teamScore === oppScore) return 'D';
+  return 'L';
+}
 
 /**
- * GET /api/manager/clubs/[clubId]/teams/[teamId]/analytics
- *
- * Fetch comprehensive team analytics and player statistics
+ * Build form string from recent matches
  */
+function buildFormString(results: ('W' | 'D' | 'L' | null)[], maxLength: number = 5): string {
+  return results
+    .filter((r): r is 'W' | 'D' | 'L' => r !== null)
+    .slice(0, maxLength)
+    .join('');
+}
+
+// =============================================================================
+// GET HANDLER - Team Analytics
+// =============================================================================
+
 export async function GET(
-  req: NextRequest,
-  { params }: { params: { clubId: string; teamId: string } }
-): Promise<NextResponse<AnalyticsResponse | ErrorResponse>> {
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, teamId } = params;
+
   try {
-    // ========================================================================
-    // AUTHENTICATION - NextAuth v5 with auth()
-    // ========================================================================
-
-
-    const session = await auth();
-
-
-    if (!session || !session.user) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized',
-          details: 'You must be logged in to access this resource',
-          timestamp: getTimestamp(),
-        },
-        { status: 401 }
-      );
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
     }
 
-
-    const userId = session.user.id;
-
-
-    // ========================================================================
-    // PARAMETERS
-    // ========================================================================
-
-
-    const { clubId, teamId } = params;
-
-
+    // 2. Validate IDs
     if (!clubId || !teamId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Bad Request',
-          details: 'Club ID and Team ID are required',
-          timestamp: getTimestamp(),
-        },
-        { status: 400 }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Club ID and Team ID are required',
+        code: 'INVALID_PARAMS',
+        requestId,
+        status: 400,
+      });
     }
 
+    // 3. Authorization
+    const hasPermission = await hasAnalyticsPermission(session.user.id, clubId);
+    if (!hasPermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to view this team\'s analytics',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
+    }
 
-    // ========================================================================
-    // AUTHORIZATION - VERIFY CLUB OWNERSHIP
-    // ========================================================================
+    // 4. Parse query parameters
+    const { searchParams } = new URL(request.url);
+    const periodType = (searchParams.get('period') || 'all') as 'season' | 'month' | 'custom' | 'all';
+    const fromDate = searchParams.get('from');
+    const toDate = searchParams.get('to');
 
-
+    // 5. Fetch club and team
     const club = await prisma.club.findUnique({
       where: { id: clubId },
-      select: {
-        id: true,
-        ownerId: true,
-      },
+      select: { id: true, name: true, sport: true },
     });
 
-
     if (!club) {
-      logAnalyticsRequest(clubId, teamId, userId, 404);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Not Found',
-          details: 'Club not found',
-          timestamp: getTimestamp(),
-        },
-        { status: 404 }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Club not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
-
-
-    if (club.ownerId !== userId) {
-      logAnalyticsRequest(clubId, teamId, userId, 403);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden',
-          details: 'You are not the owner of this club',
-          timestamp: getTimestamp(),
-        },
-        { status: 403 }
-      );
-    }
-
-
-    // ========================================================================
-    // VERIFY TEAM EXISTS AND BELONGS TO CLUB
-    // ========================================================================
-
 
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      select: {
-        id: true,
-        name: true,
-        clubId: true,
-      },
+      select: { id: true, name: true, shortName: true, logo: true, clubId: true },
     });
 
-
     if (!team || team.clubId !== clubId) {
-      logAnalyticsRequest(clubId, teamId, userId, 404);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Not Found',
-          details: 'Team not found or does not belong to this club',
-          timestamp: getTimestamp(),
-        },
-        { status: 404 }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Team not found or does not belong to this club',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
+    // 6. Build date filter
+    let dateFilter: { gte?: Date; lte?: Date } = {};
+    let periodLabel = 'All Time';
 
-    // ========================================================================
-    // FETCH FINISHED MATCHES FOR TEAM
-    // ========================================================================
+    if (periodType === 'season') {
+      const currentYear = new Date().getFullYear();
+      const seasonStart = new Date(currentYear, 7, 1); // August 1
+      if (new Date() < seasonStart) {
+        seasonStart.setFullYear(currentYear - 1);
+      }
+      dateFilter = { gte: seasonStart };
+      periodLabel = `${seasonStart.getFullYear()}/${seasonStart.getFullYear() + 1} Season`;
+    } else if (periodType === 'month') {
+      const now = new Date();
+      dateFilter = {
+        gte: new Date(now.getFullYear(), now.getMonth(), 1),
+        lte: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+      };
+      periodLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+    } else if (periodType === 'custom' && fromDate) {
+      dateFilter.gte = new Date(fromDate);
+      if (toDate) dateFilter.lte = new Date(toDate);
+      periodLabel = `${fromDate}${toDate ? ` to ${toDate}` : ' onwards'}`;
+    }
 
-
+    // 7. Fetch completed matches
     const matches = await prisma.match.findMany({
       where: {
         OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
-        status: 'FINISHED',
+        status: MatchStatus.COMPLETED,
+        deletedAt: null,
+        ...(Object.keys(dateFilter).length > 0 ? { kickOffTime: dateFilter } : {}),
       },
       include: {
-        events: {
-          include: {
-            player: true,
-          },
-        },
-        stats: true,
-        homeTeam: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        awayTeam: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        homeTeam: { select: { id: true, name: true } },
+        awayTeam: { select: { id: true, name: true } },
       },
-      orderBy: { date: 'desc' },
+      orderBy: { kickOffTime: 'desc' },
     });
 
-
-    // ========================================================================
-    // CALCULATE TEAM STATISTICS
-    // ========================================================================
-
-
-    let wins = 0;
-    let draws = 0;
-    let losses = 0;
-    let totalGoalsFor = 0;
-    let totalGoalsAgainst = 0;
+    // 8. Calculate core statistics
+    let wins = 0, draws = 0, losses = 0;
+    let homeWins = 0, homeDraws = 0, homeLosses = 0;
+    let awayWins = 0, awayDraws = 0, awayLosses = 0;
+    let totalScored = 0, totalConceded = 0;
+    let homeScored = 0, homeConceded = 0;
+    let awayScored = 0, awayConceded = 0;
     let cleanSheets = 0;
+    const formResults: ('W' | 'D' | 'L')[] = [];
+    const recentMatches: TeamAnalyticsResponse['recentMatches'] = [];
 
+    for (const match of matches) {
+      if (match.homeScore === null || match.awayScore === null) continue;
 
-    matches.forEach((match) => {
       const isHome = match.homeTeamId === teamId;
-      const teamScore = isHome ? match.homeGoals : match.awayGoals;
-      const opponentScore = isHome ? match.awayGoals : match.homeGoals;
+      const teamScore = isHome ? match.homeScore : match.awayScore;
+      const oppScore = isHome ? match.awayScore : match.homeScore;
+      const opponent = isHome ? match.awayTeam.name : match.homeTeam.name;
 
+      totalScored += teamScore;
+      totalConceded += oppScore;
 
-      // Skip matches without final scores
-      if (teamScore === null || opponentScore === null) {
-        return;
-      }
+      if (oppScore === 0) cleanSheets++;
 
-
-      totalGoalsFor += teamScore;
-      totalGoalsAgainst += opponentScore;
-
-
-      if (teamScore > opponentScore) {
-        wins += 1;
-      } else if (teamScore === opponentScore) {
-        draws += 1;
+      let result: 'W' | 'D' | 'L';
+      if (teamScore > oppScore) {
+        result = 'W';
+        wins++;
+        if (isHome) homeWins++; else awayWins++;
+      } else if (teamScore === oppScore) {
+        result = 'D';
+        draws++;
+        if (isHome) homeDraws++; else awayDraws++;
       } else {
-        losses += 1;
+        result = 'L';
+        losses++;
+        if (isHome) homeLosses++; else awayLosses++;
       }
 
-
-      // Track clean sheets
-      if (opponentScore === 0) {
-        cleanSheets += 1;
+      if (isHome) {
+        homeScored += teamScore;
+        homeConceded += oppScore;
+      } else {
+        awayScored += teamScore;
+        awayConceded += oppScore;
       }
-    });
 
+      if (formResults.length < 5) {
+        formResults.push(result);
+      }
 
-    const completedMatches = wins + draws + losses;
+      if (recentMatches.length < 10) {
+        recentMatches.push({
+          id: match.id,
+          opponent,
+          result,
+          score: `${teamScore}-${oppScore}`,
+          date: match.kickOffTime.toISOString(),
+          isHome,
+        });
+      }
+    }
 
+    const totalMatches = wins + draws + losses;
+    const homeMatches = homeWins + homeDraws + homeLosses;
+    const awayMatches = awayWins + awayDraws + awayLosses;
 
-    const teamStats: TeamStatistics = {
-      totalMatches: completedMatches,
-      wins,
-      draws,
-      losses,
-      totalGoalsFor,
-      totalGoalsAgainst,
-      goalDifference: totalGoalsFor - totalGoalsAgainst,
-      winRate: calculatePercentage(wins, completedMatches),
-      drawRate: calculatePercentage(draws, completedMatches),
-      lossRate: calculatePercentage(losses, completedMatches),
-      goalsPerGame: calculateAverage(totalGoalsFor, completedMatches),
-      goalsAgainstPerGame: calculateAverage(totalGoalsAgainst, completedMatches),
-      cleanSheets,
-      avgAppearances: 0, // Will be calculated with player stats
-    };
+    // Calculate points (default 3-1-0 system)
+    const pointsEarned = wins * 3 + draws * 1;
+    const pointsPossible = totalMatches * 3;
 
-
-    // ========================================================================
-    // FETCH TEAM MEMBERS AND PLAYER STATISTICS
-    // ========================================================================
-
-
+    // 9. Fetch team members for player stats
     const teamMembers = await prisma.teamMember.findMany({
-      where: {
-        teamId,
-        status: 'ACTIVE',
-      },
+      where: { teamId, isActive: true },
       include: {
         user: {
           select: {
@@ -471,186 +512,192 @@ export async function GET(
       },
     });
 
+    // Get player profiles for these users
+    const userIds = teamMembers.map((tm) => tm.userId);
+    const players = await prisma.player.findMany({
+      where: { userId: { in: userIds } },
+      select: {
+        id: true,
+        userId: true,
+        position: true,
+        shirtNumber: true,
+      },
+    });
 
-    // ========================================================================
-    // CALCULATE PLAYER STATISTICS
-    // ========================================================================
+    const playerMap = new Map(players.map((p) => [p.userId, p]));
+    const playerIds = players.map((p) => p.id);
 
-
-    const playerStatsPromises = teamMembers.map(async (member) => {
-      const playerProfile = await prisma.player.findUnique({
-        where: { userId: member.userId },
-        select: {
-          id: true,
-          position: true,
-          shirtNumber: true,
+    // 10. Fetch match lineups for appearance data
+    const lineups = await prisma.matchLineup.findMany({
+      where: {
+        playerId: { in: playerIds },
+        match: {
+          status: MatchStatus.COMPLETED,
+          OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+          ...(Object.keys(dateFilter).length > 0 ? { kickOffTime: dateFilter } : {}),
         },
-      });
+      },
+      include: {
+        match: { select: { id: true } },
+      },
+    });
 
+    // 11. Fetch match events
+    const events = await prisma.matchEvent.findMany({
+      where: {
+        playerId: { in: playerIds },
+        match: {
+          status: MatchStatus.COMPLETED,
+          OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+          ...(Object.keys(dateFilter).length > 0 ? { kickOffTime: dateFilter } : {}),
+        },
+      },
+      select: {
+        playerId: true,
+        eventType: true,
+      },
+    });
 
-      if (!playerProfile) {
-        return null;
+    // 12. Build player statistics
+    const playerStatsMap = new Map<string, PlayerPerformanceSummary>();
+
+    for (const member of teamMembers) {
+      const player = playerMap.get(member.userId);
+      if (!player) continue;
+
+      const playerLineups = lineups.filter((l) => l.playerId === player.id);
+      const playerEvents = events.filter((e) => e.playerId === player.id);
+
+      // Count event types
+      const eventCounts: Record<string, number> = {};
+      let contributions = 0;
+      let disciplinaryPoints = 0;
+
+      for (const event of playerEvents) {
+        eventCounts[event.eventType] = (eventCounts[event.eventType] || 0) + 1;
+        
+        // Count contributions
+        if (SPORT_CONTRIBUTION_EVENTS[club.sport]?.includes(event.eventType as MatchEventType)) {
+          contributions++;
+        }
+        
+        // Count disciplinary
+        if (event.eventType === 'YELLOW_CARD') disciplinaryPoints += 1;
+        if (event.eventType === 'RED_CARD') disciplinaryPoints += 3;
       }
 
+      const startingApps = playerLineups.filter((l) => l.isStarter).length;
+      const subApps = playerLineups.filter((l) => !l.isStarter && l.minutesPlayed && l.minutesPlayed > 0).length;
+      const totalMinutes = playerLineups.reduce((sum, l) => sum + (l.minutesPlayed || 0), 0);
+      const ratings = playerLineups.filter((l) => l.rating !== null).map((l) => l.rating as number);
 
-      // Get all match events (goals, assists, cards)
-      const playerEvents = await prisma.matchEvent.findMany({
-        where: {
-          playerId: playerProfile.id,
-          match: {
-            status: 'FINISHED',
-          },
-        },
-        include: {
-          match: true,
-        },
-      });
-
-
-      const goals = playerEvents.filter((e) => e.type === 'GOAL').length;
-      const assists = playerEvents.filter((e) => e.type === 'ASSIST').length;
-      const yellowCards = playerEvents.filter((e) => e.type === 'YELLOW_CARD').length;
-      const redCards = playerEvents.filter((e) => e.type === 'RED_CARD').length;
-
-
-      // Get match attendance records
-      const matchAttendances = await prisma.matchAttendance.findMany({
-        where: {
-          playerId: playerProfile.id,
-          match: {
-            status: 'FINISHED',
-          },
-        },
-        include: {
-          match: true,
-        },
-      });
-
-
-      const totalAppearances = matchAttendances.length;
-      const startingAppearances = matchAttendances.filter(
-        (ma) => ma.status === 'STARTING_LINEUP'
-      ).length;
-      const substitutedOn = matchAttendances.filter(
-        (ma) => ma.status === 'SUBSTITUTE'
-      ).length;
-
-
-      const totalMinutesPlayed = matchAttendances.reduce(
-        (sum, ma) => sum + (ma.minutesPlayed || 0),
-        0
-      );
-
-
-      // Calculate performance rating average
-      const performanceRatings = matchAttendances
-        .filter((ma) => ma.performanceRating !== null)
-        .map((ma) => ma.performanceRating as number);
-
-
-      const avgPerformanceRating = calculateAverage(
-        performanceRatings.reduce((a, b) => a + b, 0),
-        performanceRatings.length,
-        2
-      );
-
-
-      // Calculate per-game averages
-      const goalsPerGame = calculateAverage(goals, totalAppearances);
-      const assistsPerGame = calculateAverage(assists, totalAppearances);
-
-
-      return {
-        playerId: playerProfile.id,
+      playerStatsMap.set(player.id, {
+        playerId: player.id,
         userId: member.userId,
         playerName: `${member.user.firstName} ${member.user.lastName}`,
-        position: playerProfile.position || 'Unknown',
-        shirtNumber: playerProfile.shirtNumber,
-        goals,
-        assists,
-        appearances: totalAppearances,
-        minutesPlayed: totalMinutesPlayed,
-        goalsPerGame,
-        assistsPerGame,
-        startingAppearances,
-        substitutedOn,
-        yellowCards,
-        redCards,
-        avgPerformanceRating,
-      };
-    });
+        position: player.position,
+        shirtNumber: player.shirtNumber,
+        appearances: playerLineups.length,
+        startingAppearances: startingApps,
+        substituteAppearances: subApps,
+        minutesPlayed: totalMinutes,
+        contributions,
+        disciplinaryPoints,
+        sportStats: eventCounts,
+        avgRating: ratings.length > 0 ? calculateAverage(ratings.reduce((a, b) => a + b, 0), ratings.length) : null,
+      });
+    }
 
+    // Sort by contributions (descending)
+    const playerStats = Array.from(playerStatsMap.values()).sort(
+      (a, b) => b.contributions - a.contributions
+    );
 
-    const playerStats = (
-      await Promise.all(playerStatsPromises)
-    )
-      .filter((p): p is PlayerStatistic => p !== null)
-      .sort((a, b) => b.goals - a.goals); // Sort by goals descending
-
-
-    // ========================================================================
-    // FINALIZE TEAM STATISTICS
-    // ========================================================================
-
-
-    const totalPlayerAppearances = playerStats.reduce((sum, p) => sum + p.appearances, 0);
-    teamStats.avgAppearances = calculateAverage(totalPlayerAppearances, playerStats.length);
-
-
-    // ========================================================================
-    // LOG REQUEST AND RETURN RESPONSE
-    // ========================================================================
-
-
-    logAnalyticsRequest(clubId, teamId, userId, 200);
-
-
-    const response: AnalyticsResponse = {
-      success: true,
-      data: {
-        team: {
-          id: team.id,
-          name: team.name,
-        },
-        teamStats,
-        playerStats,
+    // 13. Build response
+    const response: TeamAnalyticsResponse = {
+      team: {
+        id: team.id,
+        name: team.name,
+        shortName: team.shortName,
+        logo: team.logo,
       },
-      timestamp: getTimestamp(),
+      club: {
+        id: club.id,
+        name: club.name,
+        sport: club.sport,
+      },
+      period: {
+        type: periodType,
+        label: periodLabel,
+        from: dateFilter.gte?.toISOString(),
+        to: dateFilter.lte?.toISOString(),
+      },
+      coreStats: {
+        totalMatches,
+        wins,
+        draws,
+        losses,
+        winRate: calculatePercentage(wins, totalMatches),
+        drawRate: calculatePercentage(draws, totalMatches),
+        lossRate: calculatePercentage(losses, totalMatches),
+        cleanSheets,
+        pointsEarned,
+        pointsPossible,
+        form: buildFormString(formResults),
+      },
+      scoringStats: {
+        totalScored,
+        totalConceded,
+        scoreDifference: totalScored - totalConceded,
+        scoredPerGame: calculateAverage(totalScored, totalMatches),
+        concededPerGame: calculateAverage(totalConceded, totalMatches),
+        breakdown: {}, // Could be enhanced with sport-specific breakdowns
+      },
+      homeStats: {
+        totalMatches: homeMatches,
+        wins: homeWins,
+        draws: homeDraws,
+        losses: homeLosses,
+        winRate: calculatePercentage(homeWins, homeMatches),
+        totalScored: homeScored,
+        totalConceded: homeConceded,
+        scoreDifference: homeScored - homeConceded,
+      },
+      awayStats: {
+        totalMatches: awayMatches,
+        wins: awayWins,
+        draws: awayDraws,
+        losses: awayLosses,
+        winRate: calculatePercentage(awayWins, awayMatches),
+        totalScored: awayScored,
+        totalConceded: awayConceded,
+        scoreDifference: awayScored - awayConceded,
+      },
+      playerStats,
+      sportContext: {
+        sport: club.sport,
+        scoringLabels: SPORT_SCORING_LABELS[club.sport],
+        eventTypes: SPORT_EVENT_TYPES[club.sport] || [],
+      },
+      recentMatches,
     };
 
-
-    return NextResponse.json(response, { status: 200 });
-  } catch (error) {
-    console.error('[Analytics API Error]', {
-      timestamp: getTimestamp(),
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
+    return createResponse(response, {
+      success: true,
+      message: `Analytics for ${team.name}`,
+      requestId,
     });
-
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Internal Server Error',
-        details: process.env.NODE_ENV === 'development'
-          ? error instanceof Error
-            ? error.message
-            : 'Unknown error'
-          : 'Failed to fetch team analytics',
-        timestamp: getTimestamp(),
-      },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error(`[${requestId}] Team Analytics error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to fetch team analytics',
+      code: 'INTERNAL_ERROR',
+      requestId,
+      status: 500,
+    });
   }
 }
 
-
-// ============================================================================
-// EXPORTS FOR TESTING
-// ============================================================================
-
-
+// Export utility functions for testing
 export { calculatePercentage, calculateAverage };
-
-
-export type { TeamStatistics, PlayerStatistic, AnalyticsResponse };

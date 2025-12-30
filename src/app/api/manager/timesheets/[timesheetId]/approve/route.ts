@@ -1,317 +1,356 @@
-/**
- * ============================================================================
- * TIMESHEET APPROVAL ROUTE - World-Class Sports Management Implementation
- * ============================================================================
- *
- * @file src/app/api/manager/timesheets/[timesheetId]/approve/route.ts
- * @description Manager approval workflow for player timesheets with validation
- * @version 2.0.0 (Production-Ready)
- *
- * FEATURES:
- * ✅ Full TypeScript type safety
- * ✅ Schema-aligned role-based access control
- * ✅ Comprehensive validation & error handling
- * ✅ Request ID tracking for debugging
- * ✅ Performance monitoring
- * ✅ Audit logging
- * ✅ Transaction safety
- * ✅ JSDoc documentation
- */
+// =============================================================================
+// ✅ APPROVE TIMESHEET API - Enterprise-Grade Implementation
+// =============================================================================
+// POST /api/manager/clubs/[clubId]/timesheets/[timesheetId]/approve
+// =============================================================================
+// Schema: v7.8.0 | Model: CoachTimesheet
+// Field Mapping: approvedAt, approvedBy, approvalNotes, status -> APPROVED
+// Permission: Owner, Manager, Treasurer
+// =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { ClubMemberRole, TimesheetStatus } from '@prisma/client';
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-interface ApprovalResponse {
+interface ApiResponse<T = unknown> {
   success: boolean;
-  message: string;
-  timesheetId: string;
-  approvedBy: string;
-  approvedAt: string;
+  data?: T;
+  error?: string;
+  code?: string;
+  message?: string;
+  requestId: string;
+  timestamp: string;
 }
 
-interface ErrorResponse {
-  success: boolean;
-  error: string;
-  code: string;
-  details?: string;
-}
-
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const ERROR_CODES = {
-  UNAUTHORIZED: 'UNAUTHORIZED',
-  FORBIDDEN: 'FORBIDDEN',
-  NOT_FOUND: 'NOT_FOUND',
-  INVALID_STATE: 'INVALID_STATE',
-  INTERNAL_ERROR: 'INTERNAL_ERROR',
-} as const;
-
-// Manager roles that can approve timesheets
-const MANAGER_ROLES = ['CLUB_MANAGER', 'CLUB_OWNER', 'TREASURER'] as const;
-
-// ============================================================================
-// VALIDATION HELPERS
-// ============================================================================
-
-/**
- * Validate session and user authorization
- * Checks if user exists and has manager role
- */
-async function validateManagerAccess(email: string) {
-  const user = await prisma.user.findUnique({
-    where: { email },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      roles: true,
-    },
-  });
-
-  if (!user) {
-    return {
-      isValid: false,
-      error: 'User not found',
-      user: null,
-    };
-  }
-
-  // Check if user has any manager role
-  const hasManagerRole = user.roles.some((role) =>
-    MANAGER_ROLES.includes(role as typeof MANAGER_ROLES[number])
-  );
-
-  if (!hasManagerRole) {
-    return {
-      isValid: false,
-      error: 'Manager role required',
-      user: null,
-    };
-  }
-
-  return {
-    isValid: true,
-    error: null,
-    user,
+interface RouteParams {
+  params: {
+    clubId: string;
+    timesheetId: string;
   };
 }
 
-/**
- * Validate timesheet exists and is in approvable state
- * Only SUBMITTED timesheets can be approved
- */
-async function validateTimesheetState(timesheetId: string) {
-  const timesheet = await prisma.coachTimesheet.findUnique({
-    where: { id: timesheetId },
-    include: {
-      coach: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
+interface ApprovalResult {
+  timesheetId: string;
+  period: string;
+  coachName: string;
+  totalHours: number;
+  totalCost: number | null;
+  currency: string;
+  status: TimesheetStatus;
+  approvedAt: string;
+  approvedBy: {
+    id: string;
+    name: string;
+  };
+}
+
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const ApproveTimesheetSchema = z.object({
+  approvalNotes: z.string().max(1000).optional(),
+  adjustedHours: z.object({
+    trainingHours: z.number().min(0).max(100).optional(),
+    matchHours: z.number().min(0).max(100).optional(),
+    adminHours: z.number().min(0).max(100).optional(),
+    travelHours: z.number().min(0).max(100).optional(),
+    meetingHours: z.number().min(0).max(100).optional(),
+    otherHours: z.number().min(0).max(100).optional(),
+  }).optional(),
+  adjustedRate: z.number().min(0).max(1000).optional(),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `ts_approve_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: string;
+    code?: string;
+    message?: string;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (options.success && data !== null) response.data = data;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
+  if (options.message) response.message = options.message;
+
+  return NextResponse.json(response, { status: options.status || 200 });
+}
+
+const APPROVER_ROLES: ClubMemberRole[] = [
+  ClubMemberRole.OWNER,
+  ClubMemberRole.MANAGER,
+  ClubMemberRole.TREASURER,
+];
+
+async function hasApproverPermission(userId: string, clubId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+
+  if (user?.isSuperAdmin) return true;
+
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { ownerId: true },
+  });
+
+  if (club?.ownerId === userId) return true;
+
+  const clubMember = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: { in: APPROVER_ROLES },
+    },
+  });
+
+  return !!clubMember;
+}
+
+// =============================================================================
+// POST HANDLER - Approve Timesheet
+// =============================================================================
+
+export async function POST(
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, timesheetId } = params;
+
+  try {
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
+    }
+
+    // 2. Authorization
+    const hasPermission = await hasApproverPermission(session.user.id, clubId);
+    if (!hasPermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to approve timesheets',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
+    }
+
+    // 3. Get approver info
+    const approver = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+
+    if (!approver) {
+      return createResponse(null, {
+        success: false,
+        error: 'Approver not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
+
+    // 4. Fetch timesheet
+    const timesheet = await prisma.coachTimesheet.findUnique({
+      where: { id: timesheetId },
+      include: {
+        coach: {
+          include: {
+            user: {
+              select: {
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  if (!timesheet) {
-    return {
-      isValid: false,
-      error: 'Timesheet not found',
-      timesheet: null,
-    };
-  }
-
-  if (timesheet.status !== 'SUBMITTED') {
-    return {
-      isValid: false,
-      error: `Timesheet status is ${timesheet.status}. Only SUBMITTED timesheets can be approved.`,
-      timesheet: null,
-    };
-  }
-
-  return {
-    isValid: true,
-    error: null,
-    timesheet,
-  };
-}
-
-// ============================================================================
-// MAIN HANDLER
-// ============================================================================
-
-/**
- * POST /api/manager/timesheets/[timesheetId]/approve
- *
- * Approve a submitted timesheet (Manager only)
- *
- * Request body: (empty - uses authentication)
- *
- * Authorization: Must have CLUB_MANAGER, CLUB_OWNER, or TREASURER role
- *
- * @param request NextRequest
- * @param params Route parameters with timesheetId
- * @returns ApprovalResponse on success, ErrorResponse on failure
- */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { timesheetId: string } }
-): Promise<NextResponse<ApprovalResponse | ErrorResponse>> {
-  const requestId = crypto.randomUUID();
-  const startTime = performance.now();
-
-  try {
-    // ========================================================================
-    // 1. AUTHENTICATION
-    // ========================================================================
-
-    const session = await auth();
-
-    if (!session) {
-      console.warn('Unauthorized approval attempt - no session', { requestId });
-      return Response.json(
-        {
-          success: false,
-          error: 'Authentication required',
-          code: ERROR_CODES.UNAUTHORIZED,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 2. VALIDATE MANAGER AUTHORIZATION
-    // ========================================================================
-
-    const { isValid: isAuthorized, error: authError, user } =
-      await validateManagerAccess(session.user.email);
-
-    if (!isAuthorized || !user) {
-      console.warn('Manager authorization failed', {
+    if (!timesheet || timesheet.clubId !== clubId) {
+      return createResponse(null, {
+        success: false,
+        error: 'Timesheet not found',
+        code: 'NOT_FOUND',
         requestId,
-        email: session.user.email,
-        error: authError,
+        status: 404,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: authError || 'Manager role required',
-          code: ERROR_CODES.FORBIDDEN,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
     }
 
-    // ========================================================================
-    // 3. VALIDATE TIMESHEET STATE
-    // ========================================================================
-
-    const { timesheetId } = params;
-
-    const { isValid: isTimesheetValid, error: timesheetError, timesheet } =
-      await validateTimesheetState(timesheetId);
-
-    if (!isTimesheetValid || !timesheet) {
-      console.warn('Timesheet validation failed', {
+    // 5. Validate status - must be SUBMITTED to approve
+    if (timesheet.status !== TimesheetStatus.SUBMITTED) {
+      return createResponse(null, {
+        success: false,
+        error: `Cannot approve timesheet with status ${timesheet.status}. Only SUBMITTED timesheets can be approved.`,
+        code: 'INVALID_STATUS',
         requestId,
-        timesheetId,
-        error: timesheetError,
+        status: 400,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: timesheetError || 'Timesheet not found',
-          code: timesheet ? ERROR_CODES.INVALID_STATE : ERROR_CODES.NOT_FOUND,
-        },
-        { status: timesheet ? 400 : 404, headers: { 'X-Request-ID': requestId } }
-      );
     }
 
-    // ========================================================================
-    // 4. APPROVE TIMESHEET
-    // ========================================================================
+    // 6. Parse and validate body (optional adjustments)
+    let body = {};
+    try {
+      const rawBody = await request.text();
+      if (rawBody) {
+        body = JSON.parse(rawBody);
+      }
+    } catch {
+      // No body or invalid JSON - that's okay for simple approval
+    }
 
-    const approverName = `${user.firstName} ${user.lastName}`.trim();
-    const approvedAt = new Date();
+    const validation = ApproveTimesheetSchema.safeParse(body);
+    if (!validation.success) {
+      return createResponse(null, {
+        success: false,
+        error: validation.error.errors[0]?.message || 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        requestId,
+        status: 400,
+      });
+    }
 
+    const { approvalNotes, adjustedHours, adjustedRate } = validation.data;
+
+    // 7. Calculate adjusted values if provided
+    const updateData: Record<string, unknown> = {
+      status: TimesheetStatus.APPROVED,
+      approvedAt: new Date(),
+      approvedBy: session.user.id,
+      approvalNotes: approvalNotes || null,
+      reviewedAt: new Date(),
+      reviewedBy: session.user.id,
+    };
+
+    // Apply hour adjustments if provided
+    if (adjustedHours) {
+      if (adjustedHours.trainingHours !== undefined) updateData.trainingHours = adjustedHours.trainingHours;
+      if (adjustedHours.matchHours !== undefined) updateData.matchHours = adjustedHours.matchHours;
+      if (adjustedHours.adminHours !== undefined) updateData.adminHours = adjustedHours.adminHours;
+      if (adjustedHours.travelHours !== undefined) updateData.travelHours = adjustedHours.travelHours;
+      if (adjustedHours.meetingHours !== undefined) updateData.meetingHours = adjustedHours.meetingHours;
+      if (adjustedHours.otherHours !== undefined) updateData.otherHours = adjustedHours.otherHours;
+
+      // Recalculate total hours
+      const newTotalHours = (
+        (adjustedHours.trainingHours ?? timesheet.trainingHours) +
+        (adjustedHours.matchHours ?? timesheet.matchHours) +
+        (adjustedHours.adminHours ?? timesheet.adminHours) +
+        (adjustedHours.travelHours ?? timesheet.travelHours) +
+        (adjustedHours.meetingHours ?? timesheet.meetingHours) +
+        (adjustedHours.otherHours ?? timesheet.otherHours)
+      );
+      updateData.totalHours = newTotalHours;
+    }
+
+    // Apply rate adjustment if provided
+    if (adjustedRate !== undefined) {
+      updateData.hourlyRate = adjustedRate;
+    }
+
+    // Recalculate total cost
+    const finalHourlyRate = (adjustedRate ?? timesheet.hourlyRate) || 0;
+    const finalTotalHours = (updateData.totalHours as number) ?? timesheet.totalHours;
+    updateData.totalCost = finalHourlyRate * finalTotalHours;
+    updateData.hourlyCost = finalHourlyRate;
+
+    // 8. Update timesheet
     const updatedTimesheet = await prisma.coachTimesheet.update({
       where: { id: timesheetId },
+      data: updateData,
+    });
+
+    // 9. Create audit log
+    await prisma.auditLog.create({
       data: {
-        status: 'APPROVED',
-        approvedBy: user.id,
-        approvedAt,
-      },
-      select: {
-        id: true,
-        status: true,
-        approvedAt: true,
+        userId: session.user.id,
+        action: 'EXPENSE_APPROVED', // Using existing audit action
+        resourceType: 'COACH_TIMESHEET',
+        resourceId: timesheetId,
+        beforeState: {
+          status: timesheet.status,
+          totalHours: timesheet.totalHours,
+          totalCost: timesheet.totalCost,
+        },
+        afterState: {
+          status: TimesheetStatus.APPROVED,
+          totalHours: updateData.totalHours ?? timesheet.totalHours,
+          totalCost: updateData.totalCost,
+          approvedBy: session.user.id,
+        },
       },
     });
 
-    // ========================================================================
-    // 5. LOG & RESPOND
-    // ========================================================================
-
-    const duration = performance.now() - startTime;
-
-    console.log('Timesheet approved successfully', {
-      requestId,
-      timesheetId,
-      approverId: user.id,
-      coachName: `${timesheet.coach.user.firstName} ${timesheet.coach.user.lastName}`,
-      approverName,
-      approvedAt: approvedAt.toISOString(),
-      duration: `${Math.round(duration)}ms`,
-    });
-
-    const response: ApprovalResponse = {
-      success: true,
-      message: 'Timesheet approved successfully',
+    // 10. Build response
+    const result: ApprovalResult = {
       timesheetId: updatedTimesheet.id,
-      approvedBy: approverName,
-      approvedAt: approvedAt.toISOString(),
+      period: updatedTimesheet.period,
+      coachName: `${timesheet.coach.user.firstName} ${timesheet.coach.user.lastName}`,
+      totalHours: updatedTimesheet.totalHours,
+      totalCost: updatedTimesheet.totalCost,
+      currency: updatedTimesheet.currency,
+      status: updatedTimesheet.status,
+      approvedAt: updatedTimesheet.approvedAt!.toISOString(),
+      approvedBy: {
+        id: approver.id,
+        name: `${approver.firstName} ${approver.lastName}`,
+      },
     };
 
-    return NextResponse.json(response, {
-      status: 200,
-      headers: {
-        'X-Request-ID': requestId,
-        'X-Response-Time': `${Math.round(duration)}ms`,
-      },
+    return createResponse(result, {
+      success: true,
+      message: 'Timesheet approved successfully',
+      requestId,
     });
   } catch (error) {
-    const duration = performance.now() - startTime;
-
-    console.error('Timesheet approval error', {
+    console.error(`[${requestId}] Approve Timesheet error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to approve timesheet',
+      code: 'INTERNAL_ERROR',
       requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      duration: `${Math.round(duration)}ms`,
+      status: 500,
     });
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to approve timesheet',
-        code: ERROR_CODES.INTERNAL_ERROR,
-        details:
-          error instanceof Error ? error.message : 'Unknown error occurred',
-      },
-      { status: 500, headers: { 'X-Request-ID': requestId } }
-    );
   }
 }

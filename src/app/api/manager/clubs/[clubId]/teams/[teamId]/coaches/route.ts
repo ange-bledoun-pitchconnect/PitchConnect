@@ -1,392 +1,190 @@
-/**
- * ============================================================================
- * TEAM COACHES API - World-Class Sports Management Implementation
- * ============================================================================
- *
- * @file src/app/api/manager/clubs/[clubId]/teams/[teamId]/coaches/route.ts
- * @description GET and POST coaches for a team
- * @version 2.0.0 (Production-Ready)
- *
- * FEATURES:
- * ✅ Full TypeScript type safety
- * ✅ Schema-aligned role-based access control
- * ✅ Club ownership verification
- * ✅ Team-coach relationship management
- * ✅ Comprehensive error handling
- * ✅ Request ID tracking
- * ✅ Performance monitoring
- */
+// =============================================================================
+// 👨‍🏫 TEAM COACHES API - Enterprise-Grade Implementation
+// =============================================================================
+// GET  /api/manager/clubs/[clubId]/teams/[teamId]/coaches - List coaches
+// POST /api/manager/clubs/[clubId]/teams/[teamId]/coaches - Add coach to team
+// =============================================================================
+// Schema: v7.8.0 | Multi-Sport: ✅ Generic
+// Permission: Club Owner, Manager
+// =============================================================================
 
-import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { ClubMemberRole, TeamRole } from '@prisma/client';
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-interface CoachDetails {
-  id: string;
-  userId: string;
-  coachType: string;
-  yearsExperience: number | null;
-  qualifications: string[];
-  specializations: string[];
-  certifications: string[];
-  bio: string | null;
-  hourlyRate: number | null;
-  currency: string;
-  user: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  requestId: string;
+  timestamp: string;
+}
+
+interface RouteParams {
+  params: {
+    clubId: string;
+    teamId: string;
   };
 }
 
-interface CoachesListResponse {
-  success: boolean;
-  coaches: CoachDetails[];
-  teamId: string;
-  clubId: string;
+interface CoachRecord {
+  id: string; // TeamMember ID
+  userId: string;
+  name: string;
+  email: string;
+  avatar?: string | null;
+  role: TeamRole;
+  clubRole: ClubMemberRole;
+  phone?: string | null;
+  specialization?: string | null;
+  certifications: string[];
+  joinedAt: string;
+  isActive: boolean;
+  
+  // Statistics
+  trainingSessions: number;
+  upcomingSessions: number;
+  
+  // Timesheet summary
+  hoursThisMonth: number;
+  totalHours: number;
 }
 
-interface AssignCoachResponse {
-  success: boolean;
-  message: string;
-  coach: CoachDetails;
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const AddCoachSchema = z.object({
+  userId: z.string().min(1, 'User ID is required'),
+  role: z.enum(['HEAD_COACH', 'ASSISTANT_COACH', 'GOALKEEPER_COACH', 'FITNESS_COACH']).default('ASSISTANT_COACH'),
+  specialization: z.string().max(200).optional(),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `coach_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-interface ErrorResponse {
-  success: boolean;
-  error: string;
-  code: string;
-  details?: string;
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: string;
+    code?: string;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (options.success && data !== null) response.data = data;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
+
+  return NextResponse.json(response, { status: options.status || 200 });
 }
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
+const MANAGE_ROLES = [ClubMemberRole.OWNER, ClubMemberRole.MANAGER];
 
-const ERROR_CODES = {
-  UNAUTHORIZED: 'UNAUTHORIZED',
-  FORBIDDEN: 'FORBIDDEN',
-  NOT_FOUND: 'NOT_FOUND',
-  INVALID_REQUEST: 'INVALID_REQUEST',
-  INTERNAL_ERROR: 'INTERNAL_ERROR',
-} as const;
+const COACH_CLUB_ROLES = [
+  ClubMemberRole.HEAD_COACH,
+  ClubMemberRole.ASSISTANT_COACH,
+  ClubMemberRole.GOALKEEPER_COACH,
+  ClubMemberRole.FITNESS_COACH,
+];
 
-// ============================================================================
-// VALIDATION HELPERS
-// ============================================================================
+const COACH_TEAM_ROLES: TeamRole[] = [
+  'HEAD_COACH',
+  'ASSISTANT_COACH',
+  'GOALKEEPER_COACH',
+  'FITNESS_COACH',
+];
 
-/**
- * Validate club ownership
- */
-async function validateClubOwnership(clubId: string, userId: string) {
-  const club = await prisma.club.findUnique({
-    where: { id: clubId },
-    select: { ownerId: true },
+async function hasManagePermission(userId: string, clubId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+  if (user?.isSuperAdmin) return true;
+
+  const clubMember = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: { in: MANAGE_ROLES },
+    },
   });
 
-  if (!club) {
-    return { isValid: false, error: 'Club not found' };
-  }
-
-  if (club.ownerId !== userId) {
-    return { isValid: false, error: 'Not club owner' };
-  }
-
-  return { isValid: true, error: null };
+  return !!clubMember;
 }
 
-/**
- * Validate team belongs to club
- */
-async function validateTeamBelongsToClub(teamId: string, clubId: string) {
-  const team = await prisma.team.findUnique({
-    where: { id: teamId },
-    select: { clubId: true },
-  });
+// =============================================================================
+// GET HANDLER - List Coaches
+// =============================================================================
 
-  if (!team) {
-    return { isValid: false, error: 'Team not found' };
-  }
-
-  if (team.clubId !== clubId) {
-    return { isValid: false, error: 'Team does not belong to club' };
-  }
-
-  return { isValid: true, error: null };
-}
-
-// ============================================================================
-// GET HANDLER - Retrieve coaches for a team
-// ============================================================================
-
-/**
- * GET /api/manager/clubs/[clubId]/teams/[teamId]/coaches
- *
- * Retrieve all coaches assigned to a team
- */
 export async function GET(
-  _request: NextRequest,
-  { params }: { params: { clubId: string; teamId: string } }
-): Promise<NextResponse<CoachesListResponse | ErrorResponse>> {
-  const requestId = crypto.randomUUID();
-  const startTime = performance.now();
-
-  try {
-    // ========================================================================
-    // 1. AUTHENTICATION
-    // ========================================================================
-    const session = await auth();
-    if (!session) {
-      return Response.json(
-        {
-          success: false,
-          error: 'Authentication required',
-          code: ERROR_CODES.UNAUTHORIZED,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 2. VALIDATE CLUB OWNERSHIP
-    // ========================================================================
-    const { isValid: isOwner, error: ownerError } = await validateClubOwnership(
-      params.clubId,
-      session.user.id
-    );
-
-    if (!isOwner) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: ownerError || 'Forbidden',
-          code: ERROR_CODES.FORBIDDEN,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 3. VALIDATE TEAM BELONGS TO CLUB
-    // ========================================================================
-    const { isValid: isTeamValid, error: teamError } =
-      await validateTeamBelongsToClub(params.teamId, params.clubId);
-
-    if (!isTeamValid) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: teamError || 'Team not found',
-          code: ERROR_CODES.NOT_FOUND,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 4. GET TEAM AND COACHES
-    // ========================================================================
-    // Note: In your schema, Coach → TrainingSession → Team
-    // So we get coaches through training sessions for this team
-    const trainingSessions = await prisma.trainingSession.findMany({
-      where: { teamId: params.teamId },
-      distinct: ['coachId'],
-      select: {
-        coach: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    const coaches = trainingSessions
-      .map((session) => session.coach)
-      .filter(
-        (coach, index, self) =>
-          self.findIndex((c) => c.id === coach.id) === index
-      ) // Remove duplicates
-      .map((coach) => ({
-        id: coach.id,
-        userId: coach.userId,
-        coachType: coach.coachType,
-        yearsExperience: coach.yearsExperience,
-        qualifications: coach.qualifications,
-        specializations: coach.specializations,
-        certifications: coach.certifications,
-        bio: coach.bio,
-        hourlyRate: coach.hourlyRate,
-        currency: coach.currency,
-        user: coach.user,
-      }));
-
-    // ========================================================================
-    // 5. RETURN RESPONSE
-    // ========================================================================
-    const duration = performance.now() - startTime;
-
-    console.log('Coaches retrieved', {
-      requestId,
-      clubId: params.clubId,
-      teamId: params.teamId,
-      coachCount: coaches.length,
-      duration: `${Math.round(duration)}ms`,
-    });
-
-    return NextResponse.json(
-      {
-        success: true,
-        coaches,
-        teamId: params.teamId,
-        clubId: params.clubId,
-      },
-      {
-        status: 200,
-        headers: {
-          'X-Request-ID': requestId,
-          'X-Response-Time': `${Math.round(duration)}ms`,
-        },
-      }
-    );
-  } catch (error) {
-    const duration = performance.now() - startTime;
-    console.error('Get team coaches error', {
-      requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      duration: `${Math.round(duration)}ms`,
-    });
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to retrieve team coaches',
-        code: ERROR_CODES.INTERNAL_ERROR,
-      },
-      { status: 500, headers: { 'X-Request-ID': requestId } }
-    );
-  }
-}
-
-// ============================================================================
-// POST HANDLER - Assign coach to team
-// ============================================================================
-
-interface AssignCoachRequest {
-  coachId: string;
-}
-
-/**
- * POST /api/manager/clubs/[clubId]/teams/[teamId]/coaches
- *
- * Assign a coach to a team by creating a training session
- * (Coach → Team relationship via TrainingSession)
- */
-export async function POST(
   request: NextRequest,
-  { params }: { params: { clubId: string; teamId: string } }
-): Promise<NextResponse<AssignCoachResponse | ErrorResponse>> {
-  const requestId = crypto.randomUUID();
-  const startTime = performance.now();
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, teamId } = params;
 
   try {
-    // ========================================================================
-    // 1. AUTHENTICATION
-    // ========================================================================
-    const session = await auth();
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Authentication required',
-          code: ERROR_CODES.UNAUTHORIZED,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
     }
 
-    // ========================================================================
-    // 2. VALIDATE CLUB OWNERSHIP
-    // ========================================================================
-    const { isValid: isOwner, error: ownerError } = await validateClubOwnership(
-      params.clubId,
-      session.user.id
-    );
+    // 2. Verify team belongs to club
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { id: true, name: true, clubId: true },
+    });
 
-    if (!isOwner) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: ownerError || 'Forbidden',
-          code: ERROR_CODES.FORBIDDEN,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
+    if (!team || team.clubId !== clubId) {
+      return createResponse(null, {
+        success: false,
+        error: 'Team not found or does not belong to this club',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
-    // ========================================================================
-    // 3. VALIDATE TEAM BELONGS TO CLUB
-    // ========================================================================
-    const { isValid: isTeamValid, error: teamError } =
-      await validateTeamBelongsToClub(params.teamId, params.clubId);
+    // 3. Parse query params
+    const { searchParams } = new URL(request.url);
+    const includeInactive = searchParams.get('includeInactive') === 'true';
 
-    if (!isTeamValid) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: teamError || 'Team not found',
-          code: ERROR_CODES.NOT_FOUND,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 4. PARSE & VALIDATE REQUEST
-    // ========================================================================
-    let body: AssignCoachRequest;
-
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid JSON in request body',
-          code: ERROR_CODES.INVALID_REQUEST,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    if (!body.coachId || typeof body.coachId !== 'string') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Coach ID is required',
-          code: ERROR_CODES.INVALID_REQUEST,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 5. VERIFY COACH EXISTS
-    // ========================================================================
-    const coach = await prisma.coach.findUnique({
-      where: { id: body.coachId },
+    // 4. Fetch team members with coach roles
+    const teamMembers = await prisma.teamMember.findMany({
+      where: {
+        teamId,
+        role: { in: COACH_TEAM_ROLES },
+        ...(includeInactive ? {} : { isActive: true }),
+      },
       include: {
         user: {
           select: {
@@ -394,94 +192,369 @@ export async function POST(
             firstName: true,
             lastName: true,
             email: true,
+            avatar: true,
+            phone: true,
           },
         },
       },
+      orderBy: [
+        { role: 'asc' }, // HEAD_COACH first
+        { createdAt: 'asc' },
+      ],
     });
 
-    if (!coach) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Coach not found',
-          code: ERROR_CODES.NOT_FOUND,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
+    // 5. Get club member info for each coach
+    const userIds = teamMembers.map((tm) => tm.userId);
+    const clubMembers = await prisma.clubMember.findMany({
+      where: {
+        clubId,
+        userId: { in: userIds },
+      },
+      select: {
+        userId: true,
+        role: true,
+        certifications: true,
+        specialization: true,
+      },
+    });
+    const clubMemberMap = new Map(clubMembers.map((cm) => [cm.userId, cm]));
+
+    // 6. Get training session counts
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const trainingSessions = await prisma.trainingSession.groupBy({
+      by: ['coachId'],
+      where: {
+        teamId,
+        coachId: { in: userIds },
+      },
+      _count: { id: true },
+    });
+    const sessionCountMap = new Map(trainingSessions.map((ts) => [ts.coachId, ts._count.id]));
+
+    const upcomingSessions = await prisma.trainingSession.groupBy({
+      by: ['coachId'],
+      where: {
+        teamId,
+        coachId: { in: userIds },
+        startTime: { gte: now },
+      },
+      _count: { id: true },
+    });
+    const upcomingMap = new Map(upcomingSessions.map((ts) => [ts.coachId, ts._count.id]));
+
+    // 7. Get timesheet data
+    const timesheets = await prisma.coachTimesheet.findMany({
+      where: {
+        coachId: { in: userIds },
+        teamId,
+      },
+      select: {
+        coachId: true,
+        hoursWorked: true,
+        date: true,
+      },
+    });
+
+    const timesheetMap = new Map<string, { thisMonth: number; total: number }>();
+    for (const ts of timesheets) {
+      const current = timesheetMap.get(ts.coachId) || { thisMonth: 0, total: 0 };
+      current.total += ts.hoursWorked;
+      if (ts.date >= startOfMonth) {
+        current.thisMonth += ts.hoursWorked;
+      }
+      timesheetMap.set(ts.coachId, current);
     }
 
-    // ========================================================================
-    // 6. CREATE TRAINING SESSION (Coach-Team link)
-    // ========================================================================
-    // In your schema, Coach connects to Team via TrainingSession
-    // Create an initial training session to assign the coach
-    await prisma.trainingSession.create({
-      data: {
-        teamId: params.teamId,
-        coachId: body.coachId,
-        date: new Date(),
-        startTime: new Date(),
-        endTime: new Date(Date.now() + 3600000), // 1 hour session
-        duration: 60,
-        focus: 'TEAM_SETUP',
-        sessionType: 'TEAM',
-      },
+    // 8. Build response
+    const coaches: CoachRecord[] = teamMembers.map((tm) => {
+      const clubMember = clubMemberMap.get(tm.userId);
+      const timesheet = timesheetMap.get(tm.userId) || { thisMonth: 0, total: 0 };
+
+      return {
+        id: tm.id,
+        userId: tm.userId,
+        name: `${tm.user.firstName} ${tm.user.lastName}`,
+        email: tm.user.email,
+        avatar: tm.user.avatar,
+        role: tm.role,
+        clubRole: clubMember?.role || ClubMemberRole.ASSISTANT_COACH,
+        phone: tm.user.phone,
+        specialization: clubMember?.specialization || null,
+        certifications: clubMember?.certifications || [],
+        joinedAt: tm.createdAt.toISOString(),
+        isActive: tm.isActive,
+        trainingSessions: sessionCountMap.get(tm.userId) || 0,
+        upcomingSessions: upcomingMap.get(tm.userId) || 0,
+        hoursThisMonth: timesheet.thisMonth,
+        totalHours: timesheet.total,
+      };
     });
 
-    // ========================================================================
-    // 7. RETURN RESPONSE
-    // ========================================================================
-    const duration = performance.now() - startTime;
-
-    console.log('Coach assigned to team', {
-      requestId,
-      clubId: params.clubId,
-      teamId: params.teamId,
-      coachId: body.coachId,
-      duration: `${Math.round(duration)}ms`,
-    });
-
-    const response: AssignCoachResponse = {
+    return createResponse({
+      team: { id: team.id, name: team.name },
+      coaches,
+      totalCoaches: coaches.length,
+      activeCoaches: coaches.filter((c) => c.isActive).length,
+    }, {
       success: true,
-      message: 'Coach successfully assigned to team',
-      coach: {
-        id: coach.id,
-        userId: coach.userId,
-        coachType: coach.coachType,
-        yearsExperience: coach.yearsExperience,
-        qualifications: coach.qualifications,
-        specializations: coach.specializations,
-        certifications: coach.certifications,
-        bio: coach.bio,
-        hourlyRate: coach.hourlyRate,
-        currency: coach.currency,
-        user: coach.user,
-      },
-    };
-
-    return NextResponse.json(response, {
-      status: 201,
-      headers: {
-        'X-Request-ID': requestId,
-        'X-Response-Time': `${Math.round(duration)}ms`,
-      },
+      requestId,
     });
   } catch (error) {
-    const duration = performance.now() - startTime;
-    console.error('Assign coach error', {
+    console.error(`[${requestId}] List Coaches error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to fetch coaches',
+      code: 'INTERNAL_ERROR',
       requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      duration: `${Math.round(duration)}ms`,
+      status: 500,
+    });
+  }
+}
+
+// =============================================================================
+// POST HANDLER - Add Coach to Team
+// =============================================================================
+
+export async function POST(
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, teamId } = params;
+
+  try {
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
+    }
+
+    // 2. Authorization
+    const hasPermission = await hasManagePermission(session.user.id, clubId);
+    if (!hasPermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to manage coaches',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
+    }
+
+    // 3. Verify team belongs to club
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { id: true, name: true, clubId: true },
     });
 
-    return NextResponse.json(
-      {
+    if (!team || team.clubId !== clubId) {
+      return createResponse(null, {
         success: false,
-        error: 'Failed to assign coach',
-        code: ERROR_CODES.INTERNAL_ERROR,
-        details: error instanceof Error ? error.message : undefined,
+        error: 'Team not found or does not belong to this club',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
+
+    // 4. Parse and validate body
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return createResponse(null, {
+        success: false,
+        error: 'Invalid JSON in request body',
+        code: 'INVALID_JSON',
+        requestId,
+        status: 400,
+      });
+    }
+
+    const validation = AddCoachSchema.safeParse(body);
+    if (!validation.success) {
+      return createResponse(null, {
+        success: false,
+        error: validation.error.errors[0]?.message || 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        requestId,
+        status: 400,
+      });
+    }
+
+    const { userId, role, specialization } = validation.data;
+
+    // 5. Verify user exists
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        avatar: true,
       },
-      { status: 500, headers: { 'X-Request-ID': requestId } }
-    );
+    });
+
+    if (!user) {
+      return createResponse(null, {
+        success: false,
+        error: 'User not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
+
+    // 6. Verify user is a club member with coach role
+    const clubMember = await prisma.clubMember.findFirst({
+      where: {
+        userId,
+        clubId,
+        isActive: true,
+        role: { in: COACH_CLUB_ROLES },
+      },
+    });
+
+    if (!clubMember) {
+      return createResponse(null, {
+        success: false,
+        error: 'User must be a coach in this club to be added to team',
+        code: 'NOT_COACH',
+        requestId,
+        status: 400,
+      });
+    }
+
+    // 7. Check if already in team
+    const existingMember = await prisma.teamMember.findFirst({
+      where: {
+        teamId,
+        userId,
+      },
+    });
+
+    if (existingMember) {
+      // Reactivate if inactive
+      if (!existingMember.isActive) {
+        const reactivated = await prisma.teamMember.update({
+          where: { id: existingMember.id },
+          data: {
+            isActive: true,
+            role: role as TeamRole,
+          },
+        });
+
+        return createResponse({
+          id: reactivated.id,
+          userId: user.id,
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          role: reactivated.role,
+          reactivated: true,
+        }, {
+          success: true,
+          requestId,
+        });
+      }
+
+      return createResponse(null, {
+        success: false,
+        error: 'Coach is already a member of this team',
+        code: 'ALREADY_MEMBER',
+        requestId,
+        status: 400,
+      });
+    }
+
+    // 8. Check HEAD_COACH limit (only one per team)
+    if (role === 'HEAD_COACH') {
+      const existingHead = await prisma.teamMember.findFirst({
+        where: {
+          teamId,
+          role: 'HEAD_COACH',
+          isActive: true,
+        },
+      });
+
+      if (existingHead) {
+        return createResponse(null, {
+          success: false,
+          error: 'Team already has a head coach. Remove or demote existing head coach first.',
+          code: 'HEAD_COACH_EXISTS',
+          requestId,
+          status: 400,
+        });
+      }
+    }
+
+    // 9. Create team membership
+    const teamMember = await prisma.teamMember.create({
+      data: {
+        teamId,
+        userId,
+        role: role as TeamRole,
+        isActive: true,
+      },
+    });
+
+    // 10. Update club member specialization if provided
+    if (specialization) {
+      await prisma.clubMember.update({
+        where: { id: clubMember.id },
+        data: { specialization },
+      });
+    }
+
+    // 11. Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'CREATE',
+        entityType: 'TEAM_MEMBER',
+        entityId: teamMember.id,
+        description: `Added coach ${user.firstName} ${user.lastName} to team ${team.name} as ${role}`,
+        metadata: {
+          coachUserId: userId,
+          teamId,
+          clubId,
+          role,
+        },
+      },
+    });
+
+    // 12. Return response
+    return createResponse({
+      id: teamMember.id,
+      userId: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      avatar: user.avatar,
+      role: teamMember.role,
+      clubRole: clubMember.role,
+      joinedAt: teamMember.createdAt.toISOString(),
+      isActive: true,
+    }, {
+      success: true,
+      requestId,
+      status: 201,
+    });
+  } catch (error) {
+    console.error(`[${requestId}] Add Coach error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to add coach to team',
+      code: 'INTERNAL_ERROR',
+      requestId,
+      status: 500,
+    });
   }
 }

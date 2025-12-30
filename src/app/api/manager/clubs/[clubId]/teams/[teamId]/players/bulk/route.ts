@@ -1,195 +1,455 @@
-/**
- * Bulk Add Players to Team API
- *
- * POST /api/manager/clubs/[clubId]/teams/[teamId]/players/bulk
- *
- * Adds multiple players to a team by email. Creates or links existing user accounts
- * to the team as players.
- *
- * Authorization: Only club owner can access
- *
- * Request Body:
- * {
- *   players: Array<{
- *     email: string,
- *     position: string
- *   }>
- * }
- *
- * Response:
- * {
- *   success: number,
- *   failed: number,
- *   errors: Array<{email: string, error: string}>,
- *   players: Array<{id, firstName, lastName, position, email}>
- * }
- */
+// =============================================================================
+// 👥 BULK PLAYERS API - Enterprise-Grade Implementation
+// =============================================================================
+// POST /api/manager/clubs/[clubId]/teams/[teamId]/players/bulk
+// Add multiple players to team in a single operation
+// =============================================================================
+// Schema: v7.8.0 | Multi-Sport: ✅ Generic
+// Permission: Club Owner, Manager, Head Coach
+// =============================================================================
 
-import { auth } from '@/auth';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { ClubMemberRole } from '@prisma/client';
+
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  message?: string;
+  requestId: string;
+  timestamp: string;
+}
+
+interface RouteParams {
+  params: {
+    clubId: string;
+    teamId: string;
+  };
+}
+
+interface BulkAddResult {
+  totalRequested: number;
+  successful: number;
+  failed: number;
+  reactivated: number;
+  results: Array<{
+    userId: string;
+    name: string;
+    status: 'ADDED' | 'REACTIVATED' | 'ALREADY_EXISTS' | 'NOT_FOUND' | 'NOT_PLAYER' | 'SHIRT_TAKEN' | 'ERROR';
+    teamMemberId?: string;
+    playerId?: string;
+    error?: string;
+  }>;
+}
+
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const BulkPlayerSchema = z.object({
+  userId: z.string().min(1),
+  position: z.string().max(50).optional(),
+  shirtNumber: z.number().int().min(1).max(99).optional(),
+});
+
+const BulkAddPlayersSchema = z.object({
+  players: z.array(BulkPlayerSchema).min(1).max(50), // Max 50 at once
+  skipExisting: z.boolean().default(true),
+  reactivateInactive: z.boolean().default(true),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `bulk_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: string;
+    code?: string;
+    message?: string;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (options.success && data !== null) response.data = data;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
+  if (options.message) response.message = options.message;
+
+  return NextResponse.json(response, { status: options.status || 200 });
+}
+
+const MANAGE_ROLES = [
+  ClubMemberRole.OWNER,
+  ClubMemberRole.MANAGER,
+  ClubMemberRole.HEAD_COACH,
+];
+
+async function hasManagePermission(userId: string, clubId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+  if (user?.isSuperAdmin) return true;
+
+  const clubMember = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: { in: MANAGE_ROLES },
+    },
+  });
+
+  return !!clubMember;
+}
+
+// =============================================================================
+// POST HANDLER - Bulk Add Players
+// =============================================================================
 
 export async function POST(
-  req: NextRequest,
-  { params }: { params: { clubId: string; teamId: string } }
-) {
-  const session = await auth();
-  if (!session) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, teamId } = params;
 
   try {
-    const { clubId, teamId } = params;
-    const body = await req.json();
-
-    // Verify club exists and user owns it
-    const club = await prisma.club.findUnique({
-      where: { id: clubId },
-    });
-
-    if (!club) {
-      return NextResponse.json({ error: 'Club not found' }, { status: 404 });
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
     }
 
-    if (club.ownerId !== session.user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // 2. Authorization
+    const hasPermission = await hasManagePermission(session.user.id, clubId);
+    if (!hasPermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to manage players',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
     }
 
-    // Verify team exists and belongs to club
+    // 3. Verify team belongs to club
     const team = await prisma.team.findUnique({
       where: { id: teamId },
+      select: { id: true, name: true, clubId: true },
     });
 
     if (!team || team.clubId !== clubId) {
-      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+      return createResponse(null, {
+        success: false,
+        error: 'Team not found or does not belong to this club',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
-    // Validation
-    if (!Array.isArray(body.players) || body.players.length === 0) {
-      return NextResponse.json(
-        { error: 'Players array is required and must not be empty' },
-        { status: 400 }
-      );
+    // 4. Parse and validate body
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return createResponse(null, {
+        success: false,
+        error: 'Invalid JSON in request body',
+        code: 'INVALID_JSON',
+        requestId,
+        status: 400,
+      });
     }
 
-    if (body.players.length > 100) {
-      return NextResponse.json(
-        { error: 'Maximum 100 players can be added at once' },
-        { status: 400 }
-      );
+    const validation = BulkAddPlayersSchema.safeParse(body);
+    if (!validation.success) {
+      return createResponse(null, {
+        success: false,
+        error: validation.error.errors[0]?.message || 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        requestId,
+        status: 400,
+      });
     }
 
-    const results = {
-      success: 0,
-      failed: 0,
-      errors: [] as any[],
-      players: [] as any[],
-    };
+    const { players, skipExisting, reactivateInactive } = validation.data;
 
-    // Process each player
-    for (const playerData of body.players) {
-      try {
-        // Validate email
-        if (!playerData.email?.trim()) {
-          results.failed++;
-          results.errors.push({
-            email: playerData.email,
-            error: 'Email is required',
-          });
-          continue;
-        }
+    // 5. Gather all user IDs and fetch users
+    const userIds = players.map((p) => p.userId);
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
 
-        const email = playerData.email.trim().toLowerCase();
+    // 6. Check which users are club members with PLAYER role
+    const clubMembers = await prisma.clubMember.findMany({
+      where: {
+        userId: { in: userIds },
+        clubId,
+        isActive: true,
+        role: ClubMemberRole.PLAYER,
+      },
+      select: { userId: true },
+    });
+    const playerUserIds = new Set(clubMembers.map((cm) => cm.userId));
 
-        // Find user by email
-        const user = await prisma.user.findUnique({
-          where: { email },
+    // 7. Get existing team members
+    const existingMembers = await prisma.teamMember.findMany({
+      where: {
+        teamId,
+        userId: { in: userIds },
+      },
+      select: {
+        id: true,
+        userId: true,
+        isActive: true,
+      },
+    });
+    const existingMemberMap = new Map(existingMembers.map((m) => [m.userId, m]));
+
+    // 8. Get taken shirt numbers
+    const takenShirts = await prisma.player.findMany({
+      where: {
+        shirtNumber: { in: players.map((p) => p.shirtNumber).filter((n): n is number => n !== undefined) },
+        user: {
+          teamMembers: {
+            some: {
+              teamId,
+              isActive: true,
+            },
+          },
+        },
+      },
+      select: { shirtNumber: true, userId: true },
+    });
+    const takenShirtMap = new Map(takenShirts.map((t) => [t.shirtNumber, t.userId]));
+
+    // 9. Process each player
+    const results: BulkAddResult['results'] = [];
+    let successful = 0;
+    let failed = 0;
+    let reactivated = 0;
+
+    for (const playerData of players) {
+      const user = userMap.get(playerData.userId);
+      
+      // User not found
+      if (!user) {
+        results.push({
+          userId: playerData.userId,
+          name: 'Unknown',
+          status: 'NOT_FOUND',
+          error: 'User not found',
         });
+        failed++;
+        continue;
+      }
 
-        if (!user) {
-          results.failed++;
-          results.errors.push({
-            email,
-            error: 'User not found',
-          });
-          continue;
-        }
+      const name = `${user.firstName} ${user.lastName}`;
 
-        // Check if player already exists
-        const existingPlayer = await prisma.player.findUnique({
-          where: { userId: user.id },
+      // Not a player in club
+      if (!playerUserIds.has(playerData.userId)) {
+        results.push({
+          userId: playerData.userId,
+          name,
+          status: 'NOT_PLAYER',
+          error: 'User is not a player in this club',
         });
+        failed++;
+        continue;
+      }
 
-        // Check if already on this team via PlayerTeam (raw SQL)
-        if (existingPlayer) {
-          const playerTeamRecord = await prisma.$queryRaw`
-            SELECT * FROM "PlayerTeam" WHERE "playerId" = ${existingPlayer.id} AND "teamId" = ${teamId}
-          `;
-
-          if (playerTeamRecord && Array.isArray(playerTeamRecord) && playerTeamRecord.length > 0) {
-            results.failed++;
-            results.errors.push({
-              email,
-              error: 'Player already on team',
+      // Check existing membership
+      const existingMember = existingMemberMap.get(playerData.userId);
+      if (existingMember) {
+        if (existingMember.isActive) {
+          if (skipExisting) {
+            results.push({
+              userId: playerData.userId,
+              name,
+              status: 'ALREADY_EXISTS',
+              teamMemberId: existingMember.id,
             });
+            continue; // Don't count as failed
+          } else {
+            results.push({
+              userId: playerData.userId,
+              name,
+              status: 'ALREADY_EXISTS',
+              error: 'Player already in team',
+            });
+            failed++;
             continue;
           }
+        } else if (reactivateInactive) {
+          // Reactivate
+          await prisma.teamMember.update({
+            where: { id: existingMember.id },
+            data: { isActive: true },
+          });
+          results.push({
+            userId: playerData.userId,
+            name,
+            status: 'REACTIVATED',
+            teamMemberId: existingMember.id,
+          });
+          reactivated++;
+          successful++;
+          continue;
         }
+      }
 
-        // Create or get player
-        let player = existingPlayer;
+      // Check shirt number availability
+      if (playerData.shirtNumber) {
+        const takenBy = takenShirtMap.get(playerData.shirtNumber);
+        if (takenBy && takenBy !== playerData.userId) {
+          results.push({
+            userId: playerData.userId,
+            name,
+            status: 'SHIRT_TAKEN',
+            error: `Shirt number ${playerData.shirtNumber} is already taken`,
+          });
+          failed++;
+          continue;
+        }
+      }
+
+      // Create player profile if needed
+      try {
+        let player = await prisma.player.findUnique({
+          where: { userId: playerData.userId },
+        });
+
         if (!player) {
           player = await prisma.player.create({
             data: {
-              userId: user.id,
-              firstName: user.firstName || 'Unknown',
-              lastName: user.lastName || 'Unknown',
-              dateOfBirth: user.dateOfBirth || new Date('1990-01-01'),
-              nationality: user.nationality || 'Unknown',
-              position: playerData.position || 'MIDFIELDER',
-              preferredFoot: playerData.preferredFoot || 'RIGHT',
-              status: 'ACTIVE',
+              userId: playerData.userId,
+              position: playerData.position || null,
+              shirtNumber: playerData.shirtNumber || null,
+            },
+          });
+        } else if (playerData.position || playerData.shirtNumber) {
+          player = await prisma.player.update({
+            where: { id: player.id },
+            data: {
+              ...(playerData.position ? { position: playerData.position } : {}),
+              ...(playerData.shirtNumber ? { shirtNumber: playerData.shirtNumber } : {}),
             },
           });
         }
 
-        // Add player to team via PlayerTeam (raw SQL insert)
-        await prisma.$executeRaw`
-          INSERT INTO "PlayerTeam" ("playerId", "teamId", "joinedAt")
-          VALUES (${player.id}, ${teamId}, NOW())
-          ON CONFLICT DO NOTHING
-        `;
+        // Create team membership
+        const teamMember = await prisma.teamMember.create({
+          data: {
+            teamId,
+            userId: playerData.userId,
+            role: 'PLAYER',
+            isActive: true,
+          },
+        });
 
-        results.success++;
-        results.players.push({
-          id: player.id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          position: player.position,
-          email: user.email,
+        results.push({
+          userId: playerData.userId,
+          name,
+          status: 'ADDED',
+          teamMemberId: teamMember.id,
+          playerId: player.id,
         });
-      } catch (err) {
-        results.failed++;
-        results.errors.push({
-          email: playerData.email,
-          error: err instanceof Error ? err.message : 'Unknown error',
+        successful++;
+
+        // Mark shirt number as taken for subsequent players
+        if (playerData.shirtNumber) {
+          takenShirtMap.set(playerData.shirtNumber, playerData.userId);
+        }
+      } catch (error) {
+        console.error(`Error adding player ${playerData.userId}:`, error);
+        results.push({
+          userId: playerData.userId,
+          name,
+          status: 'ERROR',
+          error: 'Failed to add player',
         });
+        failed++;
       }
     }
 
-    return NextResponse.json(results, { status: 201 });
-  } catch (error) {
-    console.error(
-      'POST /api/manager/clubs/[clubId]/teams/[teamId]/players/bulk error:',
-      error
-    );
-    return NextResponse.json(
-      {
-        error: 'Failed to bulk import players',
-        details: error instanceof Error ? error.message : 'Unknown error',
+    // 10. Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'BULK_CREATE',
+        entityType: 'TEAM_MEMBER',
+        entityId: teamId,
+        description: `Bulk added ${successful} players to team ${team.name}`,
+        metadata: {
+          teamId,
+          clubId,
+          totalRequested: players.length,
+          successful,
+          failed,
+          reactivated,
+        },
       },
-      { status: 500 }
-    );
+    });
+
+    // 11. Build response
+    const response: BulkAddResult = {
+      totalRequested: players.length,
+      successful,
+      failed,
+      reactivated,
+      results,
+    };
+
+    return createResponse(response, {
+      success: true,
+      message: `Successfully added ${successful} players to team`,
+      requestId,
+      status: successful > 0 ? 201 : 200,
+    });
+  } catch (error) {
+    console.error(`[${requestId}] Bulk Add Players error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to bulk add players',
+      code: 'INTERNAL_ERROR',
+      requestId,
+      status: 500,
+    });
   }
 }

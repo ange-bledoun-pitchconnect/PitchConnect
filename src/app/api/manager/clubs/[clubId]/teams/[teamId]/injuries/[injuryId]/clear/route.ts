@@ -1,327 +1,587 @@
-/**
- * ============================================================================
- * CLEAR PLAYER INJURY ROUTE - World-Class Sports Management Implementation
- * ============================================================================
- *
- * @file src/app/api/manager/clubs/[clubId]/teams/[teamId]/injuries/[injuryId]/clear/route.ts
- * @description Mark a player injury as cleared/recovered
- * @version 2.0.0 (Production-Ready)
- *
- * FEATURES:
- * ✅ Full TypeScript type safety
- * ✅ Schema-aligned role-based access control
- * ✅ Club ownership verification
- * ✅ Team-injury-player relationship validation
- * ✅ Comprehensive error handling
- * ✅ Request ID tracking
- * ✅ Performance monitoring
- */
+// =============================================================================
+// 🏥 CLEAR INJURY API - Enterprise-Grade Implementation
+// =============================================================================
+// PATCH /api/manager/clubs/[clubId]/teams/[teamId]/injuries/[injuryId]/clear
+// Mark injury as recovered / update injury status
+// =============================================================================
+// Schema: v7.8.0 | Multi-Sport: ✅ Generic
+// Permission: Club Owner, Manager, Head Coach, Medical Staff
+// =============================================================================
 
-import { getServerSession } from 'next-auth';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { ClubMemberRole, InjuryStatus } from '@prisma/client';
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-interface InjuryDetails {
-  id: string;
-  playerId: string;
-  type: string;
-  severity: string;
-  dateFrom: string;
-  dateTo: string | null;
-  estimatedReturn: string | null;
-  status: string;
-  player: {
-    id: string;
-    firstName: string;
-    lastName: string;
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  message?: string;
+  requestId: string;
+  timestamp: string;
+}
+
+interface RouteParams {
+  params: {
+    clubId: string;
+    teamId: string;
+    injuryId: string;
   };
 }
 
-interface ClearInjuryResponse {
-  success: boolean;
-  message: string;
-  injury: InjuryDetails;
+interface ClearedInjuryResponse {
+  id: string;
+  player: {
+    id: string;
+    name: string;
+  };
+  type: string;
+  severity: string;
+  status: InjuryStatus;
+  dateOccurred: string;
+  returnDate: string;
+  recoveryDays: number;
+  matchesMissed: number;
 }
 
-interface ErrorResponse {
-  success: boolean;
-  error: string;
-  code: string;
-  details?: string;
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const ClearInjurySchema = z.object({
+  returnDate: z.string().datetime().optional(), // Defaults to now
+  clearanceNotes: z.string().max(2000).optional(),
+  clearedForFullTraining: z.boolean().default(true),
+  clearedForMatchPlay: z.boolean().default(true),
+  followUpRequired: z.boolean().default(false),
+  followUpDate: z.string().datetime().optional(),
+});
+
+const UpdateStatusSchema = z.object({
+  status: z.nativeEnum(InjuryStatus),
+  notes: z.string().max(2000).optional(),
+  expectedReturn: z.string().datetime().optional(),
+  treatment: z.string().max(2000).optional(),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `injury_clear_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: string;
+    code?: string;
+    message?: string;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
 
-const ERROR_CODES = {
-  UNAUTHORIZED: 'UNAUTHORIZED',
-  FORBIDDEN: 'FORBIDDEN',
-  NOT_FOUND: 'NOT_FOUND',
-  INVALID_REQUEST: 'INVALID_REQUEST',
-  INTERNAL_ERROR: 'INTERNAL_ERROR',
-} as const;
+  if (options.success && data !== null) response.data = data;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
+  if (options.message) response.message = options.message;
 
-// ============================================================================
-// VALIDATION HELPERS
-// ============================================================================
+  return NextResponse.json(response, { status: options.status || 200 });
+}
 
-/**
- * Validate club ownership
- */
-async function validateClubOwnership(clubId: string, userId: string) {
-  const club = await prisma.club.findUnique({
-    where: { id: clubId },
-    select: { ownerId: true },
+const ALLOWED_ROLES = [
+  ClubMemberRole.OWNER,
+  ClubMemberRole.MANAGER,
+  ClubMemberRole.HEAD_COACH,
+  ClubMemberRole.PHYSIO,
+  ClubMemberRole.MEDICAL_STAFF,
+];
+
+async function hasPermission(userId: string, clubId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true },
   });
+  if (user?.isSuperAdmin) return true;
 
-  if (!club) {
-    return { isValid: false, error: 'Club not found' };
-  }
-
-  if (club.ownerId !== userId) {
-    return { isValid: false, error: 'Not club owner' };
-  }
-
-  return { isValid: true, error: null };
-}
-
-/**
- * Validate team belongs to club
- */
-async function validateTeamBelongsToClub(teamId: string, clubId: string) {
-  const team = await prisma.team.findUnique({
-    where: { id: teamId },
-    select: { clubId: true },
-  });
-
-  if (!team) {
-    return { isValid: false, error: 'Team not found' };
-  }
-
-  if (team.clubId !== clubId) {
-    return { isValid: false, error: 'Team does not belong to club' };
-  }
-
-  return { isValid: true, error: null };
-}
-
-/**
- * Validate player belongs to team
- */
-async function validatePlayerInTeam(playerId: string, teamId: string) {
-  const teamMember = await prisma.teamMember.findUnique({
+  const clubMember = await prisma.clubMember.findFirst({
     where: {
-      teamId_userId: {
-        teamId,
-        userId: playerId,
-      },
+      userId,
+      clubId,
+      isActive: true,
+      role: { in: ALLOWED_ROLES },
     },
   });
 
-  if (!teamMember) {
-    return { isValid: false, error: 'Player not in team' };
-  }
-
-  return { isValid: true, error: null };
+  return !!clubMember;
 }
 
-// ============================================================================
-// MAIN HANDLER
-// ============================================================================
+// =============================================================================
+// PATCH HANDLER - Clear Injury (Mark as Recovered)
+// =============================================================================
 
-/**
- * PATCH /api/manager/clubs/[clubId]/teams/[teamId]/injuries/[injuryId]/clear
- *
- * Mark a player injury as cleared/recovered (Club Owner only)
- */
 export async function PATCH(
-  _request: NextRequest,
-  { params }: { params: { clubId: string; teamId: string; injuryId: string } }
-): Promise<NextResponse<ClearInjuryResponse | ErrorResponse>> {
-  const requestId = crypto.randomUUID();
-  const startTime = performance.now();
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, teamId, injuryId } = params;
 
   try {
-    // ========================================================================
-    // 1. AUTHENTICATION
-    // ========================================================================
-    const session = await auth();
-    if (!session) {
-      return Response.json(
-        {
-          success: false,
-          error: 'Authentication required',
-          code: ERROR_CODES.UNAUTHORIZED,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
     }
 
-    // ========================================================================
-    // 2. VALIDATE CLUB OWNERSHIP
-    // ========================================================================
-    const { isValid: isOwner, error: ownerError } = await validateClubOwnership(
-      params.clubId,
-      session.user.id
-    );
-
-    if (!isOwner) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: ownerError || 'Forbidden',
-          code: ERROR_CODES.FORBIDDEN,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
+    // 2. Authorization
+    const permitted = await hasPermission(session.user.id, clubId);
+    if (!permitted) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to update injury records',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
     }
 
-    // ========================================================================
-    // 3. VALIDATE TEAM BELONGS TO CLUB
-    // ========================================================================
-    const { isValid: isTeamValid, error: teamError } =
-      await validateTeamBelongsToClub(params.teamId, params.clubId);
+    // 3. Verify team belongs to club
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { id: true, clubId: true },
+    });
 
-    if (!isTeamValid) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: teamError || 'Team not found',
-          code: ERROR_CODES.NOT_FOUND,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
+    if (!team || team.clubId !== clubId) {
+      return createResponse(null, {
+        success: false,
+        error: 'Team not found or does not belong to this club',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
-    // ========================================================================
-    // 4. GET AND VALIDATE INJURY
-    // ========================================================================
+    // 4. Fetch injury
     const injury = await prisma.injury.findUnique({
-      where: { id: params.injuryId },
+      where: { id: injuryId },
       include: {
         player: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            userId: true,
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
           },
         },
       },
     });
 
     if (!injury) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Injury not found',
-          code: ERROR_CODES.NOT_FOUND,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
+      return createResponse(null, {
+        success: false,
+        error: 'Injury record not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
     }
 
-    // ========================================================================
-    // 5. VALIDATE PLAYER BELONGS TO TEAM
-    // ========================================================================
-    const { isValid: isPlayerValid, error: playerError } =
-      await validatePlayerInTeam(injury.player.userId, params.teamId);
-
-    if (!isPlayerValid) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: playerError || 'Player not found in team',
-          code: ERROR_CODES.NOT_FOUND,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 6. UPDATE INJURY STATUS TO RECOVERED
-    // ========================================================================
-    const clearedInjury = await prisma.injury.update({
-      where: { id: params.injuryId },
-      data: {
-        status: 'RECOVERED',
-        dateTo: new Date(),
+    // 5. Verify player is in team
+    const teamMember = await prisma.teamMember.findFirst({
+      where: {
+        teamId,
+        userId: injury.player.userId,
       },
+    });
+
+    if (!teamMember) {
+      return createResponse(null, {
+        success: false,
+        error: 'Player not found in this team',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
+
+    // 6. Check if already recovered
+    if (injury.status === 'RECOVERED') {
+      return createResponse(null, {
+        success: false,
+        error: 'Injury is already marked as recovered',
+        code: 'ALREADY_RECOVERED',
+        requestId,
+        status: 400,
+      });
+    }
+
+    // 7. Parse body - determine if this is clear or status update
+    let body: Record<string, unknown> = {};
+    try {
+      body = await request.json();
+    } catch {
+      // Empty body is okay for simple clear
+    }
+
+    // Check if this is a status update or a clear operation
+    const isStatusUpdate = body.status && body.status !== 'RECOVERED';
+
+    let updatedInjury;
+    let recoveryDays = 0;
+
+    if (isStatusUpdate) {
+      // 8a. Validate status update
+      const validation = UpdateStatusSchema.safeParse(body);
+      if (!validation.success) {
+        return createResponse(null, {
+          success: false,
+          error: validation.error.errors[0]?.message || 'Validation failed',
+          code: 'VALIDATION_ERROR',
+          requestId,
+          status: 400,
+        });
+      }
+
+      const { status, notes, expectedReturn, treatment } = validation.data;
+
+      // Update injury status
+      updatedInjury = await prisma.injury.update({
+        where: { id: injuryId },
+        data: {
+          status,
+          statusNotes: notes || null,
+          expectedReturn: expectedReturn ? new Date(expectedReturn) : undefined,
+          treatment: treatment || undefined,
+        },
+        include: {
+          player: {
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+    } else {
+      // 8b. Validate clear/recovery
+      const validation = ClearInjurySchema.safeParse(body);
+      if (!validation.success) {
+        return createResponse(null, {
+          success: false,
+          error: validation.error.errors[0]?.message || 'Validation failed',
+          code: 'VALIDATION_ERROR',
+          requestId,
+          status: 400,
+        });
+      }
+
+      const { 
+        returnDate, 
+        clearanceNotes, 
+        clearedForFullTraining,
+        clearedForMatchPlay,
+        followUpRequired,
+        followUpDate 
+      } = validation.data;
+
+      const actualReturnDate = returnDate ? new Date(returnDate) : new Date();
+
+      // Calculate recovery days
+      recoveryDays = Math.ceil(
+        (actualReturnDate.getTime() - injury.dateOccurred.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      // Update injury to recovered
+      updatedInjury = await prisma.injury.update({
+        where: { id: injuryId },
+        data: {
+          status: 'RECOVERED',
+          returnDate: actualReturnDate,
+          clearanceNotes: clearanceNotes || null,
+          clearedForFullTraining,
+          clearedForMatchPlay,
+          followUpRequired,
+          followUpDate: followUpDate ? new Date(followUpDate) : null,
+          clearedById: session.user.id,
+        },
+        include: {
+          player: {
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+        },
+      });
+    }
+
+    // 9. Count matches missed
+    const matchesMissed = await prisma.match.count({
+      where: {
+        OR: [{ homeTeamId: teamId }, { awayTeamId: teamId }],
+        status: 'COMPLETED',
+        kickOffTime: {
+          gte: injury.dateOccurred,
+          ...(updatedInjury.returnDate ? { lte: updatedInjury.returnDate } : {}),
+        },
+      },
+    });
+
+    // 10. Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'UPDATE',
+        entityType: 'INJURY',
+        entityId: injuryId,
+        description: isStatusUpdate
+          ? `Updated injury status for ${updatedInjury.player.user.firstName} ${updatedInjury.player.user.lastName} to ${updatedInjury.status}`
+          : `Cleared injury for ${updatedInjury.player.user.firstName} ${updatedInjury.player.user.lastName} - ${injury.type}`,
+        metadata: {
+          playerId: injury.playerId,
+          teamId,
+          clubId,
+          previousStatus: injury.status,
+          newStatus: updatedInjury.status,
+          recoveryDays: isStatusUpdate ? null : recoveryDays,
+        },
+      },
+    });
+
+    // 11. Create notification for player (if recovered)
+    if (updatedInjury.status === 'RECOVERED') {
+      await prisma.notification.create({
+        data: {
+          userId: injury.player.userId,
+          type: 'INJURY_UPDATE',
+          title: 'Injury Cleared',
+          message: `You have been cleared from your ${injury.type} injury. ${
+            updatedInjury.clearedForMatchPlay ? 'You are cleared for match play.' : 'Check with medical staff for match clearance.'
+          }`,
+          link: `/player/injuries/${injuryId}`,
+          data: { injuryId, teamId },
+        },
+      });
+    }
+
+    // 12. Transform response
+    const response: ClearedInjuryResponse = {
+      id: updatedInjury.id,
+      player: {
+        id: updatedInjury.player.id,
+        name: `${updatedInjury.player.user.firstName} ${updatedInjury.player.user.lastName}`,
+      },
+      type: updatedInjury.type,
+      severity: updatedInjury.severity,
+      status: updatedInjury.status,
+      dateOccurred: updatedInjury.dateOccurred.toISOString(),
+      returnDate: updatedInjury.returnDate?.toISOString() || new Date().toISOString(),
+      recoveryDays,
+      matchesMissed,
+    };
+
+    return createResponse(response, {
+      success: true,
+      message: isStatusUpdate
+        ? `Injury status updated to ${updatedInjury.status}`
+        : 'Injury cleared successfully',
+      requestId,
+    });
+  } catch (error) {
+    console.error(`[${requestId}] Clear Injury error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to update injury record',
+      code: 'INTERNAL_ERROR',
+      requestId,
+      status: 500,
+    });
+  }
+}
+
+// =============================================================================
+// DELETE HANDLER - Remove Injury Record (Admin only)
+// =============================================================================
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, teamId, injuryId } = params;
+
+  try {
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
+    }
+
+    // 2. Authorization - only owners/managers can delete
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { isSuperAdmin: true },
+    });
+
+    let hasDeletePermission = user?.isSuperAdmin || false;
+
+    if (!hasDeletePermission) {
+      const clubMember = await prisma.clubMember.findFirst({
+        where: {
+          userId: session.user.id,
+          clubId,
+          isActive: true,
+          role: { in: [ClubMemberRole.OWNER, ClubMemberRole.MANAGER] },
+        },
+      });
+      hasDeletePermission = !!clubMember;
+    }
+
+    if (!hasDeletePermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'Only club owners or managers can delete injury records',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
+    }
+
+    // 3. Verify team belongs to club
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { clubId: true },
+    });
+
+    if (!team || team.clubId !== clubId) {
+      return createResponse(null, {
+        success: false,
+        error: 'Team not found or does not belong to this club',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
+
+    // 4. Fetch injury
+    const injury = await prisma.injury.findUnique({
+      where: { id: injuryId },
       include: {
         player: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
+          include: {
+            user: {
+              select: { firstName: true, lastName: true },
+            },
           },
         },
       },
     });
 
-    // ========================================================================
-    // 7. RETURN RESPONSE
-    // ========================================================================
-    const duration = performance.now() - startTime;
+    if (!injury) {
+      return createResponse(null, {
+        success: false,
+        error: 'Injury record not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
 
-    console.log('Injury cleared', {
-      requestId,
-      clubId: params.clubId,
-      teamId: params.teamId,
-      injuryId: params.injuryId,
-      playerId: injury.player.id,
-      playerName: `${injury.player.firstName} ${injury.player.lastName}`,
-      duration: `${Math.round(duration)}ms`,
+    // 5. Verify player is in team
+    const teamMember = await prisma.teamMember.findFirst({
+      where: {
+        teamId,
+        userId: injury.player.userId,
+      },
     });
 
-    const response: ClearInjuryResponse = {
-      success: true,
-      message: 'Injury cleared successfully',
-      injury: {
-        id: clearedInjury.id,
-        playerId: clearedInjury.playerId,
-        type: clearedInjury.type,
-        severity: clearedInjury.severity,
-        dateFrom: clearedInjury.dateFrom.toISOString(),
-        dateTo: clearedInjury.dateTo?.toISOString() || null,
-        estimatedReturn: clearedInjury.estimatedReturn?.toISOString() || null,
-        status: clearedInjury.status,
-        player: {
-          id: clearedInjury.player.id,
-          firstName: clearedInjury.player.firstName,
-          lastName: clearedInjury.player.lastName,
+    if (!teamMember) {
+      return createResponse(null, {
+        success: false,
+        error: 'Player not found in this team',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
+
+    // 6. Delete injury
+    await prisma.injury.delete({
+      where: { id: injuryId },
+    });
+
+    // 7. Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'DELETE',
+        entityType: 'INJURY',
+        entityId: injuryId,
+        description: `Deleted injury record for ${injury.player.user.firstName} ${injury.player.user.lastName}: ${injury.type}`,
+        metadata: {
+          playerId: injury.playerId,
+          teamId,
+          clubId,
+          injuryType: injury.type,
+          severity: injury.severity,
         },
       },
-    };
+    });
 
-    return NextResponse.json(response, {
-      status: 200,
-      headers: {
-        'X-Request-ID': requestId,
-        'X-Response-Time': `${Math.round(duration)}ms`,
-      },
+    return createResponse(null, {
+      success: true,
+      message: 'Injury record deleted successfully',
+      requestId,
     });
   } catch (error) {
-    const duration = performance.now() - startTime;
-    console.error('Clear injury error', {
+    console.error(`[${requestId}] Delete Injury error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to delete injury record',
+      code: 'INTERNAL_ERROR',
       requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      duration: `${Math.round(duration)}ms`,
+      status: 500,
     });
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to clear injury',
-        code: ERROR_CODES.INTERNAL_ERROR,
-        details: error instanceof Error ? error.message : undefined,
-      },
-      { status: 500, headers: { 'X-Request-ID': requestId } }
-    );
   }
 }

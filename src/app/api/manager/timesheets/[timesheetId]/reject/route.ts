@@ -1,401 +1,341 @@
-/**
- * ============================================================================
- * TIMESHEET REJECTION ROUTE - World-Class Sports Management Implementation
- * ============================================================================
- *
- * @file src/app/api/manager/timesheets/[timesheetId]/reject/route.ts
- * @description Manager rejection workflow for player timesheets with validation
- * @version 2.0.0 (Production-Ready)
- *
- * FEATURES:
- * ✅ Full TypeScript type safety
- * ✅ Schema-aligned role-based access control
- * ✅ Comprehensive validation & error handling
- * ✅ Request ID tracking for debugging
- * ✅ Performance monitoring
- * ✅ Audit logging
- * ✅ Transaction safety
- * ✅ JSDoc documentation
- */
+// =============================================================================
+// ❌ REJECT TIMESHEET API - Enterprise-Grade Implementation
+// =============================================================================
+// POST /api/manager/clubs/[clubId]/timesheets/[timesheetId]/reject
+// =============================================================================
+// Schema: v7.8.0 | Model: CoachTimesheet
+// Field Mapping: rejectedAt, rejectedBy, rejectionReason, status -> REJECTED
+// Permission: Owner, Manager, Treasurer
+// =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { ClubMemberRole, TimesheetStatus } from '@prisma/client';
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-interface RejectionRequest {
-  reason: string;
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  message?: string;
+  requestId: string;
+  timestamp: string;
 }
 
-interface RejectionResponse {
-  success: boolean;
-  message: string;
+interface RouteParams {
+  params: {
+    clubId: string;
+    timesheetId: string;
+  };
+}
+
+interface RejectionResult {
   timesheetId: string;
-  rejectedBy: string;
+  period: string;
+  coachName: string;
+  coachEmail: string;
+  totalHours: number;
+  status: TimesheetStatus;
   rejectedAt: string;
+  rejectedBy: {
+    id: string;
+    name: string;
+  };
+  rejectionReason: string;
+  canResubmit: boolean;
 }
 
-interface ErrorResponse {
-  success: boolean;
-  error: string;
-  code: string;
-  details?: string;
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const RejectTimesheetSchema = z.object({
+  rejectionReason: z.string().min(10, 'Rejection reason must be at least 10 characters').max(1000),
+  notifyCoach: z.boolean().default(true),
+  allowResubmission: z.boolean().default(true),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `ts_reject_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: string;
+    code?: string;
+    message?: string;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
 
-const ERROR_CODES = {
-  UNAUTHORIZED: 'UNAUTHORIZED',
-  FORBIDDEN: 'FORBIDDEN',
-  NOT_FOUND: 'NOT_FOUND',
-  INVALID_STATE: 'INVALID_STATE',
-  INVALID_REQUEST: 'INVALID_REQUEST',
-  INTERNAL_ERROR: 'INTERNAL_ERROR',
-} as const;
+  if (options.success && data !== null) response.data = data;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
+  if (options.message) response.message = options.message;
 
-// Manager roles that can reject timesheets
-const MANAGER_ROLES = ['CLUB_MANAGER', 'CLUB_OWNER', 'TREASURER'] as const;
+  return NextResponse.json(response, { status: options.status || 200 });
+}
 
-// ============================================================================
-// VALIDATION HELPERS
-// ============================================================================
+const APPROVER_ROLES: ClubMemberRole[] = [
+  ClubMemberRole.OWNER,
+  ClubMemberRole.MANAGER,
+  ClubMemberRole.TREASURER,
+];
 
-/**
- * Validate session and user authorization
- */
-async function validateManagerAccess(email: string) {
+async function hasApproverPermission(userId: string, clubId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
-    where: { email },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      roles: true,
+    where: { id: userId },
+    select: { isSuperAdmin: true },
+  });
+
+  if (user?.isSuperAdmin) return true;
+
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { ownerId: true },
+  });
+
+  if (club?.ownerId === userId) return true;
+
+  const clubMember = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: { in: APPROVER_ROLES },
     },
   });
 
-  if (!user) {
-    return {
-      isValid: false,
-      error: 'User not found',
-      user: null,
-    };
-  }
-
-  // Check if user has any manager role
-  const hasManagerRole = user.roles.some((role) =>
-    MANAGER_ROLES.includes(role as typeof MANAGER_ROLES[number])
-  );
-
-  if (!hasManagerRole) {
-    return {
-      isValid: false,
-      error: 'Manager role required',
-      user: null,
-    };
-  }
-
-  return {
-    isValid: true,
-    error: null,
-    user,
-  };
+  return !!clubMember;
 }
 
-/**
- * Validate rejection request body
- */
-function validateRejectionRequest(body: unknown): {
-  isValid: boolean;
-  error?: string;
-  data?: RejectionRequest;
-} {
-  if (!body || typeof body !== 'object') {
-    return {
-      isValid: false,
-      error: 'Invalid request body',
-    };
-  }
+// =============================================================================
+// POST HANDLER - Reject Timesheet
+// =============================================================================
 
-  const { reason } = body as Record<string, unknown>;
+export async function POST(
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse> {
+  const requestId = generateRequestId();
+  const { clubId, timesheetId } = params;
 
-  if (!reason || typeof reason !== 'string') {
-    return {
-      isValid: false,
-      error: 'Rejection reason is required and must be a string',
-    };
-  }
+  try {
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
+      });
+    }
 
-  if (reason.trim().length === 0) {
-    return {
-      isValid: false,
-      error: 'Rejection reason cannot be empty',
-    };
-  }
+    // 2. Authorization
+    const hasPermission = await hasApproverPermission(session.user.id, clubId);
+    if (!hasPermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to reject timesheets',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
+    }
 
-  if (reason.length > 1000) {
-    return {
-      isValid: false,
-      error: 'Rejection reason must be 1000 characters or less',
-    };
-  }
+    // 3. Get rejecter info
+    const rejecter = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
 
-  return {
-    isValid: true,
-    data: { reason: reason.trim() },
-  };
-}
+    if (!rejecter) {
+      return createResponse(null, {
+        success: false,
+        error: 'User not found',
+        code: 'NOT_FOUND',
+        requestId,
+        status: 404,
+      });
+    }
 
-/**
- * Validate timesheet exists and is in rejectable state
- */
-async function validateTimesheetState(timesheetId: string) {
-  const timesheet = await prisma.coachTimesheet.findUnique({
-    where: { id: timesheetId },
-    include: {
-      coach: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
+    // 4. Fetch timesheet
+    const timesheet = await prisma.coachTimesheet.findUnique({
+      where: { id: timesheetId },
+      include: {
+        coach: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  if (!timesheet) {
-    return {
-      isValid: false,
-      error: 'Timesheet not found',
-      timesheet: null,
-    };
-  }
-
-  if (timesheet.status !== 'SUBMITTED') {
-    return {
-      isValid: false,
-      error: `Timesheet status is ${timesheet.status}. Only SUBMITTED timesheets can be rejected.`,
-      timesheet: null,
-    };
-  }
-
-  return {
-    isValid: true,
-    error: null,
-    timesheet,
-  };
-}
-
-// ============================================================================
-// MAIN HANDLER
-// ============================================================================
-
-/**
- * POST /api/manager/timesheets/[timesheetId]/reject
- *
- * Reject a submitted timesheet (Manager only)
- *
- * @param request NextRequest
- * @param params Route parameters with timesheetId
- * @returns RejectionResponse on success, ErrorResponse on failure
- */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { timesheetId: string } }
-): Promise<NextResponse<RejectionResponse | ErrorResponse>> {
-  const requestId = crypto.randomUUID();
-  const startTime = performance.now();
-
-  try {
-    // ========================================================================
-    // 1. AUTHENTICATION
-    // ========================================================================
-
-    const session = await auth();
-
-    if (!session) {
-      console.warn('Unauthorized rejection attempt - no session', { requestId });
-      return Response.json(
-        {
-          success: false,
-          error: 'Authentication required',
-          code: ERROR_CODES.UNAUTHORIZED,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 2. VALIDATE MANAGER AUTHORIZATION
-    // ========================================================================
-
-    const { isValid: isAuthorized, error: authError, user } =
-      await validateManagerAccess(session.user.email);
-
-    if (!isAuthorized || !user) {
-      console.warn('Manager authorization failed', {
+    if (!timesheet || timesheet.clubId !== clubId) {
+      return createResponse(null, {
+        success: false,
+        error: 'Timesheet not found',
+        code: 'NOT_FOUND',
         requestId,
-        email: session.user.email,
-        error: authError,
+        status: 404,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: authError || 'Manager role required',
-          code: ERROR_CODES.FORBIDDEN,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
     }
 
-    // ========================================================================
-    // 3. VALIDATE REQUEST BODY
-    // ========================================================================
+    // 5. Validate status - must be SUBMITTED or UNDER_REVIEW to reject
+    const rejectableStatuses = [TimesheetStatus.SUBMITTED, TimesheetStatus.UNDER_REVIEW];
+    if (!rejectableStatuses.includes(timesheet.status)) {
+      return createResponse(null, {
+        success: false,
+        error: `Cannot reject timesheet with status ${timesheet.status}. Only SUBMITTED or UNDER_REVIEW timesheets can be rejected.`,
+        code: 'INVALID_STATUS',
+        requestId,
+        status: 400,
+      });
+    }
 
-    let requestBody: unknown;
+    // 6. Parse and validate body
+    let body;
     try {
-      requestBody = await request.json();
-    } catch (error) {
-      console.warn('Invalid JSON in rejection request', { requestId });
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid JSON in request body',
-          code: ERROR_CODES.INVALID_REQUEST,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    const { isValid: isRequestValid, error: requestError, data: rejectionData } =
-      validateRejectionRequest(requestBody);
-
-    if (!isRequestValid || !rejectionData) {
-      console.warn('Rejection request validation failed', {
+      body = await request.json();
+    } catch {
+      return createResponse(null, {
+        success: false,
+        error: 'Invalid JSON in request body',
+        code: 'INVALID_JSON',
         requestId,
-        error: requestError,
+        status: 400,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: requestError || 'Invalid rejection request',
-          code: ERROR_CODES.INVALID_REQUEST,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
     }
 
-    // ========================================================================
-    // 4. VALIDATE TIMESHEET STATE
-    // ========================================================================
-
-    const { timesheetId } = params;
-
-    const { isValid: isTimesheetValid, error: timesheetError, timesheet } =
-      await validateTimesheetState(timesheetId);
-
-    if (!isTimesheetValid || !timesheet) {
-      console.warn('Timesheet validation failed', {
+    const validation = RejectTimesheetSchema.safeParse(body);
+    if (!validation.success) {
+      return createResponse(null, {
+        success: false,
+        error: validation.error.errors[0]?.message || 'Validation failed',
+        code: 'VALIDATION_ERROR',
         requestId,
-        timesheetId,
-        error: timesheetError,
+        status: 400,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: timesheetError || 'Timesheet not found',
-          code: timesheet ? ERROR_CODES.INVALID_STATE : ERROR_CODES.NOT_FOUND,
-        },
-        { status: timesheet ? 400 : 404, headers: { 'X-Request-ID': requestId } }
-      );
     }
 
-    // ========================================================================
-    // 5. REJECT TIMESHEET
-    // ========================================================================
+    const { rejectionReason, allowResubmission } = validation.data;
 
-    const rejectionReason = rejectionData.reason;
-    const rejectionNote = `REJECTED: ${rejectionReason}`;
-    const rejectedAt = new Date();
-
+    // 7. Update timesheet
     const updatedTimesheet = await prisma.coachTimesheet.update({
       where: { id: timesheetId },
       data: {
-        status: 'REJECTED',
-        approvedBy: user.id,
-        approvedAt: rejectedAt,
-        reviewNotes: rejectionNote,
-      },
-      select: {
-        id: true,
-        status: true,
-        approvedAt: true,
+        status: TimesheetStatus.REJECTED,
+        rejectedAt: new Date(),
+        rejectedBy: session.user.id,
+        rejectionReason,
+        reviewedAt: new Date(),
+        reviewedBy: session.user.id,
+        reviewNotes: rejectionReason,
       },
     });
 
-    // ========================================================================
-    // 6. LOG & RESPOND
-    // ========================================================================
-
-    const duration = performance.now() - startTime;
-    const rejectorName = `${user.firstName} ${user.lastName}`.trim();
-
-    console.log('Timesheet rejected successfully', {
-      requestId,
-      timesheetId,
-      rejectorId: user.id,
-      rejectorName,
-      coachName: `${timesheet.coach.user.firstName} ${timesheet.coach.user.lastName}`,
-      reason: rejectionReason,
-      rejectedAt: rejectedAt.toISOString(),
-      duration: `${Math.round(duration)}ms`,
+    // 8. Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'EXPENSE_REJECTED', // Using existing audit action
+        resourceType: 'COACH_TIMESHEET',
+        resourceId: timesheetId,
+        beforeState: {
+          status: timesheet.status,
+          totalHours: timesheet.totalHours,
+        },
+        afterState: {
+          status: TimesheetStatus.REJECTED,
+          rejectionReason,
+          rejectedBy: session.user.id,
+        },
+      },
     });
 
-    const response: RejectionResponse = {
-      success: true,
-      message: 'Timesheet rejected successfully',
+    // 9. Create notification for coach (optional)
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: timesheet.coach.user.id,
+          title: 'Timesheet Rejected',
+          message: `Your timesheet for ${timesheet.period} has been rejected. Reason: ${rejectionReason}`,
+          type: 'TIMESHEET_REJECTED',
+          link: `/coach/timesheets/${timesheetId}`,
+          metadata: {
+            timesheetId,
+            period: timesheet.period,
+            rejectedBy: `${rejecter.firstName} ${rejecter.lastName}`,
+          },
+        },
+      });
+    } catch (notificationError) {
+      // Log but don't fail the request
+      console.error(`[${requestId}] Failed to create notification:`, notificationError);
+    }
+
+    // 10. Build response
+    const result: RejectionResult = {
       timesheetId: updatedTimesheet.id,
-      rejectedBy: rejectorName,
-      rejectedAt: rejectedAt.toISOString(),
+      period: updatedTimesheet.period,
+      coachName: `${timesheet.coach.user.firstName} ${timesheet.coach.user.lastName}`,
+      coachEmail: timesheet.coach.user.email,
+      totalHours: updatedTimesheet.totalHours,
+      status: updatedTimesheet.status,
+      rejectedAt: updatedTimesheet.rejectedAt!.toISOString(),
+      rejectedBy: {
+        id: rejecter.id,
+        name: `${rejecter.firstName} ${rejecter.lastName}`,
+      },
+      rejectionReason,
+      canResubmit: allowResubmission,
     };
 
-    return NextResponse.json(response, {
-      status: 200,
-      headers: {
-        'X-Request-ID': requestId,
-        'X-Response-Time': `${Math.round(duration)}ms`,
-      },
+    return createResponse(result, {
+      success: true,
+      message: 'Timesheet rejected. The coach has been notified.',
+      requestId,
     });
   } catch (error) {
-    const duration = performance.now() - startTime;
-
-    console.error('Timesheet rejection error', {
+    console.error(`[${requestId}] Reject Timesheet error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to reject timesheet',
+      code: 'INTERNAL_ERROR',
       requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      duration: `${Math.round(duration)}ms`,
+      status: 500,
     });
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to reject timesheet',
-        code: ERROR_CODES.INTERNAL_ERROR,
-        details:
-          error instanceof Error ? error.message : 'Unknown error occurred',
-      },
-      { status: 500, headers: { 'X-Request-ID': requestId } }
-    );
   }
 }
