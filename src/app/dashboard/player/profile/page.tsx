@@ -1,18 +1,24 @@
 /**
  * ============================================================================
- * 🏆 PITCHCONNECT - Player Profile v2.0 (Multi-Sport)
+ * 👤 PITCHCONNECT - Player Profile v7.5.0 (Enterprise Multi-Sport)
  * Path: src/app/dashboard/player/profile/page.tsx
  * ============================================================================
- * 
- * MULTI-SPORT FEATURES:
- * ✅ Sport-specific positions (Football, Netball, Rugby, etc.)
- * ✅ Dynamic "Preferred Foot/Hand" label based on sport
- * ✅ Sport context from player's team/club
- * ✅ All Position enum values from schema
- * ✅ PreferredFoot enum (LEFT/RIGHT/BOTH)
- * ✅ Custom toast system (no external deps)
+ *
+ * FEATURES:
+ * ✅ Multi-sport support (12 sports)
+ * ✅ Sport-specific positions
+ * ✅ Dynamic "Preferred Foot/Hand" based on sport
+ * ✅ Profile completion tracking
+ * ✅ Editable profile fields
+ * ✅ Custom toast notifications
  * ✅ Dark mode support
- * 
+ *
+ * AFFECTED USER TYPES:
+ * - PLAYER: Full edit access to own profile
+ * - PARENT: Read-only access to children's profiles
+ * - COACH: Read access to squad profiles
+ * - SCOUT: Read access for evaluation
+ *
  * ============================================================================
  */
 
@@ -21,12 +27,37 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  User, Edit, Save, X, Loader2, Trophy, MapPin, Calendar, Shield, Activity,
-  AlertCircle, Check, Info, Zap, Shirt, Footprints, Weight, Ruler, ArrowLeft, Star,
+  User,
+  Edit,
+  Save,
+  X,
+  Loader2,
+  Trophy,
+  Calendar,
+  Shield,
+  Activity,
+  AlertCircle,
+  Check,
+  Info,
+  Zap,
+  Shirt,
+  Footprints,
+  Weight,
+  Ruler,
+  ArrowLeft,
+  Star,
+  Flag,
+  Heart,
+  Camera,
+  Mail,
 } from 'lucide-react';
 import {
-  Sport, Position, PreferredFoot,
-  SPORT_CONFIGS, POSITION_LABELS, getPositionsForSport,
+  Sport,
+  Position,
+  PreferredFoot,
+  SPORT_CONFIGS,
+  POSITION_LABELS,
+  getPositionsForSport,
 } from '@/types/player';
 
 // ============================================================================
@@ -51,15 +82,15 @@ interface PlayerProfile {
   availabilityStatus: string;
   isActive: boolean;
   isVerified: boolean;
+  bio: string | null;
   user: {
     firstName: string | null;
     lastName: string | null;
     email: string;
     image: string | null;
   };
-  _count: { teamPlayers: number; statistics: number };
-  stats?: { matches: number; goals: number; assists: number };
-  sport: Sport; // Derived from player's primary team/club
+  _count: { teamPlayers: number; statistics: number; achievements: number };
+  sport: Sport;
 }
 
 // ============================================================================
@@ -69,43 +100,46 @@ interface PlayerProfile {
 type ToastType = 'success' | 'error' | 'info';
 interface ToastMessage { id: string; type: ToastType; message: string }
 
-const Toast = ({ message, type, onClose }: { message: string; type: ToastType; onClose: () => void }) => {
+function Toast({ message, type, onClose }: { message: string; type: ToastType; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t); }, [onClose]);
-  const colors = { success: 'bg-green-500', error: 'bg-red-500', info: 'bg-blue-500' };
+  const colors = { success: 'bg-success-500', error: 'bg-error-500', info: 'bg-info-500' };
   const icons = { success: <Check className="w-5 h-5" />, error: <AlertCircle className="w-5 h-5" />, info: <Info className="w-5 h-5" /> };
   return (
-    <div className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3`}>
+    <div className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-up`}>
       {icons[type]}<span className="text-sm font-medium flex-1">{message}</span>
       <button onClick={onClose} className="p-1 hover:bg-white/20 rounded"><X className="w-4 h-4" /></button>
     </div>
   );
-};
+}
 
-const useToast = () => {
+function useToast() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const add = useCallback((message: string, type: ToastType) => {
-    setToasts((p) => [...p, { id: `${Date.now()}`, message, type }]);
-  }, []);
-  const remove = useCallback((id: string) => setToasts((p) => p.filter((t) => t.id !== id)), []);
+  const add = useCallback((message: string, type: ToastType) => { setToasts((p) => [...p, { id: `${Date.now()}`, message, type }]); }, []);
+  const remove = useCallback((id: string) => { setToasts((p) => p.filter((t) => t.id !== id)); }, []);
   return { toasts, success: (m: string) => add(m, 'success'), error: (m: string) => add(m, 'error'), remove };
-};
+}
 
 // ============================================================================
-// HELPERS
+// CONSTANTS
 // ============================================================================
 
-const PREFERRED_SIDE_OPTIONS: { value: PreferredFoot; label: string }[] = [
+const PREFERRED_SIDE_OPTIONS: Array<{ value: PreferredFoot; label: string }> = [
   { value: 'LEFT', label: 'Left' },
   { value: 'RIGHT', label: 'Right' },
   { value: 'BOTH', label: 'Both' },
 ];
 
 const AVAILABILITY_STATUS = [
-  { value: 'AVAILABLE', label: 'Available', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-  { value: 'INJURED', label: 'Injured', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-  { value: 'SUSPENDED', label: 'Suspended', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
-  { value: 'UNAVAILABLE', label: 'Unavailable', color: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400' },
+  { value: 'AVAILABLE', label: 'Available', color: 'bg-success-100 text-success-700 dark:bg-success/20 dark:text-success-400', icon: Shield },
+  { value: 'INJURED', label: 'Injured', color: 'bg-error-100 text-error-700 dark:bg-error/20 dark:text-error-400', icon: Heart },
+  { value: 'SUSPENDED', label: 'Suspended', color: 'bg-warning-100 text-warning-700 dark:bg-warning/20 dark:text-warning-400', icon: AlertCircle },
+  { value: 'UNAVAILABLE', label: 'Unavailable', color: 'bg-charcoal-100 text-charcoal-700 dark:bg-charcoal-700 dark:text-charcoal-400', icon: X },
+  { value: 'INTERNATIONAL_DUTY', label: 'International Duty', color: 'bg-info-100 text-info-700 dark:bg-info/20 dark:text-info-400', icon: Flag },
 ];
+
+// ============================================================================
+// HELPERS
+// ============================================================================
 
 function getPositionLabel(pos: Position | null): string {
   if (!pos) return 'Not set';
@@ -117,10 +151,7 @@ function getPreferredSideLabel(sport: Sport): string {
 }
 
 function calculateCompletion(profile: PlayerProfile): number {
-  const fields = [
-    profile.height, profile.weight, profile.dateOfBirth, profile.nationality,
-    profile.primaryPosition, profile.preferredFoot, profile.jerseyNumber,
-  ];
+  const fields = [profile.user.firstName, profile.user.lastName, profile.height, profile.weight, profile.dateOfBirth, profile.nationality, profile.primaryPosition, profile.preferredFoot, profile.jerseyNumber, profile.bio];
   return Math.round((fields.filter(Boolean).length / fields.length) * 100);
 }
 
@@ -130,7 +161,6 @@ function calculateCompletion(profile: PlayerProfile): number {
 
 export default function PlayerProfilePage() {
   const { toasts, success, error: showError, remove } = useToast();
-
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -143,15 +173,12 @@ export default function PlayerProfilePage() {
     try {
       setIsLoading(true);
       const res = await fetch('/api/player/profile');
-      if (!res.ok) throw new Error('Failed to fetch');
+      if (!res.ok) throw new Error('Failed to fetch profile');
       const data = await res.json();
       setProfile(data.profile);
       setEditData(data.profile);
-    } catch {
-      showError('Failed to load profile');
-    } finally {
-      setIsLoading(false);
-    }
+    } catch { showError('Failed to load profile'); }
+    finally { setIsLoading(false); }
   };
 
   const handleSave = async () => {
@@ -161,28 +188,21 @@ export default function PlayerProfilePage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          height: editData.height,
-          weight: editData.weight,
-          dateOfBirth: editData.dateOfBirth,
-          nationality: editData.nationality,
-          secondNationality: editData.secondNationality,
-          jerseyNumber: editData.jerseyNumber,
-          preferredFoot: editData.preferredFoot,
-          primaryPosition: editData.primaryPosition,
-          secondaryPosition: editData.secondaryPosition,
+          height: editData.height, weight: editData.weight, dateOfBirth: editData.dateOfBirth,
+          nationality: editData.nationality, secondNationality: editData.secondNationality,
+          jerseyNumber: editData.jerseyNumber, preferredFoot: editData.preferredFoot,
+          primaryPosition: editData.primaryPosition, secondaryPosition: editData.secondaryPosition,
+          tertiaryPosition: editData.tertiaryPosition, bio: editData.bio,
         }),
       });
-      if (!res.ok) throw new Error('Failed to update');
+      if (!res.ok) throw new Error('Failed to update profile');
       const data = await res.json();
       setProfile(data.profile);
       setEditData(data.profile);
       setIsEditing(false);
       success('Profile updated successfully!');
-    } catch {
-      showError('Failed to update profile');
-    } finally {
-      setIsSaving(false);
-    }
+    } catch { showError('Failed to update profile'); }
+    finally { setIsSaving(false); }
   };
 
   const handleCancel = () => { setEditData(profile || {}); setIsEditing(false); };
@@ -190,7 +210,10 @@ export default function PlayerProfilePage() {
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-gold-500" />
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-gold-500 mx-auto mb-4" />
+          <p className="text-charcoal-600 dark:text-charcoal-400">Loading profile...</p>
+        </div>
       </div>
     );
   }
@@ -205,7 +228,6 @@ export default function PlayerProfilePage() {
     );
   }
 
-  // Get sport-specific config
   const sport = profile.sport || 'FOOTBALL';
   const sportConfig = SPORT_CONFIGS[sport];
   const positions = getPositionsForSport(sport);
@@ -220,36 +242,48 @@ export default function PlayerProfilePage() {
         {toasts.map((t) => <Toast key={t.id} message={t.message} type={t.type} onClose={() => remove(t.id)} />)}
       </div>
 
-      {/* HEADER */}
-      <div className="flex items-center justify-between gap-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard/player" className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-charcoal-700 transition-colors">
+          <Link href="/dashboard/player" className="p-2 rounded-lg hover:bg-charcoal-100 dark:hover:bg-charcoal-700 transition-colors">
             <ArrowLeft className="w-5 h-5 text-charcoal-600 dark:text-charcoal-400" />
           </Link>
           <div className="flex items-center gap-4">
-            <div className="w-20 h-20 bg-gradient-to-br from-gold-500 to-orange-400 rounded-2xl flex items-center justify-center shadow-lg">
-              <span className="text-3xl font-bold text-white">{profile.user.firstName?.charAt(0)}{profile.user.lastName?.charAt(0)}</span>
+            <div className="relative">
+              <div className="w-20 h-20 bg-gradient-to-br from-gold-500 to-orange-500 rounded-2xl flex items-center justify-center shadow-gold">
+                {profile.user.image ? (
+                  <img src={profile.user.image} alt="Profile" className="w-full h-full rounded-2xl object-cover" />
+                ) : (
+                  <span className="text-3xl font-bold text-white">{profile.user.firstName?.charAt(0)}{profile.user.lastName?.charAt(0)}</span>
+                )}
+              </div>
+              {isEditing && (
+                <button className="absolute -bottom-2 -right-2 p-2 bg-charcoal-800 rounded-full border-2 border-white dark:border-charcoal-700">
+                  <Camera className="w-4 h-4 text-white" />
+                </button>
+              )}
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-charcoal-900 dark:text-white">{profile.user.firstName} {profile.user.lastName}</h1>
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                {/* Sport Badge */}
                 <span className="px-3 py-1 bg-gradient-to-r from-gold-100 to-orange-100 dark:from-gold-900/30 dark:to-orange-900/30 text-gold-700 dark:text-gold-400 text-xs font-semibold rounded-full flex items-center gap-1">
                   <span>{sportConfig.icon}</span> {sportConfig.name}
                 </span>
                 {profile.primaryPosition && (
-                  <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-semibold rounded-full flex items-center gap-1">
+                  <span className="px-3 py-1 bg-info-100 dark:bg-info/20 text-info-700 dark:text-info-400 text-xs font-semibold rounded-full flex items-center gap-1">
                     <Shirt className="w-3 h-3" /> {getPositionLabel(profile.primaryPosition)}
                   </span>
                 )}
                 {profile.jerseyNumber && (
-                  <span className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-xs font-semibold rounded-full">#{profile.jerseyNumber}</span>
+                  <span className="px-3 py-1 bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 text-xs font-semibold rounded-full">#{profile.jerseyNumber}</span>
                 )}
                 {availStatus && (
-                  <span className={`px-3 py-1 text-xs font-semibold rounded-full ${availStatus.color}`}>{availStatus.label}</span>
+                  <span className={`px-3 py-1 text-xs font-semibold rounded-full flex items-center gap-1 ${availStatus.color}`}>
+                    <availStatus.icon className="w-3 h-3" /> {availStatus.label}
+                  </span>
                 )}
                 {profile.isVerified && (
-                  <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold rounded-full flex items-center gap-1">
+                  <span className="px-3 py-1 bg-success-100 dark:bg-success/20 text-success-700 dark:text-success-400 text-xs font-semibold rounded-full flex items-center gap-1">
                     <Check className="w-3 h-3" /> Verified
                   </span>
                 )}
@@ -257,68 +291,70 @@ export default function PlayerProfilePage() {
             </div>
           </div>
         </div>
+
         {!isEditing ? (
-          <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-semibold rounded-lg flex items-center gap-2">
-            <Edit className="w-4 h-4" /> Edit
+          <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-gradient-to-r from-gold-500 to-orange-500 hover:from-gold-600 hover:to-orange-600 text-white font-semibold rounded-lg flex items-center gap-2 shadow-gold">
+            <Edit className="w-4 h-4" /> Edit Profile
           </button>
         ) : (
           <div className="flex gap-2">
-            <button onClick={handleCancel} className="px-4 py-2 border border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 rounded-lg flex items-center gap-2">
+            <button onClick={handleCancel} className="px-4 py-2 border border-charcoal-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 rounded-lg flex items-center gap-2">
               <X className="w-4 h-4" /> Cancel
             </button>
-            <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg flex items-center gap-2 disabled:opacity-50">
+            <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-success-500 hover:bg-success-600 text-white font-semibold rounded-lg flex items-center gap-2 disabled:opacity-50">
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save
             </button>
           </div>
         )}
       </div>
 
-      {/* STATS CARDS */}
+      {/* Rating Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 p-4 text-center">
-          <Shield className="w-6 h-6 text-gold-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-charcoal-900 dark:text-white">{profile._count.teamPlayers}</p>
+        <div className="bg-gradient-to-br from-gold-500 to-orange-500 rounded-xl p-4 text-white shadow-gold">
+          <Star className="w-6 h-6 mb-2 opacity-80" />
+          <p className="text-3xl font-bold tabular-nums">{profile.overallRating?.toFixed(1) || '-'}</p>
+          <p className="text-sm text-gold-100">Overall Rating</p>
+        </div>
+        <div className="bg-gradient-to-br from-purple-500 to-purple-700 rounded-xl p-4 text-white shadow-purple">
+          <Zap className="w-6 h-6 mb-2 opacity-80" />
+          <p className="text-3xl font-bold tabular-nums">{profile.formRating?.toFixed(1) || '-'}</p>
+          <p className="text-sm text-purple-200">Current Form</p>
+        </div>
+        <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 p-4">
+          <Shield className="w-6 h-6 text-info-500 mb-2" />
+          <p className="text-3xl font-bold text-charcoal-900 dark:text-white tabular-nums">{profile._count.teamPlayers}</p>
           <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Teams</p>
         </div>
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 p-4 text-center">
-          <Trophy className="w-6 h-6 text-blue-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-charcoal-900 dark:text-white">{profile.stats?.matches || 0}</p>
-          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Matches</p>
-        </div>
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 p-4 text-center">
-          <Zap className="w-6 h-6 text-green-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-charcoal-900 dark:text-white">{profile.stats?.goals || 0}</p>
-          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{sportConfig.statLabels.primaryStat}</p>
-        </div>
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 p-4 text-center">
-          <Star className="w-6 h-6 text-purple-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-charcoal-900 dark:text-white">{profile.overallRating?.toFixed(1) || '-'}</p>
-          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Rating</p>
+        <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 p-4">
+          <Trophy className="w-6 h-6 text-gold-500 mb-2" />
+          <p className="text-3xl font-bold text-charcoal-900 dark:text-white tabular-nums">{profile._count.achievements}</p>
+          <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Achievements</p>
         </div>
       </div>
 
-      {/* PROFILE COMPLETION */}
+      {/* Profile Completion */}
       {completion < 100 && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+        <div className="bg-gradient-to-r from-gold-50 to-orange-50 dark:from-gold-900/20 dark:to-orange-900/20 border border-gold-200 dark:border-gold-800 rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">Profile Completion</span>
-            <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{completion}%</span>
+            <span className="text-sm font-semibold text-gold-800 dark:text-gold-300">Profile Completion</span>
+            <span className="text-sm font-bold text-gold-600 dark:text-gold-400">{completion}%</span>
           </div>
-          <div className="w-full bg-amber-200 dark:bg-amber-800 rounded-full h-2">
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 h-2 rounded-full" style={{ width: `${completion}%` }} />
+          <div className="w-full bg-gold-200 dark:bg-gold-900/50 rounded-full h-2">
+            <div className="bg-gradient-to-r from-gold-500 to-orange-500 h-2 rounded-full" style={{ width: `${completion}%` }} />
           </div>
         </div>
       )}
 
-      {/* PROFILE INFO */}
-      <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-neutral-200 dark:border-charcoal-700 shadow-sm">
-        <div className="p-6 border-b border-neutral-200 dark:border-charcoal-700">
+      {/* Profile Information */}
+      <div className="bg-white dark:bg-charcoal-800 rounded-xl border border-charcoal-200 dark:border-charcoal-700 shadow-sm">
+        <div className="p-6 border-b border-charcoal-200 dark:border-charcoal-700">
           <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
             <User className="w-5 h-5 text-gold-500" /> Profile Information
           </h2>
         </div>
+
         <div className="p-6 space-y-8">
-          {/* Personal */}
+          {/* Personal Information */}
           <div>
             <h3 className="text-sm font-semibold text-charcoal-900 dark:text-white mb-4 flex items-center gap-2">
               <Info className="w-4 h-4 text-gold-500" /> Personal Information
@@ -328,15 +364,20 @@ export default function PlayerProfilePage() {
                 value={profile.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Not set'}
                 editElement={<input type="date" value={editData.dateOfBirth?.split('T')[0] || ''} onChange={(e) => setEditData({ ...editData, dateOfBirth: e.target.value })} className="input-field" />}
               />
-              <FormField label="Nationality" icon={<MapPin className="w-4 h-4" />} isEditing={isEditing}
+              <FormField label="Nationality" icon={<Flag className="w-4 h-4" />} isEditing={isEditing}
                 value={profile.nationality || 'Not set'}
                 editElement={<input value={editData.nationality || ''} onChange={(e) => setEditData({ ...editData, nationality: e.target.value })} placeholder="e.g., English" className="input-field" />}
               />
+              <FormField label="Second Nationality" icon={<Flag className="w-4 h-4" />} isEditing={isEditing}
+                value={profile.secondNationality || 'Not set'}
+                editElement={<input value={editData.secondNationality || ''} onChange={(e) => setEditData({ ...editData, secondNationality: e.target.value })} placeholder="e.g., Irish" className="input-field" />}
+              />
+              <FormField label="Email" icon={<Mail className="w-4 h-4" />} isEditing={false} value={profile.user.email} editElement={null} />
             </div>
           </div>
 
-          {/* Playing - Sport Specific */}
-          <div className="pt-6 border-t border-neutral-200 dark:border-charcoal-700">
+          {/* Playing Information */}
+          <div className="pt-6 border-t border-charcoal-200 dark:border-charcoal-700">
             <h3 className="text-sm font-semibold text-charcoal-900 dark:text-white mb-4 flex items-center gap-2">
               <span className="text-lg">{sportConfig.icon}</span> {sportConfig.name} Information
             </h3>
@@ -359,7 +400,6 @@ export default function PlayerProfilePage() {
                   </select>
                 }
               />
-              {/* Dynamic label based on sport */}
               <FormField label={preferredSideLabel} icon={<Footprints className="w-4 h-4" />} isEditing={isEditing}
                 value={profile.preferredFoot ? PREFERRED_SIDE_OPTIONS.find(f => f.value === profile.preferredFoot)?.label || 'Not set' : 'Not set'}
                 editElement={
@@ -376,8 +416,8 @@ export default function PlayerProfilePage() {
             </div>
           </div>
 
-          {/* Physical */}
-          <div className="pt-6 border-t border-neutral-200 dark:border-charcoal-700">
+          {/* Physical Attributes */}
+          <div className="pt-6 border-t border-charcoal-200 dark:border-charcoal-700">
             <h3 className="text-sm font-semibold text-charcoal-900 dark:text-white mb-4 flex items-center gap-2">
               <Activity className="w-4 h-4 text-gold-500" /> Physical Attributes
             </h3>
@@ -392,6 +432,18 @@ export default function PlayerProfilePage() {
               />
             </div>
           </div>
+
+          {/* Bio */}
+          <div className="pt-6 border-t border-charcoal-200 dark:border-charcoal-700">
+            <h3 className="text-sm font-semibold text-charcoal-900 dark:text-white mb-4 flex items-center gap-2">
+              <User className="w-4 h-4 text-gold-500" /> About Me
+            </h3>
+            {isEditing ? (
+              <textarea value={editData.bio || ''} onChange={(e) => setEditData({ ...editData, bio: e.target.value })} placeholder="Tell coaches and scouts about yourself..." rows={4} className="input-field resize-none" />
+            ) : (
+              <p className="text-charcoal-700 dark:text-charcoal-300">{profile.bio || 'No bio added yet.'}</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -405,16 +457,8 @@ export default function PlayerProfilePage() {
           color: #111827;
           font-size: 0.875rem;
         }
-        .input-field:focus {
-          outline: none;
-          border-color: #f59e0b;
-          box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
-        }
-        :global(.dark) .input-field {
-          background: #374151;
-          border-color: #4b5563;
-          color: #f3f4f6;
-        }
+        .input-field:focus { outline: none; border-color: #d4af37; box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1); }
+        :global(.dark) .input-field { background: #374151; border-color: #4b5563; color: #f3f4f6; }
       `}</style>
     </div>
   );
@@ -425,20 +469,12 @@ export default function PlayerProfilePage() {
 // ============================================================================
 
 function FormField({ label, icon, value, isEditing, editElement }: {
-  label: string;
-  icon: React.ReactNode;
-  value: string;
-  isEditing: boolean;
-  editElement: React.ReactNode;
+  label: string; icon: React.ReactNode; value: string; isEditing: boolean; editElement: React.ReactNode;
 }) {
   return (
     <div>
-      <label className="text-sm text-charcoal-600 dark:text-charcoal-400 flex items-center gap-2 mb-2">
-        {icon} {label}
-      </label>
-      {isEditing ? editElement : (
-        <p className="font-medium text-charcoal-900 dark:text-white">{value}</p>
-      )}
+      <label className="text-sm text-charcoal-600 dark:text-charcoal-400 flex items-center gap-2 mb-2">{icon} {label}</label>
+      {isEditing && editElement ? editElement : <p className="font-medium text-charcoal-900 dark:text-white">{value}</p>}
     </div>
   );
 }
