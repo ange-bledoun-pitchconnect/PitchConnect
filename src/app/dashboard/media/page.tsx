@@ -1,338 +1,675 @@
-/**
- * ============================================================================
- * 🏆 PITCHCONNECT - Media Manager Dashboard v2.0
- * Path: src/app/dashboard/media/page.tsx
- * ============================================================================
- * 
- * Features:
- * ✅ Content management
- * ✅ Photo/video galleries
- * ✅ Social media integration
- * ✅ News/announcements
- * ✅ Match highlights
- * ✅ Brand assets
- * 
- * ============================================================================
- */
+'use client';
 
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/auth';
-import { redirect } from 'next/navigation';
-import { prisma } from '@/lib/prisma';
+// ============================================================================
+// 📸 PITCHCONNECT - Media Dashboard v7.5.0
+// Path: app/(dashboard)/dashboard/media/page.tsx
+// ============================================================================
+//
+// Media management dashboard with social account integration,
+// gallery management, and content analytics.
+//
+// ============================================================================
+
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
-  Camera, Video, Image, FileText, Share2, Globe, ArrowRight, Calendar,
-  Eye, TrendingUp, Upload, Folder, Megaphone, Clock, BarChart3,
+  Video,
+  Image as ImageIcon,
+  Upload,
+  Search,
+  Filter,
+  Grid3X3,
+  List,
+  Plus,
+  MoreVertical,
+  Eye,
+  Download,
+  Trash2,
+  Share2,
+  Link2,
+  Instagram,
+  Twitter,
+  Facebook,
+  Youtube,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  TrendingUp,
+  Users,
+  Heart,
+  MessageCircle,
+  ChevronRight,
+  Play,
+  Folder,
+  Settings,
+  RefreshCw,
+  ExternalLink,
+  Zap,
 } from 'lucide-react';
+import { SPORT_CONFIGS, type Sport } from '@/types/player';
 
 // ============================================================================
-// DATA FETCHING
+// TYPES
 // ============================================================================
 
-async function getMediaDashboardData(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      roles: true,
-      clubMemberships: {
-        where: { isActive: true },
-        include: { club: { select: { id: true, name: true, sport: true } } },
-      },
-    },
-  });
+type SocialPlatform = 'INSTAGRAM' | 'TWITTER' | 'FACEBOOK' | 'YOUTUBE' | 'TIKTOK' | 'LINKEDIN';
 
-  if (!user || user.clubMemberships.length === 0) {
-    return { hasAssignment: false, stats: null };
-  }
+interface SocialAccount {
+  id: string;
+  platform: SocialPlatform;
+  accountName: string;
+  profileUrl?: string;
+  followerCount: number;
+  isConnected: boolean;
+  lastSyncAt?: Date;
+  lastPostAt?: Date;
+}
 
-  return {
-    hasAssignment: true,
-    clubs: user.clubMemberships.map(cm => cm.club),
-    stats: {
-      totalAssets: 0,
-      photosUploaded: 0,
-      videosUploaded: 0,
-      postsPublished: 0,
-      totalViews: 0,
-      engagement: 0,
-    },
-    recentUploads: [],
-    scheduledPosts: [],
-  };
+interface MediaItem {
+  id: string;
+  type: 'VIDEO' | 'IMAGE';
+  category: string;
+  title: string;
+  thumbnailUrl: string;
+  url: string;
+  duration?: number;
+  viewCount: number;
+  likeCount: number;
+  createdAt: Date;
+  visibility: 'PUBLIC' | 'CLUB_ONLY' | 'TEAM_ONLY' | 'PRIVATE';
+  processingStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  tags: string[];
+}
+
+interface MediaStats {
+  totalMedia: number;
+  totalVideos: number;
+  totalImages: number;
+  totalViews: number;
+  totalStorage: number;
+  storageLimit: number;
 }
 
 // ============================================================================
-// MAIN PAGE COMPONENT
+// PLATFORM CONFIG
 // ============================================================================
 
-export default async function MediaPage() {
-  const session = await getServerSession(authOptions);
+const PLATFORM_CONFIG: Record<SocialPlatform, { icon: React.ElementType; color: string; label: string; gradient: string }> = {
+  INSTAGRAM: { icon: Instagram, color: 'pink', label: 'Instagram', gradient: 'from-pink-500 via-purple-500 to-orange-500' },
+  TWITTER: { icon: Twitter, color: 'sky', label: 'X (Twitter)', gradient: 'from-sky-400 to-blue-500' },
+  FACEBOOK: { icon: Facebook, color: 'blue', label: 'Facebook', gradient: 'from-blue-600 to-blue-700' },
+  YOUTUBE: { icon: Youtube, color: 'red', label: 'YouTube', gradient: 'from-red-500 to-red-600' },
+  TIKTOK: { icon: Zap, color: 'neutral', label: 'TikTok', gradient: 'from-neutral-900 via-pink-500 to-cyan-400' },
+  LINKEDIN: { icon: Users, color: 'blue', label: 'LinkedIn', gradient: 'from-blue-700 to-blue-800' },
+};
 
-  if (!session?.user) {
-    redirect('/auth/login');
-  }
+// ============================================================================
+// MOCK DATA
+// ============================================================================
 
-  const data = await getMediaDashboardData(session.user.id);
+const mockStats: MediaStats = {
+  totalMedia: 156,
+  totalVideos: 42,
+  totalImages: 114,
+  totalViews: 12450,
+  totalStorage: 2.4, // GB
+  storageLimit: 10, // GB
+};
 
-  return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl sm:text-4xl font-bold text-charcoal-900 dark:text-white mb-2 flex items-center gap-3">
-          📸 Media Manager
-        </h1>
-        <p className="text-charcoal-600 dark:text-charcoal-400">
-          Manage club media, content, and social presence
-        </p>
-      </div>
+const mockSocialAccounts: SocialAccount[] = [
+  { id: '1', platform: 'INSTAGRAM', accountName: '@valleyfc_official', followerCount: 5420, isConnected: true, lastSyncAt: new Date(Date.now() - 2 * 60 * 60 * 1000), lastPostAt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+  { id: '2', platform: 'TWITTER', accountName: '@ValleyFC', followerCount: 3180, isConnected: true, lastSyncAt: new Date(Date.now() - 1 * 60 * 60 * 1000) },
+  { id: '3', platform: 'FACEBOOK', accountName: 'Valley Football Club', followerCount: 8920, isConnected: true, lastSyncAt: new Date(Date.now() - 4 * 60 * 60 * 1000) },
+  { id: '4', platform: 'YOUTUBE', accountName: 'Valley FC', followerCount: 1250, isConnected: false },
+  { id: '5', platform: 'TIKTOK', accountName: '@valleyfc', followerCount: 0, isConnected: false },
+];
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard label="Total Assets" value={data.stats?.totalAssets || 0} icon={<Folder className="w-6 h-6 text-blue-500" />} />
-        <StatCard label="Photos" value={data.stats?.photosUploaded || 0} icon={<Image className="w-6 h-6 text-green-500" />} />
-        <StatCard label="Videos" value={data.stats?.videosUploaded || 0} icon={<Video className="w-6 h-6 text-purple-500" />} />
-        <StatCard label="Posts" value={data.stats?.postsPublished || 0} icon={<FileText className="w-6 h-6 text-orange-500" />} />
-        <StatCard label="Views" value={data.stats?.totalViews || 0} icon={<Eye className="w-6 h-6 text-pink-500" />} />
-        <StatCard label="Engagement" value={`${data.stats?.engagement || 0}%`} icon={<TrendingUp className="w-6 h-6 text-gold-500" />} />
-      </div>
+const mockMediaItems: MediaItem[] = [
+  { id: '1', type: 'VIDEO', category: 'MATCH_HIGHLIGHT', title: 'Match Highlights vs Riverside FC', thumbnailUrl: '/api/placeholder/400/225', url: '/videos/1.mp4', duration: 245, viewCount: 1250, likeCount: 89, createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), visibility: 'PUBLIC', processingStatus: 'COMPLETED', tags: ['match', 'highlights', 'goals'] },
+  { id: '2', type: 'IMAGE', category: 'MATCH_PHOTO', title: 'Team Celebration', thumbnailUrl: '/api/placeholder/400/300', url: '/images/2.jpg', viewCount: 890, likeCount: 156, createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), visibility: 'PUBLIC', processingStatus: 'COMPLETED', tags: ['celebration', 'team'] },
+  { id: '3', type: 'VIDEO', category: 'TRAINING_SESSION', title: 'Training Ground Session', thumbnailUrl: '/api/placeholder/400/225', url: '/videos/3.mp4', duration: 180, viewCount: 456, likeCount: 34, createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), visibility: 'CLUB_ONLY', processingStatus: 'COMPLETED', tags: ['training', 'drills'] },
+  { id: '4', type: 'VIDEO', category: 'GOAL_CLIP', title: 'Amazing Free Kick Goal', thumbnailUrl: '/api/placeholder/400/225', url: '/videos/4.mp4', duration: 32, viewCount: 2340, likeCount: 245, createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), visibility: 'PUBLIC', processingStatus: 'COMPLETED', tags: ['goal', 'freekick', 'amazing'] },
+  { id: '5', type: 'IMAGE', category: 'TEAM_PHOTO', title: 'Squad Photo 2024/25', thumbnailUrl: '/api/placeholder/400/300', url: '/images/5.jpg', viewCount: 1890, likeCount: 312, createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000), visibility: 'PUBLIC', processingStatus: 'COMPLETED', tags: ['squad', 'team', 'official'] },
+  { id: '6', type: 'VIDEO', category: 'PLAYER_INTERVIEW', title: 'Post-Match Interview - Captain', thumbnailUrl: '/api/placeholder/400/225', url: '/videos/6.mp4', duration: 420, viewCount: 678, likeCount: 45, createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), visibility: 'PUBLIC', processingStatus: 'COMPLETED', tags: ['interview', 'captain'] },
+  { id: '7', type: 'VIDEO', category: 'MATCH_HIGHLIGHT', title: 'Processing...', thumbnailUrl: '/api/placeholder/400/225', url: '', viewCount: 0, likeCount: 0, createdAt: new Date(), visibility: 'CLUB_ONLY', processingStatus: 'PROCESSING', tags: [] },
+];
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <QuickAction
-          href="/dashboard/media/upload"
-          icon={<Upload className="w-8 h-8 text-blue-600 dark:text-blue-400" />}
-          title="Upload Media"
-          description="Add photos and videos"
-          gradient="from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20"
-          borderColor="border-blue-200 dark:border-blue-800 hover:border-blue-400"
-        />
-        <QuickAction
-          href="/dashboard/media/gallery"
-          icon={<Image className="w-8 h-8 text-green-600 dark:text-green-400" />}
-          title="Media Gallery"
-          description="Browse and manage assets"
-          gradient="from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20"
-          borderColor="border-green-200 dark:border-green-800 hover:border-green-400"
-        />
-        <QuickAction
-          href="/dashboard/media/posts/new"
-          icon={<Megaphone className="w-8 h-8 text-purple-600 dark:text-purple-400" />}
-          title="Create Post"
-          description="Publish news and updates"
-          gradient="from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20"
-          borderColor="border-purple-200 dark:border-purple-800 hover:border-purple-400"
-        />
-        <QuickAction
-          href="/dashboard/media/social"
-          icon={<Share2 className="w-8 h-8 text-pink-600 dark:text-pink-400" />}
-          title="Social Media"
-          description="Connect and manage accounts"
-          gradient="from-pink-50 to-pink-100 dark:from-pink-900/20 dark:to-pink-800/20"
-          borderColor="border-pink-200 dark:border-pink-800 hover:border-pink-400"
-        />
-      </div>
-
-      {/* Recent Uploads & Scheduled Posts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Uploads */}
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700">
-          <div className="p-6 border-b border-neutral-200 dark:border-charcoal-700 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-              <Camera className="w-5 h-5 text-blue-500" />
-              Recent Uploads
-            </h2>
-            <Link href="/dashboard/media/gallery" className="text-sm font-medium text-gold-600 dark:text-gold-400 hover:underline">
-              View All
-            </Link>
-          </div>
-          <div className="p-6">
-            <EmptyState
-              icon={<Image className="w-16 h-16" />}
-              title="No uploads yet"
-              description="Upload your first photo or video"
-              actionLabel="Upload Media"
-              actionHref="/dashboard/media/upload"
-            />
-          </div>
-        </div>
-
-        {/* Scheduled Posts */}
-        <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700">
-          <div className="p-6 border-b border-neutral-200 dark:border-charcoal-700 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-purple-500" />
-              Scheduled Posts
-            </h2>
-            <Link href="/dashboard/media/posts/new" className="px-4 py-2 bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-semibold rounded-lg text-sm">
-              New Post
-            </Link>
-          </div>
-          <div className="p-6">
-            <EmptyState
-              icon={<Calendar className="w-16 h-16" />}
-              title="No scheduled posts"
-              description="Schedule content to be published later"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Analytics */}
-      <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700">
-        <div className="p-6 border-b border-neutral-200 dark:border-charcoal-700 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-green-500" />
-              Content Performance
-            </h2>
-            <p className="text-sm text-charcoal-600 dark:text-charcoal-400">Track engagement and reach</p>
-          </div>
-          <Link
-            href="/dashboard/media/analytics"
-            className="px-4 py-2 bg-neutral-100 dark:bg-charcoal-700 hover:bg-neutral-200 dark:hover:bg-charcoal-600 text-charcoal-700 dark:text-charcoal-300 rounded-lg flex items-center gap-2 text-sm font-medium"
-          >
-            Full Analytics <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <AnalyticsCard
-              label="Total Reach"
-              value="0"
-              change={0}
-              icon={<Globe className="w-8 h-8 text-blue-500" />}
-            />
-            <AnalyticsCard
-              label="Engagement Rate"
-              value="0%"
-              change={0}
-              icon={<TrendingUp className="w-8 h-8 text-green-500" />}
-            />
-            <AnalyticsCard
-              label="Avg. View Time"
-              value="0s"
-              change={0}
-              icon={<Clock className="w-8 h-8 text-purple-500" />}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Social Accounts */}
-      <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700">
-        <div className="p-6 border-b border-neutral-200 dark:border-charcoal-700">
-          <h2 className="text-lg font-bold text-charcoal-900 dark:text-white flex items-center gap-2">
-            <Share2 className="w-5 h-5 text-pink-500" />
-            Connected Accounts
-          </h2>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <SocialAccountCard platform="instagram" connected={false} />
-            <SocialAccountCard platform="twitter" connected={false} />
-            <SocialAccountCard platform="facebook" connected={false} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+const CATEGORY_OPTIONS = [
+  { value: 'all', label: 'All Categories' },
+  { value: 'MATCH_HIGHLIGHT', label: 'Match Highlights' },
+  { value: 'GOAL_CLIP', label: 'Goal Clips' },
+  { value: 'MATCH_PHOTO', label: 'Match Photos' },
+  { value: 'TRAINING_SESSION', label: 'Training' },
+  { value: 'PLAYER_INTERVIEW', label: 'Interviews' },
+  { value: 'TEAM_PHOTO', label: 'Team Photos' },
+  { value: 'ANNOUNCEMENT', label: 'Announcements' },
+];
 
 // ============================================================================
 // COMPONENTS
 // ============================================================================
 
-function StatCard({ label, value, icon }: { label: string; value: number | string; icon: React.ReactNode }) {
-  return (
-    <div className="bg-white dark:bg-charcoal-800 rounded-xl shadow-sm border border-neutral-200 dark:border-charcoal-700 p-4 hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-charcoal-500 dark:text-charcoal-400 font-medium uppercase tracking-wide">{label}</p>
-          <p className="text-2xl font-bold text-charcoal-900 dark:text-white mt-1">{value}</p>
-        </div>
-        {icon}
-      </div>
-    </div>
-  );
-}
-
-function QuickAction({ href, icon, title, description, gradient, borderColor }: {
-  href: string; icon: React.ReactNode; title: string; description: string; gradient: string; borderColor: string;
+function StatCard({ 
+  icon: Icon, 
+  label, 
+  value, 
+  subValue, 
+  color = 'blue',
+}: { 
+  icon: React.ElementType;
+  label: string;
+  value: string | number;
+  subValue?: string;
+  color?: string;
 }) {
-  return (
-    <Link href={href} className={`group block bg-gradient-to-br ${gradient} border-2 ${borderColor} rounded-xl p-6 transition-all hover:shadow-lg hover:-translate-y-1`}>
-      <div className="mb-3">{icon}</div>
-      <h3 className="text-lg font-bold text-charcoal-900 dark:text-white mb-2">{title}</h3>
-      <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{description}</p>
-      <div className="flex items-center gap-2 mt-4 text-gold-600 dark:text-gold-400 font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
-        <span>Open</span>
-        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-      </div>
-    </Link>
-  );
-}
-
-function AnalyticsCard({ label, value, change, icon }: { label: string; value: string; change: number; icon: React.ReactNode }) {
-  return (
-    <div className="p-4 bg-neutral-50 dark:bg-charcoal-700 rounded-xl">
-      <div className="flex items-center justify-between mb-2">
-        {icon}
-        <span className={`text-xs font-semibold ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {change >= 0 ? '+' : ''}{change}%
-        </span>
-      </div>
-      <p className="text-2xl font-bold text-charcoal-900 dark:text-white">{value}</p>
-      <p className="text-sm text-charcoal-600 dark:text-charcoal-400">{label}</p>
-    </div>
-  );
-}
-
-function SocialAccountCard({ platform, connected }: { platform: string; connected: boolean }) {
-  const platforms: Record<string, { name: string; color: string; icon: string }> = {
-    instagram: { name: 'Instagram', color: 'from-pink-500 to-purple-500', icon: '📷' },
-    twitter: { name: 'X (Twitter)', color: 'from-charcoal-600 to-charcoal-800', icon: '🐦' },
-    facebook: { name: 'Facebook', color: 'from-blue-500 to-blue-700', icon: '📘' },
+  const colorClasses: Record<string, string> = {
+    blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    purple: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+    green: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    orange: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   };
 
-  const config = platforms[platform];
-
   return (
-    <div className={`p-4 rounded-xl border-2 ${connected ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20' : 'border-neutral-200 dark:border-charcoal-600 bg-neutral-50 dark:bg-charcoal-700'}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">{config.icon}</span>
-          <div>
-            <p className="font-semibold text-charcoal-900 dark:text-white">{config.name}</p>
-            <p className="text-xs text-charcoal-500 dark:text-charcoal-400">
-              {connected ? 'Connected' : 'Not connected'}
-            </p>
-          </div>
+    <div className="relative overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/50 p-5 backdrop-blur-sm">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-neutral-400">{label}</p>
+          <p className="mt-2 text-3xl font-bold text-white">{value}</p>
+          {subValue && <p className="mt-1 text-sm text-neutral-500">{subValue}</p>}
         </div>
-        <button className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-          connected 
-            ? 'bg-neutral-200 dark:bg-charcoal-600 text-charcoal-700 dark:text-charcoal-300'
-            : 'bg-gradient-to-r ' + config.color + ' text-white'
-        }`}>
-          {connected ? 'Manage' : 'Connect'}
-        </button>
+        <div className={`rounded-lg border p-2.5 ${colorClasses[color]}`}>
+          <Icon className="h-5 w-5" />
+        </div>
       </div>
     </div>
   );
 }
 
-function EmptyState({ icon, title, description, actionLabel, actionHref }: {
-  icon: React.ReactNode; title: string; description?: string; actionLabel?: string; actionHref?: string;
-}) {
+function SocialAccountCard({ account }: { account: SocialAccount }) {
+  const config = PLATFORM_CONFIG[account.platform];
+  const Icon = config.icon;
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+    return num.toString();
+  };
+
+  const formatTime = (date?: Date) => {
+    if (!date) return 'Never';
+    const hours = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60));
+    if (hours < 1) return 'Just now';
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
+
   return (
-    <div className="text-center py-12">
-      <div className="text-charcoal-300 dark:text-charcoal-600 mx-auto mb-4">{icon}</div>
-      <h3 className="text-lg font-semibold text-charcoal-900 dark:text-white mb-2">{title}</h3>
-      {description && <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-4">{description}</p>}
-      {actionLabel && actionHref && (
-        <Link href={actionHref} className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-gold-500 to-orange-400 hover:from-gold-600 hover:to-orange-500 text-white font-semibold rounded-lg text-sm">
-          {actionLabel}
-        </Link>
+    <div className={`relative overflow-hidden rounded-xl border ${account.isConnected ? 'border-neutral-700' : 'border-dashed border-neutral-800'} bg-neutral-900/50 p-5 transition-all hover:border-neutral-600`}>
+      {account.isConnected && (
+        <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${config.gradient}`} />
       )}
+      
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+            config.color === 'pink' ? 'bg-pink-500/10 text-pink-400' :
+            config.color === 'sky' ? 'bg-sky-500/10 text-sky-400' :
+            config.color === 'blue' ? 'bg-blue-500/10 text-blue-400' :
+            config.color === 'red' ? 'bg-red-500/10 text-red-400' :
+            'bg-neutral-500/10 text-neutral-400'
+          }`}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-white">{config.label}</h3>
+            <p className="text-sm text-neutral-400">{account.accountName}</p>
+          </div>
+        </div>
+        {account.isConnected ? (
+          <span className="flex items-center gap-1 text-xs text-emerald-400">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Connected
+          </span>
+        ) : (
+          <button className="rounded-lg bg-neutral-800 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-neutral-700">
+            Connect
+          </button>
+        )}
+      </div>
+
+      {account.isConnected && (
+        <div className="mt-4 grid grid-cols-2 gap-4 border-t border-neutral-800 pt-4">
+          <div>
+            <p className="text-2xl font-bold text-white">{formatNumber(account.followerCount)}</p>
+            <p className="text-xs text-neutral-500">Followers</p>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-neutral-300">{formatTime(account.lastSyncAt)}</p>
+            <p className="text-xs text-neutral-500">Last Synced</p>
+          </div>
+        </div>
+      )}
+
+      {account.isConnected && (
+        <div className="mt-4 flex gap-2">
+          <button className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-neutral-700 bg-neutral-800/50 py-2 text-xs font-medium text-white transition-colors hover:bg-neutral-800">
+            <Share2 className="h-3.5 w-3.5" />
+            Post
+          </button>
+          <button className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-neutral-700 bg-neutral-800/50 py-2 text-xs font-medium text-white transition-colors hover:bg-neutral-800">
+            <RefreshCw className="h-3.5 w-3.5" />
+            Sync
+          </button>
+          <button className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white">
+            <Settings className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MediaCard({ item, viewMode }: { item: MediaItem; viewMode: 'grid' | 'list' }) {
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatViews = (views: number) => {
+    if (views >= 1000) return `${(views / 1000).toFixed(1)}K`;
+    return views.toString();
+  };
+
+  const getVisibilityBadge = (visibility: string) => {
+    const styles: Record<string, string> = {
+      PUBLIC: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      CLUB_ONLY: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+      TEAM_ONLY: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+      PRIVATE: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20',
+    };
+    return styles[visibility] || styles.PRIVATE;
+  };
+
+  if (viewMode === 'list') {
+    return (
+      <div className="group flex items-center gap-4 rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 transition-all hover:border-neutral-700 hover:bg-neutral-900/70">
+        <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg bg-neutral-800">
+          <div className="flex h-full w-full items-center justify-center text-neutral-600">
+            {item.type === 'VIDEO' ? <Video className="h-6 w-6" /> : <ImageIcon className="h-6 w-6" />}
+          </div>
+          {item.type === 'VIDEO' && item.duration && item.processingStatus === 'COMPLETED' && (
+            <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 py-0.5 text-xs text-white">
+              {formatDuration(item.duration)}
+            </span>
+          )}
+          {item.processingStatus === 'PROCESSING' && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <RefreshCw className="h-5 w-5 animate-spin text-white" />
+            </div>
+          )}
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium text-white truncate">{item.title}</h3>
+          <div className="mt-1 flex items-center gap-3 text-sm text-neutral-500">
+            <span>{item.category.replace(/_/g, ' ')}</span>
+            <span>•</span>
+            <span>{new Date(item.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6 text-sm text-neutral-400">
+          <span className="flex items-center gap-1">
+            <Eye className="h-4 w-4" />
+            {formatViews(item.viewCount)}
+          </span>
+          <span className="flex items-center gap-1">
+            <Heart className="h-4 w-4" />
+            {item.likeCount}
+          </span>
+          <span className={`rounded-full border px-2 py-0.5 text-xs ${getVisibilityBadge(item.visibility)}`}>
+            {item.visibility.replace('_', ' ')}
+          </span>
+        </div>
+
+        <button className="rounded-lg p-2 text-neutral-500 opacity-0 transition-all hover:bg-neutral-800 hover:text-white group-hover:opacity-100">
+          <MoreVertical className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/50 transition-all hover:border-neutral-700 hover:bg-neutral-900/70">
+      <div className="relative aspect-video overflow-hidden bg-neutral-800">
+        <div className="flex h-full w-full items-center justify-center text-neutral-600">
+          {item.type === 'VIDEO' ? <Video className="h-10 w-10" /> : <ImageIcon className="h-10 w-10" />}
+        </div>
+        
+        {item.type === 'VIDEO' && item.processingStatus === 'COMPLETED' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-black">
+              <Play className="h-5 w-5 ml-0.5" />
+            </div>
+          </div>
+        )}
+        
+        {item.type === 'VIDEO' && item.duration && item.processingStatus === 'COMPLETED' && (
+          <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-xs text-white">
+            {formatDuration(item.duration)}
+          </span>
+        )}
+
+        {item.processingStatus === 'PROCESSING' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70">
+            <RefreshCw className="h-8 w-8 animate-spin text-white" />
+            <span className="mt-2 text-sm text-white">Processing...</span>
+          </div>
+        )}
+
+        {item.processingStatus === 'FAILED' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-900/50">
+            <AlertCircle className="h-8 w-8 text-red-400" />
+            <span className="mt-2 text-sm text-red-300">Processing Failed</span>
+          </div>
+        )}
+
+        <span className={`absolute left-2 top-2 rounded-full border px-2 py-0.5 text-xs ${getVisibilityBadge(item.visibility)}`}>
+          {item.visibility.replace('_', ' ')}
+        </span>
+      </div>
+
+      <div className="p-4">
+        <h3 className="font-medium text-white line-clamp-1">{item.title}</h3>
+        <p className="mt-1 text-sm text-neutral-500">{item.category.replace(/_/g, ' ')}</p>
+        
+        <div className="mt-3 flex items-center justify-between text-sm text-neutral-400">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1">
+              <Eye className="h-3.5 w-3.5" />
+              {formatViews(item.viewCount)}
+            </span>
+            <span className="flex items-center gap-1">
+              <Heart className="h-3.5 w-3.5" />
+              {item.likeCount}
+            </span>
+          </div>
+          <span>{new Date(item.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+        </div>
+
+        {item.tags.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {item.tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-400">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StorageIndicator({ used, limit }: { used: number; limit: number }) {
+  const percentage = (used / limit) * 100;
+  const getColor = () => {
+    if (percentage >= 90) return 'bg-red-500';
+    if (percentage >= 70) return 'bg-orange-500';
+    return 'bg-emerald-500';
+  };
+
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium text-white">Storage</h3>
+        <span className="text-sm text-neutral-400">{used.toFixed(1)} GB / {limit} GB</span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-800">
+        <div className={`h-full transition-all ${getColor()}`} style={{ width: `${percentage}%` }} />
+      </div>
+      <p className="mt-2 text-xs text-neutral-500">
+        {percentage >= 90 ? 'Storage almost full. Consider upgrading.' : `${(limit - used).toFixed(1)} GB available`}
+      </p>
+    </div>
+  );
+}
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
+
+export default function MediaDashboard() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'VIDEO' | 'IMAGE'>('all');
+  const [activeTab, setActiveTab] = useState<'gallery' | 'social'>('gallery');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const filteredMedia = useMemo(() => {
+    return mockMediaItems.filter((item) => {
+      const matchesSearch = searchQuery === '' || 
+        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+      const matchesType = typeFilter === 'all' || item.type === typeFilter;
+      return matchesSearch && matchesCategory && matchesType;
+    });
+  }, [searchQuery, categoryFilter, typeFilter]);
+
+  const connectedAccounts = mockSocialAccounts.filter(a => a.isConnected).length;
+  const totalFollowers = mockSocialAccounts.reduce((sum, a) => sum + a.followerCount, 0);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-neutral-700 border-t-purple-500" />
+          <p className="text-sm text-neutral-400">Loading media dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-neutral-950">
+      {/* Header */}
+      <div className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-xl">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="flex items-center gap-3 text-2xl font-bold text-white sm:text-3xl">
+                <Video className="h-8 w-8 text-purple-400" />
+                Media Center
+              </h1>
+              <p className="mt-1 text-neutral-400">
+                Manage photos, videos, and social media accounts
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/dashboard/media/upload"
+                className="flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400"
+              >
+                <Upload className="h-4 w-4" />
+                Upload Media
+              </Link>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="mt-6 flex gap-1 border-b border-neutral-800">
+            {[
+              { id: 'gallery', label: 'Media Gallery', icon: Grid3X3 },
+              { id: 'social', label: 'Social Accounts', icon: Share2 },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-purple-500 text-purple-400'
+                    : 'border-transparent text-neutral-400 hover:text-white'
+                }`}
+              >
+                <tab.icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        {activeTab === 'gallery' && (
+          <div className="space-y-6">
+            {/* Stats */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard icon={Folder} label="Total Media" value={mockStats.totalMedia} subValue={`${mockStats.totalVideos} videos, ${mockStats.totalImages} images`} color="purple" />
+              <StatCard icon={Eye} label="Total Views" value={`${(mockStats.totalViews / 1000).toFixed(1)}K`} subValue="Across all media" color="blue" />
+              <StatCard icon={Users} label="Social Followers" value={`${(totalFollowers / 1000).toFixed(1)}K`} subValue={`${connectedAccounts} accounts connected`} color="green" />
+              <StorageIndicator used={mockStats.totalStorage} limit={mockStats.storageLimit} />
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-1 items-center gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+                  <input
+                    type="text"
+                    placeholder="Search media..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full rounded-lg border border-neutral-700 bg-neutral-800/50 py-2 pl-10 pr-4 text-white placeholder-neutral-500 focus:border-purple-500 focus:outline-none"
+                  />
+                </div>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="rounded-lg border border-neutral-700 bg-neutral-800/50 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none"
+                >
+                  {CATEGORY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
+                  className="rounded-lg border border-neutral-700 bg-neutral-800/50 px-3 py-2 text-sm text-white focus:border-purple-500 focus:outline-none"
+                >
+                  <option value="all">All Types</option>
+                  <option value="VIDEO">Videos</option>
+                  <option value="IMAGE">Images</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`rounded-lg p-2 ${viewMode === 'grid' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-white'}`}
+                >
+                  <Grid3X3 className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`rounded-lg p-2 ${viewMode === 'list' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-white'}`}
+                >
+                  <List className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Media Grid/List */}
+            {filteredMedia.length > 0 ? (
+              viewMode === 'grid' ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {filteredMedia.map((item) => (
+                    <MediaCard key={item.id} item={item} viewMode="grid" />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredMedia.map((item) => (
+                    <MediaCard key={item.id} item={item} viewMode="list" />
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-neutral-800 py-16 text-center">
+                <Video className="h-12 w-12 text-neutral-600" />
+                <h3 className="mt-4 font-medium text-white">No media found</h3>
+                <p className="mt-1 text-sm text-neutral-500">
+                  {searchQuery ? 'Try adjusting your search terms' : 'Upload your first media file'}
+                </p>
+                <Link
+                  href="/dashboard/media/upload"
+                  className="mt-4 flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload Media
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'social' && (
+          <div className="space-y-6">
+            {/* Social Stats */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <StatCard icon={Link2} label="Connected Accounts" value={connectedAccounts} subValue={`of ${mockSocialAccounts.length} platforms`} color="green" />
+              <StatCard icon={Users} label="Total Followers" value={`${(totalFollowers / 1000).toFixed(1)}K`} subValue="Across all platforms" color="blue" />
+              <StatCard icon={TrendingUp} label="Engagement Rate" value="4.8%" subValue="+0.5% this month" color="purple" />
+            </div>
+
+            {/* Social Accounts Grid */}
+            <div>
+              <h2 className="mb-4 text-lg font-semibold text-white">Connected Platforms</h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {mockSocialAccounts.map((account) => (
+                  <SocialAccountCard key={account.id} account={account} />
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Post */}
+            <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-6">
+              <h2 className="text-lg font-semibold text-white">Quick Post</h2>
+              <p className="mt-1 text-sm text-neutral-400">Share content across all connected platforms</p>
+              <div className="mt-4">
+                <textarea
+                  placeholder="What's happening at the club?"
+                  className="w-full rounded-lg border border-neutral-700 bg-neutral-800/50 p-4 text-white placeholder-neutral-500 focus:border-purple-500 focus:outline-none resize-none"
+                  rows={3}
+                />
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white">
+                      <ImageIcon className="h-5 w-5" />
+                    </button>
+                    <button className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white">
+                      <Video className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <button className="flex items-center gap-2 rounded-lg bg-purple-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-400">
+                    <Share2 className="h-4 w-4" />
+                    Post to All Platforms
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

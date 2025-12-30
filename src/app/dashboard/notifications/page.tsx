@@ -1,424 +1,285 @@
 'use client';
 
-/**
- * Notifications Page - ENHANCED VERSION
- * Path: /dashboard/notifications
- * 
- * ============================================================================
- * ENTERPRISE FEATURES
- * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
- * ✅ Advanced notification filtering and search
- * ✅ Real-time notification management
- * ✅ Mark individual and bulk notification actions
- * ✅ Notification categorization and icons
- * ✅ Read/Unread status tracking
- * ✅ Notification deletion with confirmation
- * ✅ Activity feed with timestamps
- * ✅ Unread notification counter
- * ✅ Empty state handling
- * ✅ Loading states with spinners
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Responsive design (mobile-first)
- * ✅ Smooth animations and transitions
- * ✅ Performance optimization
- */
+// ============================================================================
+// 🔔 PITCHCONNECT - Notifications Page v7.5.0
+// Path: app/(dashboard)/dashboard/notifications/page.tsx
+// ============================================================================
+//
+// Comprehensive notification center with filtering, marking, and preferences.
+// Supports 70+ notification types across all platform features.
+//
+// ============================================================================
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Bell,
-  CheckCircle,
-  XCircle,
-  Calendar,
-  Users,
-  Trophy,
-  Clock,
-  Mail,
-  Settings,
-  Loader2,
-  Filter,
-  Trash2,
-  X,
+  BellOff,
   Check,
-  Info,
-  AlertCircle,
-  Archive,
-  Inbox,
+  CheckCheck,
+  Trash2,
+  Filter,
   Search,
-  ArrowRight,
+  Settings,
+  ChevronRight,
+  X,
+  Calendar,
+  Trophy,
+  Activity,
+  Users,
+  Heart,
+  DollarSign,
+  FileText,
+  Briefcase,
+  Video,
+  MessageCircle,
+  Shield,
+  Star,
+  AlertCircle,
+  Clock,
+  RefreshCw,
+  MoreHorizontal,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { Input } from '@/components/ui/input';
-
-// ============================================================================
-// CUSTOM TOAST SYSTEM
-// ============================================================================
-
-type ToastType = 'success' | 'error' | 'info' | 'default';
-
-interface ToastMessage {
-  id: string;
-  type: ToastType;
-  message: string;
-  timestamp: number;
-}
-
-/**
- * Custom Toast Component
- */
-const Toast = ({
-  message,
-  type,
-  onClose,
-}: {
-  message: string;
-  type: ToastType;
-  onClose: () => void;
-}) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  const colors = {
-    success: 'bg-green-500 dark:bg-green-600',
-    error: 'bg-red-500 dark:bg-red-600',
-    info: 'bg-blue-500 dark:bg-blue-600',
-    default: 'bg-charcoal-800 dark:bg-charcoal-700',
-  };
-
-  const icons = {
-    success: <Check className="w-5 h-5 text-white" />,
-    error: <AlertCircle className="w-5 h-5 text-white" />,
-    info: <Info className="w-5 h-5 text-white" />,
-    default: <Loader2 className="w-5 h-5 text-white animate-spin" />,
-  };
-
-  return (
-    <div
-      className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}
-      role="status"
-      aria-live="polite"
-    >
-      {icons[type]}
-      <span className="text-sm font-medium flex-1">{message}</span>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-white/20 rounded transition-colors"
-        aria-label="Close notification"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-};
-
-/**
- * Toast Container
- */
-const ToastContainer = ({
-  toasts,
-  onRemove,
-}: {
-  toasts: ToastMessage[];
-  onRemove: (id: string) => void;
-}) => {
-  return (
-    <div className="fixed bottom-4 right-4 z-40 space-y-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * useToast Hook
- */
-const useToast = () => {
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = useCallback(
-    (message: string, type: ToastType = 'default') => {
-      const id = `toast-${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, message, type, timestamp: Date.now() }]);
-      return id;
-    },
-    []
-  );
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  return {
-    toasts,
-    addToast,
-    removeToast,
-    success: (message: string) => addToast(message, 'success'),
-    error: (message: string) => addToast(message, 'error'),
-    info: (message: string) => addToast(message, 'info'),
-  };
-};
+import {
+  type Notification,
+  type NotificationCategory,
+  type NotificationType,
+  NOTIFICATION_TYPE_CONFIG,
+  NOTIFICATION_CATEGORIES,
+  getNotificationConfig,
+  getUnreadCount,
+} from '@/types/notification';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-interface Notification {
-  id: string;
-  type: 'MATCH' | 'TRAINING' | 'TEAM' | 'PAYMENT' | 'APPROVAL' | 'MESSAGE';
-  title: string;
-  message: string;
-  isRead: boolean;
-  createdAt: string;
-  link: string | null;
-  icon?: string;
-  metadata?: Record<string, any>;
+interface NotificationGroup {
+  date: string;
+  dateLabel: string;
+  notifications: Notification[];
 }
 
 // ============================================================================
-// CONSTANTS
+// MOCK DATA
 // ============================================================================
 
-const NOTIFICATION_TYPES = [
-  { value: 'ALL', label: 'All Types' },
-  { value: 'MATCH', label: 'Match Updates' },
-  { value: 'TRAINING', label: 'Training Sessions' },
-  { value: 'TEAM', label: 'Team Updates' },
-  { value: 'PAYMENT', label: 'Payments' },
-  { value: 'APPROVAL', label: 'Approvals' },
-  { value: 'MESSAGE', label: 'Messages' },
-];
+const mockNotifications: Notification[] = [
+  // Today
+  { id: '1', userId: 'user1', type: 'MATCH_REMINDER', title: 'Match Tomorrow', message: 'League match vs Riverside FC kicks off at 3:00 PM', read: false, readAt: null, link: '/dashboard/matches/123', emailSent: true, pushSent: true, createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+  { id: '2', userId: 'user1', type: 'TRAINING_SCHEDULED', title: 'Training Session Added', message: 'New training session scheduled for Thursday at 6:00 PM', read: false, readAt: null, link: '/dashboard/training', emailSent: true, pushSent: true, createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000) },
+  { id: '3', userId: 'user1', type: 'TEAM_ANNOUNCEMENT', title: 'Team Announcement', message: 'Important update regarding next week\'s fixtures', read: true, readAt: new Date(Date.now() - 1 * 60 * 60 * 1000), link: '/dashboard/team', emailSent: true, pushSent: false, createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000) },
+  
+  // Yesterday
+  { id: '4', userId: 'user1', type: 'MATCH_FULLTIME', title: 'Full Time: 3-1 Victory!', message: 'Congratulations on your win against Valley FC', read: true, readAt: new Date(), link: '/dashboard/matches/122', emailSent: true, pushSent: true, createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+  { id: '5', userId: 'user1', type: 'PLAYER_RATING_UPDATED', title: 'Rating Updated', message: 'Your match rating: 7.8', read: true, readAt: new Date(), link: '/dashboard/stats', emailSent: false, pushSent: false, createdAt: new Date(Date.now() - 26 * 60 * 60 * 1000) },
+  { id: '6', userId: 'user1', type: 'PLAYER_ACHIEVEMENT_UNLOCKED', title: 'Achievement Unlocked!', message: 'You scored your 10th goal of the season', read: false, readAt: null, link: '/dashboard/achievements', emailSent: true, pushSent: true, createdAt: new Date(Date.now() - 28 * 60 * 60 * 1000) },
 
-const READ_STATUS_FILTERS = [
-  { value: 'ALL', label: 'All Notifications' },
-  { value: 'UNREAD', label: 'Unread Only' },
-  { value: 'READ', label: 'Read Only' },
-];
+  // This Week
+  { id: '7', userId: 'user1', type: 'JOIN_REQUEST_APPROVED', title: 'Welcome to the Team!', message: 'Your join request for U21 Development Squad has been approved', read: true, readAt: new Date(), link: '/dashboard/team', emailSent: true, pushSent: true, createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) },
+  { id: '8', userId: 'user1', type: 'TRAINING_FEEDBACK', title: 'Training Feedback', message: 'Coach Williams has left feedback on your training performance', read: true, readAt: new Date(), link: '/dashboard/training/feedback', emailSent: true, pushSent: true, createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000) },
+  { id: '9', userId: 'user1', type: 'MEDIA_UPLOADED', title: 'New Match Highlights', message: 'Highlights from last Saturday\'s match are now available', read: true, readAt: new Date(), link: '/dashboard/media', emailSent: false, pushSent: true, createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000) },
+  { id: '10', userId: 'user1', type: 'PAYMENT_RECEIVED', title: 'Payment Confirmed', message: 'Your payment of £45.00 has been received', read: true, readAt: new Date(), emailSent: true, pushSent: false, createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000) },
 
-const NOTIFICATION_CONFIG = {
-  MATCH: {
-    label: 'Match Update',
-    icon: Trophy,
-    color: 'bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-300',
-    badgeColor: 'bg-gold-100 text-gold-700 border-gold-300',
-  },
-  TRAINING: {
-    label: 'Training Session',
-    icon: Calendar,
-    color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
-    badgeColor: 'bg-green-100 text-green-700 border-green-300',
-  },
-  TEAM: {
-    label: 'Team Update',
-    icon: Users,
-    color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
-    badgeColor: 'bg-blue-100 text-blue-700 border-blue-300',
-  },
-  PAYMENT: {
-    label: 'Payment',
-    icon: CheckCircle,
-    color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
-    badgeColor: 'bg-green-100 text-green-700 border-green-300',
-  },
-  APPROVAL: {
-    label: 'Approval',
-    icon: CheckCircle,
-    color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300',
-    badgeColor: 'bg-orange-100 text-orange-700 border-orange-300',
-  },
-  MESSAGE: {
-    label: 'Message',
-    icon: Mail,
-    color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
-    badgeColor: 'bg-purple-100 text-purple-700 border-purple-300',
-  },
-};
+  // Older
+  { id: '11', userId: 'user1', type: 'COMPETITION_FIXTURE', title: 'Cup Draw Released', message: 'View your team\'s cup fixtures for the season', read: true, readAt: new Date(), link: '/dashboard/competitions', emailSent: true, pushSent: true, createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) },
+  { id: '12', userId: 'user1', type: 'WELCOME', title: 'Welcome to PitchConnect!', message: 'Get started by completing your profile', read: true, readAt: new Date(), link: '/dashboard/profile', emailSent: true, pushSent: false, createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+];
 
 // ============================================================================
 // COMPONENTS
 // ============================================================================
 
-/**
- * Notification Item Component
- */
-interface NotificationItemProps {
-  notification: Notification;
-  onRead: (id: string) => void;
-  onDelete: (id: string) => void;
-  onClick: (notification: Notification) => void;
-}
-
-const NotificationItem = ({
-  notification,
-  onRead,
-  onDelete,
-  onClick,
-}: NotificationItemProps) => {
-  const config = NOTIFICATION_CONFIG[notification.type];
-  const IconComponent = config.icon;
-  const createdDate = new Date(notification.createdAt);
-  const timeAgo = getTimeAgo(createdDate);
-
-  return (
-    <div
-      onClick={() => onClick(notification)}
-      className={`p-4 rounded-lg border transition-all cursor-pointer group ${
-        notification.isRead
-          ? 'bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 hover:border-neutral-300 dark:hover:border-charcoal-600'
-          : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-900/40 hover:border-blue-300 dark:hover:border-blue-900/60 hover:shadow-md'
-      }`}
-    >
-      <div className="flex items-start gap-4">
-        {/* Icon */}
-        <div
-          className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${config.color}`}
-        >
-          <IconComponent className="w-5 h-5" />
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-3 mb-1">
-            <div className="flex-1">
-              <p
-                className={`font-semibold ${
-                  notification.isRead
-                    ? 'text-charcoal-900 dark:text-white'
-                    : 'text-charcoal-900 dark:text-white font-bold'
-                }`}
-              >
-                {notification.title}
-              </p>
-              {!notification.isRead && (
-                <Badge className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-900/50 text-xs mt-1">
-                  New
-                </Badge>
-              )}
-            </div>
-            <span className="flex-shrink-0 text-xs text-charcoal-500 dark:text-charcoal-400 whitespace-nowrap">
-              {timeAgo}
-            </span>
-          </div>
-
-          {/* Message */}
-          <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mb-3 line-clamp-2">
-            {notification.message}
-          </p>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Badge
-                variant="outline"
-                className={`text-xs ${config.badgeColor} border`}
-              >
-                {config.label}
-              </Badge>
-              {notification.link && (
-                <span className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                  <ArrowRight className="w-3 h-3" />
-                  View more
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              {!notification.isRead && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRead(notification.id);
-                  }}
-                  className="h-8 w-8 p-0 hover:bg-green-100 dark:hover:bg-green-900/30"
-                  aria-label="Mark as read"
-                >
-                  <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(notification.id);
-                }}
-                className="h-8 w-8 p-0 hover:bg-red-100 dark:hover:bg-red-900/30"
-                aria-label="Delete notification"
-              >
-                <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+const CATEGORY_CONFIG: Record<NotificationCategory, { icon: React.ElementType; color: string; label: string }> = {
+  MATCH: { icon: Trophy, color: 'text-amber-400 bg-amber-500/10', label: 'Matches' },
+  TRAINING: { icon: Activity, color: 'text-emerald-400 bg-emerald-500/10', label: 'Training' },
+  TEAM: { icon: Users, color: 'text-blue-400 bg-blue-500/10', label: 'Team' },
+  PLAYER: { icon: Star, color: 'text-purple-400 bg-purple-500/10', label: 'Player' },
+  PAYMENT: { icon: DollarSign, color: 'text-green-400 bg-green-500/10', label: 'Payments' },
+  APPROVAL: { icon: FileText, color: 'text-orange-400 bg-orange-500/10', label: 'Approvals' },
+  MESSAGE: { icon: MessageCircle, color: 'text-sky-400 bg-sky-500/10', label: 'Messages' },
+  JOB: { icon: Briefcase, color: 'text-violet-400 bg-violet-500/10', label: 'Jobs' },
+  MEDIA: { icon: Video, color: 'text-pink-400 bg-pink-500/10', label: 'Media' },
+  COMPETITION: { icon: Trophy, color: 'text-yellow-400 bg-yellow-500/10', label: 'Competitions' },
+  MEDICAL: { icon: Heart, color: 'text-red-400 bg-red-500/10', label: 'Medical' },
+  PARENT: { icon: Users, color: 'text-pink-400 bg-pink-500/10', label: 'Parent' },
+  SOCIAL: { icon: Star, color: 'text-indigo-400 bg-indigo-500/10', label: 'Social' },
+  SYSTEM: { icon: Shield, color: 'text-neutral-400 bg-neutral-500/10', label: 'System' },
 };
 
-/**
- * Empty State Component
- */
-const EmptyState = () => (
-  <div className="text-center py-12">
-    <Inbox className="w-16 h-16 text-neutral-300 dark:text-charcoal-600 mx-auto mb-4" />
-    <h3 className="text-lg font-semibold text-charcoal-900 dark:text-white mb-2">
-      No notifications
-    </h3>
-    <p className="text-charcoal-600 dark:text-charcoal-400">
-      You're all caught up! Check back later for updates.
-    </p>
-  </div>
-);
+function NotificationItem({ 
+  notification, 
+  onMarkRead, 
+  onDelete,
+  isSelected,
+  onSelect,
+}: { 
+  notification: Notification;
+  onMarkRead: (id: string) => void;
+  onDelete: (id: string) => void;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const config = NOTIFICATION_TYPE_CONFIG[notification.type];
+  const categoryConfig = CATEGORY_CONFIG[config?.category || 'SYSTEM'];
+  const CategoryIcon = categoryConfig.icon;
 
-/**
- * Loading Spinner Component
- */
-const LoadingSpinner = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-neutral-50 via-blue-50/10 to-purple-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900">
-    <div className="text-center">
-      <Loader2 className="w-12 h-12 animate-spin text-blue-500 dark:text-blue-400 mx-auto mb-4" />
-      <p className="text-charcoal-600 dark:text-charcoal-300">Loading notifications...</p>
+  const formatTime = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  };
+
+  const content = (
+    <div className={`group relative flex items-start gap-4 rounded-xl border p-4 transition-all ${
+      !notification.read 
+        ? 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10' 
+        : 'border-neutral-800 bg-neutral-900/30 hover:border-neutral-700 hover:bg-neutral-900/50'
+    } ${isSelected ? 'ring-2 ring-amber-500' : ''}`}
+    >
+      {/* Selection checkbox */}
+      <button 
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(notification.id); }}
+        className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+          isSelected 
+            ? 'border-amber-500 bg-amber-500 text-black' 
+            : 'border-neutral-700 bg-neutral-800 hover:border-neutral-600'
+        }`}
+      >
+        {isSelected && <Check className="h-3 w-3" />}
+      </button>
+
+      {/* Icon */}
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${categoryConfig.color}`}>
+        <span className="text-lg">{config?.icon || '📌'}</span>
+      </div>
+
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className={`font-medium ${!notification.read ? 'text-white' : 'text-neutral-300'}`}>
+              {notification.title}
+            </p>
+            <p className={`mt-0.5 text-sm ${!notification.read ? 'text-neutral-300' : 'text-neutral-500'}`}>
+              {notification.message}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-xs text-neutral-500">{formatTime(notification.createdAt)}</span>
+            {!notification.read && (
+              <div className="h-2 w-2 rounded-full bg-amber-500" />
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-3 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+          {!notification.read && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMarkRead(notification.id); }}
+              className="flex items-center gap-1 rounded-lg bg-neutral-800 px-2.5 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-white"
+            >
+              <Check className="h-3 w-3" />
+              Mark Read
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(notification.id); }}
+            className="flex items-center gap-1 rounded-lg bg-neutral-800 px-2.5 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:bg-red-500/20 hover:text-red-400"
+          >
+            <Trash2 className="h-3 w-3" />
+            Delete
+          </button>
+        </div>
+      </div>
+
+      {notification.link && (
+        <ChevronRight className="mt-3 h-4 w-4 shrink-0 text-neutral-600" />
+      )}
     </div>
-  </div>
-);
+  );
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
+  if (notification.link) {
+    return <Link href={notification.link}>{content}</Link>;
+  }
 
-/**
- * Format time ago from a date
- */
-function getTimeAgo(date: Date): string {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
+  return content;
+}
 
-  if (seconds < 60) return 'now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
+function CategoryFilter({ 
+  category, 
+  isActive, 
+  count, 
+  onClick 
+}: { 
+  category: NotificationCategory | 'all'; 
+  isActive: boolean; 
+  count: number;
+  onClick: () => void;
+}) {
+  if (category === 'all') {
+    return (
+      <button
+        onClick={onClick}
+        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+          isActive 
+            ? 'bg-amber-500/10 text-amber-400' 
+            : 'text-neutral-400 hover:bg-neutral-800 hover:text-white'
+        }`}
+      >
+        <Bell className="h-4 w-4" />
+        All
+        <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs">{count}</span>
+      </button>
+    );
+  }
 
-  return date.toLocaleDateString('en-GB', {
-    month: 'short',
-    day: 'numeric',
-  });
+  const config = CATEGORY_CONFIG[category];
+  const Icon = config.icon;
+
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        isActive 
+          ? 'bg-amber-500/10 text-amber-400' 
+          : 'text-neutral-400 hover:bg-neutral-800 hover:text-white'
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      {config.label}
+      {count > 0 && (
+        <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs">{count}</span>
+      )}
+    </button>
+  );
+}
+
+function EmptyState({ filter }: { filter: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-neutral-800 py-16 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800">
+        <BellOff className="h-7 w-7 text-neutral-500" />
+      </div>
+      <h3 className="mt-4 font-medium text-white">No notifications</h3>
+      <p className="mt-1 max-w-sm text-sm text-neutral-500">
+        {filter === 'unread' 
+          ? "You're all caught up! No unread notifications."
+          : filter === 'all'
+          ? "You don't have any notifications yet."
+          : `No ${filter.toLowerCase()} notifications.`}
+      </p>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -426,320 +287,321 @@ function getTimeAgo(date: Date): string {
 // ============================================================================
 
 export default function NotificationsPage() {
-  const router = useRouter();
-  const { toasts, removeToast, success, error: showError } = useToast();
-
-  // ============================================================================
-  // STATE MANAGEMENT
-  // ============================================================================
-
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
   const [isLoading, setIsLoading] = useState(true);
-  const [filterType, setFilterType] = useState('ALL');
-  const [filterRead, setFilterRead] = useState('ALL');
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // ============================================================================
-  // LIFECYCLE
-  // ============================================================================
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<NotificationCategory | 'all'>('all');
+  const [readFilter, setReadFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchNotifications();
+    const timer = setTimeout(() => setIsLoading(false), 500);
+    return () => clearTimeout(timer);
   }, []);
 
-  // ============================================================================
-  // API CALLS
-  // ============================================================================
-
-  const fetchNotifications = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch('/api/notifications');
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch notifications');
-      }
-
-      const data = await response.json();
-      setNotifications(data.notifications || []);
-    } catch (error) {
-      console.error('❌ Error fetching notifications:', error);
-      showError('Failed to load notifications');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const markAsRead = async (notificationId: string) => {
-    try {
-      const response = await fetch(`/api/notifications/${notificationId}/read`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to mark as read');
-      }
-
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n))
-      );
-      success('✅ Marked as read');
-    } catch (error) {
-      console.error('❌ Error marking as read:', error);
-      showError('Failed to update notification');
-    }
-  };
-
-  const markAllAsRead = async () => {
-    try {
-      const response = await fetch('/api/notifications/mark-all-read', {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to mark all as read');
-      }
-
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      success('✅ All notifications marked as read');
-    } catch (error) {
-      console.error('❌ Error marking all as read:', error);
-      showError('Failed to update notifications');
-    }
-  };
-
-  const deleteNotification = async (notificationId: string) => {
-    try {
-      const response = await fetch(`/api/notifications/${notificationId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete notification');
-      }
-
-      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-      success('✅ Notification deleted');
-    } catch (error) {
-      console.error('❌ Error deleting notification:', error);
-      showError('Failed to delete notification');
-    }
-  };
-
-  const handleNotificationClick = (notification: Notification) => {
-    if (!notification.isRead) {
-      markAsRead(notification.id);
-    }
-    if (notification.link) {
-      router.push(notification.link);
-    }
-  };
-
-  // ============================================================================
-  // COMPUTED VALUES
-  // ============================================================================
-
-  const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.isRead).length,
-    [notifications]
-  );
-
+  // Filter notifications
   const filteredNotifications = useMemo(() => {
-    let filtered = notifications;
+    return notifications.filter((n) => {
+      // Search filter
+      const matchesSearch = searchQuery === '' ||
+        n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        n.message.toLowerCase().includes(searchQuery.toLowerCase());
 
-    // Filter by type
-    if (filterType !== 'ALL') {
-      filtered = filtered.filter((n) => n.type === filterType);
+      // Category filter
+      const config = NOTIFICATION_TYPE_CONFIG[n.type];
+      const matchesCategory = categoryFilter === 'all' || config?.category === categoryFilter;
+
+      // Read filter
+      const matchesRead = readFilter === 'all' ||
+        (readFilter === 'unread' && !n.read) ||
+        (readFilter === 'read' && n.read);
+
+      return matchesSearch && matchesCategory && matchesRead;
+    });
+  }, [notifications, searchQuery, categoryFilter, readFilter]);
+
+  // Group by date
+  const groupedNotifications = useMemo(() => {
+    const groups: NotificationGroup[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const todayItems: Notification[] = [];
+    const yesterdayItems: Notification[] = [];
+    const thisWeekItems: Notification[] = [];
+    const olderItems: Notification[] = [];
+
+    filteredNotifications.forEach((n) => {
+      const date = new Date(n.createdAt);
+      if (date >= today) {
+        todayItems.push(n);
+      } else if (date >= yesterday) {
+        yesterdayItems.push(n);
+      } else if (date >= weekAgo) {
+        thisWeekItems.push(n);
+      } else {
+        olderItems.push(n);
+      }
+    });
+
+    if (todayItems.length > 0) groups.push({ date: 'today', dateLabel: 'Today', notifications: todayItems });
+    if (yesterdayItems.length > 0) groups.push({ date: 'yesterday', dateLabel: 'Yesterday', notifications: yesterdayItems });
+    if (thisWeekItems.length > 0) groups.push({ date: 'thisWeek', dateLabel: 'This Week', notifications: thisWeekItems });
+    if (olderItems.length > 0) groups.push({ date: 'older', dateLabel: 'Older', notifications: olderItems });
+
+    return groups;
+  }, [filteredNotifications]);
+
+  // Counts
+  const unreadCount = getUnreadCount(notifications);
+  const categoryCounts = useMemo(() => {
+    const counts: Record<NotificationCategory | 'all', number> = {
+      all: notifications.length,
+      MATCH: 0, TRAINING: 0, TEAM: 0, PLAYER: 0, PAYMENT: 0,
+      APPROVAL: 0, MESSAGE: 0, JOB: 0, MEDIA: 0, COMPETITION: 0,
+      MEDICAL: 0, PARENT: 0, SOCIAL: 0, SYSTEM: 0,
+    };
+    notifications.forEach((n) => {
+      const config = NOTIFICATION_TYPE_CONFIG[n.type];
+      if (config?.category) {
+        counts[config.category]++;
+      }
+    });
+    return counts;
+  }, [notifications]);
+
+  // Handlers
+  const handleMarkRead = (id: string) => {
+    setNotifications(prev => prev.map(n => 
+      n.id === id ? { ...n, read: true, readAt: new Date() } : n
+    ));
+  };
+
+  const handleMarkAllRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true, readAt: new Date() })));
+    setSelectedIds(new Set());
+  };
+
+  const handleDelete = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    setNotifications(prev => prev.filter(n => !selectedIds.has(n.id)));
+    setSelectedIds(new Set());
+  };
+
+  const handleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredNotifications.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredNotifications.map(n => n.id)));
     }
-
-    // Filter by read status
-    if (filterRead === 'UNREAD') {
-      filtered = filtered.filter((n) => !n.isRead);
-    } else if (filterRead === 'READ') {
-      filtered = filtered.filter((n) => n.isRead);
-    }
-
-    // Search by title or message
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (n) =>
-          n.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          n.message.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Sort by date (newest first)
-    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [notifications, filterType, filterRead, searchTerm]);
-
-  // ============================================================================
-  // RENDER
-  // ============================================================================
+  };
 
   if (isLoading) {
-    return <LoadingSpinner />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-neutral-700 border-t-amber-500" />
+          <p className="text-sm text-neutral-400">Loading notifications...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-blue-50/10 to-purple-50/10 dark:from-charcoal-900 dark:via-charcoal-800 dark:to-charcoal-900 transition-colors duration-200 p-4 sm:p-6 lg:p-8">
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
-
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* HEADER */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-400 dark:from-blue-600 dark:to-purple-500 rounded-2xl flex items-center justify-center shadow-lg relative">
-              <Bell className="w-8 h-8 text-white" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 dark:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold animate-pulse">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-            </div>
+    <div className="min-h-screen bg-neutral-950">
+      {/* Header */}
+      <div className="border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-xl">
+        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-charcoal-900 dark:text-white">
+              <h1 className="flex items-center gap-3 text-2xl font-bold text-white sm:text-3xl">
+                <Bell className="h-8 w-8 text-amber-400" />
                 Notifications
+                {unreadCount > 0 && (
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-black">
+                    {unreadCount}
+                  </span>
+                )}
               </h1>
-              <p className="text-charcoal-600 dark:text-charcoal-400 mt-1">
-                {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+              <p className="mt-1 text-neutral-400">
+                Stay updated with your latest activity
               </p>
             </div>
-          </div>
-
-          {/* ACTIONS */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button
-              variant="outline"
-              onClick={() => router.push('/dashboard/settings/notifications')}
-              className="border-neutral-300 dark:border-charcoal-600 text-charcoal-700 dark:text-charcoal-300 flex items-center justify-center gap-2"
-            >
-              <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Settings</span>
-            </Button>
-            {unreadCount > 0 && (
-              <Button
-                onClick={markAllAsRead}
-                className="bg-gradient-to-r from-blue-500 to-purple-400 hover:from-blue-600 hover:to-purple-500 text-white flex items-center justify-center gap-2"
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <button
+                  onClick={handleMarkAllRead}
+                  className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800/50 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
+                >
+                  <CheckCheck className="h-4 w-4" />
+                  Mark All Read
+                </button>
+              )}
+              <Link
+                href="/dashboard/settings/notifications"
+                className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-2.5 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white"
               >
-                <CheckCircle className="w-4 h-4" />
-                <span className="hidden sm:inline">Mark All Read</span>
-                <span className="sm:hidden">Mark All</span>
-              </Button>
-            )}
+                <Settings className="h-5 w-5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+        {/* Filters */}
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+            <input
+              type="text"
+              placeholder="Search notifications..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-lg border border-neutral-700 bg-neutral-800/50 py-2 pl-10 pr-4 text-white placeholder-neutral-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={readFilter}
+              onChange={(e) => setReadFilter(e.target.value as typeof readFilter)}
+              className="rounded-lg border border-neutral-700 bg-neutral-800/50 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+            >
+              <option value="all">All</option>
+              <option value="unread">Unread</option>
+              <option value="read">Read</option>
+            </select>
           </div>
         </div>
 
-        {/* FILTERS & SEARCH */}
-        <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-          <CardContent className="p-6 space-y-4">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-3 w-5 h-5 text-charcoal-400 dark:text-charcoal-500" />
-              <Input
-                type="text"
-                placeholder="Search notifications..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-neutral-50 dark:bg-charcoal-700 border-neutral-300 dark:border-charcoal-600 text-charcoal-900 dark:text-white"
+        {/* Category Tabs */}
+        <div className="mb-6 flex flex-wrap gap-2 border-b border-neutral-800 pb-4">
+          <CategoryFilter
+            category="all"
+            isActive={categoryFilter === 'all'}
+            count={categoryCounts.all}
+            onClick={() => setCategoryFilter('all')}
+          />
+          {Object.keys(CATEGORY_CONFIG).slice(0, 6).map((cat) => {
+            const category = cat as NotificationCategory;
+            if (categoryCounts[category] === 0) return null;
+            return (
+              <CategoryFilter
+                key={category}
+                category={category}
+                isActive={categoryFilter === category}
+                count={categoryCounts[category]}
+                onClick={() => setCategoryFilter(category)}
               />
-            </div>
+            );
+          })}
+        </div>
 
-            {/* Filter Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Type Filter */}
-              <div>
-                <label className="text-xs font-semibold text-charcoal-600 dark:text-charcoal-400 block mb-2">
-                  Type
-                </label>
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {NOTIFICATION_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
+        {/* Bulk Actions */}
+        {selectedIds.size > 0 && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+            <span className="text-sm font-medium text-amber-400">
+              {selectedIds.size} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  selectedIds.forEach(id => handleMarkRead(id));
+                  setSelectedIds(new Set());
+                }}
+                className="flex items-center gap-1 rounded-lg bg-neutral-800 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-neutral-700"
+              >
+                <Check className="h-4 w-4" />
+                Mark Read
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Select All */}
+        {filteredNotifications.length > 0 && (
+          <div className="mb-4 flex items-center gap-2">
+            <button
+              onClick={handleSelectAll}
+              className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white"
+            >
+              <div className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${
+                selectedIds.size === filteredNotifications.length && filteredNotifications.length > 0
+                  ? 'border-amber-500 bg-amber-500 text-black'
+                  : 'border-neutral-700 bg-neutral-800'
+              }`}>
+                {selectedIds.size === filteredNotifications.length && filteredNotifications.length > 0 && (
+                  <Check className="h-3 w-3" />
+                )}
+              </div>
+              Select all
+            </button>
+          </div>
+        )}
+
+        {/* Notifications List */}
+        {groupedNotifications.length > 0 ? (
+          <div className="space-y-6">
+            {groupedNotifications.map((group) => (
+              <div key={group.date}>
+                <h3 className="mb-3 text-sm font-medium text-neutral-400">{group.dateLabel}</h3>
+                <div className="space-y-3">
+                  {group.notifications.map((notification) => (
+                    <NotificationItem
+                      key={notification.id}
+                      notification={notification}
+                      onMarkRead={handleMarkRead}
+                      onDelete={handleDelete}
+                      isSelected={selectedIds.has(notification.id)}
+                      onSelect={handleSelect}
+                    />
                   ))}
-                </select>
+                </div>
               </div>
-
-              {/* Read Status Filter */}
-              <div>
-                <label className="text-xs font-semibold text-charcoal-600 dark:text-charcoal-400 block mb-2">
-                  Status
-                </label>
-                <select
-                  value={filterRead}
-                  onChange={(e) => setFilterRead(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-300 dark:border-charcoal-600 bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {READ_STATUS_FILTERS.map((status) => (
-                    <option key={status.value} value={status.value}>
-                      {status.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* NOTIFICATIONS LIST */}
-        <Card className="bg-white dark:bg-charcoal-800 border-neutral-200 dark:border-charcoal-700 shadow-md">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-charcoal-900 dark:text-white">Activity Feed</CardTitle>
-                <CardDescription className="text-charcoal-600 dark:text-charcoal-400">
-                  {filteredNotifications.length} notification{filteredNotifications.length !== 1 ? 's' : ''}
-                </CardDescription>
-              </div>
-              {notifications.length > 0 && (
-                <Badge variant="outline" className="text-sm">
-                  Total: {notifications.length}
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {filteredNotifications.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div className="space-y-3">
-                {filteredNotifications.map((notification) => (
-                  <NotificationItem
-                    key={notification.id}
-                    notification={notification}
-                    onRead={markAsRead}
-                    onDelete={deleteNotification}
-                    onClick={handleNotificationClick}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* NOTIFICATION INFO */}
-        {notifications.length > 0 && (
-          <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-900/40">
-            <CardContent className="p-6 flex items-start gap-3">
-              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-1">
-                  💡 Notification Tips
-                </p>
-                <p className="text-xs text-blue-800 dark:text-blue-300">
-                  Click on any notification to view more details. Unread notifications appear highlighted. You can mark notifications as read individually or all at once using the button above.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
+        ) : (
+          <EmptyState filter={categoryFilter === 'all' ? readFilter : categoryFilter} />
         )}
       </div>
     </div>
   );
 }
-
-NotificationsPage.displayName = 'NotificationsPage';

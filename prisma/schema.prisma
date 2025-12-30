@@ -1,5 +1,5 @@
 // ============================================================================
-// 🏆 PITCHCONNECT DATABASE SCHEMA v7.4.0 - ENTERPRISE EDITION
+// 🏆 PITCHCONNECT DATABASE SCHEMA v7.5.0 - ENTERPRISE EDITION
 // ============================================================================
 // 
 // Version History:
@@ -7,68 +7,55 @@
 // - v7.1.0: Added Two-Factor Auth, Password Reset, Email Verification
 // - v7.2.0: Added Team Join Requests, Job Posting System
 // - v7.3.0: Added MediaContent, Hybrid Training, Enhanced Attendance
-// - v7.4.0: MAJOR UPDATE - Competition System, Match Enhancements, Multi-Sport
+// - v7.4.0: Competition System, Match Enhancements, Multi-Sport
+// - v7.5.0: Social Accounts, Fitness Assessments, Parent-Child Relations
 //
 // ============================================================================
-// NEW IN v7.4.0:
+// NEW IN v7.5.0:
 // ============================================================================
 //
-// 🏟️ MATCH SYSTEM OVERHAUL:
-//   - MatchType enum (13 types: LEAGUE, CUP, FRIENDLY, PLAYOFF, etc.)
-//   - Optional competition linking (standalone friendlies supported)
-//   - Both Team AND Club relations on Match (inter/intra-club support)
-//   - homeFormation/awayFormation tactical tracking
-//   - homeScoreBreakdown/awayScoreBreakdown for multi-sport scoring
-//   - createdById + createdByCoachId for permission tracking
-//   - 16 comprehensive MatchStatus values
+// 📱 SOCIAL MEDIA INTEGRATION:
+//   - SocialAccount model for connected social platforms
+//   - SocialPlatform enum (Instagram, Twitter, Facebook, YouTube, TikTok, LinkedIn)
+//   - Token management for OAuth connections
+//   - Follower tracking and sync status
 //
-// 🏆 COMPETITION SYSTEM:
-//   - New Competition model (replaces League for flexibility)
-//   - CompetitionType enum (LEAGUE, CUP, TOURNAMENT, FRIENDLY_SERIES, etc.)
-//   - CompetitionStage for knockout/group tracking
-//   - Supports organization-wide, cross-club, and internal competitions
+// 🏥 FITNESS ASSESSMENTS:
+//   - FitnessAssessment model for comprehensive player fitness tracking
+//   - Return-to-Play (RTP) protocol support with graduated stages
+//   - Physical metrics (weight, body fat, VO2 max, etc.)
+//   - Sport-specific strength tests stored as JSON
+//   - Integration with Injury model for RTP assessments
 //
-// 🏟️ VENUE MANAGEMENT:
-//   - New Venue model (external match venues)
-//   - Facility model retained (club-owned facilities)
-//   - Match links to both via venueId OR facilityId
+// 👨‍👩‍👧 PARENT-CHILD RELATIONS:
+//   - Fixed Parent ↔ PlayerFamily bidirectional relation
+//   - Parents can now query their linked children
+//   - Proper cascade handling for family relationships
 //
-// 📊 PLAYER PERFORMANCE:
-//   - New PlayerMatchPerformance model (clean separation)
-//   - Ratings, stats, coach notes, sport-specific metrics
-//   - Replaces stats in MatchAttendance
+// 🔔 PUSH NOTIFICATIONS:
+//   - Added FCM token storage on User model
+//   - Support for both in-app and Firebase Cloud Messaging
+//   - Device-specific notification targeting
 //
-// 🔒 DATA INTEGRITY:
-//   - Soft deletes (deletedAt) on ALL major entities
-//   - Comprehensive indexing strategy
-//   - GDPR compliance fields
-//   - Audit trail integration
-//
-// 🏈 MULTI-SPORT SUPPORT:
-//   - 12 sports with sport-specific scoring
-//   - Score breakdown JSON for tries, conversions, touchdowns, etc.
-//   - Sport-specific event types (80+ events)
-//   - Position and formation enums per sport
+// 🔒 MEDICAL ACCESS CONTROL:
+//   - MEDICAL_STAFF: Full access to all medical records
+//   - HEAD_COACH: Availability status only
+//   - PARENT: Access to their children's records
+//   - PLAYER: Access to their own records
 //
 // ============================================================================
 // MIGRATION NOTES:
 // ============================================================================
 // 
-// BREAKING CHANGES from v7.3.0:
-// 1. Match.leagueId → Match.competitionId (migration required)
-// 2. League model enhanced → Competition model (data migration)
-// 3. MatchAttendance stats → PlayerMatchPerformance (data migration)
-// 4. New required fields: Match.homeTeamId, Match.awayTeamId
-//
-// RECOMMENDED MIGRATION ORDER:
-// 1. Create new enums (MatchType, CompetitionType, etc.)
-// 2. Create Venue model
-// 3. Create Competition model
-// 4. Create PlayerMatchPerformance model
-// 5. Add new Match fields (homeTeamId, awayTeamId, etc.)
-// 6. Migrate League → Competition data
-// 7. Add soft delete fields
-// 8. Run index creation
+// ADDITIONS from v7.4.0:
+// 1. New SocialAccount model + SocialPlatform enum
+// 2. New FitnessAssessment model + FitnessAssessmentType, FitnessStatus enums
+// 3. Parent.children relation added
+// 4. PlayerFamily.parent relation added
+// 5. User.fcmTokens field added for push notifications
+// 6. User.fitnessAssessmentsCreated relation added
+// 7. Injury.fitnessAssessments relation added
+// 8. Club.socialAccounts relation added
 //
 // ============================================================================
 
@@ -192,7 +179,7 @@ enum PermissionType {
   MATCH_MANAGE_LINEUP
   MATCH_RECORD_EVENTS
   
-  // Competition Management (NEW v7.4.0)
+  // Competition Management
   COMPETITION_CREATE
   COMPETITION_READ
   COMPETITION_UPDATE
@@ -211,6 +198,8 @@ enum PermissionType {
   MEDICAL_READ
   MEDICAL_CREATE
   MEDICAL_UPDATE
+  MEDICAL_READ_FULL        // Full medical record access
+  MEDICAL_READ_AVAILABILITY // Availability only (for coaches)
   
   // Billing
   BILLING_READ
@@ -226,7 +215,7 @@ enum PermissionType {
   API_KEY_CREATE
   API_KEY_REVOKE
   
-  // Facilities & Venues (NEW v7.4.0)
+  // Facilities & Venues
   FACILITY_MANAGE
   FACILITY_BOOK
   VENUE_CREATE
@@ -240,6 +229,11 @@ enum PermissionType {
   MEDIA_UPLOAD
   MEDIA_DELETE
   MEDIA_MANAGE
+  
+  // Social Media (NEW v7.5.0)
+  SOCIAL_CONNECT
+  SOCIAL_POST
+  SOCIAL_MANAGE
 }
 
 enum DataRetentionPolicy {
@@ -306,7 +300,7 @@ enum AuditActionType {
   CLUB_UPDATED
   CLUB_DELETED
   
-  // Match Operations (ENHANCED v7.4.0)
+  // Match Operations
   MATCH_CREATED
   MATCH_UPDATED
   MATCH_RESULT_UPDATED
@@ -315,7 +309,7 @@ enum AuditActionType {
   MATCH_EVENT_RECORDED
   MATCH_STATUS_CHANGED
   
-  // Competition Operations (NEW v7.4.0)
+  // Competition Operations
   COMPETITION_CREATED
   COMPETITION_UPDATED
   COMPETITION_DELETED
@@ -327,9 +321,12 @@ enum AuditActionType {
   PLAYER_CONTRACT_SIGNED
   PLAYER_PERFORMANCE_RECORDED
   
-  // Medical
+  // Medical (ENHANCED v7.5.0)
   MEDICAL_RECORD_ACCESSED
   MEDICAL_RECORD_CREATED
+  FITNESS_ASSESSMENT_CREATED
+  FITNESS_ASSESSMENT_UPDATED
+  PLAYER_CLEARED_TO_PLAY
   
   // Join Requests & Jobs
   JOIN_REQUEST_SUBMITTED
@@ -352,6 +349,11 @@ enum AuditActionType {
   MEDIA_UPLOADED
   MEDIA_DELETED
   MEDIA_SHARED
+  
+  // Social Media (NEW v7.5.0)
+  SOCIAL_ACCOUNT_CONNECTED
+  SOCIAL_ACCOUNT_DISCONNECTED
+  SOCIAL_POST_PUBLISHED
   
   // Compliance
   CONSENT_UPDATED
@@ -552,10 +554,9 @@ enum FormationType {
 }
 
 // ============================================================================
-// 📋 ENUMS - MATCH & COMPETITION (ENHANCED v7.4.0)
+// 📋 ENUMS - MATCH & COMPETITION
 // ============================================================================
 
-// NEW v7.4.0: Match type categorization
 enum MatchType {
   LEAGUE           // Regular season league match
   CUP              // Cup/knockout competition
@@ -572,7 +573,6 @@ enum MatchType {
   EXHIBITION       // Exhibition/showcase match
 }
 
-// Comprehensive match status
 enum MatchStatus {
   SCHEDULED
   WARMUP
@@ -592,7 +592,6 @@ enum MatchStatus {
   SUSPENDED
 }
 
-// NEW v7.4.0: Competition type
 enum CompetitionType {
   LEAGUE                 // Round-robin league
   CUP                    // Knockout cup
@@ -605,7 +604,6 @@ enum CompetitionType {
   INVITATIONAL           // Invitation-only event
 }
 
-// NEW v7.4.0: Competition stage for knockout/group tracking
 enum CompetitionStage {
   GROUP_STAGE
   ROUND_OF_32
@@ -1038,6 +1036,59 @@ enum VideoProcessingProvider {
 }
 
 // ============================================================================
+// 📋 ENUMS - SOCIAL MEDIA (NEW v7.5.0)
+// ============================================================================
+
+enum SocialPlatform {
+  INSTAGRAM
+  TWITTER
+  FACEBOOK
+  YOUTUBE
+  TIKTOK
+  LINKEDIN
+}
+
+// ============================================================================
+// 📋 ENUMS - FITNESS & MEDICAL (ENHANCED v7.5.0)
+// ============================================================================
+
+enum FitnessAssessmentType {
+  PRE_SEASON
+  MID_SEASON
+  POST_SEASON
+  RETURN_TO_PLAY
+  INJURY_FOLLOW_UP
+  ROUTINE
+  TRANSFER_MEDICAL
+  INITIAL_REGISTRATION
+}
+
+enum FitnessStatus {
+  FIT
+  FIT_WITH_CAUTION
+  LIMITED
+  NOT_FIT
+  PENDING_REVIEW
+  CLEARED
+}
+
+enum InjurySeverity {
+  MINOR
+  MODERATE
+  SEVERE
+  CRITICAL
+  CAREER_THREATENING
+}
+
+enum InjuryStatus {
+  ACTIVE
+  RECOVERING
+  REHABILITATION
+  CLEARED
+  CHRONIC
+}
+
+// ============================================================================
 // 📋 ENUMS - HR & JOBS
 // ============================================================================
 
@@ -1121,7 +1172,7 @@ enum ExperienceLevel {
 }
 
 // ============================================================================
-// 📋 ENUMS - TRANSFERS & MEDICAL
+// 📋 ENUMS - TRANSFERS
 // ============================================================================
 
 enum TransferType {
@@ -1143,24 +1194,8 @@ enum TransferStatus {
   EXPIRED
 }
 
-enum InjurySeverity {
-  MINOR
-  MODERATE
-  SEVERE
-  CRITICAL
-  CAREER_THREATENING
-}
-
-enum InjuryStatus {
-  ACTIVE
-  RECOVERING
-  REHABILITATION
-  CLEARED
-  CHRONIC
-}
-
 // ============================================================================
-// 📋 ENUMS - FACILITIES & VENUES (ENHANCED v7.4.0)
+// 📋 ENUMS - FACILITIES & VENUES
 // ============================================================================
 
 enum FacilityType {
@@ -1179,7 +1214,6 @@ enum FacilityType {
   MULTI_PURPOSE
 }
 
-// NEW v7.4.0: Venue type for external match venues
 enum VenueType {
   STADIUM
   ARENA
@@ -1324,12 +1358,13 @@ enum WebhookEvent {
   PLAYER_UPDATED
   PLAYER_INJURED
   PLAYER_TRANSFERRED
+  PLAYER_CLEARED
   
   // Team Events
   TEAM_UPDATED
   TEAM_CREATED
   
-  // Competition Events (NEW v7.4.0)
+  // Competition Events
   COMPETITION_CREATED
   COMPETITION_STARTED
   COMPETITION_FINISHED
@@ -1342,6 +1377,10 @@ enum WebhookEvent {
   USER_CREATED
   USER_DELETED
   
+  // Medical Events (NEW v7.5.0)
+  FITNESS_ASSESSMENT_COMPLETED
+  PLAYER_RTP_CLEARED
+  
   // Other Events
   RESULT_APPROVED
   TRAINING_SCHEDULED
@@ -1353,6 +1392,7 @@ enum WebhookEvent {
   MEDIA_UPLOADED
   MEDIA_PROCESSED
 }
+
 // ============================================================================
 // 🏢 ORGANISATION & MULTI-TENANCY MODELS
 // ============================================================================
@@ -1406,7 +1446,6 @@ model Organisation {
   isArchived     Boolean   @default(false)
   archivedAt     DateTime?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
   deletedBy String?
 
@@ -1519,7 +1558,6 @@ model Season {
 
   description String?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -1586,6 +1624,9 @@ model User {
   twoFactorSecret      String?  @unique
   twoFactorBackupCodes String[]
 
+  // Push Notification Tokens (NEW v7.5.0)
+  fcmTokens String[] @default([]) // Firebase Cloud Messaging tokens for multiple devices
+
   emailNotificationsEnabled Boolean @default(true)
   pushNotificationsEnabled  Boolean @default(true)
   smsNotificationsEnabled   Boolean @default(false)
@@ -1605,7 +1646,6 @@ model User {
   followersCount Int @default(0)
   followingCount Int @default(0)
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
   deletedBy String?
 
@@ -1613,50 +1653,51 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  organisationMemberships OrganisationMember[]
-  organisationsOwned      Organisation[]          @relation("organisationOwner")
-  accounts                Account[]
-  sessions                Session[]
-  refreshTokens           RefreshToken[]
-  twoFactorAuth           TwoFactorAuth?
-  apiKeys                 ApiKey[]
-  player                  Player?
-  coach                   Coach?
-  referee                 Referee?
-  scout                   Scout?
-  analyst                 Analyst?
-  clubManager             ClubManager?
-  clubOwner               ClubOwner?
-  parent                  Parent?
-  treasurer               Treasurer?
-  clubMemberships         ClubMember[]
-  managedClubs            Club[]                  @relation("clubManager")
-  ownedClubs              Club[]                  @relation("clubOwner")
-  notifications           Notification[]
-  notificationPrefs       NotificationPreference?
-  messages                Message[]
-  chatMembers             ChatMember[]
-  chatsCreated            Chat[]                  @relation("chatCreator")
-  socialActions           SocialAction[]
-  followers               Follow[]                @relation("follower")
-  following               Follow[]                @relation("following")
-  blocks                  UserBlock[]             @relation("blocker")
-  blockedBy               UserBlock[]             @relation("blocked")
-  achievements            Achievement[]           @relation("achievementUser")
-  badges                  Badge[]                 @relation("badgeUser")
-  subscriptions           Subscription[]
-  payments                Payment[]
-  invoices                Invoice[]
-  auditLogsCreated        AuditLog[]              @relation("auditLogUser")
-  announcementsCreated    Announcement[]          @relation("announcementCreator")
-  performanceGoals        PerformanceGoal[]       @relation("goalUser")
-  goalsCreated            PerformanceGoal[]       @relation("goalCreator")
-  jobApplications         JobApplication[]        @relation("applicant")
-  reviewedApplications    JobApplication[]        @relation("applicationReviewer")
-  jobPostingsCreated      JobPosting[]            @relation("jobCreator")
-  mediaUploaded           MediaContent[]          @relation("mediaUploader")
-  matchesCreated          Match[]                 @relation("matchCreator")
-  competitionsCreated     Competition[]           @relation("competitionCreator")
+  organisationMemberships  OrganisationMember[]
+  organisationsOwned       Organisation[]          @relation("organisationOwner")
+  accounts                 Account[]
+  sessions                 Session[]
+  refreshTokens            RefreshToken[]
+  twoFactorAuth            TwoFactorAuth?
+  apiKeys                  ApiKey[]
+  player                   Player?
+  coach                    Coach?
+  referee                  Referee?
+  scout                    Scout?
+  analyst                  Analyst?
+  clubManager              ClubManager?
+  clubOwner                ClubOwner?
+  parent                   Parent?
+  treasurer                Treasurer?
+  clubMemberships          ClubMember[]
+  managedClubs             Club[]                  @relation("clubManager")
+  ownedClubs               Club[]                  @relation("clubOwner")
+  notifications            Notification[]
+  notificationPrefs        NotificationPreference?
+  messages                 Message[]
+  chatMembers              ChatMember[]
+  chatsCreated             Chat[]                  @relation("chatCreator")
+  socialActions            SocialAction[]
+  followers                Follow[]                @relation("follower")
+  following                Follow[]                @relation("following")
+  blocks                   UserBlock[]             @relation("blocker")
+  blockedBy                UserBlock[]             @relation("blocked")
+  achievements             Achievement[]           @relation("achievementUser")
+  badges                   Badge[]                 @relation("badgeUser")
+  subscriptions            Subscription[]
+  payments                 Payment[]
+  invoices                 Invoice[]
+  auditLogsCreated         AuditLog[]              @relation("auditLogUser")
+  announcementsCreated     Announcement[]          @relation("announcementCreator")
+  performanceGoals         PerformanceGoal[]       @relation("goalUser")
+  goalsCreated             PerformanceGoal[]       @relation("goalCreator")
+  jobApplications          JobApplication[]        @relation("applicant")
+  reviewedApplications     JobApplication[]        @relation("applicationReviewer")
+  jobPostingsCreated       JobPosting[]            @relation("jobCreator")
+  mediaUploaded            MediaContent[]          @relation("mediaUploader")
+  matchesCreated           Match[]                 @relation("matchCreator")
+  competitionsCreated      Competition[]           @relation("competitionCreator")
+  fitnessAssessmentsCreated FitnessAssessment[]   @relation("fitnessAssessor")
 
   @@index([email])
   @@index([phone])
@@ -2009,6 +2050,7 @@ model DataDeletionRequest {
   @@index([requestedAt])
   @@map("data_deletion_requests")
 }
+
 // ============================================================================
 // 🏃 PLAYER MODELS
 // ============================================================================
@@ -2049,7 +2091,6 @@ model Player {
 
   availabilityStatus String @default("AVAILABLE")
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
   deletedBy String?
 
@@ -2064,6 +2105,7 @@ model Player {
   contracts               Contract[]
   injuries                Injury[]
   medicalRecords          MedicalRecord[]
+  fitnessAssessments      FitnessAssessment[]       @relation("playerFitnessAssessments")
   matchAttendance         MatchAttendance[]
   familyLinks             PlayerFamily[]
   scoutingReports         ScoutingReport[]
@@ -2320,7 +2362,8 @@ model PlayerFamily {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  parent Parent? @relation("parentChildren", fields: [parentId], references: [id], onDelete: SetNull)
 
   @@index([playerId])
   @@index([parentId])
@@ -2409,7 +2452,8 @@ model Injury {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player             Player              @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  fitnessAssessments FitnessAssessment[] @relation("injuryAssessments")
 
   @@index([playerId])
   @@index([dateFrom])
@@ -2447,6 +2491,78 @@ model MedicalRecord {
   @@index([recordType])
   @@index([date])
   @@map("medical_records")
+}
+
+// ============================================================================
+// 🏥 FITNESS ASSESSMENT MODEL (NEW v7.5.0)
+// ============================================================================
+
+model FitnessAssessment {
+  id         String @id @default(cuid())
+  playerId   String
+  assessorId String // User who conducted assessment
+
+  type FitnessAssessmentType
+  date DateTime
+
+  // Physical metrics
+  weight    Float? // kg
+  bodyFat   Float? // percentage
+  restingHR Int?   // bpm
+  maxHR     Int?   // bpm
+  vo2Max    Float? // ml/kg/min
+
+  // Test results
+  sprintTime    Float? // 40m sprint in seconds
+  agilityTime   Float? // T-test or similar in seconds
+  verticalJump  Float? // cm
+  beepTestLevel Float? // Yo-yo/beep test level (e.g., 15.2)
+
+  // Flexibility & mobility
+  flexibilityScore Float?
+  mobilityNotes    String? @db.Text
+
+  // Strength tests (sport-specific JSON)
+  // Example: {"benchPress": 80, "squat": 120, "deadlift": 140}
+  strengthTests Json?
+
+  // Overall assessment
+  overallScore Float? // 0-100
+  status       FitnessStatus @default(PENDING_REVIEW)
+
+  // Return to Play specific
+  isRTPAssessment Boolean   @default(false)
+  injuryId        String?
+  rtpStage        Int?      // 1-6 for graduated RTP protocol
+  rtpCleared      Boolean   @default(false)
+  rtpClearedDate  DateTime?
+
+  // Recommendations
+  notes               String?  @db.Text
+  recommendations     String[] @default([])
+  attachments         String[]
+  nextAssessmentDue   DateTime?
+
+  // Sport-specific metrics (JSON for flexibility)
+  // Rugby: {"scrumStrength": 85, "tackleAccuracy": 90}
+  // Basketball: {"verticalReach": 320, "shuttleRun": 12.5}
+  sportSpecificMetrics Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  player   Player  @relation("playerFitnessAssessments", fields: [playerId], references: [id], onDelete: Cascade)
+  assessor User    @relation("fitnessAssessor", fields: [assessorId], references: [id])
+  injury   Injury? @relation("injuryAssessments", fields: [injuryId], references: [id], onDelete: SetNull)
+
+  @@index([playerId])
+  @@index([assessorId])
+  @@index([injuryId])
+  @@index([date])
+  @@index([type])
+  @@index([status])
+  @@index([isRTPAssessment])
+  @@map("fitness_assessments")
 }
 
 model Contract {
@@ -2598,21 +2714,20 @@ model Coach {
   expectedSalaryCurrency String   @default("GBP")
   noticePeriod           String?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
   deletedBy String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clubMemberships  ClubMember[]      @relation("coachMemberships")
-  trainingSessions TrainingSession[]
-  timesheets       CoachTimesheet[]  @relation("coach")
-  payments         CoachPayment[]
-  achievements     Achievement[]     @relation("achievementCoach")
-  jobApplications  JobApplication[]  @relation("coachApplications")
-  matchesCreatedByCoach Match[]      @relation("matchCreatedByCoach")
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clubMemberships       ClubMember[]      @relation("coachMemberships")
+  trainingSessions      TrainingSession[]
+  timesheets            CoachTimesheet[]  @relation("coach")
+  payments              CoachPayment[]
+  achievements          Achievement[]     @relation("achievementCoach")
+  jobApplications       JobApplication[]  @relation("coachApplications")
+  matchesCreatedByCoach Match[]           @relation("matchCreatedByCoach")
 
   @@index([userId])
   @@index([isVerified])
@@ -2716,7 +2831,6 @@ model Referee {
   averageRating Float?
   totalReviews  Int   @default(0)
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2749,7 +2863,6 @@ model Scout {
   playersRecommended Int @default(0)
   playersSigned      Int @default(0)
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2776,7 +2889,6 @@ model Analyst {
   isVerified Boolean @default(false)
   isActive   Boolean @default(true)
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2797,7 +2909,6 @@ model ClubManager {
   managingStyle   String?
   yearsExperience Int?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2817,7 +2928,6 @@ model ClubOwner {
   businessType    String?
   yearsInBusiness Int?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2836,13 +2946,26 @@ model Parent {
 
   childrenCount Int @default(0)
 
-  // SOFT DELETE (v7.4.0)
+  // Emergency contact preferences
+  preferredContactMethod String? // 'PHONE', 'EMAIL', 'SMS'
+  alternatePhone         String?
+  workPhone              String?
+
+  // Consent tracking
+  photoVideoConsent       Boolean   @default(false)
+  photoVideoConsentDate   DateTime?
+  medicalConsentGiven     Boolean   @default(false)
+  medicalConsentDate      DateTime?
+  transportConsentGiven   Boolean   @default(false)
+  transportConsentDate    DateTime?
+
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  children PlayerFamily[] @relation("parentChildren")
 
   @@index([userId])
   @@index([deletedAt])
@@ -2857,7 +2980,6 @@ model Treasurer {
   bankDetails     Json?
   qualifications  String[]
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -2869,6 +2991,7 @@ model Treasurer {
   @@index([deletedAt])
   @@map("treasurers")
 }
+
 // ============================================================================
 // 🏢 CLUB & TEAM MODELS
 // ============================================================================
@@ -2920,7 +3043,6 @@ model Club {
   youtube   String?
   tiktok    String?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
   deletedBy String?
 
@@ -2944,6 +3066,7 @@ model Club {
   mediaContent     MediaContent[]      @relation("clubMedia")
   competitions     Competition[]       @relation("clubCompetitions")
   competitionTeams CompetitionTeam[]
+  socialAccounts   SocialAccount[]     @relation("clubSocialAccounts")
 
   @@index([organisationId])
   @@index([managerId])
@@ -2957,6 +3080,55 @@ model Club {
   @@index([acceptingStaff])
   @@index([deletedAt])
   @@map("clubs")
+}
+
+// ============================================================================
+// 📱 SOCIAL ACCOUNT MODEL (NEW v7.5.0)
+// ============================================================================
+
+model SocialAccount {
+  id     String @id @default(cuid())
+  clubId String
+
+  platform    SocialPlatform
+  accountName String
+  accountId   String?
+
+  // OAuth tokens (encrypted in production)
+  accessToken  String? @db.Text
+  refreshToken String? @db.Text
+  tokenExpiry  DateTime?
+
+  // Profile information
+  profileUrl    String?
+  followerCount Int     @default(0)
+  followingCount Int    @default(0)
+
+  // Connection status
+  isConnected    Boolean   @default(false)
+  connectedAt    DateTime?
+  connectedBy    String?   // User ID who connected
+  lastSyncAt     DateTime?
+  lastPostAt     DateTime?
+
+  // Permissions granted
+  permissions String[] @default([])
+
+  // Error tracking
+  lastError   String?
+  errorCount  Int      @default(0)
+  lastErrorAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club Club @relation("clubSocialAccounts", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, platform])
+  @@index([clubId])
+  @@index([platform])
+  @@index([isConnected])
+  @@map("social_accounts")
 }
 
 model ClubMember {
@@ -2981,11 +3153,9 @@ model ClubMember {
   canManageBilling Boolean @default(false)
   canManageMedia   Boolean @default(false)
 
-  // NEW v7.4.0: Additional permissions
   canCreateFriendlyMatches Boolean @default(false)
   canManageLineups         Boolean @default(false)
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -3016,14 +3186,11 @@ model Team {
   minPlayers Int?
   maxPlayers Int?
 
-  // Default formation for the team
   defaultFormation FormationType?
 
-  // Team preferences for join requests
   acceptingJoinRequests Boolean @default(true)
   requiresApproval      Boolean @default(true)
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
   deletedBy String?
 
@@ -3064,8 +3231,7 @@ model TeamPlayer {
   joinedAt DateTime  @default(now())
   leftAt   DateTime?
 
-  // Track how player joined
-  joinedVia     String? // 'DIRECT', 'JOIN_REQUEST', 'INVITATION', 'TRANSFER'
+  joinedVia     String?
   joinRequestId String?
 
   team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -3108,29 +3274,23 @@ model TeamJoinRequest {
   teamId   String
   playerId String
 
-  // Request details
   status                JoinRequestStatus @default(PENDING)
   message               String?           @db.Text
   preferredPosition     Position?
   preferredJerseyNumber Int?
 
-  // Player profile snapshot at time of request
   playerProfileSnapshot Json?
 
-  // Review information
   reviewedBy      String?
   reviewedAt      DateTime?
   reviewNotes     String?   @db.Text
   rejectionReason String?
 
-  // Expiry
   expiresAt DateTime?
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
   player Player @relation("playerJoinRequests", fields: [playerId], references: [id], onDelete: Cascade)
 
@@ -3144,16 +3304,15 @@ model TeamJoinRequest {
 }
 
 // ============================================================================
-// 🏆 COMPETITION SYSTEM (NEW v7.4.0)
+// 🏆 COMPETITION SYSTEM
 // ============================================================================
 
 model Competition {
   id             String  @id @default(cuid())
   organisationId String?
-  clubId         String? // For club-owned competitions
+  clubId         String?
   seasonId       String?
 
-  // Basic Info
   name        String
   shortName   String?
   slug        String        @unique
@@ -3161,23 +3320,18 @@ model Competition {
   logo        String?
   banner      String?
 
-  // Sport & Type
   sport Sport
   type  CompetitionType @default(LEAGUE)
 
-  // Format
   format     LeagueFormat     @default(ROUND_ROBIN)
   visibility LeagueVisibility @default(PRIVATE)
 
-  // Schedule
   startDate            DateTime
   endDate              DateTime?
   registrationDeadline DateTime?
 
-  // Status
   status String @default("DRAFT")
 
-  // Settings
   maxTeams        Int?
   teamsRegistered Int  @default(0)
 
@@ -3187,27 +3341,22 @@ model Competition {
   pointsForDraw Int @default(1)
   pointsForLoss Int @default(0)
 
-  // Scoring (multi-sport support)
   scoringRules Json?
 
   rules String? @db.Text
 
-  // Analytics
   totalMatches     Int @default(0)
   completedMatches Int @default(0)
   totalGoals       Int @default(0)
 
-  // Creator
   createdBy String
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
   deletedBy String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   organisation Organisation?          @relation(fields: [organisationId], references: [id], onDelete: SetNull)
   club         Club?                  @relation("clubCompetitions", fields: [clubId], references: [id], onDelete: SetNull)
   season       Season?                @relation(fields: [seasonId], references: [id], onDelete: SetNull)
@@ -3239,7 +3388,7 @@ model CompetitionTeam {
   leftAt     DateTime?
   isActive   Boolean   @default(true)
   seedNumber Int?
-  groupName  String?   // For group stage competitions
+  groupName  String?
 
   competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
   team        Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -3257,7 +3406,7 @@ model CompetitionStanding {
   id            String  @id @default(cuid())
   competitionId String
   teamId        String?
-  groupName     String? // For group stage standings
+  groupName     String?
 
   position       Int
   played         Int @default(0)
@@ -3269,7 +3418,6 @@ model CompetitionStanding {
   goalDifference Int @default(0)
   points         Int @default(0)
 
-  // Multi-sport: Store sport-specific breakdown
   scoreBreakdown Json?
 
   form String?
@@ -3296,11 +3444,10 @@ model CompetitionStageConfig {
   id            String @id @default(cuid())
   competitionId String
 
-  stage     CompetitionStage
-  name      String?
-  order     Int              @default(0)
+  stage CompetitionStage
+  name  String?
+  order Int              @default(0)
 
-  // Configuration
   numberOfTeams  Int?
   numberOfGroups Int?
   matchesPerTeam Int?
@@ -3351,7 +3498,7 @@ model TournamentBracket {
 }
 
 // ============================================================================
-// 🏟️ VENUE MODEL (NEW v7.4.0)
+// 🏟️ VENUE MODEL
 // ============================================================================
 
 model Venue {
@@ -3362,35 +3509,29 @@ model Venue {
   shortName String?
   type      VenueType @default(STADIUM)
 
-  // Location
   address     String?
   city        String?
   state       String?
   postcode    String?
   country     String?
-  coordinates Json?   // { lat: number, lng: number }
+  coordinates Json?
 
-  // Details
   capacity    Int?
-  surface     String?  // 'GRASS', 'ARTIFICIAL', 'INDOOR', etc.
+  surface     String?
   description String?  @db.Text
-  facilities  String[] // ['FLOODLIGHTS', 'PARKING', 'CHANGING_ROOMS', etc.]
+  facilities  String[]
   images      String[]
 
-  // Contact
   contactName  String?
   contactEmail String?
   contactPhone String?
   website      String?
 
-  // Operating hours (JSON structure)
   operatingHours Json?
 
-  // Status
   isActive   Boolean @default(true)
   isVerified Boolean @default(false)
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -3409,27 +3550,22 @@ model Venue {
 }
 
 // ============================================================================
-// ⚽ MATCH MODEL (MAJOR OVERHAUL v7.4.0)
+// ⚽ MATCH MODEL
 // ============================================================================
 
 model Match {
   id String @id @default(cuid())
 
-  // Competition (OPTIONAL - allows standalone friendlies)
   competitionId String?
 
-  // REQUIRED: Teams (NEW v7.4.0)
   homeTeamId String
   awayTeamId String
 
-  // DERIVED: Clubs (auto-populated from teams)
   homeClubId String
   awayClubId String
 
-  // Match Type (NEW v7.4.0)
   matchType MatchType @default(LEAGUE)
 
-  // Competition Stage (for knockout/group tracking)
   stage     CompetitionStage?
   groupName String?
   round     Int?
@@ -3439,105 +3575,81 @@ model Match {
   title       String?
   description String? @db.Text
 
-  // Schedule
   kickOffTime DateTime
   endTime     DateTime?
   status      MatchStatus @default(SCHEDULED)
 
-  // Venue (NEW v7.4.0: Links to Venue OR Facility)
   venueId    String?
   facilityId String?
-  venue      String? // Text fallback for venue name
+  venue      String?
   pitch      String?
 
-  // Weather conditions
   weather     String?
   temperature Int?
   humidity    Int?
   windSpeed   Float?
 
-  // ========================
-  // SCORES (v7.4.0 STANDARD)
-  // ========================
-  homeScore         Int?
-  awayScore         Int?
-  homeHalftimeScore Int?
-  awayHalftimeScore Int?
-  homePenalties     Int?
-  awayPenalties     Int?
+  homeScore          Int?
+  awayScore          Int?
+  homeHalftimeScore  Int?
+  awayHalftimeScore  Int?
+  homePenalties      Int?
+  awayPenalties      Int?
   homeExtraTimeScore Int?
   awayExtraTimeScore Int?
 
-  // Multi-sport score breakdown (NEW v7.4.0)
-  // Rugby: {"tries": 3, "conversions": 2, "penalties": 1, "dropGoals": 0}
-  // Basketball: {"twoPointers": 20, "threePointers": 8, "freeThrows": 12}
-  // Cricket: {"runs": 245, "wickets": 7, "overs": 50}
   homeScoreBreakdown Json?
   awayScoreBreakdown Json?
 
-  // ========================
-  // FORMATIONS (NEW v7.4.0)
-  // ========================
   homeFormation FormationType?
   awayFormation FormationType?
 
-  // Attendance
   attendance Int?
   capacity   Int?
 
-  // Match timing
   actualDuration   Int?
   injuryTimeFirst  Int?
   injuryTimeSecond Int?
 
-  // Result approval
   resultApprovalStatus ResultApprovalStatus @default(PENDING)
   approvedBy           String?
   approvedAt           DateTime?
   disputeReason        String?
 
-  // Flags
   isHighlighted  Boolean @default(false)
   isFeatured     Boolean @default(false)
   isNeutralVenue Boolean @default(false)
 
-  // Broadcast
   isBroadcasted Boolean @default(false)
   broadcastUrl  String?
 
-  // ========================
-  // CREATOR TRACKING (NEW v7.4.0)
-  // ========================
-  createdById      String  // Required: Who created the match
-  createdByCoachId String? // Optional: If created by coach (for friendly permissions)
+  createdById      String
+  createdByCoachId String?
 
-  // Match report
   matchReport String? @db.Text
   notes       String? @db.Text
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
   deletedBy String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  competition      Competition?            @relation(fields: [competitionId], references: [id], onDelete: SetNull)
-  homeTeam         Team                    @relation("homeTeam", fields: [homeTeamId], references: [id])
-  awayTeam         Team                    @relation("awayTeam", fields: [awayTeamId], references: [id])
-  homeClub         Club                    @relation("homeClub", fields: [homeClubId], references: [id])
-  awayClub         Club                    @relation("awayClub", fields: [awayClubId], references: [id])
-  venueRelation    Venue?                  @relation("matchVenue", fields: [venueId], references: [id])
-  facilityRelation Facility?               @relation("matchFacility", fields: [facilityId], references: [id])
-  creator          User                    @relation("matchCreator", fields: [createdById], references: [id])
-  createdByCoach   Coach?                  @relation("matchCreatedByCoach", fields: [createdByCoachId], references: [id])
-  events           MatchEvent[]
-  squads           MatchSquad[]
-  playerAttendance MatchAttendance[]
+  competition        Competition?             @relation(fields: [competitionId], references: [id], onDelete: SetNull)
+  homeTeam           Team                     @relation("homeTeam", fields: [homeTeamId], references: [id])
+  awayTeam           Team                     @relation("awayTeam", fields: [awayTeamId], references: [id])
+  homeClub           Club                     @relation("homeClub", fields: [homeClubId], references: [id])
+  awayClub           Club                     @relation("awayClub", fields: [awayClubId], references: [id])
+  venueRelation      Venue?                   @relation("matchVenue", fields: [venueId], references: [id])
+  facilityRelation   Facility?                @relation("matchFacility", fields: [facilityId], references: [id])
+  creator            User                     @relation("matchCreator", fields: [createdById], references: [id])
+  createdByCoach     Coach?                   @relation("matchCreatedByCoach", fields: [createdByCoachId], references: [id])
+  events             MatchEvent[]
+  squads             MatchSquad[]
+  playerAttendance   MatchAttendance[]
   playerPerformances PlayerMatchPerformance[]
-  officials        MatchOfficial[]
-  mediaContent     MediaContent[]          @relation("matchMedia")
+  officials          MatchOfficial[]
+  mediaContent       MediaContent[]           @relation("matchMedia")
 
   @@index([competitionId])
   @@index([homeTeamId])
@@ -3557,7 +3669,7 @@ model Match {
 }
 
 // ============================================================================
-// 📊 PLAYER MATCH PERFORMANCE (NEW v7.4.0)
+// 📊 PLAYER MATCH PERFORMANCE
 // ============================================================================
 
 model PlayerMatchPerformance {
@@ -3566,20 +3678,17 @@ model PlayerMatchPerformance {
   playerId String
   teamId   String
 
-  // Time played
-  minutesPlayed Int @default(0)
+  minutesPlayed Int     @default(0)
   startedMatch  Boolean @default(false)
-  substituteOn  Int?   // Minute substituted on
-  substituteOff Int?   // Minute substituted off
+  substituteOn  Int?
+  substituteOff Int?
 
-  // Basic stats
-  goals         Int @default(0)
-  assists       Int @default(0)
-  yellowCards   Int @default(0)
-  redCard       Boolean @default(false)
-  secondYellow  Boolean @default(false)
+  goals        Int     @default(0)
+  assists      Int     @default(0)
+  yellowCards  Int     @default(0)
+  redCard      Boolean @default(false)
+  secondYellow Boolean @default(false)
 
-  // Passing
   passes         Int    @default(0)
   passesComplete Int    @default(0)
   passAccuracy   Float?
@@ -3589,56 +3698,43 @@ model PlayerMatchPerformance {
   crosses        Int    @default(0)
   crossesComplete Int   @default(0)
 
-  // Defending
   tackles       Int @default(0)
   tacklesWon    Int @default(0)
   interceptions Int @default(0)
   clearances    Int @default(0)
   blocks        Int @default(0)
 
-  // Attacking
   shots         Int @default(0)
   shotsOnTarget Int @default(0)
   dribbles      Int @default(0)
   dribblesWon   Int @default(0)
 
-  // Duels
   aerialsWon  Int @default(0)
   aerialsLost Int @default(0)
   duelsWon    Int @default(0)
   duelsLost   Int @default(0)
 
-  // Discipline
-  fouls       Int @default(0)
-  fouled      Int @default(0)
+  fouls  Int @default(0)
+  fouled Int @default(0)
 
-  // Goalkeeper stats
   saves         Int     @default(0)
   goalsConceded Int     @default(0)
   cleanSheet    Boolean @default(false)
   penaltySaves  Int     @default(0)
 
-  // Touch/Possession
   touches    Int    @default(0)
   possession Float?
 
-  // Rating (0-10 scale)
   rating      Float?
   coachRating Float?
 
-  // Coach feedback
   coachNotes String? @db.Text
 
-  // Sport-specific stats (JSON for flexibility)
-  // Rugby: {"tackles": 10, "carries": 5, "offloads": 2}
-  // Basketball: {"rebounds": 8, "steals": 3, "blocks": 2}
   sportSpecificStats Json?
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
   player Player @relation("playerPerformances", fields: [playerId], references: [id], onDelete: Cascade)
 
@@ -3686,19 +3782,15 @@ model MatchEvent {
   secondaryMinute Int?
   period          String?
 
-  // Team side for the event
-  teamSide String? // 'home' or 'away'
+  teamSide String?
 
-  // Related players
   relatedPlayerId String?
   assistPlayerId  String?
 
-  // Event specifics
   goalType   String?
   cardReason String?
   injuryType String?
 
-  // Position on pitch (for heatmaps)
   xPosition Float?
   yPosition Float?
 
@@ -3773,6 +3865,7 @@ model MatchAttendance {
   @@index([status])
   @@map("match_attendance")
 }
+
 // ============================================================================
 // 📊 TRAINING MODELS
 // ============================================================================
@@ -3780,7 +3873,7 @@ model MatchAttendance {
 model TrainingSession {
   id      String  @id @default(cuid())
   clubId  String
-  teamId  String? // Optional team-specific training (hybrid support)
+  teamId  String?
   coachId String
 
   name        String
@@ -3792,7 +3885,6 @@ model TrainingSession {
   intensity TrainingIntensity @default(MEDIUM)
   category  TrainingCategory
 
-  // Custom category for sport-specific training
   customCategory String?
 
   location        String?
@@ -3803,16 +3895,13 @@ model TrainingSession {
   notes     String? @db.Text
   equipment String[]
 
-  // Focus areas as array for better querying
   focusAreas String[]
 
   status TrainingStatus @default(SCHEDULED)
 
-  // Analytics
   attendanceCount Int @default(0)
   avgRating       Float?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -3844,14 +3933,12 @@ model TrainingAttendance {
   departTime  DateTime?
   notes       String?
 
-  // Injury reference if status is INJURED
   injuryId String?
 
   performanceRating Float?
   effortRating      Float?
   coachNotes        String?
 
-  // Sport-specific metrics
   customMetrics Json?
 
   createdAt DateTime @default(now())
@@ -4037,7 +4124,6 @@ model Facility {
   contactPhone String?
   contactEmail String?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -4099,10 +4185,8 @@ model MediaContent {
   matchId        String?
   trainingId     String?
 
-  // Uploader
   uploadedBy String
 
-  // File information
   type     MediaType
   category MediaCategory @default(OTHER)
 
@@ -4110,7 +4194,6 @@ model MediaContent {
   description String? @db.Text
   tags        String[]
 
-  // File metadata
   filename     String
   originalName String
   mimeType     String
@@ -4118,53 +4201,41 @@ model MediaContent {
   url          String
   cdnUrl       String?
 
-  // Video-specific
   duration     Int?
   thumbnailUrl String?
 
-  // Image-specific
   width  Int?
   height Int?
 
-  // Processing
   processingStatus   MediaProcessingStatus @default(PENDING)
   processingProvider VideoProcessingProvider?
   processingError    String?
   processedAt        DateTime?
 
-  // Quality variants (for video)
   qualityVariants Json?
 
-  // Access control
   visibility  MediaVisibility @default(CLUB_ONLY)
   isPublic    Boolean         @default(false)
   accessRoles ClubMemberRole[]
 
-  // Analytics
   viewCount     Int @default(0)
   downloadCount Int @default(0)
   likeCount     Int @default(0)
 
-  // Timestamps for video clips
   startTimestamp Int?
   endTimestamp   Int?
 
-  // Parent media (for clips from full videos)
   parentMediaId String?
 
-  // Metadata
   metadata Json?
 
-  // Expiry
   expiresAt DateTime?
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   organisation Organisation?    @relation(fields: [organisationId], references: [id], onDelete: SetNull)
   club         Club?            @relation("clubMedia", fields: [clubId], references: [id], onDelete: SetNull)
   team         Team?            @relation("teamMedia", fields: [teamId], references: [id], onDelete: SetNull)
@@ -4232,26 +4303,22 @@ model JobPosting {
   id     String @id @default(cuid())
   clubId String
 
-  // Job details
   title            String
   slug             String
   description      String  @db.Text
   shortDescription String?
 
-  // Classification
   category        JobCategory
   role            ClubMemberRole
   employmentType  EmploymentType  @default(FULL_TIME)
   experienceLevel ExperienceLevel @default(MID)
 
-  // Requirements
   requirements    String[]
   qualifications  String[]
   certifications  String[]
   skills          String[]
   yearsExperience Int?
 
-  // Compensation
   salaryMin      Float?
   salaryMax      Float?
   currency       String   @default("GBP")
@@ -4259,7 +4326,6 @@ model JobPosting {
   benefits       String[]
   bonusStructure Json?
 
-  // Location
   location       String?
   city           String?
   country        String?
@@ -4267,38 +4333,31 @@ model JobPosting {
   isHybrid       Boolean @default(false)
   travelRequired Boolean @default(false)
 
-  // Status & Dates
   status      JobPostingStatus @default(DRAFT)
   publishedAt DateTime?
   deadline    DateTime?
   startDate   DateTime?
 
-  // Settings
   isUrgent       Boolean @default(false)
   isFeatured     Boolean @default(false)
   isConfidential Boolean @default(false)
 
-  // Application settings
   maxApplications     Int?
   requiresCoverLetter Boolean @default(true)
   requiresResume      Boolean @default(true)
   customQuestions     Json?
 
-  // Metrics
   viewCount        Int @default(0)
   applicationCount Int @default(0)
   shortlistedCount Int @default(0)
 
-  // Creator
   createdBy String
 
-  // SOFT DELETE (v7.4.0)
   deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   club         Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
   creator      User             @relation("jobCreator", fields: [createdBy], references: [id])
   applications JobApplication[]
@@ -4325,51 +4384,41 @@ model JobApplication {
   userId       String
   coachId      String?
 
-  // Application content
   coverLetter   String? @db.Text
   resumeUrl     String?
   portfolioUrl  String?
   linkedInUrl   String?
   customAnswers Json?
 
-  // Applicant snapshot
   applicantSnapshot Json?
 
-  // Status tracking
   status JobApplicationStatus @default(PENDING)
 
-  // Review process
   reviewedBy  String?
   reviewedAt  DateTime?
   reviewNotes String?   @db.Text
   rating      Int?
 
-  // Interview
   interviewDate     DateTime?
   interviewLocation String?
   interviewNotes    String?   @db.Text
   interviewRating   Int?
 
-  // Offer
   offerDate          DateTime?
   offerSalary        Float?
   offerAcceptedAt    DateTime?
   offerDeclinedAt    DateTime?
   offerDeclineReason String?
 
-  // Rejection
   rejectionReason String?
   rejectionDate   DateTime?
 
-  // Withdrawal
   withdrawnAt    DateTime?
   withdrawReason String?
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   jobPosting JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
   user       User       @relation("applicant", fields: [userId], references: [id], onDelete: Cascade)
   coach      Coach?     @relation("coachApplications", fields: [coachId], references: [id], onDelete: SetNull)
@@ -4727,7 +4776,7 @@ model Message {
 
 model ChatMember {
   id     String @id @default(cuid())
-  userId String
+  oderId String
   chatId String
 
   role     String    @default("MEMBER")
@@ -4738,11 +4787,11 @@ model ChatMember {
   lastReadAt  DateTime?
   unreadCount Int       @default(0)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [oderId], references: [id], onDelete: Cascade)
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, chatId])
-  @@index([userId])
+  @@unique([oderId, chatId])
+  @@index([oderId])
   @@index([chatId])
   @@map("chat_members")
 }
