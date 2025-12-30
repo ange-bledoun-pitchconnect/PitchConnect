@@ -1,618 +1,973 @@
-// ============================================================================
-// 🏆 ENHANCED: src/app/api/leagues/route.ts
-// GET - List leagues with advanced filtering & pagination
-// POST - Create new league with configuration
-// VERSION: 3.0 - World-Class Enhanced
-// ============================================================================
+// =============================================================================
+// 🏆 LEAGUES API - Enterprise-Grade Implementation
+// =============================================================================
+// GET  /api/leagues - List leagues/competitions with filtering
+// POST /api/leagues - Create new league/competition
+// =============================================================================
+// Schema: v7.8.0 | Model: Competition (League is legacy alias)
+// Multi-Sport: ✅ All 12 sports supported
+// =============================================================================
 
-import { auth } from '@/auth';
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { parseJsonBody, validateStringLength } from '@/lib/api/validation';
-import { errorResponse } from '@/lib/api/responses';
-import { UnauthorizedError, ForbiddenError, BadRequestError } from '@/lib/api/errors';
-import { createAuditLog } from '@/lib/api/audit';
+import { z } from 'zod';
+import {
+  Prisma,
+  Sport,
+  CompetitionType,
+  CompetitionFormat,
+  CompetitionStatus,
+  AuditActionType,
+} from '@prisma/client';
 
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-interface LeagueListItem {
-  id: string;
-  name: string;
-  code: string;
-  sport: string;
-  season: number;
-  country: string | null;
-  status: string;
-  format: string;
-  visibility: string;
-  admin: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  configuration: {
-    pointsWin: number;
-    pointsDraw: number;
-    minTeams: number;
-    maxTeams: number;
-    registrationOpen: boolean;
-    bonusPointsEnabled: boolean;
-  };
-  stats: {
-    teamCount: number;
-    fixtureCount: number;
-    standingCount: number;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface LeagueListResponse {
-  success: true;
-  leagues: LeagueListItem[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-    hasNextPage: boolean;
-    hasPreviousPage: boolean;
-  };
-  timestamp: string;
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  code?: string;
+  message?: string;
+  pagination?: PaginationMeta;
   requestId: string;
-}
-
-interface CreateLeagueRequest {
-  name: string;
-  code: string;
-  sport: 'FOOTBALL' | 'NETBALL' | 'RUGBY' | 'CRICKET' | 'AMERICANFOOTBALL' | 'BASKETBALL';
-  season: number;
-  country?: string;
-  description?: string;
-  format?: 'LEAGUE' | 'KNOCKOUT' | 'ROUNDROBIN' | 'GROUPS';
-  visibility?: 'PUBLIC' | 'PRIVATE' | 'INVITE_ONLY';
-  pointsWin?: number;
-  pointsDraw?: number;
-  pointsLoss?: number;
-  minTeams?: number;
-  maxTeams?: number;
-  bonusPointsEnabled?: boolean;
-  registrationOpen?: boolean;
-}
-
-interface CreateLeagueResponse {
-  success: true;
-  id: string;
-  name: string;
-  code: string;
-  sport: string;
-  season: number;
-  country: string;
-  status: string;
-  format: string;
-  visibility: string;
-  admin: {
-    id: string;
-    name: string;
-  };
-  configuration: {
-    pointsWin: number;
-    pointsDraw: number;
-    pointsLoss: number;
-    minTeams: number;
-    maxTeams: number;
-    bonusPointsEnabled: boolean;
-    registrationOpen: boolean;
-  };
-  message: string;
   timestamp: string;
-  requestId: string;
 }
 
-// ============================================================================
-// GET /api/leagues
-// ============================================================================
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
 
 /**
- * GET /api/leagues
- * List leagues with comprehensive filtering, pagination, and RBAC
- * 
- * Query Parameters:
- *   - page: number (default: 1)
- *   - limit: number (default: 25, max: 100)
- *   - sport: string filter (FOOTBALL, NETBALL, RUGBY, CRICKET, AMERICANFOOTBALL, BASKETBALL)
- *   - season: number filter (e.g., 2024)
- *   - status: string filter (DRAFT, ACTIVE, COMPLETED)
- *   - country: string filter
- *   - search: string (searches name)
- *   - includeArchived: boolean (default: false)
- * 
- * Authorization:
- *   - SUPERADMIN: See all leagues
- *   - LEAGUE_ADMIN: See only their leagues
- *   - Others: See public leagues only
- * 
- * Returns: 200 OK with paginated list
- * 
- * Features:
- *   ✅ Advanced filtering
- *   ✅ Pagination with metadata
- *   ✅ Role-based access control
- *   ✅ Search functionality
- *   ✅ Request tracking
+ * Sport-specific competition settings stored in Competition.settings JSON
+ * This provides flexibility for different sports while maintaining type safety
  */
-export async function GET(request: NextRequest): Promise<NextResponse<LeagueListResponse | { success: false; error: string; code: string }>> {
-  const requestId = crypto.randomUUID();
+interface CompetitionSettings {
+  // Points System
+  pointsForWin: number;
+  pointsForDraw: number;
+  pointsForLoss: number;
+  
+  // Bonus Points (Rugby, Cricket)
+  bonusPointsEnabled: boolean;
+  bonusPointsConfig?: {
+    tryBonus?: number;           // Rugby: 4+ tries
+    losingBonus?: number;        // Rugby: lose by 7 or less
+    battingBonus?: number;       // Cricket
+    bowlingBonus?: number;       // Cricket
+  };
+  
+  // Tiebreakers (ordered by priority)
+  tiebreakers: string[];
+  
+  // Team Limits
+  minTeams: number;
+  maxTeams: number;
+  squadSizeMin?: number;
+  squadSizeMax?: number;
+  
+  // Registration
+  registrationOpen: boolean;
+  registrationDeadline?: string;
+  entryFee?: number;
+  entryCurrency?: string;
+  
+  // Match Rules
+  matchDuration?: number;        // Sport-specific default
+  extraTimeAllowed?: boolean;
+  penaltyShootouts?: boolean;    // Football, Hockey
+  goldenGoal?: boolean;
+  silverGoal?: boolean;
+  
+  // Sport-Specific
+  opiersPerInnings?: number;     // Cricket
+  legsPerMatch?: number;         // Some formats
+  setsPerMatch?: number;         // Tennis-style if needed
+  
+  // Display
+  showGoalDifference: boolean;
+  showForm: boolean;
+  formMatchCount?: number;
+}
+
+// =============================================================================
+// SPORT-SPECIFIC DEFAULT CONFIGURATIONS
+// =============================================================================
+
+const SPORT_DEFAULT_SETTINGS: Record<Sport, Partial<CompetitionSettings>> = {
+  FOOTBALL: {
+    pointsForWin: 3,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['GOAL_DIFFERENCE', 'GOALS_FOR', 'HEAD_TO_HEAD', 'AWAY_GOALS'],
+    matchDuration: 90,
+    extraTimeAllowed: true,
+    penaltyShootouts: true,
+    showGoalDifference: true,
+    showForm: true,
+    formMatchCount: 5,
+  },
+  FUTSAL: {
+    pointsForWin: 3,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['GOAL_DIFFERENCE', 'GOALS_FOR', 'HEAD_TO_HEAD'],
+    matchDuration: 40,
+    extraTimeAllowed: true,
+    penaltyShootouts: true,
+    showGoalDifference: true,
+    showForm: true,
+  },
+  BEACH_FOOTBALL: {
+    pointsForWin: 3,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['GOAL_DIFFERENCE', 'GOALS_FOR'],
+    matchDuration: 36,
+    extraTimeAllowed: true,
+    penaltyShootouts: true,
+    showGoalDifference: true,
+    showForm: true,
+  },
+  RUGBY: {
+    pointsForWin: 4,
+    pointsForDraw: 2,
+    pointsForLoss: 0,
+    bonusPointsEnabled: true,
+    bonusPointsConfig: {
+      tryBonus: 1,      // 4+ tries
+      losingBonus: 1,   // Lose by 7 or less
+    },
+    tiebreakers: ['POINTS_DIFFERENCE', 'TRIES_SCORED', 'HEAD_TO_HEAD'],
+    matchDuration: 80,
+    showGoalDifference: true,
+    showForm: true,
+  },
+  CRICKET: {
+    pointsForWin: 2,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: true,
+    bonusPointsConfig: {
+      battingBonus: 1,
+      bowlingBonus: 1,
+    },
+    tiebreakers: ['NET_RUN_RATE', 'HEAD_TO_HEAD', 'WINS'],
+    opiersPerInnings: 50,
+    showGoalDifference: false,
+    showForm: true,
+  },
+  AMERICAN_FOOTBALL: {
+    pointsForWin: 1,
+    pointsForDraw: 0,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['HEAD_TO_HEAD', 'DIVISION_RECORD', 'CONFERENCE_RECORD', 'POINT_DIFFERENTIAL'],
+    matchDuration: 60,
+    showGoalDifference: true,
+    showForm: true,
+  },
+  BASKETBALL: {
+    pointsForWin: 2,
+    pointsForDraw: 0, // No draws in basketball
+    pointsForLoss: 1,
+    bonusPointsEnabled: false,
+    tiebreakers: ['HEAD_TO_HEAD', 'POINT_DIFFERENTIAL', 'POINTS_FOR'],
+    matchDuration: 48,
+    extraTimeAllowed: true,
+    showGoalDifference: true,
+    showForm: true,
+  },
+  HOCKEY: {
+    pointsForWin: 3,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['GOAL_DIFFERENCE', 'GOALS_FOR', 'HEAD_TO_HEAD'],
+    matchDuration: 70,
+    extraTimeAllowed: true,
+    penaltyShootouts: true,
+    showGoalDifference: true,
+    showForm: true,
+  },
+  LACROSSE: {
+    pointsForWin: 2,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['GOAL_DIFFERENCE', 'GOALS_FOR', 'HEAD_TO_HEAD'],
+    matchDuration: 60,
+    showGoalDifference: true,
+    showForm: true,
+  },
+  NETBALL: {
+    pointsForWin: 2,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['GOAL_DIFFERENCE', 'GOALS_FOR', 'HEAD_TO_HEAD'],
+    matchDuration: 60,
+    showGoalDifference: true,
+    showForm: true,
+  },
+  AUSTRALIAN_RULES: {
+    pointsForWin: 4,
+    pointsForDraw: 2,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['PERCENTAGE', 'POINTS_FOR', 'HEAD_TO_HEAD'],
+    matchDuration: 80,
+    showGoalDifference: false, // Uses percentage
+    showForm: true,
+  },
+  GAELIC_FOOTBALL: {
+    pointsForWin: 2,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['SCORE_DIFFERENCE', 'SCORES_FOR', 'HEAD_TO_HEAD'],
+    matchDuration: 70,
+    showGoalDifference: true,
+    showForm: true,
+  },
+};
+
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const querySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  
+  // Filters
+  sport: z.nativeEnum(Sport).optional(),
+  type: z.nativeEnum(CompetitionType).optional(),
+  format: z.nativeEnum(CompetitionFormat).optional(),
+  status: z.nativeEnum(CompetitionStatus).optional(),
+  season: z.string().optional(),
+  country: z.string().max(100).optional(),
+  
+  // Search
+  search: z.string().max(200).optional(),
+  
+  // Ownership
+  clubId: z.string().cuid().optional(),
+  organisationId: z.string().cuid().optional(),
+  createdBy: z.string().cuid().optional(),
+  
+  // Sorting
+  sortBy: z.enum(['name', 'startDate', 'createdAt', 'totalTeams']).default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  
+  // Flags
+  includeArchived: z.coerce.boolean().default(false),
+  registrationOpen: z.coerce.boolean().optional(),
+});
+
+const createLeagueSchema = z.object({
+  // Required fields
+  name: z.string().min(3, 'Name must be at least 3 characters').max(200),
+  sport: z.nativeEnum(Sport),
+  type: z.nativeEnum(CompetitionType).default(CompetitionType.LEAGUE),
+  
+  // Optional identification
+  shortName: z.string().max(50).optional(),
+  slug: z.string().max(100).optional(), // Auto-generated if not provided
+  
+  // Context
+  organisationId: z.string().cuid().optional(),
+  clubId: z.string().cuid().optional(),
+  season: z.string().max(50).optional(), // e.g., "2024-25" or "2024"
+  
+  // Details
+  description: z.string().max(5000).optional(),
+  logo: z.string().url().optional(),
+  banner: z.string().url().optional(),
+  
+  // Format
+  format: z.nativeEnum(CompetitionFormat).default(CompetitionFormat.ROUND_ROBIN),
+  
+  // Location
+  country: z.string().max(100).optional(),
+  region: z.string().max(100).optional(),
+  
+  // Dates
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+  registrationDeadline: z.string().datetime().optional(),
+  
+  // Team Limits
+  minTeams: z.number().int().min(2).default(2),
+  maxTeams: z.number().int().min(2).max(256).default(20),
+  
+  // Visibility
+  visibility: z.enum(['PUBLIC', 'PRIVATE', 'INVITE_ONLY']).default('PUBLIC'),
+  
+  // Settings overrides (will be merged with sport defaults)
+  settings: z.object({
+    pointsForWin: z.number().int().min(0).optional(),
+    pointsForDraw: z.number().int().min(0).optional(),
+    pointsForLoss: z.number().int().min(0).optional(),
+    bonusPointsEnabled: z.boolean().optional(),
+    bonusPointsConfig: z.record(z.number()).optional(),
+    tiebreakers: z.array(z.string()).optional(),
+    registrationOpen: z.boolean().optional(),
+    entryFee: z.number().min(0).optional(),
+    entryCurrency: z.string().length(3).optional(),
+  }).optional(),
+  
+  // Rules (free-form text/JSON for competition rules)
+  rules: z.record(z.unknown()).optional(),
+  
+  // Initial status
+  status: z.nativeEnum(CompetitionStatus).default(CompetitionStatus.DRAFT),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `league_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    message?: string;
+    error?: string;
+    code?: string;
+    pagination?: PaginationMeta;
+    requestId: string;
+    status?: number;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    requestId: options.requestId,
+    timestamp: new Date().toISOString(),
+  };
+
+  if (options.success && data !== null) {
+    response.data = data;
+  }
+  if (options.message) response.message = options.message;
+  if (options.error) response.error = options.error;
+  if (options.code) response.code = options.code;
+  if (options.pagination) response.pagination = options.pagination;
+
+  return NextResponse.json(response, { status: options.status || 200 });
+}
+
+/**
+ * Generate URL-friendly slug from name
+ */
+function generateSlug(name: string, existingSlugs: string[]): string {
+  const baseSlug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 100);
+
+  let slug = baseSlug;
+  let counter = 1;
+
+  while (existingSlugs.includes(slug)) {
+    slug = `${baseSlug}-${counter}`;
+    counter++;
+  }
+
+  return slug;
+}
+
+/**
+ * Check if user can create competitions
+ */
+async function hasLeagueCreationPermission(
+  userId: string,
+  organisationId?: string,
+  clubId?: string
+): Promise<boolean> {
+  // Check super admin
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isSuperAdmin: true, roles: true },
+  });
+  
+  if (user?.isSuperAdmin) return true;
+  if (user?.roles?.includes('LEAGUE_ADMIN')) return true;
+
+  // Check organisation role
+  if (organisationId) {
+    const orgMember = await prisma.organisationMember.findFirst({
+      where: {
+        userId,
+        organisationId,
+        role: { in: ['OWNER', 'ADMIN', 'LEAGUE_MANAGER'] },
+      },
+    });
+    if (orgMember) return true;
+  }
+
+  // Check club role
+  if (clubId) {
+    const clubMember = await prisma.clubMember.findFirst({
+      where: {
+        userId,
+        clubId,
+        isActive: true,
+        role: { in: ['OWNER', 'MANAGER'] },
+      },
+    });
+    if (clubMember) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Build competition settings by merging sport defaults with overrides
+ */
+function buildCompetitionSettings(
+  sport: Sport,
+  overrides?: Partial<CompetitionSettings>
+): CompetitionSettings {
+  const sportDefaults = SPORT_DEFAULT_SETTINGS[sport];
+  
+  const baseSettings: CompetitionSettings = {
+    pointsForWin: 3,
+    pointsForDraw: 1,
+    pointsForLoss: 0,
+    bonusPointsEnabled: false,
+    tiebreakers: ['GOAL_DIFFERENCE', 'GOALS_FOR', 'HEAD_TO_HEAD'],
+    minTeams: 2,
+    maxTeams: 20,
+    registrationOpen: true,
+    showGoalDifference: true,
+    showForm: true,
+    formMatchCount: 5,
+  };
+
+  return {
+    ...baseSettings,
+    ...sportDefaults,
+    ...overrides,
+  };
+}
+
+// =============================================================================
+// GET HANDLER - List Leagues/Competitions
+// =============================================================================
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const requestId = generateRequestId();
 
   try {
-    // 1. Authentication check
-    const session = await auth();
-    if (!session) {
-      return Response.json(
-        {
-          success: false,
-          error: 'Unauthorized - Authentication required',
-          code: 'AUTH_REQUIRED',
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
+    // Parse and validate query parameters
+    const { searchParams } = new URL(request.url);
+    
+    const queryResult = querySchema.safeParse({
+      page: searchParams.get('page'),
+      limit: searchParams.get('limit'),
+      sport: searchParams.get('sport'),
+      type: searchParams.get('type'),
+      format: searchParams.get('format'),
+      status: searchParams.get('status'),
+      season: searchParams.get('season'),
+      country: searchParams.get('country'),
+      search: searchParams.get('search'),
+      clubId: searchParams.get('clubId'),
+      organisationId: searchParams.get('organisationId'),
+      createdBy: searchParams.get('createdBy'),
+      sortBy: searchParams.get('sortBy'),
+      sortOrder: searchParams.get('sortOrder'),
+      includeArchived: searchParams.get('includeArchived'),
+      registrationOpen: searchParams.get('registrationOpen'),
+    });
+
+    if (!queryResult.success) {
+      return createResponse(null, {
+        success: false,
+        error: 'Invalid query parameters',
+        code: 'VALIDATION_ERROR',
+        requestId,
+        status: 400,
+      });
     }
 
-    // 2. Parse and validate pagination parameters
-    const { searchParams } = new URL(request.url);
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '25', 10)));
+    const {
+      page,
+      limit,
+      sport,
+      type,
+      format,
+      status,
+      season,
+      country,
+      search,
+      clubId,
+      organisationId,
+      createdBy,
+      sortBy,
+      sortOrder,
+      includeArchived,
+      registrationOpen,
+    } = queryResult.data;
+
     const skip = (page - 1) * limit;
 
-    // 3. Extract and validate filter parameters
-    const sport = searchParams.get('sport');
-    const status = searchParams.get('status');
-    const season = searchParams.get('season');
-    const country = searchParams.get('country');
-    const search = searchParams.get('search');
-    const includeArchived = searchParams.get('includeArchived') === 'true';
+    // Build where clause
+    const where: Prisma.CompetitionWhereInput = {
+      deletedAt: null,
+    };
 
-    // Validate sport enum
-    const validSports = ['FOOTBALL', 'NETBALL', 'RUGBY', 'CRICKET', 'AMERICANFOOTBALL', 'BASKETBALL'];
-    if (sport && !validSports.includes(sport)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Invalid sport. Must be one of: ${validSports.join(', ')}`,
-          code: 'INVALID_SPORT',
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 4. Build where clause with RBAC
-    const where: any = {};
-
-    // Role-based access control
-    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
-    const isLeagueAdmin = session.user.roles?.includes('LEAGUE_ADMIN');
-
-    if (!isSuperAdmin) {
-      if (isLeagueAdmin) {
-        // League admins can only see their own leagues
-        const leagueAdmin = await prisma.leagueAdmin.findFirst({
-          where: { userId: session.user.id },
-          select: { id: true },
-        });
-
-        if (leagueAdmin) {
-          where.adminId = leagueAdmin.id;
-        } else {
-          // No leagues for this admin yet
-          where.id = 'NONEXISTENT';
-        }
-      } else {
-        // Regular users see only public leagues
-        where.visibility = 'PUBLIC';
-      }
-    }
-
-    // Apply filters
+    // Filters
     if (sport) where.sport = sport;
+    if (type) where.type = type;
+    if (format) where.format = format;
     if (status) where.status = status;
-    if (season) where.season = parseInt(season, 10);
-    if (country) where.country = country;
+    if (season) where.season = season;
+    if (country) where.country = { contains: country, mode: 'insensitive' };
+    if (clubId) where.clubId = clubId;
+    if (organisationId) where.organisationId = organisationId;
+    if (createdBy) where.createdBy = createdBy;
+
+    // Archive filter
     if (!includeArchived) {
-      where.status = { not: 'ARCHIVED' };
+      where.status = { not: CompetitionStatus.ARCHIVED };
+    }
+
+    // Registration filter (check settings JSON)
+    if (registrationOpen !== undefined) {
+      where.settings = {
+        path: ['registrationOpen'],
+        equals: registrationOpen,
+      };
     }
 
     // Search filter
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
+        { shortName: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
       ];
     }
 
-    // 5. Fetch total count and paginated leagues
-    const [total, leagues] = await Promise.all([
-      prisma.league.count({ where }),
-      prisma.league.findMany({
+    // Build orderBy
+    const orderBy: Prisma.CompetitionOrderByWithRelationInput = {
+      [sortBy === 'totalTeams' ? 'totalTeams' : sortBy]: sortOrder,
+    };
+
+    // Execute queries
+    const [competitions, total] = await Promise.all([
+      prisma.competition.findMany({
         where,
         include: {
-          admin: {
+          club: {
             select: {
-              user: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  email: true,
-                },
-              },
+              id: true,
+              name: true,
+              shortName: true,
+              logo: true,
+              sport: true,
             },
           },
-          configuration: true,
+          organisation: {
+            select: {
+              id: true,
+              name: true,
+              logo: true,
+            },
+          },
+          creator: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
           _count: {
             select: {
               teams: true,
-              fixtures: true,
+              matches: true,
               standings: true,
             },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
       }),
+      prisma.competition.count({ where }),
     ]);
 
-    // 6. Format response
-    const pages = Math.ceil(total / limit);
-    const formattedLeagues: LeagueListItem[] = leagues.map((league) => ({
-      id: league.id,
-      name: league.name,
-      code: league.code || 'N/A',
-      sport: league.sport,
-      season: league.season,
-      country: league.country,
-      status: league.status,
-      format: league.format || 'LEAGUE',
-      visibility: league.visibility,
-      admin: {
-        id: league.admin?.user?.id || '',
-        name: league.admin?.user ? `${league.admin.user.firstName} ${league.admin.user.lastName}` : 'Unknown',
-        email: league.admin?.user?.email || '',
-      },
-      configuration: {
-        pointsWin: league.configuration?.pointsForWin || 3,
-        pointsDraw: league.configuration?.pointsForDraw || 1,
-        minTeams: league.configuration?.minTeams || 2,
-        maxTeams: league.configuration?.maxTeams || 20,
-        registrationOpen: league.configuration?.registrationOpen ?? true,
-        bonusPointsEnabled: league.configuration?.bonusPointsEnabled ?? false,
-      },
-      stats: {
-        teamCount: league._count.teams,
-        fixtureCount: league._count.fixtures,
-        standingCount: league._count.standings,
-      },
-      createdAt: league.createdAt.toISOString(),
-      updatedAt: league.updatedAt.toISOString(),
-    }));
-
-    // 7. Create audit log
-    await createAuditLog({
-      userId: session.user.id,
-      action: 'LEAGUESVIEWED',
-      resourceType: 'League',
-      details: {
-        filterApplied: {
-          sport: sport || 'all',
-          status: status || 'all',
-          season: season || 'all',
-          country: country || 'all',
+    // Format response
+    const formattedLeagues = competitions.map((comp) => {
+      const settings = (comp.settings as CompetitionSettings) || {};
+      
+      return {
+        id: comp.id,
+        name: comp.name,
+        shortName: comp.shortName,
+        slug: comp.slug,
+        sport: comp.sport,
+        type: comp.type,
+        format: comp.format,
+        status: comp.status,
+        season: comp.season,
+        country: comp.country,
+        region: comp.region,
+        description: comp.description,
+        logo: comp.logo,
+        
+        // Legacy alias support
+        code: comp.slug, // For legacy compatibility
+        visibility: settings.registrationOpen ? 'PUBLIC' : 'PRIVATE',
+        
+        // Ownership
+        club: comp.club,
+        organisation: comp.organisation,
+        admin: comp.creator
+          ? {
+              id: comp.creator.id,
+              name: `${comp.creator.firstName} ${comp.creator.lastName}`,
+              email: comp.creator.email,
+            }
+          : null,
+        
+        // Configuration (from settings JSON)
+        configuration: {
+          pointsWin: settings.pointsForWin ?? 3,
+          pointsDraw: settings.pointsForDraw ?? 1,
+          pointsLoss: settings.pointsForLoss ?? 0,
+          minTeams: settings.minTeams ?? 2,
+          maxTeams: settings.maxTeams ?? 20,
+          bonusPointsEnabled: settings.bonusPointsEnabled ?? false,
+          registrationOpen: settings.registrationOpen ?? true,
+          tiebreakers: settings.tiebreakers ?? [],
         },
-        pageSize: limit,
-        currentPage: page,
-      },
-      requestId,
+        
+        // Statistics
+        stats: {
+          teamCount: comp._count.teams,
+          matchCount: comp._count.matches,
+          completedMatches: comp.completedMatches,
+          totalGoals: comp.totalGoals,
+          standingCount: comp._count.standings,
+        },
+        
+        // Dates
+        startDate: comp.startDate?.toISOString(),
+        endDate: comp.endDate?.toISOString(),
+        createdAt: comp.createdAt.toISOString(),
+        updatedAt: comp.updatedAt.toISOString(),
+      };
     });
 
-    // 8. Build response
-    const response: LeagueListResponse = {
-      success: true,
-      leagues: formattedLeagues,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages,
-        hasNextPage: page < pages,
-        hasPreviousPage: page > 1,
+    return createResponse(
+      {
+        leagues: formattedLeagues,
+        sportDefaults: SPORT_DEFAULT_SETTINGS,
       },
-      timestamp: new Date().toISOString(),
-      requestId,
-    };
-
-    return NextResponse.json(response, {
-      status: 200,
-      headers: { 'X-Request-ID': requestId },
-    });
+      {
+        success: true,
+        message: `Retrieved ${formattedLeagues.length} leagues`,
+        requestId,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1,
+        },
+      }
+    );
   } catch (error) {
-    console.error('[GET /api/leagues]', {
+    console.error(`[${requestId}] Leagues GET error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to fetch leagues',
+      code: 'INTERNAL_ERROR',
       requestId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    return errorResponse(error as Error, {
-      headers: { 'X-Request-ID': requestId },
+      status: 500,
     });
   }
 }
 
-// ============================================================================
-// POST /api/leagues
-// ============================================================================
+// =============================================================================
+// POST HANDLER - Create League/Competition
+// =============================================================================
 
-/**
- * POST /api/leagues
- * Create a new league with configuration
- * 
- * Authorization: SUPERADMIN, LEAGUE_ADMIN only
- * 
- * Request Body:
- *   Required:
- *     - name: string (3-100 chars)
- *     - code: string (2-10 chars, unique)
- *     - sport: enum (FOOTBALL, NETBALL, RUGBY, CRICKET, AMERICANFOOTBALL, BASKETBALL)
- *     - season: number (e.g., 2024)
- *   
- *   Optional:
- *     - country: string (default: "United Kingdom")
- *     - description: string
- *     - format: enum (LEAGUE, KNOCKOUT, ROUNDROBIN, GROUPS)
- *     - visibility: enum (PUBLIC, PRIVATE, INVITE_ONLY)
- *     - pointsWin: number (default: 3)
- *     - pointsDraw: number (default: 1)
- *     - pointsLoss: number (default: 0)
- *     - minTeams: number (default: 2)
- *     - maxTeams: number (default: 20)
- *     - bonusPointsEnabled: boolean (default: false)
- *     - registrationOpen: boolean (default: true)
- * 
- * Returns: 201 Created with league details
- * 
- * Features:
- *   ✅ Comprehensive input validation
- *   ✅ Automatic admin profile creation
- *   ✅ Configuration template support
- *   ✅ Duplicate code prevention
- *   ✅ Detailed audit logging
- */
-export async function POST(request: NextRequest): Promise<NextResponse<CreateLeagueResponse | { success: false; error: string; code: string }>> {
-  const requestId = crypto.randomUUID();
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const requestId = generateRequestId();
 
   try {
-    // 1. Authentication check
-    const session = await auth();
-
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized - Authentication required',
-          code: 'AUTH_REQUIRED',
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 2. Authorization check
-    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
-    const isLeagueAdmin = session.user.roles?.includes('LEAGUE_ADMIN');
-
-    if (!isSuperAdmin && !isLeagueAdmin) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden - Only SUPERADMIN or LEAGUE_ADMIN can create leagues',
-          code: 'INSUFFICIENT_PERMISSIONS',
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 3. Parse request body
-    let body: CreateLeagueRequest;
-    try {
-      body = await parseJsonBody(request);
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid JSON in request body',
-          code: 'INVALID_JSON',
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 4. Validate required fields
-    const requiredFields = ['name', 'code', 'sport', 'season'];
-    const missingFields = requiredFields.filter((field) => !body[field as keyof CreateLeagueRequest]);
-
-    if (missingFields.length > 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Missing required fields: ${missingFields.join(', ')}`,
-          code: 'MISSING_REQUIRED_FIELDS',
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 5. Validate field formats
-    validateStringLength(body.name, 3, 100, 'League name');
-
-    if (body.code.length < 2 || body.code.length > 10) {
-      throw new BadRequestError('League code must be 2-10 characters');
-    }
-
-    // Validate sport enum
-    const validSports = ['FOOTBALL', 'NETBALL', 'RUGBY', 'CRICKET', 'AMERICANFOOTBALL', 'BASKETBALL'];
-    if (!validSports.includes(body.sport)) {
-      throw new BadRequestError(`Invalid sport. Must be one of: ${validSports.join(', ')}`);
-    }
-
-    // Validate season
-    if (typeof body.season !== 'number' || body.season < 2000 || body.season > new Date().getFullYear() + 2) {
-      throw new BadRequestError('Invalid season year');
-    }
-
-    // 6. Check for duplicate league code
-    const existingLeague = await prisma.league.findUnique({
-      where: { code: body.code.toUpperCase() },
-      select: { id: true, name: true },
-    });
-
-    if (existingLeague) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `League code "${body.code.toUpperCase()}" is already in use`,
-          code: 'DUPLICATE_CODE',
-        },
-        { status: 409, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 7. Get or create LeagueAdmin profile
-    let leagueAdmin = await prisma.leagueAdmin.findFirst({
-      where: { userId: session.user.id },
-      select: { id: true },
-    });
-
-    if (!leagueAdmin) {
-      leagueAdmin = await prisma.leagueAdmin.create({
-        data: { userId: session.user.id },
-        select: { id: true },
+      return createResponse(null, {
+        success: false,
+        error: 'Authentication required',
+        code: 'UNAUTHORIZED',
+        requestId,
+        status: 401,
       });
     }
 
-    // 8. Create league with configuration
-    const league = await prisma.league.create({
+    // 2. Parse request body
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return createResponse(null, {
+        success: false,
+        error: 'Invalid JSON in request body',
+        code: 'INVALID_JSON',
+        requestId,
+        status: 400,
+      });
+    }
+
+    // 3. Validate request body
+    const validation = createLeagueSchema.safeParse(body);
+    if (!validation.success) {
+      return createResponse(null, {
+        success: false,
+        error: validation.error.errors[0]?.message || 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        requestId,
+        status: 400,
+      });
+    }
+
+    const data = validation.data;
+
+    // 4. Check permissions
+    const hasPermission = await hasLeagueCreationPermission(
+      session.user.id,
+      data.organisationId,
+      data.clubId
+    );
+
+    if (!hasPermission) {
+      return createResponse(null, {
+        success: false,
+        error: 'You do not have permission to create leagues',
+        code: 'FORBIDDEN',
+        requestId,
+        status: 403,
+      });
+    }
+
+    // 5. Validate organisation/club exists if provided
+    if (data.organisationId) {
+      const org = await prisma.organisation.findUnique({
+        where: { id: data.organisationId },
+        select: { id: true },
+      });
+      if (!org) {
+        return createResponse(null, {
+          success: false,
+          error: 'Organisation not found',
+          code: 'NOT_FOUND',
+          requestId,
+          status: 404,
+        });
+      }
+    }
+
+    if (data.clubId) {
+      const club = await prisma.club.findUnique({
+        where: { id: data.clubId },
+        select: { id: true, sport: true },
+      });
+      if (!club) {
+        return createResponse(null, {
+          success: false,
+          error: 'Club not found',
+          code: 'NOT_FOUND',
+          requestId,
+          status: 404,
+        });
+      }
+      // Validate sport matches club sport
+      if (club.sport !== data.sport) {
+        return createResponse(null, {
+          success: false,
+          error: `Club sport (${club.sport}) does not match league sport (${data.sport})`,
+          code: 'SPORT_MISMATCH',
+          requestId,
+          status: 400,
+        });
+      }
+    }
+
+    // 6. Generate slug if not provided
+    let slug = data.slug;
+    if (!slug) {
+      const existingComps = await prisma.competition.findMany({
+        where: data.organisationId
+          ? { organisationId: data.organisationId }
+          : data.clubId
+            ? { clubId: data.clubId }
+            : {},
+        select: { slug: true },
+      });
+      slug = generateSlug(data.name, existingComps.map((c) => c.slug));
+    } else {
+      // Check slug uniqueness
+      const existingSlug = await prisma.competition.findFirst({
+        where: { slug },
+        select: { id: true },
+      });
+      if (existingSlug) {
+        return createResponse(null, {
+          success: false,
+          error: 'Slug already in use',
+          code: 'DUPLICATE_SLUG',
+          requestId,
+          status: 409,
+        });
+      }
+    }
+
+    // 7. Build settings with sport defaults
+    const settings = buildCompetitionSettings(data.sport, {
+      ...data.settings,
+      minTeams: data.minTeams,
+      maxTeams: data.maxTeams,
+      registrationOpen: data.settings?.registrationOpen ?? true,
+    });
+
+    // 8. Create competition
+    const competition = await prisma.competition.create({
       data: {
-        name: body.name.trim(),
-        code: body.code.toUpperCase(),
-        sport: body.sport,
-        country: body.country || 'United Kingdom',
-        season: body.season,
-        description: body.description?.trim() || null,
-        format: body.format || 'LEAGUE',
-        status: 'ACTIVE',
-        visibility: body.visibility || 'PUBLIC',
-        adminId: leagueAdmin.id,
-        configuration: {
-          create: {
-            pointsForWin: body.pointsWin || 3,
-            pointsForDraw: body.pointsDraw || 1,
-            pointsForLoss: body.pointsLoss || 0,
-            minTeams: Math.max(2, body.minTeams || 2),
-            maxTeams: Math.min(100, body.maxTeams || 20),
-            registrationOpen: body.registrationOpen ?? true,
-            bonusPointsEnabled: body.bonusPointsEnabled ?? false,
-            bonusPointsForGoals: 0,
-          },
-        },
+        name: data.name,
+        shortName: data.shortName,
+        slug,
+        sport: data.sport,
+        type: data.type,
+        format: data.format,
+        status: data.status,
+        season: data.season || new Date().getFullYear().toString(),
+        country: data.country,
+        region: data.region,
+        description: data.description,
+        logo: data.logo,
+        banner: data.banner,
+        startDate: data.startDate ? new Date(data.startDate) : null,
+        endDate: data.endDate ? new Date(data.endDate) : null,
+        organisationId: data.organisationId,
+        clubId: data.clubId,
+        createdBy: session.user.id,
+        settings: settings as unknown as Prisma.JsonObject,
+        rules: data.rules as Prisma.JsonObject || null,
+        totalTeams: 0,
+        totalMatches: 0,
+        completedMatches: 0,
+        totalGoals: 0,
       },
       include: {
-        admin: {
-          select: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-              },
-            },
-          },
+        club: {
+          select: { id: true, name: true, logo: true },
         },
-        configuration: true,
+        organisation: {
+          select: { id: true, name: true, logo: true },
+        },
+        creator: {
+          select: { id: true, firstName: true, lastName: true },
+        },
       },
     });
 
     // 9. Create audit log
-    await createAuditLog({
-      userId: session.user.id,
-      action: 'LEAGUECREATED',
-      resourceType: 'League',
-      resourceId: league.id,
-      details: {
-        leagueName: league.name,
-        leagueCode: league.code,
-        sport: league.sport,
-        season: league.season,
-        format: league.format,
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'COMPETITION_CREATED' as AuditActionType,
+        resourceType: 'COMPETITION',
+        resourceId: competition.id,
+        afterState: {
+          name: competition.name,
+          sport: competition.sport,
+          type: competition.type,
+          format: competition.format,
+        },
       },
-      requestId,
+    }).catch((err) => {
+      console.error(`[${requestId}] Audit log failed:`, err);
     });
 
-    // 10. Build response
-    const response: CreateLeagueResponse = {
-      success: true,
-      id: league.id,
-      name: league.name,
-      code: league.code,
-      sport: league.sport,
-      season: league.season,
-      country: league.country,
-      status: league.status,
-      format: league.format,
-      visibility: league.visibility,
-      admin: {
-        id: league.admin?.user?.id || '',
-        name: league.admin?.user ? `${league.admin.user.firstName} ${league.admin.user.lastName}` : 'Unknown',
-      },
+    // 10. Format response
+    const response = {
+      id: competition.id,
+      name: competition.name,
+      shortName: competition.shortName,
+      slug: competition.slug,
+      code: competition.slug, // Legacy alias
+      sport: competition.sport,
+      type: competition.type,
+      format: competition.format,
+      status: competition.status,
+      season: competition.season,
+      country: competition.country,
+      visibility: settings.registrationOpen ? 'PUBLIC' : 'PRIVATE',
+      
+      club: competition.club,
+      organisation: competition.organisation,
+      admin: competition.creator
+        ? {
+            id: competition.creator.id,
+            name: `${competition.creator.firstName} ${competition.creator.lastName}`,
+          }
+        : null,
+      
       configuration: {
-        pointsWin: league.configuration?.pointsForWin || 3,
-        pointsDraw: league.configuration?.pointsForDraw || 1,
-        pointsLoss: league.configuration?.pointsForLoss || 0,
-        minTeams: league.configuration?.minTeams || 2,
-        maxTeams: league.configuration?.maxTeams || 20,
-        bonusPointsEnabled: league.configuration?.bonusPointsEnabled ?? false,
-        registrationOpen: league.configuration?.registrationOpen ?? true,
+        pointsWin: settings.pointsForWin,
+        pointsDraw: settings.pointsForDraw,
+        pointsLoss: settings.pointsForLoss,
+        minTeams: settings.minTeams,
+        maxTeams: settings.maxTeams,
+        bonusPointsEnabled: settings.bonusPointsEnabled,
+        registrationOpen: settings.registrationOpen,
+        tiebreakers: settings.tiebreakers,
       },
-      message: `League "${league.name}" created successfully`,
-      timestamp: new Date().toISOString(),
-      requestId,
+      
+      sportDefaults: SPORT_DEFAULT_SETTINGS[competition.sport],
+      
+      createdAt: competition.createdAt.toISOString(),
     };
 
-    return NextResponse.json(response, {
+    return createResponse(response, {
+      success: true,
+      message: `League "${competition.name}" created successfully`,
+      requestId,
       status: 201,
-      headers: { 'X-Request-ID': requestId },
     });
   } catch (error) {
-    console.error('[POST /api/leagues]', {
+    console.error(`[${requestId}] Leagues POST error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: 'Failed to create league',
+      code: 'INTERNAL_ERROR',
       requestId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    if (error instanceof BadRequestError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: error.message,
-          code: 'BADREQUEST',
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    return errorResponse(error as Error, {
-      headers: { 'X-Request-ID': requestId },
+      status: 500,
     });
   }
 }
