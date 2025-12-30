@@ -1,496 +1,386 @@
 // ============================================================================
-// API ROUTE: /api/analytics/players - WORLD-CLASS IMPLEMENTATION
-// Purpose: Retrieve real-time player analytics with caching & optimization
-// Status: Production-ready, Phase 3 implementation
+// src/app/api/analytics/players/route.ts
+// 👤 PitchConnect Enterprise Analytics - Player Analytics API
+// ============================================================================
+// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
+// MULTI-SPORT: All 12 sports supported
+// ============================================================================
+// ENDPOINT:
+// - GET /api/analytics/players - Get player analytics with aggregates
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
-import { redis } from '@/lib/cache/redis';
-import { getSession } from '@/lib/auth';
-import { Logger } from '@/lib/logging';
-
-const logger = new Logger('PlayersAnalyticsAPI');
-
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
-
-interface PlayerAnalyticsQuery {
-  teamId?: string;
-  leagueId?: string;
-  season?: number;
-  sport?: string;
-  position?: string;
-  minAppearances?: number;
-  sort?: 'rating' | 'goals' | 'assists' | 'minutesPlayed';
-  sortOrder?: 'asc' | 'desc';
-  limit?: number;
-  offset?: number;
-}
-
-interface PlayerAnalyticsResponse {
-  success: boolean;
-  data: {
-    players: ExtendedPlayerStat[];
-    aggregates: PlayerAggregates;
-    pagination: PaginationMeta;
-    timestamp: string;
-    cacheHit: boolean;
-  };
-  meta: {
-    queryTime: number;
-    cacheDuration: number;
-  };
-}
-
-interface ExtendedPlayerStat {
-  id: string;
-  player: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    position: string;
-    preferredFoot: string;
-    shirtNumber?: number;
-    photo?: string;
-    status: string;
-  };
-  stats: {
-    season: number;
-    appearances: number;
-    goals: number;
-    assists: number;
-    minutesPlayed: number;
-    passingAccuracy?: number;
-    tackles?: number;
-    interceptions?: number;
-    blocks?: number;
-    foulsCommitted?: number;
-    yellowCards?: number;
-    redCards?: number;
-  };
-  ratings: {
-    overall: number;
-    passing: number;
-    shooting: number;
-    defending: number;
-    physical: number;
-  };
-  performance: {
-    form: string;
-    trend: 'improving' | 'stable' | 'declining';
-    consistency: number;
-    peakPerformanceRating: number;
-  };
-  injuries: {
-    activeInjuries: number;
-    injuryRisk: 'low' | 'medium' | 'high' | 'critical';
-    injuryPrediction?: string;
-  };
-}
-
-interface PlayerAggregates {
-  totalPlayers: number;
-  averageOverallRating: number;
-  topScorers: Array<{ playerId: string; name: string; goals: number }>;
-  topAssisters: Array<{ playerId: string; name: string; assists: number }>;
-  topRated: Array<{ playerId: string; name: string; rating: number }>;
-  positionDistribution: Record<string, number>;
-  injuryStatus: {
-    activeInjuries: number;
-    playersAtRisk: number;
-    healthySquad: number;
-  };
-}
-
-interface PaginationMeta {
-  total: number;
-  limit: number;
-  offset: number;
-  pages: number;
-  currentPage: number;
-}
+import { logger } from '@/lib/logging';
+import { getOrSetCache } from '@/lib/cache/redis';
+import {
+  hasAnalyticsAccess,
+  getKeyMetricsForSport,
+  type PlayerAnalytics,
+} from '@/lib/analytics';
+import type { Sport, Position } from '@prisma/client';
 
 // ============================================================================
-// HELPER FUNCTIONS
+// CONSTANTS
+// ============================================================================
+
+const CACHE_TTL_SECONDS = 5 * 60; // 5 minutes
+const CACHE_PREFIX = 'analytics:players';
+
+// ============================================================================
+// GET - Retrieve Player Analytics
 // ============================================================================
 
 /**
- * Generate cache key based on query parameters
+ * GET /api/analytics/players
+ * Get comprehensive player analytics
+ * 
+ * Query Parameters:
+ *   - playerId: string - Get specific player analytics
+ *   - teamId: string - Filter by team
+ *   - clubId: string - Filter by club
+ *   - competitionId: string - Filter by competition (via team)
+ *   - sport: Sport enum - Filter by sport
+ *   - position: Position enum - Filter by position
+ *   - season: string - Filter by season
+ *   - minAppearances: number - Minimum appearances filter
+ *   - sort: 'rating' | 'goals' | 'assists' | 'minutes' | 'form' (default: 'rating')
+ *   - sortOrder: 'asc' | 'desc' (default: 'desc')
+ *   - limit: number (default: 50, max: 200)
+ *   - offset: number (default: 0)
+ * 
+ * Returns: 200 OK with player analytics
  */
-function generateCacheKey(query: PlayerAnalyticsQuery): string {
-  const params = new URLSearchParams();
-  Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined) {
-      params.append(key, String(value));
-    }
-  });
-  return `analytics:players:${params.toString() || 'default'}`;
-}
-
-/**
- * Calculate player performance ratings
- */
-function calculatePlayerRating(stats: any): number {
-  const weights = {
-    goals: 0.25,
-    assists: 0.20,
-    passingAccuracy: 0.15,
-    tackles: 0.15,
-    clean: 0.10,
-    consistency: 0.15,
-  };
-
-  const passAccuracy = stats.passesCompleted && stats.passes 
-    ? (stats.passesCompleted / stats.passes) * 100 
-    : 50;
-    
-  const cleanSheet = stats.goalsAgainst === 0 ? 100 : Math.max(0, 100 - (stats.goalsAgainst * 20));
-
-  const rating = 
-    (((stats.goals || 0) / Math.max(1, stats.appearances || 1)) * 10 * weights.goals) +
-    (((stats.assists || 0) / Math.max(1, stats.appearances || 1)) * 10 * weights.assists) +
-    ((passAccuracy / 100) * 10 * weights.passingAccuracy) +
-    (((stats.tackles || 0) / Math.max(1, stats.appearances || 1)) * 10 * weights.tackles) +
-    ((cleanSheet / 100) * 10 * weights.clean);
-
-  return Math.round(rating * 10) / 10;
-}
-
-/**
- * Calculate player form based on recent performance
- */
-function calculatePlayerForm(stats: any): {
-  form: string;
-  trend: 'improving' | 'stable' | 'declining';
-  consistency: number;
-} {
-  const rating = calculatePlayerRating(stats);
-  
-  let form = 'POOR';
-  if (rating >= 8.5) form = 'EXCELLENT';
-  else if (rating >= 7.5) form = 'GOOD';
-  else if (rating >= 6.5) form = 'SATISFACTORY';
-  else if (rating >= 5.5) form = 'MODERATE';
-
-  return {
-    form,
-    trend: 'stable',
-    consistency: Math.round(rating * 10),
-  };
-}
-
-/**
- * Get injury risk assessment
- */
-async function getInjuryRiskAssessment(playerId: string): Promise<{
-  activeInjuries: number;
-  injuryRisk: 'low' | 'medium' | 'high' | 'critical';
-  injuryPrediction?: string;
-}> {
-  const injuries = await prisma.injury.findMany({
-    where: {
-      playerId,
-      status: 'ACTIVE',
-    },
-  });
-
-  // Check for injury predictions (Phase 3+)
-  const prediction = await prisma.injuryPrediction.findFirst({
-    where: {
-      playerId,
-      createdAt: {
-        gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  return {
-    activeInjuries: injuries.length,
-    injuryRisk: prediction?.riskLevel || 'low',
-    injuryPrediction: prediction?.predictedRiskWindow,
-  };
-}
-
-// ============================================================================
-// MAIN REQUEST HANDLER
-// ============================================================================
-
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  try {
-    const startTime = Date.now();
+  const startTime = Date.now();
+  const requestId = `player-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
+  try {
     // ========================================================================
-    // 1. AUTHENTICATION & AUTHORIZATION
+    // AUTHENTICATION
     // ========================================================================
-    const session = await getSession();
-    if (!session?.user) {
-      logger.warn('Unauthorized access attempt', { ip: request.ip });
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      logger.warn({ requestId }, 'Unauthorized player analytics request');
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: 'Unauthorized', message: 'Authentication required', requestId },
         { status: 401 }
       );
     }
 
     // ========================================================================
-    // 2. PARSE & VALIDATE QUERY PARAMETERS
+    // AUTHORIZATION
+    // ========================================================================
+    const userRoles = session.user.roles || [];
+    
+    if (!hasAnalyticsAccess(userRoles, 'player')) {
+      logger.warn({ requestId, userId: session.user.id, roles: userRoles }, 'Forbidden player analytics access');
+      return NextResponse.json(
+        { success: false, error: 'Forbidden', message: 'You do not have permission to access player analytics', requestId },
+        { status: 403 }
+      );
+    }
+
+    // ========================================================================
+    // PARSE PARAMETERS
     // ========================================================================
     const { searchParams } = new URL(request.url);
-    
-    const query: PlayerAnalyticsQuery = {
-      teamId: searchParams.get('teamId') || undefined,
-      leagueId: searchParams.get('leagueId') || undefined,
-      season: searchParams.get('season') ? parseInt(searchParams.get('season')!) : new Date().getFullYear(),
-      sport: searchParams.get('sport') || 'FOOTBALL',
-      position: searchParams.get('position') || undefined,
-      minAppearances: searchParams.get('minAppearances') ? parseInt(searchParams.get('minAppearances')!) : 0,
-      sort: (searchParams.get('sort') as any) || 'rating',
-      sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc',
-      limit: Math.min(parseInt(searchParams.get('limit') || '100'), 500),
-      offset: parseInt(searchParams.get('offset') || '0'),
-    };
+    const playerId = searchParams.get('playerId');
+    const teamId = searchParams.get('teamId');
+    const clubId = searchParams.get('clubId');
+    const competitionId = searchParams.get('competitionId');
+    const sport = searchParams.get('sport') as Sport | null;
+    const position = searchParams.get('position') as Position | null;
+    const season = searchParams.get('season');
+    const minAppearances = parseInt(searchParams.get('minAppearances') || '0');
+    const sort = searchParams.get('sort') || 'rating';
+    const sortOrder = searchParams.get('sortOrder') || 'desc';
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
+    const offset = parseInt(searchParams.get('offset') || '0');
 
-    logger.info('Analytics request', { userId: session.user.id, query });
+    logger.info({
+      requestId,
+      playerId,
+      teamId,
+      clubId,
+      sport,
+      position,
+      userId: session.user.id,
+    }, 'Player analytics request');
 
     // ========================================================================
-    // 3. CHECK CACHE
+    // SINGLE PLAYER ANALYTICS
     // ========================================================================
-    const cacheKey = generateCacheKey(query);
-    let cachedData: any = null;
-    let cacheHit = false;
+    if (playerId) {
+      const analytics = await generatePlayerAnalytics(playerId, season);
 
-    try {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        cachedData = JSON.parse(cached);
-        cacheHit = true;
-        logger.debug('Cache hit', { cacheKey });
+      if (!analytics) {
+        return NextResponse.json(
+          { success: false, error: 'Not Found', message: `Player with ID ${playerId} not found`, requestId },
+          { status: 404 }
+        );
       }
-    } catch (error) {
-      logger.warn('Cache read error', { error, cacheKey });
-    }
 
-    if (cacheHit && cachedData) {
-      const queryTime = Date.now() - startTime;
       return NextResponse.json({
         success: true,
-        data: {
-          ...cachedData,
-          cacheHit: true,
-        },
+        requestId,
+        player: analytics,
         meta: {
-          queryTime,
-          cacheDuration: 300, // 5 minutes
+          generatedAt: new Date().toISOString(),
+          processingTimeMs: Date.now() - startTime,
+          sport: analytics.sport,
         },
       });
     }
 
     // ========================================================================
-    // 4. BUILD DATABASE QUERY
+    // MULTIPLE PLAYERS ANALYTICS
     // ========================================================================
-    const whereClause: any = {
-      season: query.season,
-      appearances: { gte: query.minAppearances },
-    };
-
-    if (query.teamId) {
-      whereClause.teamId = query.teamId;
-    }
-
-    if (query.leagueId) {
-      // Get all teams in league
-      const leagueTeams = await prisma.leagueTeam.findMany({
-        where: { leagueId: query.leagueId },
+    
+    // Build team filter
+    let teamIds: string[] = [];
+    
+    if (teamId) {
+      teamIds = [teamId];
+    } else if (clubId) {
+      const clubTeams = await prisma.team.findMany({
+        where: { clubId },
+        select: { id: true },
+      });
+      teamIds = clubTeams.map(t => t.id);
+    } else if (competitionId) {
+      const competitionTeams = await prisma.competitionTeam.findMany({
+        where: { competitionId },
         select: { teamId: true },
       });
-      if (leagueTeams.length > 0) {
-        whereClause.teamId = {
-          in: leagueTeams.map(lt => lt.teamId),
-        };
-      }
+      teamIds = competitionTeams.map(t => t.teamId);
     }
 
-    // ========================================================================
-    // 5. FETCH PLAYER STATISTICS
-    // ========================================================================
-    const playerStats = await prisma.playerStats.findMany({
-      where: whereClause,
-      include: {
-        player: {
-          include: {
-            user: {
-              select: { id: true, firstName: true, lastName: true, avatar: true },
+    // Build player where clause
+    const playerWhereClause: any = {
+      deletedAt: null,
+    };
+
+    if (teamIds.length > 0) {
+      playerWhereClause.teamPlayers = {
+        some: {
+          teamId: { in: teamIds },
+          isActive: true,
+        },
+      };
+    }
+
+    if (position) {
+      playerWhereClause.OR = [
+        { primaryPosition: position },
+        { secondaryPosition: position },
+      ];
+    }
+
+    if (sport) {
+      playerWhereClause.teamPlayers = {
+        ...playerWhereClause.teamPlayers,
+        some: {
+          ...playerWhereClause.teamPlayers?.some,
+          team: {
+            club: {
+              sport,
             },
           },
         },
+      };
+    }
+
+    // Fetch players
+    const players = await prisma.player.findMany({
+      where: playerWhereClause,
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            dateOfBirth: true,
+          },
+        },
+        teamPlayers: {
+          where: { isActive: true },
+          include: {
+            team: {
+              include: {
+                club: {
+                  select: {
+                    id: true,
+                    name: true,
+                    sport: true,
+                  },
+                },
+              },
+            },
+          },
+          take: 1,
+        },
+        matchPerformances: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          select: {
+            rating: true,
+            goals: true,
+            assists: true,
+            minutesPlayed: true,
+            startedMatch: true,
+            createdAt: true,
+          },
+        },
+        statistics: {
+          where: season ? { season } : undefined,
+          orderBy: { season: 'desc' },
+          take: 1,
+        },
+        injuries: {
+          where: { status: 'ACTIVE' },
+          take: 1,
+        },
       },
-      orderBy: {
-        [query.sort === 'rating' ? 'goals' : query.sort]: query.sortOrder === 'desc' ? 'desc' : 'asc',
-      },
-      skip: query.offset,
-      take: query.limit,
+      skip: offset,
+      take: limit,
+    });
+
+    // Build analytics for each player
+    let playerAnalytics = players.map(player => buildPlayerAnalyticsFromData(player));
+
+    // Filter by minimum appearances
+    if (minAppearances > 0) {
+      playerAnalytics = playerAnalytics.filter(p => p.stats.appearances >= minAppearances);
+    }
+
+    // Sort results
+    playerAnalytics.sort((a, b) => {
+      let valueA: number;
+      let valueB: number;
+
+      switch (sort) {
+        case 'goals':
+          valueA = a.stats.goals;
+          valueB = b.stats.goals;
+          break;
+        case 'assists':
+          valueA = a.stats.assists;
+          valueB = b.stats.assists;
+          break;
+        case 'minutes':
+          valueA = a.stats.minutesPlayed;
+          valueB = b.stats.minutesPlayed;
+          break;
+        case 'form':
+          valueA = a.ratings.form;
+          valueB = b.ratings.form;
+          break;
+        case 'rating':
+        default:
+          valueA = a.ratings.overall;
+          valueB = b.ratings.overall;
+      }
+
+      return sortOrder === 'desc' ? valueB - valueA : valueA - valueB;
     });
 
     // ========================================================================
-    // 6. ENRICH DATA WITH CALCULATIONS
+    // CALCULATE AGGREGATES
     // ========================================================================
-    const enrichedPlayers: ExtendedPlayerStat[] = await Promise.all(
-      playerStats.map(async (stat) => {
-        const overallRating = calculatePlayerRating(stat);
-        const form = calculatePlayerForm(stat);
-        const injuryAssessment = await getInjuryRiskAssessment(stat.playerId);
-
-        return {
-          id: stat.id,
-          player: {
-            id: stat.player.id,
-            firstName: stat.player.firstName,
-            lastName: stat.player.lastName,
-            position: stat.player.position,
-            preferredFoot: stat.player.preferredFoot,
-            shirtNumber: stat.player.shirtNumber || undefined,
-            photo: stat.player.user.avatar || undefined,
-            status: stat.player.status,
-          },
-          stats: {
-            season: stat.season,
-            appearances: stat.appearances,
-            goals: stat.goals,
-            assists: stat.assists,
-            minutesPlayed: stat.minutesPlayed,
-            passingAccuracy: stat.passingAccuracy || undefined,
-            tackles: stat.tackles || undefined,
-            interceptions: stat.interceptions || undefined,
-            blocks: stat.blocks || undefined,
-            foulsCommitted: stat.foulsCommitted || undefined,
-            yellowCards: stat.yellowCards || undefined,
-            redCards: stat.redCards || undefined,
-          },
-          ratings: {
-            overall: overallRating,
-            passing: stat.passingAccuracy || 7.0,
-            shooting: Math.round((stat.goalsScored / Math.max(1, stat.totalShots || 1)) * 10),
-            defending: stat.tackles ? Math.round((stat.tackles / stat.appearances) * 7) : 5.5,
-            physical: 7.5,
-          },
-          performance: form,
-          injuries: injuryAssessment,
-        };
-      })
-    );
-
-    // ========================================================================
-    // 7. CALCULATE AGGREGATES
-    // ========================================================================
-    const aggregates: PlayerAggregates = {
-      totalPlayers: enrichedPlayers.length,
-      averageOverallRating: enrichedPlayers.length > 0
+    const aggregates = {
+      totalPlayers: playerAnalytics.length,
+      averageRating: playerAnalytics.length > 0
         ? Math.round(
-            enrichedPlayers.reduce((sum, p) => sum + p.ratings.overall, 0) / enrichedPlayers.length * 10
+            (playerAnalytics.reduce((sum, p) => sum + p.ratings.overall, 0) / playerAnalytics.length) * 10
           ) / 10
         : 0,
-      topScorers: enrichedPlayers
+      topScorers: [...playerAnalytics]
         .sort((a, b) => b.stats.goals - a.stats.goals)
         .slice(0, 5)
         .map(p => ({
-          playerId: p.player.id,
-          name: `${p.player.firstName} ${p.player.lastName}`,
+          playerId: p.playerId,
+          name: p.playerName,
           goals: p.stats.goals,
         })),
-      topAssisters: enrichedPlayers
-        .sort((a, b) => (b.stats.assists || 0) - (a.stats.assists || 0))
+      topAssisters: [...playerAnalytics]
+        .sort((a, b) => b.stats.assists - a.stats.assists)
         .slice(0, 5)
         .map(p => ({
-          playerId: p.player.id,
-          name: `${p.player.firstName} ${p.player.lastName}`,
-          assists: p.stats.assists || 0,
+          playerId: p.playerId,
+          name: p.playerName,
+          assists: p.stats.assists,
         })),
-      topRated: enrichedPlayers
+      topRated: [...playerAnalytics]
         .sort((a, b) => b.ratings.overall - a.ratings.overall)
         .slice(0, 5)
         .map(p => ({
-          playerId: p.player.id,
-          name: `${p.player.firstName} ${p.player.lastName}`,
+          playerId: p.playerId,
+          name: p.playerName,
           rating: p.ratings.overall,
         })),
-      positionDistribution: enrichedPlayers.reduce((acc, p) => {
-        acc[p.player.position] = (acc[p.player.position] || 0) + 1;
+      positionDistribution: playerAnalytics.reduce((acc, p) => {
+        const pos = p.position || 'UNKNOWN';
+        acc[pos] = (acc[pos] || 0) + 1;
         return acc;
       }, {} as Record<string, number>),
-      injuryStatus: {
-        activeInjuries: enrichedPlayers.reduce((sum, p) => sum + p.injuries.activeInjuries, 0),
-        playersAtRisk: enrichedPlayers.filter(p => p.injuries.injuryRisk === 'high' || p.injuries.injuryRisk === 'critical').length,
-        healthySquad: enrichedPlayers.filter(p => p.injuries.activeInjuries === 0).length,
+      healthStatus: {
+        available: playerAnalytics.filter(p => p.health.activeInjuries === 0).length,
+        injured: playerAnalytics.filter(p => p.health.activeInjuries > 0).length,
+        highRisk: playerAnalytics.filter(p => p.health.injuryRisk === 'HIGH' || p.health.injuryRisk === 'CRITICAL').length,
+      },
+      formDistribution: {
+        excellent: playerAnalytics.filter(p => p.performance.form === 'EXCELLENT').length,
+        good: playerAnalytics.filter(p => p.performance.form === 'GOOD').length,
+        average: playerAnalytics.filter(p => p.performance.form === 'AVERAGE').length,
+        poor: playerAnalytics.filter(p => p.performance.form === 'POOR').length,
+        critical: playerAnalytics.filter(p => p.performance.form === 'CRITICAL').length,
       },
     };
 
     // ========================================================================
-    // 8. CALCULATE PAGINATION
+    // PAGINATION
     // ========================================================================
-    const totalCount = await prisma.playerStats.count({ where: whereClause });
-    const pagination: PaginationMeta = {
+    const totalCount = await prisma.player.count({ where: playerWhereClause });
+    const pagination = {
       total: totalCount,
-      limit: query.limit,
-      offset: query.offset,
-      pages: Math.ceil(totalCount / query.limit),
-      currentPage: Math.floor(query.offset / query.limit) + 1,
+      limit,
+      offset,
+      pages: Math.ceil(totalCount / limit),
+      currentPage: Math.floor(offset / limit) + 1,
+      hasMore: offset + playerAnalytics.length < totalCount,
     };
-
-    // ========================================================================
-    // 9. BUILD RESPONSE
-    // ========================================================================
-    const responseData = {
-      players: enrichedPlayers,
-      aggregates,
-      pagination,
-      timestamp: new Date().toISOString(),
-      cacheHit: false,
-    };
-
-    // ========================================================================
-    // 10. CACHE RESPONSE (5 minutes)
-    // ========================================================================
-    try {
-      await redis.setex(cacheKey, 300, JSON.stringify(responseData));
-      logger.debug('Response cached', { cacheKey, duration: 300 });
-    } catch (error) {
-      logger.warn('Cache write error', { error, cacheKey });
-    }
-
-    // ========================================================================
-    // 11. RETURN RESPONSE
-    // ========================================================================
-    const queryTime = Date.now() - startTime;
-    
-    logger.info('Analytics request completed', {
-      userId: session.user.id,
-      playersReturned: enrichedPlayers.length,
-      queryTime,
-      cacheHit,
-    });
 
     return NextResponse.json({
       success: true,
-      data: responseData,
+      requestId,
+      players: playerAnalytics,
+      aggregates,
+      pagination,
       meta: {
-        queryTime,
-        cacheDuration: 300,
+        generatedAt: new Date().toISOString(),
+        processingTimeMs: Date.now() - startTime,
+        filters: { teamId, clubId, competitionId, sport, position, minAppearances },
+        sortedBy: sort,
+        sortOrder,
       },
     });
-
   } catch (error) {
-    logger.error('Analytics API error', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    logger.error(error instanceof Error ? error : new Error(errorMessage), {
+      requestId,
+      endpoint: '/api/analytics/players',
     });
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to fetch player analytics',
-        details: process.env.NODE_ENV === 'development' ? String(error) : undefined,
+        requestId,
+        error: 'Internal Server Error',
+        message: 'Failed to fetch player analytics',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       },
       { status: 500 }
     );
@@ -498,16 +388,166 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 }
 
 // ============================================================================
-// OPTIONS REQUEST (CORS)
+// HELPER FUNCTIONS
 // ============================================================================
-export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Max-Age': '86400',
+
+async function generatePlayerAnalytics(playerId: string, season?: string | null): Promise<PlayerAnalytics | null> {
+  const player = await prisma.player.findUnique({
+    where: { id: playerId },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          dateOfBirth: true,
+        },
+      },
+      teamPlayers: {
+        where: { isActive: true },
+        include: {
+          team: {
+            include: {
+              club: {
+                select: {
+                  id: true,
+                  name: true,
+                  sport: true,
+                },
+              },
+            },
+          },
+        },
+        take: 1,
+      },
+      matchPerformances: {
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: {
+          rating: true,
+          goals: true,
+          assists: true,
+          minutesPlayed: true,
+          startedMatch: true,
+          createdAt: true,
+        },
+      },
+      statistics: {
+        where: season ? { season } : undefined,
+        orderBy: { season: 'desc' },
+        take: 1,
+      },
+      injuries: {
+        where: { status: 'ACTIVE' },
+      },
     },
   });
+
+  if (!player) return null;
+
+  return buildPlayerAnalyticsFromData(player);
+}
+
+function buildPlayerAnalyticsFromData(player: any): PlayerAnalytics {
+  const performances = player.matchPerformances || [];
+  const stats = player.statistics[0];
+  const team = player.teamPlayers[0]?.team;
+  const sport = team?.club.sport || 'FOOTBALL';
+
+  // Calculate ratings
+  const ratings = performances.map((p: any) => p.rating).filter((r: any) => r != null);
+  const avgRating = ratings.length > 0
+    ? Math.round((ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length) * 10) / 10
+    : 6.0;
+
+  // Recent form (last 5)
+  const recentRatings = ratings.slice(0, 5);
+  const formRating = recentRatings.length > 0
+    ? Math.round((recentRatings.reduce((a: number, b: number) => a + b, 0) / recentRatings.length) * 10) / 10
+    : avgRating;
+
+  // Determine form level
+  let form: 'EXCELLENT' | 'GOOD' | 'AVERAGE' | 'POOR' | 'CRITICAL' = 'AVERAGE';
+  if (formRating >= 8.0) form = 'EXCELLENT';
+  else if (formRating >= 7.0) form = 'GOOD';
+  else if (formRating >= 6.0) form = 'AVERAGE';
+  else if (formRating >= 5.0) form = 'POOR';
+  else form = 'CRITICAL';
+
+  // Determine trend
+  let trend: 'IMPROVING' | 'STABLE' | 'DECLINING' = 'STABLE';
+  if (ratings.length >= 5) {
+    const recentAvg = recentRatings.reduce((a: number, b: number) => a + b, 0) / recentRatings.length;
+    const olderRatings = ratings.slice(5, 10);
+    if (olderRatings.length >= 3) {
+      const olderAvg = olderRatings.reduce((a: number, b: number) => a + b, 0) / olderRatings.length;
+      if (recentAvg > olderAvg + 0.3) trend = 'IMPROVING';
+      else if (recentAvg < olderAvg - 0.3) trend = 'DECLINING';
+    }
+  }
+
+  // Calculate consistency
+  let consistency = 50;
+  if (ratings.length > 1) {
+    const variance = ratings.reduce((sum: number, r: number) => sum + Math.pow(r - avgRating, 2), 0) / ratings.length;
+    consistency = Math.max(0, Math.min(100, Math.round(100 - Math.sqrt(variance) * 20)));
+  }
+
+  // Peak rating
+  const peakRating = ratings.length > 0 ? Math.max(...ratings) : 0;
+
+  // Calculate fatigue level based on recent minutes
+  const recentMinutes = performances.slice(0, 5).reduce((sum: number, p: any) => sum + (p.minutesPlayed || 0), 0);
+  let fatigueLevel: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+  if (recentMinutes > 400) fatigueLevel = 'HIGH';
+  else if (recentMinutes > 300) fatigueLevel = 'MEDIUM';
+
+  // Determine injury risk
+  const injuryCount = player.injuries?.length || 0;
+  let injuryRisk: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' = 'LOW';
+  if (injuryCount > 0) injuryRisk = 'CRITICAL';
+  else if (fatigueLevel === 'HIGH') injuryRisk = 'HIGH';
+  else if (fatigueLevel === 'MEDIUM') injuryRisk = 'MEDIUM';
+
+  return {
+    playerId: player.id,
+    playerName: `${player.user.firstName} ${player.user.lastName}`,
+    position: player.primaryPosition,
+    secondaryPosition: player.secondaryPosition,
+    sport,
+    team: team ? {
+      id: team.id,
+      name: team.name,
+      clubId: team.club.id,
+      clubName: team.club.name,
+    } : null,
+    stats: {
+      season: stats?.season || new Date().getFullYear().toString(),
+      appearances: stats?.appearances || performances.length,
+      starts: performances.filter((p: any) => p.startedMatch).length,
+      minutesPlayed: stats?.minutesPlayed || performances.reduce((sum: number, p: any) => sum + (p.minutesPlayed || 0), 0),
+      goals: stats?.goals || performances.reduce((sum: number, p: any) => sum + (p.goals || 0), 0),
+      assists: stats?.assists || performances.reduce((sum: number, p: any) => sum + (p.assists || 0), 0),
+      yellowCards: stats?.yellowCards || 0,
+      redCards: stats?.redCards || 0,
+    },
+    ratings: {
+      overall: player.overallRating || avgRating,
+      form: formRating,
+      potential: player.potentialRating || avgRating + 0.5,
+      consistency,
+    },
+    performance: {
+      form,
+      trend,
+      peakRating,
+      avgRating,
+    },
+    health: {
+      availabilityStatus: injuryCount > 0 ? 'INJURED' : 'AVAILABLE',
+      activeInjuries: injuryCount,
+      injuryRisk,
+      fatigueLevel,
+    },
+    sportSpecificStats: {},
+  };
 }

@@ -1,479 +1,187 @@
 // ============================================================================
-// FIXED: src/app/api/analytics/formation-optimization/route.ts
+// src/app/api/analytics/formation-optimization/route.ts
+// ⚽ PitchConnect Enterprise Analytics - Formation Optimization API
 // ============================================================================
-// Production-Ready Formation Analysis API
-// ✅ Proper async exports for "use server" directive
-// ✅ No default exports (Next.js 15 compatibility)
-// ✅ Full error handling and request tracking
+// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
+// MULTI-SPORT: All 12 sports supported
 // ============================================================================
-
-'use server';
+// ENDPOINTS:
+// - GET /api/analytics/formation-optimization - Health check
+// - POST /api/analytics/formation-optimization - Analyze formation
+// ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { logger } from '@/lib/logging';
+import { getOrSetCache } from '@/lib/cache/redis';
+import {
+  hasAnalyticsAccess,
+  getFormationsForSport,
+  getSportMetricConfig,
+  type FormationAnalysis,
+  type FormationSuggestion,
+  type PositionAnalysis,
+  type RotationSuggestion,
+} from '@/lib/analytics';
+import type { Sport, Position } from '@prisma/client';
 import { z } from 'zod';
 
 // ============================================================================
-// TYPES & INTERFACES
+// CONSTANTS
 // ============================================================================
 
-type Sport = 'FOOTBALL' | 'NETBALL' | 'RUGBY' | 'CRICKET' | 'AMERICAN_FOOTBALL' | 'BASKETBALL';
-
-interface PositionPerformance {
-  position: string;
-  playerCount: number;
-  averageRating: number;
-  averageAppearances: number;
-  averageGoals: number;
-  averageAssists: number;
-  maxRating: number;
-  minRating: number;
-  consistencyScore: number;
-}
-
-interface FormationAnalysis {
-  teamId: string;
-  teamName: string;
-  sport: Sport;
-  analysisTimestamp: string;
-  currentFormation: string | null;
-  squadSummary: {
-    totalPlayers: number;
-    activePlayers: number;
-    injuredPlayers: number;
-    averageTeamRating: number;
-    positionBreakdown: Record<string, number>;
-  };
-  suggestedFormations: Array<{
-    formation: string;
-    suitability: number;
-    reasoning: string;
-    recommendedPositions: string[];
-  }>;
-  teamAnalysis: {
-    strengths: string[];
-    weaknesses: string[];
-    opportunities: string[];
-  };
-  playersAvailableForRotation: Array<{
-    name: string;
-    position: string;
-    rating: number;
-    minutesPlayed: number;
-    matches: number;
-  }>;
-  strategicRecommendations: string[];
-  historicalPerformance?: {
-    averageWinRate: number;
-    commonFormations: string[];
-    performanceTrend: string;
-  };
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
-  code?: string;
-  requestId: string;
-  timestamp: string;
-}
+const CACHE_TTL_SECONDS = 60 * 60; // 1 hour
+const CACHE_PREFIX = 'analytics:formation';
 
 // ============================================================================
-// VALIDATION SCHEMAS
+// VALIDATION SCHEMA
 // ============================================================================
 
-const formationOptimizationRequestSchema = z.object({
+const formationRequestSchema = z.object({
   teamId: z.string().uuid('Invalid team ID format'),
-  sport: z.enum(['FOOTBALL', 'NETBALL', 'RUGBY', 'CRICKET', 'AMERICAN_FOOTBALL', 'BASKETBALL']),
   analysisType: z.enum(['GENERAL', 'OFFENSIVE', 'DEFENSIVE', 'BALANCED']).default('GENERAL'),
   includeHistoricalData: z.boolean().default(false),
-  includeAltFormations: z.boolean().default(true),
+  includeRotationSuggestions: z.boolean().default(true),
+  opponentTeamId: z.string().uuid().optional(),
 });
 
 // ============================================================================
-// SPORT-SPECIFIC FORMATION CONFIGURATIONS
+// GET - Health Check
 // ============================================================================
 
-const FORMATION_CONFIGS: Record<Sport, Record<string, string[]>> = {
-  FOOTBALL: {
-    '4-3-3': ['CB', 'CB', 'LB', 'RB', 'CM', 'CM', 'CAM', 'LW', 'ST', 'RW', 'GK'],
-    '4-2-3-1': ['CB', 'CB', 'LB', 'RB', 'CDM', 'CDM', 'LM', 'CAM', 'RM', 'ST', 'GK'],
-    '3-5-2': ['CB', 'CB', 'CB', 'LWB', 'RWB', 'CM', 'CM', 'CAM', 'ST', 'ST', 'GK'],
-    '5-3-2': ['CB', 'CB', 'CB', 'LB', 'RB', 'CM', 'CM', 'CAM', 'ST', 'ST', 'GK'],
-  },
-  NETBALL: {
-    '7v7': ['GS', 'GA', 'WA', 'C', 'WD', 'GD', 'GK'],
-  },
-  RUGBY: {
-    '15v15': ['P', 'H', 'P', 'L', 'L', 'TH', 'BL', 'BL', 'N8', 'SH', 'FH', 'ITW', 'CTB', 'CTB', 'WTB', 'WTB', 'FB'],
-  },
-  CRICKET: {
-    '11v11': ['WK', 'BAT', 'BAT', 'BAT', 'BAT', 'BAT', 'AR', 'AR', 'BWL', 'BWL', 'BWL'],
-  },
-  AMERICAN_FOOTBALL: {
-    '11v11': ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'OL', 'OL', 'OL', 'OL', 'OL'],
-  },
-  BASKETBALL: {
-    '5v5': ['PG', 'SG', 'SF', 'PF', 'C'],
-  },
-};
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const requestId = `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-function createErrorResponse(
-  code: string,
-  message: string,
-  statusCode: number,
-  requestId: string
-): NextResponse {
-  return NextResponse.json(
-    {
-      success: false,
-      error: message,
-      code,
-      requestId,
-      timestamp: new Date().toISOString(),
-    },
-    { status: statusCode }
-  );
-}
-
-function createSuccessResponse<T>(
-  data: T,
-  message: string,
-  requestId: string
-): NextResponse<ApiResponse<T>> {
-  return NextResponse.json(
-    {
-      success: true,
-      data,
-      message,
-      requestId,
-      timestamp: new Date().toISOString(),
-    },
-    { status: 200 }
-  );
-}
-
-async function validateUserTeamAccess(
-  userId: string,
-  teamId: string,
-  requiredRoles: string[]
-): Promise<boolean> {
   try {
-    const membership = await prisma.clubMember.findFirst({
-      where: {
-        userId,
-        club: {
-          teams: {
-            some: { id: teamId },
-          },
-        },
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized', message: 'Authentication required', requestId },
+        { status: 401 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      requestId,
+      status: 'available',
+      message: 'Formation optimization endpoint is operational',
+      supportedSports: [
+        'FOOTBALL', 'RUGBY', 'BASKETBALL', 'AMERICAN_FOOTBALL',
+        'NETBALL', 'HOCKEY', 'LACROSSE', 'AUSTRALIAN_RULES',
+        'GAELIC_FOOTBALL', 'FUTSAL', 'BEACH_FOOTBALL', 'CRICKET',
+      ],
+      analysisTypes: ['GENERAL', 'OFFENSIVE', 'DEFENSIVE', 'BALANCED'],
+      meta: {
+        timestamp: new Date().toISOString(),
       },
     });
-
-    return !!membership;
   } catch (error) {
-    console.error('Authorization check failed:', error);
-    return false;
+    logger.error(error instanceof Error ? error : new Error('Health check failed'), { requestId });
+    return NextResponse.json(
+      { success: false, error: 'Internal Server Error', message: 'Health check failed', requestId },
+      { status: 500 }
+    );
   }
 }
 
 // ============================================================================
-// ANALYSIS FUNCTIONS
-// ============================================================================
-
-function calculatePositionPerformance(
-  players: any[]
-): Record<string, PositionPerformance> {
-  const positionGroups: Record<string, any[]> = {};
-
-  players.forEach((player) => {
-    const position = player.position || 'UNKNOWN';
-    if (!positionGroups[position]) {
-      positionGroups[position] = [];
-    }
-    positionGroups[position].push(player);
-  });
-
-  const metrics: Record<string, PositionPerformance> = {};
-
-  Object.entries(positionGroups).forEach(([position, positionPlayers]) => {
-    const ratings = positionPlayers
-      .map((p) => p.analytics?.overallRating || 0)
-      .filter((r) => r > 0);
-
-    const goals = positionPlayers.map((p) => p.statistics?.[0]?.goals || 0);
-    const assists = positionPlayers.map((p) => p.statistics?.[0]?.assists || 0);
-    const minutes = positionPlayers.map((p) => p.statistics?.[0]?.minutesPlayed || 0);
-
-    const averageRating =
-      ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
-
-    const consistencyScore =
-      ratings.length > 1
-        ? Math.max(
-            0,
-            100 -
-              (Math.sqrt(
-                ratings.reduce((sq, n) => sq + Math.pow(n - averageRating, 2), 0) /
-                  ratings.length
-              ) *
-                10)
-          )
-        : 100;
-
-    metrics[position] = {
-      position,
-      playerCount: positionPlayers.length,
-      averageRating: Math.round(averageRating * 10) / 10,
-      averageAppearances: Math.round(
-        minutes.reduce((a, b) => a + b, 0) / (positionPlayers.length * 90)
-      ),
-      averageGoals:
-        Math.round(
-          (goals.reduce((a, b) => a + b, 0) / positionPlayers.length) * 10
-        ) / 10,
-      averageAssists:
-        Math.round(
-          (assists.reduce((a, b) => a + b, 0) / positionPlayers.length) * 10
-        ) / 10,
-      maxRating: Math.max(...ratings, 0),
-      minRating: ratings.length > 0 ? Math.min(...ratings) : 0,
-      consistencyScore: Math.round(consistencyScore),
-    };
-  });
-
-  return metrics;
-}
-
-function generateFormationSuggestions(
-  sport: Sport,
-  players: any[],
-  positionPerformance: Record<string, PositionPerformance>,
-  analysisType: string
-): FormationAnalysis['suggestedFormations'] {
-  const formations = FORMATION_CONFIGS[sport] || {};
-  const suggestions: FormationAnalysis['suggestedFormations'] = [];
-
-  Object.entries(formations).forEach(([formation, positions]) => {
-    let suitability = 0;
-    const availablePositions: string[] = [];
-
-    positions.forEach((position) => {
-      if (positionPerformance[position]) {
-        const posPerf = positionPerformance[position];
-        if (posPerf.playerCount > 0) {
-          suitability += (posPerf.averageRating / 10) * (100 / positions.length);
-          availablePositions.push(position);
-        }
-      }
-    });
-
-    suitability = Math.min(100, Math.round(suitability));
-
-    let reasoning = '';
-    if (analysisType === 'OFFENSIVE') {
-      reasoning = `${formation} provides attacking flexibility`;
-    } else if (analysisType === 'DEFENSIVE') {
-      reasoning = `${formation} provides defensive stability`;
-    } else {
-      reasoning = `${formation} offers balanced play`;
-    }
-
-    suggestions.push({
-      formation,
-      suitability,
-      reasoning,
-      recommendedPositions: availablePositions,
-    });
-  });
-
-  return suggestions.sort((a, b) => b.suitability - a.suitability);
-}
-
-function analyzeTeamStrengthsWeaknesses(
-  positionPerformance: Record<string, PositionPerformance>,
-  squadSummary: any
-): FormationAnalysis['teamAnalysis'] {
-  const strengths: string[] = [];
-  const weaknesses: string[] = [];
-  const opportunities: string[] = [];
-
-  Object.entries(positionPerformance).forEach(([position, metrics]) => {
-    if (metrics.averageRating > 7.5) {
-      strengths.push(`Strong ${position} unit with ${metrics.averageRating} rating`);
-    } else if (metrics.averageRating < 6) {
-      weaknesses.push(`Weak ${position} unit with ${metrics.averageRating} rating`);
-    }
-  });
-
-  if (squadSummary.injuredPlayers > squadSummary.totalPlayers * 0.2) {
-    weaknesses.push(`High injury rate (${squadSummary.injuredPlayers} players)`);
-  } else {
-    opportunities.push('Good squad depth for rotation');
-  }
-
-  if (squadSummary.averageTeamRating > 7) {
-    strengths.push('Strong overall team quality');
-  } else if (squadSummary.averageTeamRating < 6) {
-    weaknesses.push('Squad quality needs improvement');
-  }
-
-  return {
-    strengths: strengths.slice(0, 3),
-    weaknesses: weaknesses.slice(0, 3),
-    opportunities: opportunities.slice(0, 2),
-  };
-}
-
-function getRotationPlayers(players: any[]): FormationAnalysis['playersAvailableForRotation'] {
-  return players
-    .filter((p) => p.statistics?.[0] && !p.injuries?.some((i: any) => i.status === 'ACTIVE'))
-    .map((p) => ({
-      name: p.user?.firstName ? `${p.user.firstName} ${p.user.lastName}` : 'Unknown',
-      position: p.position || 'UNKNOWN',
-      rating: p.analytics?.overallRating || 0,
-      minutesPlayed: p.statistics?.[0]?.minutesPlayed || 0,
-      matches: p.statistics?.[0]?.appearances || 0,
-    }))
-    .sort((a, b) => b.rating - a.rating)
-    .slice(0, 5);
-}
-
-async function analyzeTeamFormation(
-  team: any,
-  sport: Sport,
-  analysisType: string,
-  includeHistoricalData: boolean
-): Promise<FormationAnalysis> {
-  const positionPerformance = calculatePositionPerformance(team.players);
-
-  const activePlayers = team.players.filter(
-    (p: any) => !p.injuries?.some((i: any) => i.status === 'ACTIVE')
-  ).length;
-  const injuredPlayers = team.players.filter((p: any) =>
-    p.injuries?.some((i: any) => i.status === 'ACTIVE')
-  ).length;
-
-  const ratings = team.players
-    .map((p: any) => p.analytics?.overallRating || 0)
-    .filter((r: number) => r > 0);
-
-  const squadSummary = {
-    totalPlayers: team.players.length,
-    activePlayers,
-    injuredPlayers,
-    averageTeamRating:
-      ratings.length > 0
-        ? Math.round((ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length) * 10) / 10
-        : 0,
-    positionBreakdown: Object.entries(positionPerformance).reduce(
-      (acc, [pos, metrics]) => {
-        acc[pos] = metrics.playerCount;
-        return acc;
-      },
-      {} as Record<string, number>
-    ),
-  };
-
-  const suggestedFormations = generateFormationSuggestions(
-    sport,
-    team.players,
-    positionPerformance,
-    analysisType
-  );
-
-  const teamAnalysis = analyzeTeamStrengthsWeaknesses(positionPerformance, squadSummary);
-  const rotationPlayers = getRotationPlayers(team.players);
-
-  const strategicRecommendations = [
-    'Focus on maintaining squad depth',
-    'Develop youth academy players',
-    'Improve tactical flexibility',
-  ];
-
-  return {
-    teamId: team.id,
-    teamName: team.name,
-    sport,
-    analysisTimestamp: new Date().toISOString(),
-    currentFormation: null,
-    squadSummary,
-    suggestedFormations,
-    teamAnalysis,
-    playersAvailableForRotation: rotationPlayers,
-    strategicRecommendations,
-  };
-}
-
-// ============================================================================
-// API ROUTE HANDLERS - MUST BE ASYNC IN "use server" FILES
+// POST - Analyze Formation
 // ============================================================================
 
 /**
  * POST /api/analytics/formation-optimization
+ * 
+ * Body:
+ * - teamId: string (required) - Team to analyze
+ * - analysisType: 'GENERAL' | 'OFFENSIVE' | 'DEFENSIVE' | 'BALANCED' (default: 'GENERAL')
+ * - includeHistoricalData: boolean - Include historical performance data (default: false)
+ * - includeRotationSuggestions: boolean - Include player rotation suggestions (default: true)
+ * - opponentTeamId: string (optional) - Analyze against specific opponent
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const requestId = crypto.randomUUID();
+  const startTime = Date.now();
+  const requestId = `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
   try {
+    // ========================================================================
+    // AUTHENTICATION
+    // ========================================================================
     const session = await auth();
+
     if (!session?.user?.id) {
-      return createErrorResponse('UNAUTHORIZED', 'Authentication required', 401, requestId);
+      logger.warn({ requestId }, 'Unauthorized formation analysis request');
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized', message: 'Authentication required', requestId },
+        { status: 401 }
+      );
     }
 
+    // ========================================================================
+    // AUTHORIZATION
+    // ========================================================================
+    const userRoles = session.user.roles || [];
+    
+    if (!hasAnalyticsAccess(userRoles, 'formation')) {
+      logger.warn({ requestId, userId: session.user.id, roles: userRoles }, 'Forbidden formation analysis access');
+      return NextResponse.json(
+        { success: false, error: 'Forbidden', message: 'You do not have permission to access formation analysis', requestId },
+        { status: 403 }
+      );
+    }
+
+    // ========================================================================
+    // PARSE & VALIDATE BODY
+    // ========================================================================
     let body;
     try {
       body = await request.json();
     } catch {
-      return createErrorResponse('INVALID_JSON', 'Invalid request body', 400, requestId);
-    }
-
-    const validation = formationOptimizationRequestSchema.safeParse(body);
-    if (!validation.success) {
-      return createErrorResponse('VALIDATION_ERROR', 'Invalid request parameters', 400, requestId);
-    }
-
-    const { teamId, sport, analysisType, includeHistoricalData } = validation.data;
-
-    const hasAccess = await validateUserTeamAccess(session.user.id, teamId, [
-      'COACH',
-      'MANAGER',
-      'ANALYST',
-      'ADMIN',
-    ]);
-
-    if (!hasAccess) {
-      return createErrorResponse(
-        'FORBIDDEN',
-        'Insufficient permissions to analyze this team',
-        403,
-        requestId
+      return NextResponse.json(
+        { success: false, error: 'Bad Request', message: 'Invalid JSON body', requestId },
+        { status: 400 }
       );
     }
 
+    const validation = formationRequestSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation Error',
+          message: 'Invalid request parameters',
+          details: validation.error.errors,
+          requestId,
+        },
+        { status: 400 }
+      );
+    }
+
+    const { teamId, analysisType, includeHistoricalData, includeRotationSuggestions } = validation.data;
+
+    logger.info({
+      requestId,
+      teamId,
+      analysisType,
+      userId: session.user.id,
+    }, 'Formation analysis request');
+
+    // ========================================================================
+    // VERIFY TEAM ACCESS
+    // ========================================================================
     const team = await prisma.team.findUnique({
       where: { id: teamId },
       include: {
-        players: {
-          include: {
-            user: {
-              select: { firstName: true, lastName: true },
-            },
-            analytics: true,
-            statistics: {
-              orderBy: { season: 'desc' },
-              take: 1,
-            },
-            injuries: {
-              where: { status: 'ACTIVE' },
+        club: {
+          select: {
+            id: true,
+            name: true,
+            sport: true,
+            members: {
+              where: { userId: session.user.id },
+              select: { role: true },
             },
           },
         },
@@ -481,76 +189,399 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
 
     if (!team) {
-      return createErrorResponse('NOT_FOUND', `Team with ID ${teamId} not found`, 404, requestId);
+      return NextResponse.json(
+        { success: false, error: 'Not Found', message: `Team with ID ${teamId} not found`, requestId },
+        { status: 404 }
+      );
     }
 
-    const analysis = await analyzeTeamFormation(
-      team,
-      sport,
-      analysisType,
-      includeHistoricalData
+    // Check club membership (unless SUPER_ADMIN or SCOUT)
+    const isSuperAdmin = userRoles.includes('SUPER_ADMIN');
+    const isScout = userRoles.includes('SCOUT');
+    const hasMembership = team.club.members.length > 0;
+
+    if (!isSuperAdmin && !isScout && !hasMembership) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden', message: 'You do not have access to this team', requestId },
+        { status: 403 }
+      );
+    }
+
+    // ========================================================================
+    // CHECK CACHE
+    // ========================================================================
+    const cacheKey = `${CACHE_PREFIX}:${teamId}:${analysisType}`;
+    
+    const analysis = await getOrSetCache<FormationAnalysis>(
+      cacheKey,
+      async () => generateFormationAnalysis(teamId, team.club.sport, analysisType, includeHistoricalData, includeRotationSuggestions),
+      CACHE_TTL_SECONDS
     );
 
+    // ========================================================================
+    // LOG AUDIT
+    // ========================================================================
     try {
       await prisma.auditLog.create({
         data: {
           userId: session.user.id,
-          action: 'ANALYSIS_PERFORMED',
+          action: 'ANALYTICS_VIEW',
           entity: 'FORMATION_ANALYSIS',
           entityId: teamId,
-          changes: { sport, analysisType },
+          changes: { sport: team.club.sport, analysisType },
         },
       });
     } catch (auditError) {
-      console.error('Audit log failed:', auditError);
-      // Continue anyway - don't fail the request
+      logger.warn({ error: auditError, requestId }, 'Audit log failed');
     }
 
-    return createSuccessResponse(analysis, 'Formation analysis completed successfully', requestId);
+    return NextResponse.json({
+      success: true,
+      requestId,
+      analysis,
+      meta: {
+        generatedAt: analysis.metadata.generatedAt.toISOString(),
+        processingTimeMs: Date.now() - startTime,
+        sport: team.club.sport,
+        analysisType,
+      },
+    });
   } catch (error) {
-    console.error(`[${requestId}] Formation optimization error:`, error);
-    const message = error instanceof Error ? error.message : 'Internal server error';
-    return createErrorResponse('INTERNAL_SERVER_ERROR', message, 500, requestId);
-  }
-}
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-/**
- * GET /api/analytics/formation-optimization
- * Health check endpoint
- */
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  try {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return createErrorResponse(
-        'UNAUTHORIZED',
-        'Authentication required',
-        401,
-        crypto.randomUUID()
-      );
-    }
+    logger.error(error instanceof Error ? error : new Error(errorMessage), {
+      requestId,
+      endpoint: '/api/analytics/formation-optimization',
+    });
 
     return NextResponse.json(
       {
-        success: true,
-        data: {
-          status: 'available',
-          message: 'Formation optimization endpoint is operational',
-        },
-        message: 'OK',
-        requestId: crypto.randomUUID(),
-        timestamp: new Date().toISOString(),
+        success: false,
+        requestId,
+        error: 'Internal Server Error',
+        message: 'Failed to generate formation analysis',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Health check error:', error);
-    return createErrorResponse(
-      'INTERNAL_SERVER_ERROR',
-      'Health check failed',
-      500,
-      crypto.randomUUID()
+      { status: 500 }
     );
   }
+}
+
+// ============================================================================
+// FORMATION ANALYSIS GENERATOR
+// ============================================================================
+
+async function generateFormationAnalysis(
+  teamId: string,
+  sport: Sport,
+  analysisType: string,
+  includeHistoricalData: boolean,
+  includeRotationSuggestions: boolean
+): Promise<FormationAnalysis> {
+  // Fetch team with players
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    include: {
+      players: {
+        where: { isActive: true },
+        include: {
+          player: {
+            include: {
+              user: { select: { firstName: true, lastName: true } },
+              matchPerformances: {
+                orderBy: { createdAt: 'desc' },
+                take: 10,
+                select: {
+                  rating: true,
+                  minutesPlayed: true,
+                  goals: true,
+                  assists: true,
+                },
+              },
+              injuries: {
+                where: { status: 'ACTIVE' },
+                select: { id: true, injuryType: true },
+              },
+              statistics: {
+                orderBy: { season: 'desc' },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!team) {
+    throw new Error(`Team not found: ${teamId}`);
+  }
+
+  const players = team.players.map(tp => tp.player);
+
+  // ========================================================================
+  // CALCULATE SQUAD SUMMARY
+  // ========================================================================
+  const availablePlayers = players.filter(p => p.injuries.length === 0);
+  const injuredPlayers = players.filter(p => p.injuries.length > 0);
+
+  const ratings = players
+    .map(p => p.overallRating || p.formRating)
+    .filter(r => r != null) as number[];
+
+  const averageRating = ratings.length > 0
+    ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10
+    : 0;
+
+  // Position breakdown
+  const positionBreakdown: Record<string, number> = {};
+  for (const player of players) {
+    const pos = player.primaryPosition || 'UNKNOWN';
+    positionBreakdown[pos] = (positionBreakdown[pos] || 0) + 1;
+  }
+
+  const squadSummary = {
+    totalPlayers: players.length,
+    availablePlayers: availablePlayers.length,
+    injuredPlayers: injuredPlayers.length,
+    suspendedPlayers: 0, // Would need suspension data
+    averageRating,
+    positionBreakdown,
+  };
+
+  // ========================================================================
+  // ANALYZE POSITIONS
+  // ========================================================================
+  const positionAnalysis: PositionAnalysis[] = [];
+  const sportConfig = getSportMetricConfig(sport);
+
+  for (const category of sportConfig.positionCategories) {
+    const positionPlayers = players.filter(p => 
+      category.positions.includes(p.primaryPosition || '')
+    );
+
+    const posRatings = positionPlayers
+      .map(p => p.overallRating || p.formRating || 0)
+      .filter(r => r > 0);
+
+    const avgRating = posRatings.length > 0
+      ? Math.round((posRatings.reduce((a, b) => a + b, 0) / posRatings.length) * 10) / 10
+      : 0;
+
+    // Find best player
+    let bestPlayer: { id: string; name: string; rating: number } | null = null;
+    for (const player of positionPlayers) {
+      const rating = player.overallRating || player.formRating || 0;
+      if (!bestPlayer || rating > bestPlayer.rating) {
+        bestPlayer = {
+          id: player.id,
+          name: `${player.user.firstName} ${player.user.lastName}`,
+          rating,
+        };
+      }
+    }
+
+    // Determine depth
+    let depth: PositionAnalysis['depth'] = 'ADEQUATE';
+    const requiredForPosition = Math.ceil(category.importance / 10);
+    if (positionPlayers.length >= requiredForPosition * 2) depth = 'EXCELLENT';
+    else if (positionPlayers.length >= requiredForPosition * 1.5) depth = 'GOOD';
+    else if (positionPlayers.length >= requiredForPosition) depth = 'ADEQUATE';
+    else if (positionPlayers.length > 0) depth = 'POOR';
+    else depth = 'CRITICAL';
+
+    positionAnalysis.push({
+      position: category.category,
+      playerCount: positionPlayers.length,
+      averageRating: avgRating,
+      bestPlayer,
+      depth,
+      recommendation: depth === 'CRITICAL' 
+        ? `Urgent: Need to recruit ${category.category} players`
+        : depth === 'POOR'
+        ? `Consider adding depth in ${category.category}`
+        : `${category.category} coverage is ${depth.toLowerCase()}`,
+    });
+  }
+
+  // ========================================================================
+  // GENERATE FORMATION SUGGESTIONS
+  // ========================================================================
+  const formations = getFormationsForSport(sport);
+  const suggestedFormations: FormationSuggestion[] = [];
+
+  for (const [formationName, positions] of Object.entries(formations)) {
+    // Calculate suitability based on available players for each position
+    let filledPositions = 0;
+    const missingPositions: string[] = [];
+
+    for (const position of positions) {
+      const hasPlayer = players.some(p => 
+        p.primaryPosition === position || p.secondaryPosition === position
+      );
+      if (hasPlayer) {
+        filledPositions++;
+      } else {
+        missingPositions.push(position);
+      }
+    }
+
+    const suitabilityScore = Math.round((filledPositions / positions.length) * 100);
+
+    // Adjust based on analysis type
+    let reasoning = '';
+    let adjustedScore = suitabilityScore;
+
+    if (analysisType === 'OFFENSIVE') {
+      const attackingPositions = positions.filter(p => 
+        p.includes('ST') || p.includes('FW') || p.includes('W') || p.includes('CAM')
+      );
+      if (attackingPositions.length >= 3) {
+        adjustedScore += 10;
+        reasoning = `${formationName} provides strong attacking options with ${attackingPositions.length} forward positions`;
+      } else {
+        reasoning = `${formationName} may lack attacking width`;
+      }
+    } else if (analysisType === 'DEFENSIVE') {
+      const defensivePositions = positions.filter(p => 
+        p.includes('CB') || p.includes('B') || p.includes('DM') || p.includes('GK')
+      );
+      if (defensivePositions.length >= 5) {
+        adjustedScore += 10;
+        reasoning = `${formationName} offers defensive solidity with ${defensivePositions.length} defensive positions`;
+      } else {
+        reasoning = `${formationName} may be vulnerable defensively`;
+      }
+    } else {
+      reasoning = `${formationName} provides balanced coverage`;
+    }
+
+    suggestedFormations.push({
+      formation: formationName,
+      suitabilityScore: Math.min(100, adjustedScore),
+      reasoning,
+      positionsFilled: positions.filter((_, i) => i < filledPositions),
+      positionsNeeded: missingPositions,
+      expectedPerformance: Math.round(averageRating * 10),
+    });
+  }
+
+  // Sort by suitability
+  suggestedFormations.sort((a, b) => b.suitabilityScore - a.suitabilityScore);
+
+  // ========================================================================
+  // TEAM SWOT ANALYSIS
+  // ========================================================================
+  const strengths: string[] = [];
+  const weaknesses: string[] = [];
+  const opportunities: string[] = [];
+  const threats: string[] = [];
+
+  // Analyze strengths/weaknesses
+  for (const pa of positionAnalysis) {
+    if (pa.averageRating >= 7.5 && pa.depth !== 'CRITICAL' && pa.depth !== 'POOR') {
+      strengths.push(`Strong ${pa.position} unit (${pa.averageRating} avg rating)`);
+    } else if (pa.averageRating < 6 || pa.depth === 'CRITICAL') {
+      weaknesses.push(`Weak ${pa.position} coverage`);
+    }
+  }
+
+  if (squadSummary.injuredPlayers > squadSummary.totalPlayers * 0.2) {
+    weaknesses.push(`High injury count (${squadSummary.injuredPlayers} players)`);
+    threats.push('Risk of squad depth issues');
+  } else {
+    opportunities.push('Good squad fitness allows rotation');
+  }
+
+  if (averageRating >= 7.5) {
+    strengths.push('High overall squad quality');
+  } else if (averageRating < 6) {
+    weaknesses.push('Squad quality needs improvement');
+  }
+
+  // ========================================================================
+  // ROTATION SUGGESTIONS
+  // ========================================================================
+  const rotationSuggestions: RotationSuggestion[] = [];
+
+  if (includeRotationSuggestions) {
+    // Find players who need rest (high minutes, low recent rating)
+    for (const player of availablePlayers) {
+      const recentPerfs = player.matchPerformances;
+      const totalMinutes = recentPerfs.reduce((sum, p) => sum + (p.minutesPlayed || 0), 0);
+      const avgRating = recentPerfs.length > 0
+        ? recentPerfs.reduce((sum, p) => sum + (p.rating || 0), 0) / recentPerfs.length
+        : 0;
+
+      // Find replacement if player is overworked
+      if (totalMinutes > 800 && avgRating < 7) {
+        const samePosition = availablePlayers.filter(p => 
+          p.id !== player.id && 
+          (p.primaryPosition === player.primaryPosition || p.secondaryPosition === player.primaryPosition)
+        );
+
+        if (samePosition.length > 0) {
+          const replacement = samePosition[0];
+          rotationSuggestions.push({
+            playerIn: {
+              id: replacement.id,
+              name: `${replacement.user.firstName} ${replacement.user.lastName}`,
+              position: replacement.primaryPosition || 'Unknown',
+            },
+            playerOut: {
+              id: player.id,
+              name: `${player.user.firstName} ${player.user.lastName}`,
+              position: player.primaryPosition || 'Unknown',
+            },
+            reason: `${player.user.firstName} has played ${totalMinutes} minutes with declining form (${avgRating.toFixed(1)} avg)`,
+            expectedImpact: 'Freshen up the team and allow recovery',
+            priority: totalMinutes > 900 ? 'HIGH' : 'MEDIUM',
+          });
+        }
+      }
+    }
+  }
+
+  // ========================================================================
+  // STRATEGIC RECOMMENDATIONS
+  // ========================================================================
+  const strategicRecommendations: string[] = [];
+
+  if (suggestedFormations[0]) {
+    strategicRecommendations.push(`Consider ${suggestedFormations[0].formation} formation (${suggestedFormations[0].suitabilityScore}% suitability)`);
+  }
+
+  for (const weakness of weaknesses.slice(0, 2)) {
+    strategicRecommendations.push(`Address: ${weakness}`);
+  }
+
+  if (rotationSuggestions.length > 0) {
+    strategicRecommendations.push(`Consider ${rotationSuggestions.length} player rotation(s) to manage workload`);
+  }
+
+  strategicRecommendations.push('Monitor training load and recovery metrics');
+  strategicRecommendations.push('Develop tactical flexibility with multiple formation options');
+
+  return {
+    teamId,
+    teamName: team.name,
+    sport,
+    currentFormation: null, // Would need to track current formation
+    squadSummary,
+    suggestedFormations: suggestedFormations.slice(0, 5),
+    positionAnalysis,
+    teamAnalysis: {
+      strengths: strengths.slice(0, 4),
+      weaknesses: weaknesses.slice(0, 4),
+      opportunities: opportunities.slice(0, 3),
+      threats: threats.slice(0, 3),
+    },
+    rotationSuggestions: rotationSuggestions.slice(0, 5),
+    strategicRecommendations: strategicRecommendations.slice(0, 6),
+    metadata: {
+      modelVersion: '2.0.0-formation',
+      generatedAt: new Date(),
+      analysisType,
+    },
+  };
 }

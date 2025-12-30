@@ -1,347 +1,523 @@
-'use server';
+// ============================================================================
+// src/app/api/analytics/market-value/route.ts
+// 💰 PitchConnect Enterprise Analytics - Market Value API
+// ============================================================================
+// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
+// MULTI-SPORT: All 12 sports supported
+// ============================================================================
+// ENDPOINTS:
+// - GET /api/analytics/market-value?playerId=xxx - Get player valuation
+// - GET /api/analytics/market-value?teamId=xxx - Get team valuations
+// - POST /api/analytics/market-value - Generate new valuation
+// ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { success, serverError, notFound, unauthorized, badRequest } from '@/lib/api/responses';
-import { ApiError } from '@/lib/api/errors';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
+import { logger } from '@/lib/logging';
+import {
+  calculatePlayerMarketValue,
+  calculateTeamMarketValues,
+  calculateTeamTotalValue,
+  hasAnalyticsAccess,
+  type MarketValueAssessment,
+} from '@/lib/analytics';
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+interface MarketValueResponse {
+  success: boolean;
+  requestId: string;
+  valuation?: MarketValueAssessment;
+  valuations?: MarketValueAssessment[];
+  teamSummary?: {
+    totalValue: number;
+    playerCount: number;
+    avgValue: number;
+    highestValue: { playerId: string; name: string; value: number } | null;
+    valueByPosition: Record<string, { count: number; totalValue: number; avgValue: number }>;
+  };
+  meta: {
+    generatedAt: string;
+    processingTimeMs: number;
+    sport?: string;
+    modelVersion: string;
+    currency: string;
+  };
+}
+
+// ============================================================================
+// GET - Retrieve Market Valuations
+// ============================================================================
 
 /**
- * Market Value Analytics
- * Calculates and analyzes player market values based on performance metrics
+ * GET /api/analytics/market-value
+ * 
+ * Query Parameters:
+ * - playerId: string - Get valuation for specific player
+ * - teamId: string - Get valuations for all players in team
+ * - includeComparables: boolean - Include comparable players (default: true)
+ * - includeProjections: boolean - Include future projections (default: true)
+ * - sortBy: 'value' | 'trend' | 'change' (default: 'value')
+ * - limit: number (default: 50, max: 100)
  */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const startTime = Date.now();
+  const requestId = `mv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-interface MarketValueRequest {
-  playerId?: string;
-  teamId?: string;
-  sport: 'football' | 'netball' | 'rugby';
-}
-
-interface PlayerMarketValue {
-  playerId: string;
-  playerName: string;
-  position: string;
-  currentValue: number;
-  projectedValue: number;
-  valuation: {
-    baseValue: number;
-    performanceBonus: number;
-    ageAdjustment: number;
-    injuryHistory: number;
-  };
-  trend: 'up' | 'down' | 'stable';
-  recommendations: string[];
-  comparables: Array<{
-    playerId: string;
-    playerName: string;
-    marketValue: number;
-    similarity: number;
-  }>;
-}
-
-export async function POST(
-  req: NextRequest,
-): Promise<NextResponse<any>> {
   try {
-    // Authentication check
+    // ========================================================================
+    // AUTHENTICATION
+    // ========================================================================
     const session = await auth();
+
     if (!session?.user?.id) {
-      return unauthorized('Authentication required') as any;
-    }
-
-    const body: MarketValueRequest = await req.json();
-
-    // Validation
-    if (!body.sport || !['football', 'netball', 'rugby'].includes(body.sport)) {
-      return badRequest('Valid sport is required', [
-        { field: 'sport', message: 'Must be football, netball, or rugby' }
-      ]) as any;
-    }
-
-    // Get single player or team players
-    if (body.playerId) {
-      const valuation = await calculatePlayerMarketValue(
-        body.playerId,
-        body.sport,
-        session.user.id,
+      logger.warn({ requestId }, 'Unauthorized market value request');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unauthorized',
+          message: 'Authentication required',
+          requestId,
+        },
+        { status: 401 }
       );
+    }
 
-      if (!valuation) {
-        return notFound('Player not found') as any;
+    // ========================================================================
+    // AUTHORIZATION
+    // ========================================================================
+    const userRoles = session.user.roles || [];
+    
+    if (!hasAnalyticsAccess(userRoles, 'market-value')) {
+      logger.warn({ requestId, userId: session.user.id, roles: userRoles }, 'Forbidden market value access');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Forbidden',
+          message: 'You do not have permission to access market valuations',
+          requestId,
+        },
+        { status: 403 }
+      );
+    }
+
+    // ========================================================================
+    // PARSE PARAMETERS
+    // ========================================================================
+    const { searchParams } = new URL(request.url);
+    const playerId = searchParams.get('playerId');
+    const teamId = searchParams.get('teamId');
+    const includeComparables = searchParams.get('includeComparables') !== 'false';
+    const includeProjections = searchParams.get('includeProjections') !== 'false';
+    const sortBy = searchParams.get('sortBy') || 'value';
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
+
+    // Validate - must provide playerId or teamId
+    if (!playerId && !teamId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Bad Request',
+          message: 'Either playerId or teamId parameter is required',
+          requestId,
+        },
+        { status: 400 }
+      );
+    }
+
+    logger.info({
+      requestId,
+      playerId,
+      teamId,
+      userId: session.user.id,
+    }, 'Market value request');
+
+    // ========================================================================
+    // SINGLE PLAYER VALUATION
+    // ========================================================================
+    if (playerId) {
+      // Check if player exists
+      const player = await prisma.player.findUnique({
+        where: { id: playerId },
+        select: {
+          id: true,
+          teamPlayers: {
+            where: { isActive: true },
+            select: {
+              team: {
+                select: {
+                  club: {
+                    select: {
+                      sport: true,
+                    },
+                  },
+                },
+              },
+            },
+            take: 1,
+          },
+        },
+      });
+
+      if (!player) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Not Found',
+            message: `Player with ID ${playerId} not found`,
+            requestId,
+          },
+          { status: 404 }
+        );
       }
 
-      return success(valuation, 'Player valuation calculated', 200) as any;
-    } else if (body.teamId) {
-      const valuations = await calculateTeamMarketValues(
-        body.teamId,
-        body.sport,
-        session.user.id,
-      );
+      // Generate valuation
+      let valuation = await calculatePlayerMarketValue(playerId);
 
-      return success(valuations, 'Team valuations calculated', 200) as any;
-    } else {
-      return badRequest('Either playerId or teamId is required', [
-        { field: 'body', message: 'Provide playerId or teamId' }
-      ]) as any;
+      // Optionally strip data
+      if (!includeComparables) {
+        valuation = { ...valuation, comparables: [] };
+      }
+
+      if (!includeProjections) {
+        valuation = {
+          ...valuation,
+          valuation: {
+            ...valuation.valuation,
+            projectedValue6Months: 0,
+            projectedValue12Months: 0,
+          },
+        };
+      }
+
+      const sport = player.teamPlayers[0]?.team.club.sport || 'FOOTBALL';
+
+      return NextResponse.json({
+        success: true,
+        requestId,
+        valuation,
+        meta: {
+          generatedAt: valuation.metadata.generatedAt.toISOString(),
+          processingTimeMs: Date.now() - startTime,
+          sport,
+          modelVersion: valuation.metadata.modelVersion,
+          currency: 'GBP', // Could be configurable
+        },
+      } as MarketValueResponse);
     }
-  } catch (err) {
-    console.error('Market value analysis error:', err);
 
-    if (err instanceof SyntaxError) {
-      return badRequest('Invalid request body', [
-        { field: 'body', message: 'JSON parsing failed' }
-      ]) as any;
+    // ========================================================================
+    // TEAM VALUATIONS
+    // ========================================================================
+    if (teamId) {
+      // Verify team exists and get sport
+      const team = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: {
+          id: true,
+          name: true,
+          club: {
+            select: {
+              sport: true,
+            },
+          },
+        },
+      });
+
+      if (!team) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Not Found',
+            message: `Team with ID ${teamId} not found`,
+            requestId,
+          },
+          { status: 404 }
+        );
+      }
+
+      // Get all team valuations
+      let valuations = await calculateTeamMarketValues(teamId);
+
+      // Sort valuations
+      switch (sortBy) {
+        case 'trend':
+          const trendOrder = { RISING: 0, STABLE: 1, DECLINING: 2 };
+          valuations.sort((a, b) => trendOrder[a.trend] - trendOrder[b.trend]);
+          break;
+        case 'change':
+          valuations.sort((a, b) => b.valuation.valueChangePercent - a.valuation.valueChangePercent);
+          break;
+        case 'value':
+        default:
+          valuations.sort((a, b) => b.valuation.currentValue - a.valuation.currentValue);
+      }
+
+      // Apply limit
+      valuations = valuations.slice(0, limit);
+
+      // Optionally strip data
+      if (!includeComparables) {
+        valuations = valuations.map(v => ({ ...v, comparables: [] }));
+      }
+
+      if (!includeProjections) {
+        valuations = valuations.map(v => ({
+          ...v,
+          valuation: {
+            ...v.valuation,
+            projectedValue6Months: 0,
+            projectedValue12Months: 0,
+          },
+        }));
+      }
+
+      // Get team totals
+      const teamTotal = await calculateTeamTotalValue(teamId);
+
+      // Calculate value by position
+      const valueByPosition: Record<string, { count: number; totalValue: number; avgValue: number }> = {};
+      for (const v of valuations) {
+        const pos = v.position || 'UNKNOWN';
+        if (!valueByPosition[pos]) {
+          valueByPosition[pos] = { count: 0, totalValue: 0, avgValue: 0 };
+        }
+        valueByPosition[pos].count++;
+        valueByPosition[pos].totalValue += v.valuation.currentValue;
+      }
+      
+      // Calculate averages
+      for (const pos of Object.keys(valueByPosition)) {
+        valueByPosition[pos].avgValue = Math.round(
+          valueByPosition[pos].totalValue / valueByPosition[pos].count
+        );
+      }
+
+      // Build team summary
+      const teamSummary = {
+        teamName: team.name,
+        totalValue: teamTotal.totalValue,
+        playerCount: teamTotal.playerCount,
+        avgValue: teamTotal.avgValue,
+        highestValue: teamTotal.highestValue,
+        valueByPosition,
+        trendDistribution: {
+          RISING: valuations.filter(v => v.trend === 'RISING').length,
+          STABLE: valuations.filter(v => v.trend === 'STABLE').length,
+          DECLINING: valuations.filter(v => v.trend === 'DECLINING').length,
+        },
+      };
+
+      return NextResponse.json({
+        success: true,
+        requestId,
+        valuations,
+        teamSummary,
+        meta: {
+          generatedAt: new Date().toISOString(),
+          processingTimeMs: Date.now() - startTime,
+          sport: team.club.sport,
+          modelVersion: valuations[0]?.metadata.modelVersion || '2.0.0-market-value',
+          currency: 'GBP',
+        },
+      } as MarketValueResponse);
     }
 
-    return serverError('Market value analysis failed') as any;
-  }
-}
-
-/**
- * Calculate market value for a single player
- */
-async function calculatePlayerMarketValue(
-  playerId: string,
-  sport: string,
-  userId: string,
-): Promise<PlayerMarketValue | null> {
-  const player = await prisma.player.findUnique({
-    where: { id: playerId },
-    include: {
-      team: true,
-      stats: {
-        orderBy: { season: 'desc' },
-        take: 2,
+    // Should not reach here
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Bad Request',
+        message: 'Invalid request',
+        requestId,
       },
-      injuries: {
-        where: { recoveryDate: null },
-      },
-      contract: {
-        orderBy: { startDate: 'desc' },
-        take: 1,
-      },
-    },
-  });
+      { status: 400 }
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-  if (!player) return null;
-
-  // Verify user access
-  const hasAccess = await prisma.userTeam.findFirst({
-    where: {
-      userId,
-      teamId: player.teamId,
-    },
-  });
-
-  if (!hasAccess) return null;
-
-  // Calculate valuation components
-  const baseValue = calculateBaseValue(player, sport);
-  const performanceBonus = calculatePerformanceBonus(player.stats);
-  const ageAdjustment = calculateAgeAdjustment(player.dateOfBirth);
-  const injuryHistory = calculateInjuryPenalty(player.injuries);
-
-  const currentValue =
-    baseValue + performanceBonus + ageAdjustment - injuryHistory;
-
-  // Calculate trend
-  const trend = calculateTrend(player.stats);
-
-  // Get comparable players
-  const comparables = await getComparablePlayers(player, sport);
-
-  return {
-    playerId: player.id,
-    playerName: player.firstName + ' ' + player.lastName,
-    position: player.position,
-    currentValue: Math.max(0, currentValue),
-    projectedValue: Math.max(0, currentValue * 1.1),
-    valuation: {
-      baseValue,
-      performanceBonus,
-      ageAdjustment,
-      injuryHistory,
-    },
-    trend,
-    recommendations: generateMarketRecommendations(currentValue, trend, player),
-    comparables,
-  };
-}
-
-/**
- * Calculate market values for entire team
- */
-async function calculateTeamMarketValues(
-  teamId: string,
-  sport: string,
-  userId: string,
-): Promise<PlayerMarketValue[]> {
-  // Verify access
-  const hasAccess = await prisma.userTeam.findFirst({
-    where: {
-      userId,
-      teamId,
-    },
-  });
-
-  if (!hasAccess) return [];
-
-  const players = await prisma.player.findMany({
-    where: { teamId },
-    include: {
-      stats: {
-        orderBy: { season: 'desc' },
-        take: 2,
-      },
-      injuries: {
-        where: { recoveryDate: null },
-      },
-    },
-  });
-
-  const valuations: PlayerMarketValue[] = [];
-
-  for (const player of players) {
-    const baseValue = calculateBaseValue(player, sport);
-    const performanceBonus = calculatePerformanceBonus(player.stats);
-    const ageAdjustment = calculateAgeAdjustment(player.dateOfBirth);
-    const injuryHistory = calculateInjuryPenalty(player.injuries);
-
-    const currentValue =
-      baseValue + performanceBonus + ageAdjustment - injuryHistory;
-    const trend = calculateTrend(player.stats);
-
-    valuations.push({
-      playerId: player.id,
-      playerName: player.firstName + ' ' + player.lastName,
-      position: player.position,
-      currentValue: Math.max(0, currentValue),
-      projectedValue: Math.max(0, currentValue * 1.1),
-      valuation: {
-        baseValue,
-        performanceBonus,
-        ageAdjustment,
-        injuryHistory,
-      },
-      trend,
-      recommendations: generateMarketRecommendations(currentValue, trend, player),
-      comparables: [],
+    logger.error(error instanceof Error ? error : new Error(errorMessage), {
+      requestId,
+      endpoint: '/api/analytics/market-value',
     });
-  }
 
-  return valuations.sort((a, b) => b.currentValue - a.currentValue);
-}
-
-// Utility calculation functions
-function calculateBaseValue(player: any, sport: string): number {
-  // Base value depends on position and sport
-  const positionMultipliers: Record<string, number> = {
-    // Football
-    'Goalkeeper': 50000,
-    'Defender': 100000,
-    'Midfielder': 150000,
-    'Forward': 200000,
-    // Netball
-    'Goal Shooter': 120000,
-    'Wing Attack': 100000,
-    'Centre': 110000,
-    'Wing Defence': 90000,
-    'Goal Defence': 100000,
-    'Goalkeeper': 80000,
-    'Attacker': 110000,
-  };
-
-  return positionMultipliers[player.position] || 100000;
-}
-
-function calculatePerformanceBonus(stats: any[]): number {
-  if (!stats || stats.length === 0) return 0;
-
-  const recentStats = stats;
-  const bonus =
-    ((recentStats?.rating || 0) / 10) * 100000 +
-    ((recentStats?.appearances || 0) * 5000);
-
-  return bonus;
-}
-
-function calculateAgeAdjustment(dateOfBirth: Date): number {
-  const age = new Date().getFullYear() - new Date(dateOfBirth).getFullYear();
-
-  if (age < 24) return 50000; // Young player premium
-  if (age > 32) return -30000; // Older player discount
-  return 0;
-}
-
-function calculateInjuryPenalty(injuries: any[]): number {
-  return Math.min(injuries.length * 25000, 100000);
-}
-
-function calculateTrend(stats: any[]): 'up' | 'down' | 'stable' {
-  if (stats.length < 2) return 'stable';
-
-  const recent = stats;
-  const previous = stats;
-
-  if (!recent || !previous) return 'stable';
-
-  if (recent.rating > previous.rating) return 'up';
-  if (recent.rating < previous.rating) return 'down';
-  return 'stable';
-}
-
-function generateMarketRecommendations(
-  currentValue: number,
-  trend: string,
-  player: any,
-): string[] {
-  const recommendations: string[] = [];
-
-  if (trend === 'up' && currentValue > 150000) {
-    recommendations.push('Consider negotiating contract renewal');
-  }
-  if (trend === 'down') {
-    recommendations.push('Focus on performance improvement');
-  }
-  if (player.injuries?.length > 0) {
-    recommendations.push('Monitor injury recovery progress');
-  }
-
-  return recommendations;
-}
-
-async function getComparablePlayers(
-  player: any,
-  sport: string,
-): Promise<PlayerMarketValue['comparables']> {
-  // Get similar players by position and stats
-  const comparables = await prisma.player.findMany({
-    where: {
-      position: player.position,
-      sport,
-      id: { not: player.id },
-    },
-    take: 3,
-    include: {
-      stats: {
-        orderBy: { season: 'desc' },
-        take: 1,
+    return NextResponse.json(
+      {
+        success: false,
+        requestId,
+        error: 'Internal Server Error',
+        message: 'Failed to calculate market valuation',
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       },
-    },
-  });
-
-  return comparables.map((comp) => ({
-    playerId: comp.id,
-    playerName: comp.firstName + ' ' + comp.lastName,
-    marketValue: 100000, // Simplified
-    similarity: 0.85,
-  }));
+      { status: 500 }
+    );
+  }
 }
 
-export async function GET(req: NextRequest): Promise<NextResponse<any>> {
-  return success(
-    { status: 'available', message: 'Market value analysis endpoint active' },
-    'OK',
-    200,
-  ) as any;
+// ============================================================================
+// POST - Generate New Valuation
+// ============================================================================
+
+/**
+ * POST /api/analytics/market-value
+ * Force generation of new market valuation
+ * 
+ * Body:
+ * - playerId: string (required for single player)
+ * - teamId: string (required for team)
+ * - forceRefresh: boolean (default: true)
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const startTime = Date.now();
+  const requestId = `mv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+  try {
+    // Authentication
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized', message: 'Authentication required', requestId },
+        { status: 401 }
+      );
+    }
+
+    // Authorization - need higher permissions to force generate
+    const userRoles = session.user.roles || [];
+    const canGenerate = userRoles.some(r => 
+      ['SUPER_ADMIN', 'MANAGER', 'CLUB_OWNER', 'SCOUT', 'ANALYST'].includes(r)
+    );
+
+    if (!canGenerate) {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden', message: 'Insufficient permissions', requestId },
+        { status: 403 }
+      );
+    }
+
+    // Parse body
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Bad Request', message: 'Invalid JSON body', requestId },
+        { status: 400 }
+      );
+    }
+
+    const { playerId, teamId, forceRefresh = true } = body;
+
+    if (!playerId && !teamId) {
+      return NextResponse.json(
+        { success: false, error: 'Bad Request', message: 'Either playerId or teamId is required', requestId },
+        { status: 400 }
+      );
+    }
+
+    logger.info({ requestId, playerId, teamId, userId: session.user.id }, 'Generating market valuation');
+
+    // Single player
+    if (playerId) {
+      const player = await prisma.player.findUnique({
+        where: { id: playerId },
+        select: {
+          id: true,
+          teamPlayers: {
+            where: { isActive: true },
+            select: { team: { select: { club: { select: { sport: true } } } } },
+            take: 1,
+          },
+        },
+      });
+
+      if (!player) {
+        return NextResponse.json(
+          { success: false, error: 'Not Found', message: `Player ${playerId} not found`, requestId },
+          { status: 404 }
+        );
+      }
+
+      const valuation = await calculatePlayerMarketValue(playerId, forceRefresh);
+      const sport = player.teamPlayers[0]?.team.club.sport || 'FOOTBALL';
+
+      return NextResponse.json({
+        success: true,
+        requestId,
+        valuation,
+        meta: {
+          generatedAt: valuation.metadata.generatedAt.toISOString(),
+          processingTimeMs: Date.now() - startTime,
+          sport,
+          modelVersion: valuation.metadata.modelVersion,
+          currency: 'GBP',
+        },
+      } as MarketValueResponse);
+    }
+
+    // Team valuations
+    if (teamId) {
+      const team = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: { id: true, name: true, club: { select: { sport: true } } },
+      });
+
+      if (!team) {
+        return NextResponse.json(
+          { success: false, error: 'Not Found', message: `Team ${teamId} not found`, requestId },
+          { status: 404 }
+        );
+      }
+
+      const valuations = await calculateTeamMarketValues(teamId);
+      const teamTotal = await calculateTeamTotalValue(teamId);
+
+      return NextResponse.json({
+        success: true,
+        requestId,
+        valuations,
+        teamSummary: {
+          teamName: team.name,
+          totalValue: teamTotal.totalValue,
+          playerCount: teamTotal.playerCount,
+          avgValue: teamTotal.avgValue,
+          highestValue: teamTotal.highestValue,
+          valueByPosition: {},
+        },
+        meta: {
+          generatedAt: new Date().toISOString(),
+          processingTimeMs: Date.now() - startTime,
+          sport: team.club.sport,
+          modelVersion: valuations[0]?.metadata.modelVersion || '2.0.0-market-value',
+          currency: 'GBP',
+        },
+      } as MarketValueResponse);
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Bad Request', message: 'Invalid request', requestId },
+      { status: 400 }
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    logger.error(error instanceof Error ? error : new Error(errorMessage), {
+      requestId,
+      endpoint: '/api/analytics/market-value',
+      method: 'POST',
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        requestId,
+        error: 'Internal Server Error',
+        message: 'Failed to generate market valuation',
+      },
+      { status: 500 }
+    );
+  }
 }
