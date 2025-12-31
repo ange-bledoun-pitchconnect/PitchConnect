@@ -1,5 +1,5 @@
 // =============================================================================
-// 🏆 PITCHCONNECT DATABASE SCHEMA v7.9.0 - WORLD-CLASS ENTERPRISE EDITION
+// 🏆 PITCHCONNECT DATABASE SCHEMA v7.10.0 - ACHIEVEMENT SYSTEM EDITION
 // =============================================================================
 //
 // Version History:
@@ -13,36 +13,52 @@
 // - v7.7.0: Training Drill Library, Budget & Expense System, Enhanced Stats
 // - v7.8.0: Coach Management, Export System, Player Development, Gamification
 // - v7.9.0: SuperAdmin System, Enhanced 2FA, System Settings, Notifications
+// - v7.10.0: Achievement System, XP/Leveling, Milestones, Streaks
 //
 // =============================================================================
-// NEW IN v7.9.0:
+// NEW IN v7.10.0 - COMPREHENSIVE ACHIEVEMENT SYSTEM
 // =============================================================================
 //
-// 🔐 ENHANCED SECURITY (3 models):
-// - SystemSetting for database-backed admin configuration
-// - Enhanced TwoFactorAuth with encryption, backup codes, lockout
-// - Enhanced DataExportRequest for GDPR compliance
+// 🎖️ ACHIEVEMENT SYSTEM (5 new models):
+// - AchievementTemplate: Comprehensive achievement definitions with 18 categories
+// - PlayerAchievement: Player progress tracking with tier support
+// - PlayerMilestone: Career milestone events with sport-specific support
+// - PlayerLevel: XP, leveling, prestige, and 6 streak types
+// - XpTransaction: Complete audit log for XP gains/losses
+//
+// 📊 NEW ENUMS (4 total):
+// - AchievementCategory: 18 categories (GOALS, ASSISTS, DEFENSE, etc.)
+// - AchievementRarity: 5 tiers (COMMON → LEGENDARY) with XP scaling
+// - AchievementCriteriaType: 8 criteria types for flexible achievement rules
+// - MilestoneType: 30+ milestone types across all 12 sports
 //
 // 🔔 ENHANCED NOTIFICATIONS:
-// - NotificationType enum expanded to 80+ types
-// - Sport-specific notification types (Football, Rugby, Basketball, etc.)
-// - SuperAdmin notification types
+// - ACHIEVEMENT_PROGRESS, MILESTONE_REACHED
+// - LEVEL_UP, XP_EARNED, XP_BONUS
+// - STREAK_AT_RISK, STREAK_LOST, STREAK_RESTORED
 //
-// ⚙️ SUPERADMIN SYSTEM:
-// - SettingCategory enum (8 categories)
-// - SettingValueType enum (6 value types)
-// - SystemSetting model with full audit trail
+// 📝 ENHANCED AUDIT LOGGING:
+// - Achievement template CRUD operations
+// - Achievement unlock/revoke tracking
+// - Milestone achievement tracking
+// - XP award/deduct tracking
+// - Level up events
 //
-// 📊 ENHANCED AUDIT & COMPLIANCE:
-// - AuditLog severity levels
-// - Enhanced action types for all new features
-// - GDPR soft/hard delete support
+// 🔗 ENHANCED WEBHOOK EVENTS:
+// - ACHIEVEMENT_UNLOCKED, MILESTONE_ACHIEVED
+// - PLAYER_LEVEL_UP, XP_AWARDED
+//
+// 🎮 GAMIFICATION ENHANCEMENTS:
+// - XP rewards for challenges
+// - Leaderboards for XP/Achievements/Levels
+// - Streak tracking with milestone bonuses
+// - Season awards with XP/point rewards
 //
 // =============================================================================
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch", "views", "postgresqlExtensions"]
+  previewFeatures = ["fullTextSearchPostgres", "views", "postgresqlExtensions"]
   binaryTargets   = ["native", "rhel-openssl-1.0.x", "linux-musl-openssl-3.0.x"]
 }
 
@@ -255,13 +271,38 @@ enum NotificationType {
   WATCHLIST_ALERT
   PLAYER_RECOMMENDED
 
-  // Gamification Notifications
+  // =========================================================================
+  // 🎮 ACHIEVEMENT & GAMIFICATION NOTIFICATIONS (ENHANCED v7.10.0)
+  // =========================================================================
+  
+  // Achievement Notifications
   BADGE_EARNED
   ACHIEVEMENT_UNLOCKED
+  ACHIEVEMENT_PROGRESS         // NEW v7.10.0: Progress update
+  ACHIEVEMENT_TIER_UNLOCKED    // NEW v7.10.0: Tier progression
+  
+  // Milestone Notifications
+  MILESTONE_REACHED            // NEW v7.10.0: Career milestone
+  MILESTONE_APPROACHING        // NEW v7.10.0: Near milestone
+  
+  // XP & Level Notifications
+  LEVEL_UP                     // NEW v7.10.0: Level increase
+  XP_EARNED                    // NEW v7.10.0: XP gained
+  XP_BONUS                     // NEW v7.10.0: Bonus XP earned
+  PRESTIGE_UNLOCKED            // NEW v7.10.0: Prestige level
+  
+  // Streak Notifications
+  STREAK_MILESTONE             // Existing: Enhanced
+  STREAK_AT_RISK               // NEW v7.10.0: Streak about to break
+  STREAK_LOST                  // NEW v7.10.0: Streak broken
+  STREAK_RESTORED              // NEW v7.10.0: Streak restored
+  STREAK_RECORD                // NEW v7.10.0: Personal best streak
+  
+  // Leaderboard & Challenge Notifications
   LEADERBOARD_POSITION_CHANGED
   CHALLENGE_STARTED
   CHALLENGE_COMPLETED
-  STREAK_MILESTONE
+  CHALLENGE_REWARD_CLAIMED     // NEW v7.10.0: Challenge reward
 
   // Development Notifications
   DEVELOPMENT_PLAN_CREATED
@@ -276,7 +317,7 @@ enum NotificationType {
   MEDICAL_CLEARANCE_REQUIRED
 
   // =========================================================================
-  // SPORT-SPECIFIC NOTIFICATIONS (NEW v7.9.0)
+  // SPORT-SPECIFIC NOTIFICATIONS (v7.9.0)
   // =========================================================================
 
   // Football/Soccer
@@ -2037,6 +2078,8 @@ enum PaymentType {
   BUDGET_ALLOCATION
   INSTALLMENT
   SCHOLARSHIP_DISBURSEMENT
+  ACHIEVEMENT_REWARD       // NEW v7.10.0: Achievement reward payment
+  XP_PURCHASE              // NEW v7.10.0: XP boost purchase
   OTHER
 }
 
@@ -2100,6 +2143,7 @@ enum InvitationStatus {
   REVOKED
 }
 
+
 enum WebhookEvent {
   // Match Events
   MATCH_CREATED
@@ -2107,42 +2151,52 @@ enum WebhookEvent {
   MATCH_FINISHED
   MATCH_CANCELLED
   MATCH_LINEUP_SET
+  
   // Player Events
   PLAYER_ADDED
   PLAYER_UPDATED
   PLAYER_INJURED
   PLAYER_TRANSFERRED
   PLAYER_CLEARED
+  
   // Team & Competition
   TEAM_UPDATED
   TEAM_CREATED
   COMPETITION_CREATED
   COMPETITION_STARTED
   COMPETITION_FINISHED
+  
   // Billing
   SUBSCRIPTION_UPDATED
   PAYMENT_RECEIVED
+  
   // User
   USER_CREATED
   USER_DELETED
+  
   // Fitness & Medical
   FITNESS_ASSESSMENT_COMPLETED
   PLAYER_RTP_CLEARED
+  
   // Predictions
   PREDICTION_CREATED
   PREDICTION_VERIFIED
   HIGH_RISK_PREDICTION
+  
   // Scouting
   SCOUTING_REPORT_SUBMITTED
   WATCHLIST_ALERT
+  
   // Referee
   REFEREE_ASSIGNED
   REFEREE_REPORT_SUBMITTED
+  
   // Training & Drills
   TRAINING_SCHEDULED
   TRAINING_COMPLETED
   DRILL_CREATED
   DRILL_LIBRARY_UPDATED
+  
   // Budget & Expense
   BUDGET_CREATED
   BUDGET_ALERT
@@ -2150,6 +2204,7 @@ enum WebhookEvent {
   EXPENSE_SUBMITTED
   EXPENSE_APPROVED
   EXPENSE_REJECTED
+  
   // Coach Management
   COACH_ASSIGNED
   COACH_UNASSIGNED
@@ -2157,26 +2212,46 @@ enum WebhookEvent {
   TIMESHEET_SUBMITTED
   TIMESHEET_APPROVED
   TIMESHEET_REJECTED
+  
   // Export & Reports
   EXPORT_COMPLETED
   REPORT_GENERATED
+  
   // Player Development
   DEVELOPMENT_MILESTONE_COMPLETED
   SKILL_ASSESSMENT_COMPLETED
+  
   // Wellness
   WELLNESS_ALERT
   RECOVERY_PHASE_CHANGED
   PLAYER_CLEARED_TO_PLAY_WELLNESS
+  
   // Payments
   PAYMENT_DUE
   PAYMENT_OVERDUE
   PAYMENT_RECEIVED_INSTALLMENT
-  // Gamification
+  
+  // Gamification (Existing)
   CHALLENGE_STARTED
   CHALLENGE_ENDED
   LEADERBOARD_POSITION_CHANGED
   STREAK_MILESTONE
   SEASON_AWARD_ANNOUNCED
+  
+  // =========================================================================
+  // 🎖️ ACHIEVEMENT SYSTEM WEBHOOKS (NEW v7.10.0)
+  // =========================================================================
+  
+  ACHIEVEMENT_UNLOCKED          // NEW: Player unlocked achievement
+  ACHIEVEMENT_PROGRESS_UPDATE   // NEW: Significant progress made
+  ACHIEVEMENT_TIER_COMPLETED    // NEW: Achievement tier completed
+  MILESTONE_ACHIEVED            // NEW: Career milestone reached
+  PLAYER_LEVEL_UP               // NEW: Player leveled up
+  XP_AWARDED                    // NEW: XP transaction completed
+  PRESTIGE_LEVEL_REACHED        // NEW: Player reached prestige level
+  STREAK_RECORD_BROKEN          // NEW: Personal best streak
+  STREAK_LOST_NOTIFICATION      // NEW: Streak was lost
+  
   // Other
   RESULT_APPROVED
   ANNOUNCEMENT_POSTED
@@ -2185,6 +2260,153 @@ enum WebhookEvent {
   JOIN_REQUEST_RECEIVED
   MEDIA_UPLOADED
   MEDIA_PROCESSED
+}
+
+
+// =============================================================================
+// 🎖️ ACHIEVEMENT SYSTEM ENUMS (NEW v7.10.0)
+// =============================================================================
+
+enum AchievementCategory {
+  // Performance Categories
+  GOALS           // Scoring achievements
+  ASSISTS         // Playmaking achievements
+  DEFENSE         // Defensive achievements
+  GOALKEEPER      // Goalkeeping achievements
+  
+  // Participation Categories
+  MATCHES         // Match-based achievements
+  TRAINING        // Training attendance/performance
+  SEASONS         // Season completion achievements
+  
+  // Team Categories
+  CAPTAIN         // Captaincy achievements
+  TEAM_PLAYER     // Team-focused achievements
+  LOYALTY         // Club/team loyalty achievements
+  
+  // Development Categories
+  IMPROVEMENT     // Skill/rating improvement
+  CONSISTENCY     // Consistent performance
+  VERSATILITY     // Multi-position/role achievements
+  
+  // Special Categories
+  DEBUT           // First-time achievements
+  RECORD          // Record-breaking achievements
+  AWARD           // Award-related achievements
+  SOCIAL          // Social/community achievements
+  SPORT_SPECIFIC  // Sport-specific achievements
+}
+
+enum AchievementRarity {
+  COMMON      // 60%+ players can earn (Base: 10 XP)
+  UNCOMMON    // 30-60% players can earn (Base: 25 XP)
+  RARE        // 10-30% players can earn (Base: 50 XP)
+  EPIC        // 1-10% players can earn (Base: 100 XP)
+  LEGENDARY   // <1% players can earn (Base: 250 XP)
+}
+
+enum AchievementCriteriaType {
+  TOTAL_COUNT       // Career total (e.g., 100 career goals)
+  SEASON_COUNT      // Season total (e.g., 20 goals in a season)
+  MATCH_COUNT       // Single match (e.g., hat-trick)
+  STREAK_COUNT      // Consecutive occurrences (e.g., 5 wins in a row)
+  RATING_THRESHOLD  // Rating target (e.g., 9.0+ match rating)
+  PERCENTAGE        // Percentage target (e.g., 90% pass accuracy)
+  FIRST_TIME        // First occurrence (e.g., first career goal)
+  PERFECT           // Perfect performance (e.g., 100% pass accuracy)
+  UNIQUE            // Unique condition (custom JSON criteria)
+}
+
+enum MilestoneType {
+  // Match Milestones
+  MATCHES_PLAYED
+  MATCHES_WON
+  MATCHES_STARTED
+  MINUTES_PLAYED
+  
+  // Scoring Milestones
+  GOALS_SCORED
+  ASSISTS_MADE
+  CLEAN_SHEETS
+  SAVES_MADE
+  
+  // Career Milestones
+  DEBUT
+  FIRST_GOAL
+  FIRST_ASSIST
+  FIRST_CLEAN_SHEET
+  CAPTAIN_DEBUT
+  
+  // Club Milestones
+  CLUB_JOINED
+  CLUB_LOYALTY
+  TEAM_JOINED
+  
+  // Award Milestones
+  PLAYER_OF_MATCH
+  PLAYER_OF_MONTH
+  PLAYER_OF_SEASON
+  GOLDEN_BOOT
+  GOLDEN_GLOVE
+  
+  // Sport-Specific Milestones: Football
+  HAT_TRICK               // 3 goals in a match
+  BRACE                   // 2 goals in a match
+  POKER                   // 4 goals in a match
+  
+  // Sport-Specific Milestones: Basketball
+  DOUBLE_DOUBLE           // Double digits in 2 stats
+  TRIPLE_DOUBLE           // Double digits in 3 stats
+  QUADRUPLE_DOUBLE        // Double digits in 4 stats
+  THREE_POINTER_MILESTONE // 3-point shooting milestone
+  FREE_THROW_STREAK       // Consecutive free throws
+  
+  // Sport-Specific Milestones: Cricket
+  CENTURY                 // 100 runs
+  HALF_CENTURY            // 50 runs
+  DOUBLE_CENTURY          // 200 runs
+  FIVE_WICKETS            // 5 wickets in innings
+  TEN_WICKETS             // 10 wickets in match
+  BOWLING_ECONOMY         // Economy rate milestone
+  
+  // Sport-Specific Milestones: Rugby
+  TRY_SCORING             // Try scoring milestone
+  CONVERSION_STREAK       // Consecutive conversions
+  PENALTY_KICKS           // Penalty kick milestone
+  DROP_GOAL_MASTER        // Drop goal milestone
+  
+  // Sport-Specific Milestones: American Football
+  TOUCHDOWN_RECORD        // TD milestone
+  PASSING_YARDS           // Passing yards milestone
+  RUSHING_YARDS           // Rushing yards milestone
+  RECEIVING_YARDS         // Receiving yards milestone
+  SACK_MILESTONE          // Sack milestone
+  INTERCEPTION_MILESTONE  // INT milestone
+  
+  // Sport-Specific Milestones: Hockey
+  SHUTOUT                 // Shutout milestone
+  HAT_TRICK_HOCKEY        // Hockey hat trick
+  PENALTY_MINUTES         // PIM milestone
+  PLUS_MINUS              // Plus/minus milestone
+  
+  // Sport-Specific Milestones: Tennis/Volleyball
+  ACE_MILESTONE           // Ace milestone
+  DOUBLE_FAULT_FREE       // No double faults
+  SET_STREAK              // Consecutive sets won
+  
+  // Sport-Specific Milestones: Baseball
+  HOME_RUN_MILESTONE      // HR milestone
+  RBI_MILESTONE           // RBI milestone
+  BATTING_AVERAGE         // Batting average milestone
+  ERA_MILESTONE           // ERA milestone (pitchers)
+  STRIKEOUT_MILESTONE     // Strikeout milestone
+  NO_HITTER               // No-hitter achievement
+  PERFECT_GAME            // Perfect game achievement
+  
+  // Sport-Specific Milestones: Other
+  SERVE_SPEED_RECORD      // Serve speed record
+  SPRINT_RECORD           // Sprint record
+  DISTANCE_COVERED        // Distance covered milestone
 }
 
 // =============================================================================
@@ -3905,6 +4127,9 @@ model Season {
   leaderboards     Leaderboard[]      @relation("seasonLeaderboards")
   seasonAwards     SeasonAward[]      @relation("seasonAwards")
   
+  // NEW v7.10.0 - Milestone relation
+  playerMilestones PlayerMilestone[]  @relation("seasonMilestones")
+  
   @@unique([organisationId, name])
   @@index([organisationId])
   @@index([isActive])
@@ -4455,6 +4680,12 @@ model Player {
   leaderboardEntries   LeaderboardEntry[] @relation("playerLeaderboardEntries")
   streaks              Streak[]           @relation("playerStreaks")
   
+  // NEW v7.10.0 - Achievement System Relations
+  playerAchievements   PlayerAchievement[]  @relation("playerAchievementProgress")
+  playerMilestones     PlayerMilestone[]    @relation("playerMilestoneHistory")
+  playerLevel          PlayerLevel?         @relation("playerLevelProgress")
+  xpTransactions       XpTransaction[]      @relation("playerXpHistory")
+  
   @@index([userId])
   @@index([isActive])
   @@index([isVerified])
@@ -4956,8 +5187,6 @@ model Club {
   members                 ClubMember[]
   teams                   Team[]
   matches                 Match[]              @relation("clubMatches")
-  homeMatches             Match[]              @relation("homeClub")
-  awayMatches             Match[]              @relation("awayClub")
   mediaContent            MediaContent[]
   mediaAssets             MediaAsset[]
   trainingSessions        TrainingSession[]
@@ -5073,6 +5302,9 @@ model Team {
   teamChemistry         TeamChemistry[]      @relation("teamChemistry")
   leaderboards          Leaderboard[]        @relation("teamLeaderboards")
   seasonAwards          SeasonAward[]        @relation("teamSeasonAwards")
+  
+  // NEW v7.10.0 - Milestone relation
+  playerMilestones      PlayerMilestone[]    @relation("teamMilestones")
   
   @@unique([clubId, slug])
   @@index([clubId])
@@ -5619,8 +5851,6 @@ model Match {
   updatedAt            DateTime                  @updatedAt
   
   club                 Club?                     @relation("clubMatches", fields: [clubId], references: [id], onDelete: SetNull)
-  homeClub             Club?                     @relation("homeClub", fields: [clubId], references: [id], onDelete: SetNull)
-  awayClub             Club?                     @relation("awayClub", fields: [clubId], references: [id], onDelete: SetNull)
   homeTeam             Team                      @relation("homeTeam", fields: [homeTeamId], references: [id], onDelete: Cascade)
   awayTeam             Team                      @relation("awayTeam", fields: [awayTeamId], references: [id], onDelete: Cascade)
   competition          Competition?              @relation(fields: [competitionId], references: [id], onDelete: SetNull)
@@ -5630,6 +5860,9 @@ model Match {
   attendance_          MatchAttendance[]
   officials            MatchOfficial[]
   performances         PlayerMatchPerformance[]
+  
+  // NEW v7.10.0 - Milestone trigger relation
+  triggeredMilestones  PlayerMilestone[]         @relation("milestoneTriggerMatch")
   
   @@index([clubId])
   @@index([competitionId])
@@ -6797,3 +7030,359 @@ model Sponsor {
 // - Improved soft delete support with deletedBy tracking
 //
 // =============================================================================
+
+// =============================================================================
+// 🎖️ ACHIEVEMENT SYSTEM MODELS (NEW v7.10.0)
+// =============================================================================
+//
+// Comprehensive gamification system with:
+// - Achievement templates with 18 categories and 5 rarity tiers
+// - Player achievement progress tracking with tier support
+// - Career milestone tracking across all 12 sports
+// - XP and leveling system with prestige
+// - 6 different streak types with milestone rewards
+// - Full audit trail for all XP transactions
+//
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Achievement Template - Blueprint for all achievements
+// -----------------------------------------------------------------------------
+model AchievementTemplate {
+  id                  String                @id @default(cuid())
+  
+  // Basic Information
+  name                String                @db.VarChar(100)
+  slug                String                @unique @db.VarChar(100)
+  description         String                @db.Text
+  shortDescription    String?               @db.VarChar(200)
+  
+  // Visual Assets
+  icon                String?               // Icon identifier or URL
+  badgeUrl            String?               // Badge image URL
+  badgeColor          String?               // Hex color for badge
+  animationUrl        String?               // Unlock animation URL
+  
+  // Categorization
+  category            AchievementCategory
+  sport               Sport?                // Null = all sports
+  position            Position?             // Null = all positions
+  
+  // Rarity & Rewards
+  rarity              AchievementRarity     @default(COMMON)
+  baseXp              Int                   @default(10)
+  bonusXp             Int?                  // Extra XP for special conditions
+  pointsAwarded       Int                   @default(0)
+  
+  // Achievement Criteria
+  criteriaType        AchievementCriteriaType @default(TOTAL_COUNT)
+  criteriaValue       Int                   @default(1)        // Target value
+  criteriaField       String?               // Field to check (e.g., "goals", "assists")
+  criteriaCondition   Json?                 // Complex conditions as JSON
+  
+  // Tiered Achievements (Bronze → Silver → Gold → Diamond)
+  parentId            String?               // Parent achievement for tiers
+  tierLevel           Int?                  // 1=Bronze, 2=Silver, 3=Gold, 4=Diamond
+  tierMultiplier      Float?                // XP multiplier for this tier
+  
+  // Status & Visibility
+  isActive            Boolean               @default(true)
+  isSecret            Boolean               @default(false)    // Hidden until unlocked
+  isLimited           Boolean               @default(false)    // Time-limited achievement
+  availableFrom       DateTime?             // Start availability
+  availableUntil      DateTime?             // End availability
+  
+  // Statistics
+  unlockedCount       Int                   @default(0)        // Total times unlocked
+  totalAttempts       Int                   @default(0)        // Total players attempted
+  averageProgress     Float?                // Average progress %
+  
+  // Audit
+  createdBy           String?
+  updatedBy           String?
+  deletedAt           DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  
+  // Relations
+  parent              AchievementTemplate?  @relation("AchievementTiers", fields: [parentId], references: [id], onDelete: SetNull)
+  childTiers          AchievementTemplate[] @relation("AchievementTiers")
+  playerAchievements  PlayerAchievement[]   @relation("templateProgress")
+  
+  @@index([category])
+  @@index([sport])
+  @@index([position])
+  @@index([rarity])
+  @@index([isActive])
+  @@index([isSecret])
+  @@index([parentId])
+  @@index([deletedAt])
+  @@map("achievement_templates")
+}
+
+// -----------------------------------------------------------------------------
+// Player Achievement - Tracks player progress toward achievements
+// -----------------------------------------------------------------------------
+model PlayerAchievement {
+  id                  String              @id @default(cuid())
+  
+  // Core Relations
+  playerId            String
+  achievementId       String
+  
+  // Progress Tracking
+  progress            Int                 @default(0)         // Current progress value
+  progressPercent     Float               @default(0)         // Calculated percentage
+  isComplete          Boolean             @default(false)
+  
+  // Tiered Progress (for multi-tier achievements)
+  currentTier         Int?                                    // Current tier reached
+  tierProgress        Json?                                   // Progress per tier
+  
+  // Timestamps
+  startedAt           DateTime            @default(now())     // When tracking began
+  earnedAt            DateTime?                               // When achievement unlocked
+  notifiedAt          DateTime?                               // When user was notified
+  displayedAt         DateTime?                               // When user viewed it
+  sharedAt            DateTime?                               // When user shared it
+  
+  // Context (what triggered completion)
+  earnedInMatchId     String?
+  earnedInSeasonId    String?
+  earnedInTeamId      String?
+  earnedInClubId      String?
+  
+  // Rewards Granted
+  pointsAwarded       Int                 @default(0)
+  xpAwarded           Int                 @default(0)
+  
+  // Metadata
+  metadata            Json?                                   // Additional data
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  
+  // Relations
+  player              Player              @relation("playerAchievementProgress", fields: [playerId], references: [id], onDelete: Cascade)
+  achievement         AchievementTemplate @relation("templateProgress", fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  @@unique([playerId, achievementId])
+  @@index([playerId])
+  @@index([achievementId])
+  @@index([isComplete])
+  @@index([earnedAt])
+  @@index([currentTier])
+  @@map("player_achievements")
+}
+
+// -----------------------------------------------------------------------------
+// Player Milestone - Career milestone tracking
+// -----------------------------------------------------------------------------
+model PlayerMilestone {
+  id                  String              @id @default(cuid())
+  
+  // Core Relations
+  playerId            String
+  matchId             String?             // Match where milestone occurred
+  teamId              String?             // Team at time of milestone
+  seasonId            String?             // Season of milestone
+  
+  // Milestone Information
+  type                MilestoneType
+  title               String              @db.VarChar(150)
+  description         String?             @db.Text
+  
+  // Values
+  value               Int                 // The milestone value (e.g., 100 for 100th goal)
+  previousValue       Int?                // Value before milestone
+  nextMilestone       Int?                // Next milestone target
+  
+  // Context
+  sport               Sport?
+  position            Position?
+  competitionId       String?             // Competition where achieved
+  opponentId          String?             // Opponent when achieved
+  
+  // Visual Assets
+  icon                String?
+  badgeUrl            String?
+  mediaUrl            String?             // Video/image of moment
+  
+  // Rewards
+  xpAwarded           Int                 @default(0)
+  pointsAwarded       Int                 @default(0)
+  
+  // Visibility
+  isPublic            Boolean             @default(true)
+  isShared            Boolean             @default(false)
+  sharedAt            DateTime?
+  
+  // Timestamps
+  achievedAt          DateTime            @default(now())
+  notifiedAt          DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  
+  // Relations
+  player              Player              @relation("playerMilestoneHistory", fields: [playerId], references: [id], onDelete: Cascade)
+  match               Match?              @relation("milestoneTriggerMatch", fields: [matchId], references: [id], onDelete: SetNull)
+  team                Team?               @relation("teamMilestones", fields: [teamId], references: [id], onDelete: SetNull)
+  season              Season?             @relation("seasonMilestones", fields: [seasonId], references: [id], onDelete: SetNull)
+  
+  @@index([playerId])
+  @@index([matchId])
+  @@index([teamId])
+  @@index([seasonId])
+  @@index([type])
+  @@index([sport])
+  @@index([achievedAt])
+  @@map("player_milestones")
+}
+
+// -----------------------------------------------------------------------------
+// Player Level - XP, Leveling, and Streaks System
+// -----------------------------------------------------------------------------
+model PlayerLevel {
+  id                  String              @id @default(cuid())
+  playerId            String              @unique
+  
+  // Level Information
+  level               Int                 @default(1)
+  currentXp           Int                 @default(0)         // XP in current level
+  totalXp             Int                 @default(0)         // Lifetime XP
+  xpToNextLevel       Int                 @default(100)       // XP needed for next level
+  
+  // Prestige System (for max-level players)
+  prestigeLevel       Int                 @default(0)
+  prestigeXpBonus     Float               @default(0)         // % bonus XP per prestige
+  
+  // Login Streak
+  loginStreakCurrent  Int                 @default(0)
+  loginStreakBest     Int                 @default(0)
+  
+  // Training Streak
+  trainingStreakCurrent Int               @default(0)
+  trainingStreakBest  Int                 @default(0)
+  
+  // Match Streak (consecutive matches played)
+  matchStreakCurrent  Int                 @default(0)
+  matchStreakBest     Int                 @default(0)
+  
+  // Win Streak
+  winStreakCurrent    Int                 @default(0)
+  winStreakBest       Int                 @default(0)
+  
+  // Goal Streak (consecutive matches with goal)
+  goalStreakCurrent   Int                 @default(0)
+  goalStreakBest      Int                 @default(0)
+  
+  // Clean Sheet Streak (goalkeepers/defenders)
+  cleanSheetStreakCurrent Int             @default(0)
+  cleanSheetStreakBest Int                @default(0)
+  
+  // Streak Timestamps
+  lastLoginAt         DateTime?
+  lastTrainingAt      DateTime?
+  lastMatchAt         DateTime?
+  lastXpGainAt        DateTime?
+  lastLevelUpAt       DateTime?
+  
+  // Period Statistics
+  weeklyXp            Int                 @default(0)
+  monthlyXp           Int                 @default(0)
+  seasonXp            Int                 @default(0)
+  weekStartDate       DateTime?
+  monthStartDate      DateTime?
+  seasonStartDate     DateTime?
+  
+  // Achievement Summary
+  totalAchievementPoints Int              @default(0)
+  totalAchievements   Int                 @default(0)
+  legendaryAchievements Int               @default(0)
+  epicAchievements    Int                 @default(0)
+  rareAchievements    Int                 @default(0)
+  
+  // Timestamps
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  
+  // Relations
+  player              Player              @relation("playerLevelProgress", fields: [playerId], references: [id], onDelete: Cascade)
+  
+  @@index([playerId])
+  @@index([level])
+  @@index([totalXp])
+  @@index([prestigeLevel])
+  @@map("player_levels")
+}
+
+// -----------------------------------------------------------------------------
+// XP Transaction - Audit log for all XP changes
+// -----------------------------------------------------------------------------
+model XpTransaction {
+  id                  String              @id @default(cuid())
+  playerId            String
+  
+  // Transaction Details
+  amount              Int                                     // Positive for gain, negative for loss
+  reason              String              @db.VarChar(200)    // Human-readable reason
+  category            String              @db.VarChar(50)     // Category (ACHIEVEMENT, MATCH, TRAINING, etc.)
+  
+  // Context
+  referenceType       String?             @db.VarChar(50)     // Type of related entity
+  referenceId         String?                                 // ID of related entity
+  
+  // Balance Tracking
+  previousXp          Int                                     // XP before transaction
+  newXp               Int                                     // XP after transaction
+  previousLevel       Int                                     // Level before transaction
+  newLevel            Int                                     // Level after transaction
+  
+  // Multipliers Applied
+  baseAmount          Int?                                    // Base XP before multipliers
+  multiplier          Float?                                  // Multiplier applied
+  bonusAmount         Int?                                    // Bonus XP added
+  
+  // Metadata
+  metadata            Json?                                   // Additional context
+  createdAt           DateTime            @default(now())
+  
+  // Relations
+  player              Player              @relation("playerXpHistory", fields: [playerId], references: [id], onDelete: Cascade)
+  
+  @@index([playerId])
+  @@index([category])
+  @@index([referenceType, referenceId])
+  @@index([createdAt])
+  @@map("xp_transactions")
+}
+
+// =============================================================================
+// 🔚 END OF SCHEMA v7.10.0
+// =============================================================================
+//
+// Schema Statistics:
+// - Total Models: ~165+
+// - Total Enums: ~110+
+// - Sports Supported: 12
+//
+// New in v7.10.0:
+// - 5 New Models: AchievementTemplate, PlayerAchievement, PlayerMilestone, 
+//                 PlayerLevel, XpTransaction
+// - 4 New Enums: AchievementCategory, AchievementRarity, 
+//                AchievementCriteriaType, MilestoneType
+// - Enhanced NotificationType with 10+ new achievement notifications
+// - Enhanced WebhookEvent with 9 new achievement webhooks
+// - Enhanced PaymentType with ACHIEVEMENT_REWARD and XP_PURCHASE
+// - Updated Player, Match, Team, Season models with achievement relations
+//
+// Achievement System Features:
+// - 18 achievement categories covering all aspects of the game
+// - 5 rarity tiers: COMMON, UNCOMMON, RARE, EPIC, LEGENDARY
+// - Tiered achievements with Bronze → Silver → Gold → Diamond progression
+// - 30+ milestone types across 12 sports
+// - XP and leveling system with prestige
+// - 6 streak types: login, training, match, win, goal, cleanSheet
+// - Full audit trail for all XP transactions
+//
+// =============================================================================
+

@@ -1,104 +1,62 @@
-// ============================================================================
-// 🏆 ENHANCED: src/app/api/teams/route.ts
-// POST - Create team | GET - List teams with advanced filtering & pagination
-// VERSION: 3.0 - World-Class Enhanced
-// ============================================================================
+// =============================================================================
+// 🏟️ TEAMS API - PitchConnect v7.9.0
+// =============================================================================
+// Enterprise-grade teams listing and creation
+// Multi-sport support | Full filtering | Schema-aligned
+// =============================================================================
 
-import { auth } from '@/auth';
 import { NextRequest, NextResponse } from 'next/server';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import {
-  parseJsonBody,
-  validateRequired,
-  validateStringLength,
-  validateHexColor,
-  validateUrl,
-} from '@/lib/api/validation';
-import { errorResponse } from '@/lib/api/responses';
-import { NotFoundError, ForbiddenError, BadRequestError } from '@/lib/api/errors';
-import { logResourceCreated, createAuditLog } from '@/lib/api/audit';
+import { Prisma, Sport, TeamType, TeamStatus, FormationType } from '@prisma/client';
+import { z } from 'zod';
 
-// ============================================================================
+// =============================================================================
 // TYPES & INTERFACES
-// ============================================================================
-
-interface CreateTeamRequest {
-  name: string;
-  shortCode: string;
-  sport: 'FOOTBALL' | 'NETBALL' | 'RUGBY' | 'CRICKET' | 'AMERICANFOOTBALL' | 'BASKETBALL';
-  clubId: string;
-  managerId: string;
-  description?: string;
-  logo?: string;
-  colors?: {
-    primary: string;
-    secondary: string;
-  };
-  founded?: number;
-}
+// =============================================================================
 
 interface TeamListItem {
   id: string;
   name: string;
-  shortCode: string;
-  sport: string;
+  shortName: string | null;
+  slug: string;
+  description: string | null;
+  logo: string | null;
+  badge: string | null;
+  type: TeamType;
+  status: TeamStatus;
+  sport: Sport;
+  ageGroup: string | null;
+  gender: string;
+  colors: {
+    primary: string | null;
+    secondary: string | null;
+  };
+  maxPlayers: number;
+  activePlayers: number;
+  availableSlots: number;
+  registrationOpen: boolean;
+  isActive: boolean;
   club: {
     id: string;
     name: string;
-    city: string | null;
-    country: string;
+    shortName: string | null;
     logo: string | null;
-    location: string;
+    city: string | null;
+    country: string | null;
   };
-  manager: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  description: string | null;
-  logo: string | null;
-  colors: Record<string, any>;
-  founded: number;
   stats: {
-    playerCount: number;
-    matchCount: number;
-    leagueCount: number;
+    coachCount: number;
+    competitionCount: number;
+    matchesPlayed: number;
   };
   createdAt: string;
   updatedAt: string;
 }
 
-interface CreateTeamResponse {
-  success: true;
-  id: string;
-  name: string;
-  shortCode: string;
-  sport: string;
-  clubId: string;
-  club: {
-    id: string;
-    name: string;
-    city: string | null;
-    country: string;
-  };
-  manager: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  description: string | null;
-  logo: string | null;
-  colors: Record<string, any>;
-  founded: number;
-  message: string;
-  timestamp: string;
-  requestId: string;
-}
-
 interface TeamsListResponse {
   success: true;
-  teams: TeamListItem[];
+  data: TeamListItem[];
   pagination: {
     page: number;
     limit: number;
@@ -106,469 +64,345 @@ interface TeamsListResponse {
     totalPages: number;
     hasNextPage: boolean;
     hasPreviousPage: boolean;
-    nextPage: number | null;
-    previousPage: number | null;
   };
-  filters: Record<string, any>;
-  sort: Record<string, any>;
-  timestamp: string;
-  requestId: string;
+  filters: {
+    clubId: string | null;
+    sport: Sport | null;
+    status: TeamStatus | null;
+    type: TeamType | null;
+    search: string | null;
+  };
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
 }
 
-// ============================================================================
-// POST /api/teams - Create Team
-// ============================================================================
+interface CreateTeamResponse {
+  success: true;
+  data: {
+    id: string;
+    name: string;
+    shortName: string | null;
+    slug: string;
+    sport: Sport;
+    type: TeamType;
+    status: TeamStatus;
+    club: {
+      id: string;
+      name: string;
+    };
+  };
+  message: string;
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
+}
 
-/**
- * POST /api/teams
- * Create a new team within a club
- * 
- * Authorization: SUPERADMIN, CLUB_MANAGER, CLUB_OWNER
- * 
- * Request Body:
- *   Required:
- *     - name: string (3-100 chars)
- *     - shortCode: string (2-10 uppercase alphanumeric, unique per club)
- *     - sport: enum (FOOTBALL, NETBALL, RUGBY, CRICKET, AMERICANFOOTBALL, BASKETBALL)
- *     - clubId: string (valid club ID)
- *     - managerId: string (valid user ID)
- *   
- *   Optional:
- *     - description: string
- *     - logo: string (valid URL)
- *     - colors: { primary: hex, secondary: hex }
- *     - founded: number (year)
- * 
- * Returns: 201 Created with team details
- * 
- * Features:
- *   ✅ Multi-role authorization
- *   ✅ Comprehensive validation
- *   ✅ Duplicate short code prevention
- *   ✅ Transaction support
- *   ✅ Detailed audit logging
- */
-export async function POST(request: NextRequest): Promise<NextResponse<CreateTeamResponse | { success: false; error: string; code: string; requestId: string }>> {
-  const requestId = crypto.randomUUID();
+interface ErrorResponse {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
+}
+
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const ListTeamsSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  clubId: z.string().optional(),
+  sport: z.nativeEnum(Sport).optional(),
+  status: z.nativeEnum(TeamStatus).optional(),
+  type: z.nativeEnum(TeamType).optional(),
+  ageGroup: z.string().optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'MIXED']).optional(),
+  search: z.string().min(1).max(100).optional(),
+  registrationOpen: z.coerce.boolean().optional(),
+  sortBy: z.enum(['name', 'createdAt', 'activePlayers', 'sport']).default('name'),
+  sortOrder: z.enum(['asc', 'desc']).default('asc'),
+});
+
+const CreateTeamSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
+  shortName: z.string().min(2).max(50).optional(),
+  description: z.string().max(2000).optional(),
+  clubId: z.string().min(1, 'Club ID is required'),
+  sport: z.nativeEnum(Sport),
+  type: z.nativeEnum(TeamType).default('SENIOR'),
+  ageGroup: z.string().max(50).optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'MIXED']).default('MIXED'),
+  logo: z.string().url().optional(),
+  badge: z.string().url().optional(),
+  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color').optional(),
+  secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color').optional(),
+  formation: z.nativeEnum(FormationType).optional(),
+  maxPlayers: z.number().int().min(5).max(100).default(30),
+  homeVenueId: z.string().optional(),
+  registrationOpen: z.boolean().default(true),
+  requiresApproval: z.boolean().default(true),
+  inviteOnly: z.boolean().default(false),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function createErrorResponse(
+  code: string,
+  message: string,
+  requestId: string,
+  status: number,
+  details?: Record<string, unknown>
+): NextResponse<ErrorResponse> {
+  return NextResponse.json(
+    {
+      success: false,
+      error: { code, message, details },
+      meta: { timestamp: new Date().toISOString(), requestId },
+    },
+    { status, headers: { 'X-Request-ID': requestId } }
+  );
+}
+
+function generateSlug(name: string, clubId: string): string {
+  const baseSlug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  const uniqueSuffix = clubId.substring(0, 6);
+  return `${baseSlug}-${uniqueSuffix}`;
+}
+
+async function canCreateTeam(
+  userId: string,
+  clubId: string
+): Promise<{ canCreate: boolean; role: string | null }> {
+  // Check if superadmin
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (user?.role === 'SUPERADMIN') {
+    return { canCreate: true, role: 'SUPERADMIN' };
+  }
+
+  // Check club membership
+  const membership = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: { in: ['OWNER', 'MANAGER'] },
+    },
+  });
+
+  if (membership) {
+    return { canCreate: true, role: membership.role };
+  }
+
+  // Check if club owner
+  const club = await prisma.club.findUnique({
+    where: { id: clubId },
+    select: { ownerId: true },
+  });
+
+  if (club?.ownerId === userId) {
+    return { canCreate: true, role: 'CLUB_OWNER' };
+  }
+
+  return { canCreate: false, role: null };
+}
+
+// =============================================================================
+// GET /api/teams
+// List teams with advanced filtering
+// =============================================================================
+
+export async function GET(
+  request: NextRequest
+): Promise<NextResponse<TeamsListResponse | ErrorResponse>> {
+  const requestId = generateRequestId();
 
   try {
-    // 1. Authentication check
+    // 1. Authentication
     const session = await auth();
-
-    if (!session) {
-      return Response.json(
-        {
-          success: false,
-          error: 'Unauthorized - Authentication required',
-          code: 'AUTH_REQUIRED',
-          requestId,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
+    if (!session?.user?.id) {
+      return createErrorResponse('UNAUTHORIZED', 'Authentication required', requestId, 401);
     }
 
-    // 2. Authorization check
-    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
-    const isClubManager = session.user.roles?.includes('CLUB_MANAGER');
-    const isClubOwner = session.user.roles?.includes('CLUB_OWNER');
-
-    if (!isSuperAdmin && !isClubManager && !isClubOwner) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden - Only SUPERADMIN, CLUB_MANAGER, or CLUB_OWNER can create teams',
-          code: 'INSUFFICIENT_PERMISSIONS',
-          requestId,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 3. Parse request body
-    let body: CreateTeamRequest;
-    try {
-      body = await parseJsonBody(request);
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid JSON in request body',
-          code: 'INVALID_JSON',
-          requestId,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 4. Validate required fields
-    validateRequired(body, ['name', 'shortCode', 'sport', 'clubId', 'managerId']);
-
-    // 5. Validate name
-    validateStringLength(body.name, 3, 100, 'Team name');
-
-    // 6. Validate short code format
-    validateStringLength(body.shortCode, 2, 10, 'Team short code');
-
-    if (!/^[A-Z0-9]+$/.test(body.shortCode)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Short code must contain only uppercase letters and numbers',
-          code: 'INVALID_SHORT_CODE',
-          requestId,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 7. Validate sport enum
-    const validSports = ['FOOTBALL', 'NETBALL', 'RUGBY', 'CRICKET', 'AMERICANFOOTBALL', 'BASKETBALL'];
-    if (!validSports.includes(body.sport)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Invalid sport. Must be one of: ${validSports.join(', ')}`,
-          code: 'INVALID_SPORT',
-          requestId,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 8. Validate colors if provided
-    if (body.colors) {
-      if (body.colors.primary) validateHexColor(body.colors.primary, 'Primary color');
-      if (body.colors.secondary) validateHexColor(body.colors.secondary, 'Secondary color');
-    }
-
-    // 9. Validate logo if provided
-    if (body.logo) validateUrl(body.logo, 'Logo URL');
-
-    // 10. Verify club exists
-    const club = await prisma.club.findUnique({
-      where: { id: body.clubId },
-      select: { id: true, name: true, ownerId: true, city: true, country: true },
-    });
-
-    if (!club) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Club "${body.clubId}" not found`,
-          code: 'CLUB_NOT_FOUND',
-          requestId,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 11. Verify manager exists
-    const manager = await prisma.user.findUnique({
-      where: { id: body.managerId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        roles: true,
-      },
-    });
-
-    if (!manager) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Manager "${body.managerId}" not found`,
-          code: 'MANAGER_NOT_FOUND',
-          requestId,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 12. Authorization: verify user owns club or is superadmin
-    if (!isSuperAdmin && session.user.id !== club.ownerId && !isClubManager) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden - You can only create teams for clubs you own or manage',
-          code: 'INSUFFICIENT_PERMISSIONS',
-          requestId,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 13. Check for duplicate short code within club
-    const existingTeam = await prisma.team.findFirst({
-      where: {
-        clubId: body.clubId,
-        shortCode: body.shortCode.toUpperCase(),
-      },
-      select: { id: true, name: true },
-    });
-
-    if (existingTeam) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Team with short code "${body.shortCode}" already exists in ${club.name}`,
-          code: 'DUPLICATE_SHORT_CODE',
-          requestId,
-        },
-        { status: 409, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 14. Create team with transaction
-    const team = await prisma.$transaction(async (tx) => {
-      return await tx.team.create({
-        data: {
-          name: body.name.trim(),
-          shortCode: body.shortCode.toUpperCase(),
-          sport: body.sport,
-          clubId: body.clubId,
-          managerId: body.managerId,
-          description: body.description?.trim() || null,
-          logo: body.logo || null,
-          colors: body.colors || { primary: '#000000', secondary: '#FFFFFF' },
-          founded: body.founded || new Date().getFullYear(),
-        },
-        include: {
-          club: { select: { id: true, name: true, city: true, country: true } },
-          manager: { select: { id: true, firstName: true, lastName: true, email: true } },
-        },
-      });
-    });
-
-    // 15. Create audit log
-    await createAuditLog({
-      userId: session.user.id,
-      action: 'TEAMCREATED',
-      resourceType: 'Team',
-      resourceId: team.id,
-      details: {
-        teamName: team.name,
-        clubName: club.name,
-        sport: team.sport,
-        shortCode: team.shortCode,
-        managerName: `${manager.firstName} ${manager.lastName}`,
-      },
-      requestId,
-    });
-
-    // 16. Build response
-    const response: CreateTeamResponse = {
-      success: true,
-      id: team.id,
-      name: team.name,
-      shortCode: team.shortCode,
-      sport: team.sport,
-      clubId: team.clubId,
-      club: team.club,
-      manager: {
-        id: team.manager.id,
-        name: `${team.manager.firstName} ${team.manager.lastName}`,
-        email: team.manager.email,
-      },
-      description: team.description,
-      logo: team.logo,
-      colors: team.colors,
-      founded: team.founded,
-      message: `Team "${team.name}" created successfully in ${club.name}`,
-      timestamp: new Date().toISOString(),
-      requestId,
+    // 2. Parse query parameters
+    const { searchParams } = new URL(request.url);
+    const queryParams = {
+      page: searchParams.get('page') || '1',
+      limit: searchParams.get('limit') || '25',
+      clubId: searchParams.get('clubId') || undefined,
+      sport: searchParams.get('sport') || undefined,
+      status: searchParams.get('status') || undefined,
+      type: searchParams.get('type') || undefined,
+      ageGroup: searchParams.get('ageGroup') || undefined,
+      gender: searchParams.get('gender') || undefined,
+      search: searchParams.get('search') || undefined,
+      registrationOpen: searchParams.get('registrationOpen') || undefined,
+      sortBy: searchParams.get('sortBy') || 'name',
+      sortOrder: searchParams.get('sortOrder') || 'asc',
     };
 
-    return NextResponse.json(response, {
-      status: 201,
-      headers: { 'X-Request-ID': requestId },
-    });
-  } catch (error) {
-    console.error('[POST /api/teams]', {
-      requestId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    return errorResponse(error as Error, {
-      headers: { 'X-Request-ID': requestId },
-    });
-  }
-}
-
-// ============================================================================
-// GET /api/teams - List Teams
-// ============================================================================
-
-/**
- * GET /api/teams
- * List teams with advanced filtering and pagination
- * 
- * Authorization: Any authenticated user
- * 
- * Query Parameters:
- *   - page: number (default: 1, min: 1)
- *   - limit: number (default: 25, min: 1, max: 100)
- *   - clubId: string (filter by club)
- *   - sport: string (filter by sport)
- *   - managerId: string (filter by manager)
- *   - search: string (search by name/code)
- *   - sortBy: 'created' | 'name' (default: 'created')
- *   - sortOrder: 'asc' | 'desc' (default: 'desc')
- * 
- * Returns: 200 OK with paginated teams
- * 
- * Features:
- *   ✅ Advanced pagination
- *   ✅ Multiple filter options
- *   ✅ Text search
- *   ✅ Flexible sorting
- *   ✅ Rich metadata
- */
-export async function GET(request: NextRequest): Promise<NextResponse<TeamsListResponse | { success: false; error: string; code: string; requestId: string }>> {
-  const requestId = crypto.randomUUID();
-
-  try {
-    // 1. Authentication check
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized - Authentication required',
-          code: 'AUTH_REQUIRED',
-          requestId,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 2. Parse and validate pagination parameters
-    const { searchParams } = new URL(request.url);
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '25', 10)));
+    const validatedParams = ListTeamsSchema.parse(queryParams);
+    const {
+      page,
+      limit,
+      clubId,
+      sport,
+      status,
+      type,
+      ageGroup,
+      gender,
+      search,
+      registrationOpen,
+      sortBy,
+      sortOrder,
+    } = validatedParams;
     const skip = (page - 1) * limit;
 
-    // 3. Extract filter parameters
-    const clubId = searchParams.get('clubId');
-    const sport = searchParams.get('sport');
-    const managerId = searchParams.get('managerId');
-    const search = searchParams.get('search')?.trim();
-    const sortBy = searchParams.get('sortBy') || 'created';
-    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
+    // 3. Build where clause
+    const where: Prisma.TeamWhereInput = {
+      deletedAt: null,
+    };
 
-    // 4. Build where clause
-    const where: any = {};
+    if (clubId) {
+      where.clubId = clubId;
+    }
 
-    if (clubId) where.clubId = clubId;
-    if (sport) where.sport = sport;
-    if (managerId) where.managerId = managerId;
+    if (sport) {
+      where.sport = sport;
+    }
 
-    // 5. Add search filter
+    if (status) {
+      where.status = status;
+    } else {
+      // Default: exclude archived teams
+      where.status = { not: 'ARCHIVED' };
+    }
+
+    if (type) {
+      where.type = type;
+    }
+
+    if (ageGroup) {
+      where.ageGroup = { contains: ageGroup, mode: 'insensitive' };
+    }
+
+    if (gender) {
+      where.gender = gender;
+    }
+
+    if (registrationOpen !== undefined) {
+      where.registrationOpen = registrationOpen;
+    }
+
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { shortCode: { contains: search.toUpperCase() } },
+        { shortName: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
+        { club: { name: { contains: search, mode: 'insensitive' } } },
       ];
     }
 
-    // 6. Get total count for pagination
+    // 4. Get total count
     const total = await prisma.team.count({ where });
-    const totalPages = Math.ceil(total / limit);
 
-    // 7. Fetch teams with relationships
+    // 5. Fetch teams
     const teams = await prisma.team.findMany({
       where,
+      orderBy: { [sortBy]: sortOrder },
+      skip,
+      take: limit,
       include: {
         club: {
           select: {
             id: true,
             name: true,
+            shortName: true,
+            logo: true,
             city: true,
             country: true,
-            logo: true,
+            primaryColor: true,
+            secondaryColor: true,
           },
         },
-        manager: {
+        _count: {
           select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+            coachAssignments: { where: { isActive: true } },
+            competitionTeams: { where: { isActive: true, isWithdrawn: false } },
+            homeMatches: { where: { status: 'COMPLETED', deletedAt: null } },
+            awayMatches: { where: { status: 'COMPLETED', deletedAt: null } },
           },
-        },
-        members: {
-          select: { id: true },
-        },
-        matches: {
-          select: { id: true },
-        },
-        leagues: {
-          select: { id: true },
         },
       },
-      orderBy: sortBy === 'name' ? { name: sortOrder } : { createdAt: sortOrder },
-      skip,
-      take: limit,
     });
 
-    // 8. Format teams response
+    // 6. Format response
     const formattedTeams: TeamListItem[] = teams.map((team) => ({
       id: team.id,
       name: team.name,
-      shortCode: team.shortCode,
+      shortName: team.shortName,
+      slug: team.slug,
+      description: team.description,
+      logo: team.logo,
+      badge: team.badge,
+      type: team.type,
+      status: team.status,
       sport: team.sport,
+      ageGroup: team.ageGroup,
+      gender: team.gender,
+      colors: {
+        primary: team.primaryColor || team.club.primaryColor,
+        secondary: team.secondaryColor || team.club.secondaryColor,
+      },
+      maxPlayers: team.maxPlayers,
+      activePlayers: team.activePlayers,
+      availableSlots: Math.max(0, team.maxPlayers - team.activePlayers),
+      registrationOpen: team.registrationOpen,
+      isActive: team.isActive,
       club: {
         id: team.club.id,
         name: team.club.name,
+        shortName: team.club.shortName,
+        logo: team.club.logo,
         city: team.club.city,
         country: team.club.country,
-        logo: team.club.logo,
-        location: `${team.club.city || 'Unknown'}, ${team.club.country}`,
       },
-      manager: {
-        id: team.manager.id,
-        name: `${team.manager.firstName} ${team.manager.lastName}`,
-        email: team.manager.email,
-      },
-      description: team.description,
-      logo: team.logo,
-      colors: team.colors,
-      founded: team.founded,
       stats: {
-        playerCount: team.members.length,
-        matchCount: team.matches.length,
-        leagueCount: team.leagues.length,
+        coachCount: team._count.coachAssignments,
+        competitionCount: team._count.competitionTeams,
+        matchesPlayed: team._count.homeMatches + team._count.awayMatches,
       },
       createdAt: team.createdAt.toISOString(),
       updatedAt: team.updatedAt.toISOString(),
     }));
 
-    // 9. Create audit log
-    await createAuditLog({
-      userId: session.user.id,
-      action: 'TEAMSVIEWED',
-      resourceType: 'Team',
-      details: {
-        filters: {
-          clubId: clubId || 'all',
-          sport: sport || 'all',
-          managerId: managerId || 'all',
-          search: search || 'none',
-        },
-        pageSize: limit,
-        currentPage: page,
-      },
-      requestId,
-    });
+    // 7. Build response
+    const totalPages = Math.ceil(total / limit);
 
-    // 10. Build response
     const response: TeamsListResponse = {
       success: true,
-      teams: formattedTeams,
+      data: formattedTeams,
       pagination: {
         page,
         limit,
@@ -576,21 +410,18 @@ export async function GET(request: NextRequest): Promise<NextResponse<TeamsListR
         totalPages,
         hasNextPage: page < totalPages,
         hasPreviousPage: page > 1,
-        nextPage: page < totalPages ? page + 1 : null,
-        previousPage: page > 1 ? page - 1 : null,
       },
       filters: {
-        clubId,
-        sport,
-        managerId,
-        search,
+        clubId: clubId || null,
+        sport: sport || null,
+        status: status || null,
+        type: type || null,
+        search: search || null,
       },
-      sort: {
-        sortBy,
-        sortOrder,
+      meta: {
+        timestamp: new Date().toISOString(),
+        requestId,
       },
-      timestamp: new Date().toISOString(),
-      requestId,
     };
 
     return NextResponse.json(response, {
@@ -598,14 +429,232 @@ export async function GET(request: NextRequest): Promise<NextResponse<TeamsListR
       headers: { 'X-Request-ID': requestId },
     });
   } catch (error) {
-    console.error('[GET /api/teams]', {
-      requestId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+    console.error(`[${requestId}] GET /api/teams error:`, error);
+
+    if (error instanceof z.ZodError) {
+      return createErrorResponse('VALIDATION_ERROR', 'Invalid query parameters', requestId, 400, {
+        errors: error.flatten().fieldErrors,
+      });
+    }
+
+    return createErrorResponse('INTERNAL_ERROR', 'Failed to fetch teams', requestId, 500);
+  }
+}
+
+// =============================================================================
+// POST /api/teams
+// Create a new team
+// =============================================================================
+
+export async function POST(
+  request: NextRequest
+): Promise<NextResponse<CreateTeamResponse | ErrorResponse>> {
+  const requestId = generateRequestId();
+
+  try {
+    // 1. Authentication
+    const session = await auth();
+    if (!session?.user?.id) {
+      return createErrorResponse('UNAUTHORIZED', 'Authentication required', requestId, 401);
+    }
+
+    // 2. Parse and validate request body
+    const body = await request.json();
+    const validatedData = CreateTeamSchema.parse(body);
+
+    // 3. Verify club exists
+    const club = await prisma.club.findUnique({
+      where: { id: validatedData.clubId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        shortName: true,
+        sport: true,
+        ownerId: true,
+        primaryColor: true,
+        secondaryColor: true,
+        maxTeams: true,
+        _count: {
+          select: { teams: { where: { deletedAt: null } } },
+        },
+      },
     });
 
-    return errorResponse(error as Error, {
+    if (!club) {
+      return createErrorResponse('CLUB_NOT_FOUND', 'Club not found', requestId, 404);
+    }
+
+    // 4. Authorization
+    const { canCreate, role } = await canCreateTeam(session.user.id, validatedData.clubId);
+
+    if (!canCreate) {
+      return createErrorResponse(
+        'FORBIDDEN',
+        'You do not have permission to create teams for this club',
+        requestId,
+        403
+      );
+    }
+
+    // 5. Validate sport matches club sport (if club has a primary sport)
+    if (club.sport && club.sport !== validatedData.sport) {
+      return createErrorResponse(
+        'SPORT_MISMATCH',
+        `Team sport must match club's primary sport (${club.sport})`,
+        requestId,
+        400
+      );
+    }
+
+    // 6. Check team limit for club
+    if (club.maxTeams && club._count.teams >= club.maxTeams) {
+      return createErrorResponse(
+        'TEAM_LIMIT_REACHED',
+        `Club has reached maximum team limit of ${club.maxTeams}`,
+        requestId,
+        409
+      );
+    }
+
+    // 7. Generate unique slug
+    let slug = generateSlug(validatedData.name, validatedData.clubId);
+    const existingSlug = await prisma.team.findUnique({ where: { slug } });
+    if (existingSlug) {
+      slug = `${slug}-${Date.now().toString(36)}`;
+    }
+
+    // 8. Check for duplicate name within club
+    const existingTeam = await prisma.team.findFirst({
+      where: {
+        clubId: validatedData.clubId,
+        name: { equals: validatedData.name, mode: 'insensitive' },
+        deletedAt: null,
+      },
+    });
+
+    if (existingTeam) {
+      return createErrorResponse(
+        'DUPLICATE_NAME',
+        `A team named "${validatedData.name}" already exists in this club`,
+        requestId,
+        409
+      );
+    }
+
+    // 9. Validate venue if provided
+    if (validatedData.homeVenueId) {
+      const venue = await prisma.venue.findUnique({
+        where: { id: validatedData.homeVenueId },
+        select: { id: true, clubId: true },
+      });
+
+      if (!venue) {
+        return createErrorResponse('VENUE_NOT_FOUND', 'Home venue not found', requestId, 404);
+      }
+
+      // Venue should belong to the same club or be publicly available
+      if (venue.clubId && venue.clubId !== validatedData.clubId) {
+        return createErrorResponse(
+          'INVALID_VENUE',
+          'Home venue must belong to the same club',
+          requestId,
+          400
+        );
+      }
+    }
+
+    // 10. Create team
+    const team = await prisma.team.create({
+      data: {
+        name: validatedData.name.trim(),
+        shortName: validatedData.shortName?.trim() || null,
+        slug,
+        description: validatedData.description?.trim() || null,
+        clubId: validatedData.clubId,
+        sport: validatedData.sport,
+        type: validatedData.type,
+        ageGroup: validatedData.ageGroup?.trim() || null,
+        gender: validatedData.gender,
+        logo: validatedData.logo || null,
+        badge: validatedData.badge || null,
+        primaryColor: validatedData.primaryColor || club.primaryColor,
+        secondaryColor: validatedData.secondaryColor || club.secondaryColor,
+        formation: validatedData.formation || null,
+        maxPlayers: validatedData.maxPlayers,
+        homeVenueId: validatedData.homeVenueId || null,
+        registrationOpen: validatedData.registrationOpen,
+        requiresApproval: validatedData.requiresApproval,
+        inviteOnly: validatedData.inviteOnly,
+        status: 'ACTIVE',
+        isActive: true,
+        activePlayers: 0,
+      },
+      include: {
+        club: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // 11. Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'TEAM_CREATED',
+        resourceType: 'Team',
+        resourceId: team.id,
+        details: {
+          teamName: team.name,
+          clubId: club.id,
+          clubName: club.name,
+          sport: team.sport,
+          type: team.type,
+          createdBy: role,
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+        userAgent: request.headers.get('user-agent') || 'unknown',
+      },
+    });
+
+    // 12. Build response
+    const response: CreateTeamResponse = {
+      success: true,
+      data: {
+        id: team.id,
+        name: team.name,
+        shortName: team.shortName,
+        slug: team.slug,
+        sport: team.sport,
+        type: team.type,
+        status: team.status,
+        club: {
+          id: team.club.id,
+          name: team.club.name,
+        },
+      },
+      message: `Team "${team.name}" created successfully`,
+      meta: {
+        timestamp: new Date().toISOString(),
+        requestId,
+      },
+    };
+
+    return NextResponse.json(response, {
+      status: 201,
       headers: { 'X-Request-ID': requestId },
     });
+  } catch (error) {
+    console.error(`[${requestId}] POST /api/teams error:`, error);
+
+    if (error instanceof z.ZodError) {
+      return createErrorResponse('VALIDATION_ERROR', 'Invalid request data', requestId, 400, {
+        errors: error.flatten().fieldErrors,
+      });
+    }
+
+    return createErrorResponse('INTERNAL_ERROR', 'Failed to create team', requestId, 500);
   }
 }

@@ -1,234 +1,525 @@
-// ============================================================================
-// WORLD-CLASS NEW: /src/app/api/teams/[teamId]/standings/route.ts
-// Team League Standings & Performance Analytics
-// VERSION: 3.0 - Production Grade
-// ============================================================================
+// =============================================================================
+// 🏆 TEAM STANDINGS API - PitchConnect v7.9.0
+// =============================================================================
+// Enterprise-grade competition standings and performance analytics
+// Multi-sport support | Competition model | Schema-aligned
+// =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/auth';
+import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { NotFoundError, BadRequestError } from '@/lib/api/errors';
-import { logger } from '@/lib/api/logger';
+import { Sport, CompetitionType } from '@prisma/client';
 
-interface StandingsParams {
+// =============================================================================
+// TYPES & INTERFACES
+// =============================================================================
+
+interface RouteParams {
   params: { teamId: string };
 }
 
-// ============================================================================
-// GET /api/teams/[teamId]/standings - Get Team League Standings
-// Query Params:
-//   - leagueId: string (optional, if multi-league)
-//   - limit: number (optional, surrounding teams, default: 10)
-// ============================================================================
+interface StandingEntry {
+  position: number;
+  teamId: string;
+  teamName: string | null;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+  points: number;
+  form: string[];
+  isCurrentTeam: boolean;
+  metrics: {
+    pointsPerMatch: string;
+    winRate: string;
+    goalsPerMatch: string;
+    cleanSheets: number;
+  };
+}
 
-export async function GET(request: NextRequest, { params }: StandingsParams) {
-  const requestId = crypto.randomUUID();
+interface CompetitionStandingsData {
+  competitionId: string;
+  competition: {
+    id: string;
+    name: string;
+    shortName: string | null;
+    type: CompetitionType;
+    sport: Sport;
+    season: string | null;
+    logo: string | null;
+  };
+  group: string | null;
+  totalTeams: number;
+  teamStanding: {
+    position: number;
+    points: number;
+    played: number;
+    records: {
+      won: number;
+      drawn: number;
+      lost: number;
+    };
+    goals: {
+      for: number;
+      against: number;
+      difference: number;
+    };
+    form: string[];
+    homeRecord: {
+      won: number;
+      drawn: number;
+      lost: number;
+    };
+    awayRecord: {
+      won: number;
+      drawn: number;
+      lost: number;
+    };
+    metrics: {
+      winRate: string;
+      pointsPerMatch: string;
+      goalsPerMatch: string;
+      goalsConcededPerMatch: string;
+      cleanSheets: number;
+    };
+    zone: 'PROMOTION' | 'PLAYOFF' | 'SAFE' | 'RELEGATION' | null;
+  };
+  surrounding: StandingEntry[];
+  lastUpdated: string;
+}
+
+interface StandingsResponse {
+  success: true;
+  data: {
+    team: {
+      id: string;
+      name: string;
+      sport: Sport;
+      clubName: string;
+    };
+    standings: CompetitionStandingsData[];
+    summary: {
+      competitionsParticipating: number;
+      bestPosition: number | null;
+      worstPosition: number | null;
+      averagePosition: string | null;
+      totalPoints: number;
+      totalMatches: number;
+      overallRecord: {
+        won: number;
+        drawn: number;
+        lost: number;
+      };
+    };
+  };
+  query: {
+    competitionId: string | null;
+    surroundingTeamsLimit: number;
+    group: string | null;
+  };
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
+}
+
+interface ErrorResponse {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function createErrorResponse(
+  code: string,
+  message: string,
+  requestId: string,
+  status: number,
+  details?: Record<string, unknown>
+): NextResponse<ErrorResponse> {
+  return NextResponse.json(
+    {
+      success: false,
+      error: { code, message, details },
+      meta: { timestamp: new Date().toISOString(), requestId },
+    },
+    { status, headers: { 'X-Request-ID': requestId } }
+  );
+}
+
+/**
+ * Determine team zone based on position in table
+ */
+function getTeamZone(
+  position: number,
+  totalTeams: number,
+  competitionType: CompetitionType
+): 'PROMOTION' | 'PLAYOFF' | 'SAFE' | 'RELEGATION' | null {
+  if (competitionType !== 'LEAGUE') return null;
+  if (totalTeams < 4) return 'SAFE';
+
+  const promotionZone = Math.ceil(totalTeams * 0.1); // Top 10%
+  const playoffZone = Math.ceil(totalTeams * 0.25); // Top 25%
+  const relegationZone = Math.ceil(totalTeams * 0.15); // Bottom 15%
+
+  if (position <= promotionZone) return 'PROMOTION';
+  if (position <= playoffZone) return 'PLAYOFF';
+  if (position > totalTeams - relegationZone) return 'RELEGATION';
+  return 'SAFE';
+}
+
+/**
+ * Format form array from match results
+ */
+function formatForm(formArray: string[]): string[] {
+  // Take last 5 results, ensure valid values
+  return formArray
+    .slice(-5)
+    .map((result) => {
+      const upper = result.toUpperCase();
+      if (['W', 'D', 'L'].includes(upper)) return upper;
+      return '?';
+    });
+}
+
+// =============================================================================
+// GET /api/teams/[teamId]/standings
+// Get team standings in all competitions
+// =============================================================================
+
+export async function GET(
+  request: NextRequest,
+  { params }: RouteParams
+): Promise<NextResponse<StandingsResponse | ErrorResponse>> {
+  const requestId = generateRequestId();
 
   try {
-    logger.info(`[${requestId}] GET /api/teams/[${params.teamId}]/standings`);
-
+    // 1. Authentication
     const session = await auth();
-
-    if (!session) {
-      return Response.json(
-        {
-          error: 'Unauthorized',
-          message: 'Authentication required',
-          code: 'AUTH_REQUIRED',
-          requestId,
-        },
-        { status: 401 }
-      );
+    if (!session?.user?.id) {
+      return createErrorResponse('UNAUTHORIZED', 'Authentication required', requestId, 401);
     }
 
-    // ✅ Validate team exists
+    const { teamId } = params;
+
+    // 2. Parse query parameters
+    const { searchParams } = new URL(request.url);
+    const competitionId = searchParams.get('competitionId');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '5', 10), 20);
+    const group = searchParams.get('group');
+
+    // 3. Validate team exists
     const team = await prisma.team.findUnique({
-      where: { id: params.teamId },
-      select: { id: true, name: true, leagueTeams: { select: { leagueId: true } } },
+      where: { id: teamId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        sport: true,
+        clubId: true,
+        club: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        competitionTeams: {
+          where: { isActive: true, isWithdrawn: false },
+          select: { competitionId: true, group: true },
+        },
+      },
     });
 
     if (!team) {
-      throw new NotFoundError('Team', params.teamId);
+      return createErrorResponse('TEAM_NOT_FOUND', 'Team not found', requestId, 404);
     }
 
-    // ✅ Parse query parameters
-    const url = new URL(request.url);
-    const leagueId = url.searchParams.get('leagueId');
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10), 20);
+    // 4. Determine which competitions to query
+    let competitionsToQuery: { competitionId: string; group: string | null }[] = [];
 
-    // ✅ Determine which league(s) to fetch standings for
-    let leaguesToQuery: string[] = [];
-
-    if (leagueId) {
-      // Verify team is in this league
-      const leagueTeam = team.leagueTeams.find((lt) => lt.leagueId === leagueId);
-      if (!leagueTeam) {
-        throw new BadRequestError('Team is not a member of this league');
+    if (competitionId) {
+      // Verify team is in this competition
+      const competitionTeam = team.competitionTeams.find(
+        (ct) => ct.competitionId === competitionId
+      );
+      if (!competitionTeam) {
+        return createErrorResponse(
+          'NOT_IN_COMPETITION',
+          'Team is not participating in this competition',
+          requestId,
+          400
+        );
       }
-      leaguesToQuery = [leagueId];
+      competitionsToQuery = [{ competitionId, group: group || competitionTeam.group }];
     } else {
-      // Get all leagues team is in
-      leaguesToQuery = team.leagueTeams.map((lt) => lt.leagueId);
+      // Get all competitions team is in
+      competitionsToQuery = team.competitionTeams.map((ct) => ({
+        competitionId: ct.competitionId,
+        group: ct.group,
+      }));
     }
 
-    // ✅ Fetch standings for each league
-    const standingsData: any[] = [];
-
-    for (const lId of leaguesToQuery) {
-      // Get all standings for this league
-      const allStandings = await prisma.standings.findMany({
-        where: { leagueId: lId },
-        include: {
-          league: { select: { id: true, name: true, season: true } },
+    if (competitionsToQuery.length === 0) {
+      // Team not in any competitions - return empty but valid response
+      const response: StandingsResponse = {
+        success: true,
+        data: {
+          team: {
+            id: team.id,
+            name: team.name,
+            sport: team.sport,
+            clubName: team.club.name,
+          },
+          standings: [],
+          summary: {
+            competitionsParticipating: 0,
+            bestPosition: null,
+            worstPosition: null,
+            averagePosition: null,
+            totalPoints: 0,
+            totalMatches: 0,
+            overallRecord: { won: 0, drawn: 0, lost: 0 },
+          },
         },
+        query: {
+          competitionId: competitionId || null,
+          surroundingTeamsLimit: limit,
+          group: group || null,
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          requestId,
+        },
+      };
+
+      return NextResponse.json(response, {
+        status: 200,
+        headers: { 'X-Request-ID': requestId },
+      });
+    }
+
+    // 5. Fetch standings for each competition
+    const standingsData: CompetitionStandingsData[] = [];
+    let totalWon = 0,
+      totalDrawn = 0,
+      totalLost = 0,
+      totalPoints = 0,
+      totalMatches = 0;
+    const positions: number[] = [];
+
+    for (const { competitionId: compId, group: compGroup } of competitionsToQuery) {
+      // Get competition details
+      const competition = await prisma.competition.findUnique({
+        where: { id: compId },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          type: true,
+          sport: true,
+          logo: true,
+          season: {
+            select: { name: true },
+          },
+        },
+      });
+
+      if (!competition) continue;
+
+      // Build where clause for standings
+      const standingsWhere: any = { competitionId: compId };
+      if (compGroup) {
+        standingsWhere.group = compGroup;
+      }
+
+      // Get all standings for this competition/group
+      const allStandings = await prisma.competitionStanding.findMany({
+        where: standingsWhere,
         orderBy: { position: 'asc' },
+        include: {
+          // We need team names - get through CompetitionTeam relation
+        },
       });
 
       if (allStandings.length === 0) continue;
 
-      // Find team's position
-      const teamStanding = allStandings.find((s) => s.teamId === params.teamId);
+      // Find team's standing
+      const teamStanding = allStandings.find((s) => s.teamId === teamId);
+      if (!teamStanding) continue;
 
-      if (teamStanding) {
-        // Get surrounding teams
-        const teamPosition = teamStanding.position;
-        const startPos = Math.max(0, teamPosition - limit);
-        const endPos = Math.min(allStandings.length, teamPosition + limit + 1);
-        const surroundingStandings = allStandings.slice(startPos, endPos);
+      // Get team names for standings
+      const teamIds = allStandings.map((s) => s.teamId);
+      const teams = await prisma.team.findMany({
+        where: { id: { in: teamIds } },
+        select: { id: true, name: true },
+      });
+      const teamNameMap = new Map(teams.map((t) => [t.id, t.name]));
 
-        // Format standings
-        const formattedStandings = surroundingStandings.map((standing) => ({
-          position: standing.position,
-          teamId: standing.teamId,
-          played: standing.played,
-          won: standing.won,
-          drawn: standing.drawn,
-          lost: standing.lost,
-          goalsFor: standing.goalsFor,
-          goalsAgainst: standing.goalsAgainst,
-          goalDifference: standing.goalDifference,
-          points: standing.points,
-          form: standing.form,
-          isTeam: standing.teamId === params.teamId,
-          pointsPerMatch: standing.played > 0 ? (standing.points / standing.played).toFixed(2) : '0.00',
+      // Calculate surrounding teams
+      const teamPosition = teamStanding.position;
+      const startIndex = Math.max(0, teamPosition - limit - 1);
+      const endIndex = Math.min(allStandings.length, teamPosition + limit);
+      const surroundingStandings = allStandings.slice(startIndex, endIndex);
+
+      // Format surrounding standings
+      const formattedSurrounding: StandingEntry[] = surroundingStandings.map((standing) => ({
+        position: standing.position,
+        teamId: standing.teamId,
+        teamName: teamNameMap.get(standing.teamId) || null,
+        played: standing.played,
+        won: standing.won,
+        drawn: standing.drawn,
+        lost: standing.lost,
+        goalsFor: standing.goalsFor,
+        goalsAgainst: standing.goalsAgainst,
+        goalDifference: standing.goalDifference,
+        points: standing.points,
+        form: formatForm(standing.form),
+        isCurrentTeam: standing.teamId === teamId,
+        metrics: {
+          pointsPerMatch:
+            standing.played > 0 ? (standing.points / standing.played).toFixed(2) : '0.00',
           winRate:
             standing.played > 0
               ? ((standing.won / standing.played) * 100).toFixed(1)
               : '0.0',
-        }));
+          goalsPerMatch:
+            standing.played > 0 ? (standing.goalsFor / standing.played).toFixed(2) : '0.00',
+          cleanSheets: standing.cleanSheets,
+        },
+      }));
 
-        standingsData.push({
-          leagueId: lId,
-          league: allStandings[0].league,
-          totalTeams: allStandings.length,
-          teamStanding: {
-            position: teamStanding.position,
-            points: teamStanding.points,
-            played: teamStanding.played,
-            records: {
-              won: teamStanding.won,
-              drawn: teamStanding.drawn,
-              lost: teamStanding.lost,
-            },
-            goals: {
-              for: teamStanding.goalsFor,
-              against: teamStanding.goalsAgainst,
-              difference: teamStanding.goalDifference,
-            },
-            form: teamStanding.form,
-            metrics: {
-              winRate:
-                teamStanding.played > 0
-                  ? ((teamStanding.won / teamStanding.played) * 100).toFixed(1)
-                  : '0.0',
-              pointsPerMatch:
-                teamStanding.played > 0
-                  ? (teamStanding.points / teamStanding.played).toFixed(2)
-                  : '0.00',
-              goalsPerMatch:
-                teamStanding.played > 0
-                  ? (teamStanding.goalsFor / teamStanding.played).toFixed(2)
-                  : '0.00',
-            },
+      // Calculate team metrics
+      const played = teamStanding.played;
+      const zone = getTeamZone(teamStanding.position, allStandings.length, competition.type);
+
+      standingsData.push({
+        competitionId: compId,
+        competition: {
+          id: competition.id,
+          name: competition.name,
+          shortName: competition.shortName,
+          type: competition.type,
+          sport: competition.sport,
+          season: competition.season?.name || null,
+          logo: competition.logo,
+        },
+        group: compGroup,
+        totalTeams: allStandings.length,
+        teamStanding: {
+          position: teamStanding.position,
+          points: teamStanding.points,
+          played: teamStanding.played,
+          records: {
+            won: teamStanding.won,
+            drawn: teamStanding.drawn,
+            lost: teamStanding.lost,
           },
-          surrounding: formattedStandings,
-        });
-      }
+          goals: {
+            for: teamStanding.goalsFor,
+            against: teamStanding.goalsAgainst,
+            difference: teamStanding.goalDifference,
+          },
+          form: formatForm(teamStanding.form),
+          homeRecord: {
+            won: teamStanding.homeWon,
+            drawn: teamStanding.homeDrawn,
+            lost: teamStanding.homeLost,
+          },
+          awayRecord: {
+            won: teamStanding.awayWon,
+            drawn: teamStanding.awayDrawn,
+            lost: teamStanding.awayLost,
+          },
+          metrics: {
+            winRate: played > 0 ? ((teamStanding.won / played) * 100).toFixed(1) : '0.0',
+            pointsPerMatch: played > 0 ? (teamStanding.points / played).toFixed(2) : '0.00',
+            goalsPerMatch: played > 0 ? (teamStanding.goalsFor / played).toFixed(2) : '0.00',
+            goalsConcededPerMatch:
+              played > 0 ? (teamStanding.goalsAgainst / played).toFixed(2) : '0.00',
+            cleanSheets: teamStanding.cleanSheets,
+          },
+          zone,
+        },
+        surrounding: formattedSurrounding,
+        lastUpdated: teamStanding.lastUpdated.toISOString(),
+      });
+
+      // Accumulate totals for summary
+      totalWon += teamStanding.won;
+      totalDrawn += teamStanding.drawn;
+      totalLost += teamStanding.lost;
+      totalPoints += teamStanding.points;
+      totalMatches += teamStanding.played;
+      positions.push(teamStanding.position);
     }
 
-    // ✅ Build response
-    const response = {
+    // 6. Calculate summary
+    const bestPosition = positions.length > 0 ? Math.min(...positions) : null;
+    const worstPosition = positions.length > 0 ? Math.max(...positions) : null;
+    const averagePosition =
+      positions.length > 0
+        ? (positions.reduce((a, b) => a + b, 0) / positions.length).toFixed(1)
+        : null;
+
+    // 7. Build response
+    const response: StandingsResponse = {
       success: true,
       data: {
         team: {
           id: team.id,
           name: team.name,
+          sport: team.sport,
+          clubName: team.club.name,
         },
         standings: standingsData,
         summary: {
-          leaguesParticipating: leaguesToQuery.length,
-          averagePosition:
-            standingsData.length > 0
-              ? (
-                  standingsData.reduce((sum, s) => sum + s.teamStanding.position, 0) /
-                  standingsData.length
-                ).toFixed(1)
-              : null,
-          averagePoints:
-            standingsData.length > 0
-              ? (
-                  standingsData.reduce((sum, s) => sum + s.teamStanding.points, 0) /
-                  standingsData.length
-                ).toFixed(0)
-              : 0,
+          competitionsParticipating: standingsData.length,
+          bestPosition,
+          worstPosition,
+          averagePosition,
+          totalPoints,
+          totalMatches,
+          overallRecord: {
+            won: totalWon,
+            drawn: totalDrawn,
+            lost: totalLost,
+          },
         },
-        query: {
-          leagueId: leagueId || 'all',
-          surroundingTeamsLimit: limit,
-        },
-        metadata: {
-          teamId: params.teamId,
-          requestId,
-          timestamp: new Date().toISOString(),
-          leaguesReturned: standingsData.length,
-        },
+      },
+      query: {
+        competitionId: competitionId || null,
+        surroundingTeamsLimit: limit,
+        group: group || null,
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+        requestId,
       },
     };
 
-    logger.info(
-      `[${requestId}] Successfully retrieved standings for team ${params.teamId}`,
-      { leaguesCount: standingsData.length }
-    );
-
-    return NextResponse.json(response, { status: 200 });
+    return NextResponse.json(response, {
+      status: 200,
+      headers: { 'X-Request-ID': requestId },
+    });
   } catch (error) {
-    logger.error(
-      `[${requestId}] Error in GET /api/teams/[${params.teamId}]/standings:`,
-      error
-    );
-
-    if (error instanceof NotFoundError) {
-      return NextResponse.json(
-        { error: 'Not Found', message: error.message, code: 'TEAM_NOT_FOUND', requestId },
-        { status: 404 }
-      );
-    }
-
-    if (error instanceof BadRequestError) {
-      return NextResponse.json(
-        { error: 'Bad Request', message: error.message, code: 'INVALID_INPUT', requestId },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        message: 'Failed to retrieve standings',
-        code: 'SERVER_ERROR',
-        requestId,
-      },
-      { status: 500 }
-    );
+    console.error(`[${requestId}] GET /api/teams/[teamId]/standings error:`, error);
+    return createErrorResponse('INTERNAL_ERROR', 'Failed to retrieve standings', requestId, 500);
   }
 }

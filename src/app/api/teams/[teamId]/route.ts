@@ -1,386 +1,652 @@
-// ============================================================================
-// 🏆 ENHANCED: src/app/api/teams/[teamId]/route.ts
-// GET - Complete team details | PATCH - Update team | DELETE - Archive team
-// VERSION: 3.5 - World-Class Enhanced
-// ============================================================================
+// =============================================================================
+// 🏟️ TEAM API - PitchConnect v7.9.0
+// =============================================================================
+// Enterprise-grade team management: GET, PATCH, DELETE
+// Multi-sport support | Full relations | Schema-aligned
+// =============================================================================
 
-import { auth } from '@/auth';
 import { NextRequest, NextResponse } from 'next/server';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { parseJsonBody, validateStringLength } from '@/lib/api/validation';
-import { errorResponse } from '@/lib/api/responses';
-import { NotFoundError, ForbiddenError, BadRequestError, UnauthorizedError } from '@/lib/api/errors';
-import { logResourceUpdated, createAuditLog } from '@/lib/api/audit';
+import { Prisma, Sport, TeamType, TeamStatus, Position, FormationType } from '@prisma/client';
+import { z } from 'zod';
 
-// ============================================================================
+// =============================================================================
 // TYPES & INTERFACES
-// ============================================================================
+// =============================================================================
 
-interface TeamMember {
+interface RouteParams {
+  params: { teamId: string };
+}
+
+interface TeamMemberSummary {
   id: string;
   firstName: string;
   lastName: string;
   fullName: string;
   avatar: string | null;
-  number?: number;
-  isCaptain?: boolean;
-  joinedAt: string;
+  position: Position | null;
+  jerseyNumber: number | null;
+  isCaptain: boolean;
+  isViceCaptain: boolean;
   status: string;
-  age?: number;
-  nationality?: string;
+}
+
+interface CoachSummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  avatar: string | null;
+  role: string;
+  isPrimary: boolean;
+}
+
+interface MatchSummary {
+  id: string;
+  date: string;
+  opponent: {
+    id: string;
+    name: string;
+    logo: string | null;
+  };
+  isHome: boolean;
+  homeScore: number | null;
+  awayScore: number | null;
+  result: 'W' | 'D' | 'L' | 'PENDING';
+  status: string;
+  competition: string | null;
 }
 
 interface TeamDetailResponse {
   success: true;
-  id: string;
-  name: string;
-  shortCode: string;
-  sport: string;
-  club: {
+  data: {
     id: string;
     name: string;
-    city: string | null;
-    country: string;
-  };
-  manager: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  description: string | null;
-  logo: string | null;
-  colors: Record<string, any>;
-  founded: number;
-  status: string;
-  roster: {
-    total: number;
-    players: TeamMember[];
-    coaches: TeamMember[];
-    staff: TeamMember[];
-    captain: TeamMember | null;
-  };
-  leagues: Array<{
-    id: string;
-    name: string;
-    season: number;
-    sport: string;
-  }>;
-  statistics: {
-    matchesPlayed: number;
-    wins: number;
-    draws: number;
-    losses: number;
-    winRate: string;
-    goalsFor: number;
-    goalsAgainst: number;
-    goalDifference: number;
-    points: number;
-  };
-  recentMatches: Array<{
-    id: string;
-    date: string;
-    opponent: {
+    shortName: string | null;
+    slug: string;
+    description: string | null;
+    logo: string | null;
+    badge: string | null;
+    type: TeamType;
+    status: TeamStatus;
+    sport: Sport;
+    ageGroup: string | null;
+    gender: string;
+    colors: {
+      primary: string | null;
+      secondary: string | null;
+    };
+    formation: FormationType | null;
+    homeVenueId: string | null;
+    maxPlayers: number;
+    activePlayers: number;
+    registrationOpen: boolean;
+    requiresApproval: boolean;
+    inviteOnly: boolean;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    club: {
       id: string;
       name: string;
+      shortName: string | null;
+      logo: string | null;
+      city: string | null;
+      country: string | null;
+      primaryColor: string | null;
+      secondaryColor: string | null;
+      manager: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        email: string;
+      } | null;
+      owner: {
+        id: string;
+        firstName: string;
+        lastName: string;
+      } | null;
     };
-    homeGoals: number;
-    awayGoals: number;
-    result: string;
-    status: string;
-  }>;
-  timestamp: string;
-  requestId: string;
-}
-
-interface UpdateTeamRequest {
-  name?: string;
-  description?: string;
-  logo?: string;
-  status?: string;
+    roster: {
+      total: number;
+      players: TeamMemberSummary[];
+      captain: TeamMemberSummary | null;
+      viceCaptain: TeamMemberSummary | null;
+      byPosition: Record<string, number>;
+    };
+    staff: {
+      total: number;
+      coaches: CoachSummary[];
+      headCoach: CoachSummary | null;
+    };
+    competitions: {
+      id: string;
+      name: string;
+      type: string;
+      group: string | null;
+    }[];
+    statistics: {
+      matchesPlayed: number;
+      wins: number;
+      draws: number;
+      losses: number;
+      winRate: string;
+      goalsFor: number;
+      goalsAgainst: number;
+      goalDifference: number;
+      points: number;
+      form: string[];
+    };
+    recentMatches: MatchSummary[];
+    upcomingMatches: MatchSummary[];
+  };
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
 }
 
 interface UpdateTeamResponse {
   success: true;
-  id: string;
-  name: string;
-  description: string | null;
-  logo: string | null;
-  status: string;
-  updatedAt: string;
+  data: {
+    id: string;
+    name: string;
+    description: string | null;
+    logo: string | null;
+    status: TeamStatus;
+    updatedAt: string;
+  };
   message: string;
   changedFields: string[];
-  timestamp: string;
-  requestId: string;
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
 }
 
-// ============================================================================
-// GET /api/teams/[teamId] - Get Team Details
-// ============================================================================
+interface DeleteTeamResponse {
+  success: true;
+  data: {
+    id: string;
+    name: string;
+    archivedAt: string;
+  };
+  message: string;
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
+}
 
-/**
- * GET /api/teams/[teamId]
- * Get complete team information including roster, leagues, and statistics
- * 
- * Path Parameters:
- *   - teamId: string (team ID)
- * 
- * Authorization: Any authenticated user
- * 
- * Returns: 200 OK with comprehensive team data
- * 
- * Response includes:
- *   - Team info (name, sport, status)
- *   - Club details
- *   - Manager information
- *   - Complete roster (players, coaches, staff)
- *   - League participation
- *   - Match statistics
- *   - Recent match results
- * 
- * Features:
- *   ✅ Complete team overview
- *   ✅ Roster with player details
- *   ✅ Aggregated statistics
- *   ✅ League membership tracking
- *   ✅ Recent match history
- *   ✅ Request tracking
- */
+interface ErrorResponse {
+  success: false;
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+  };
+  meta: {
+    timestamp: string;
+    requestId: string;
+  };
+}
+
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const UpdateTeamSchema = z.object({
+  name: z.string().min(2).max(100).optional(),
+  shortName: z.string().min(2).max(50).optional().nullable(),
+  description: z.string().max(2000).optional().nullable(),
+  logo: z.string().url().optional().nullable(),
+  badge: z.string().url().optional().nullable(),
+  status: z.nativeEnum(TeamStatus).optional(),
+  ageGroup: z.string().max(50).optional().nullable(),
+  gender: z.enum(['MALE', 'FEMALE', 'MIXED']).optional(),
+  formation: z.nativeEnum(FormationType).optional().nullable(),
+  maxPlayers: z.number().int().min(5).max(100).optional(),
+  registrationOpen: z.boolean().optional(),
+  requiresApproval: z.boolean().optional(),
+  inviteOnly: z.boolean().optional(),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function createErrorResponse(
+  code: string,
+  message: string,
+  requestId: string,
+  status: number,
+  details?: Record<string, unknown>
+): NextResponse<ErrorResponse> {
+  return NextResponse.json(
+    {
+      success: false,
+      error: { code, message, details },
+      meta: { timestamp: new Date().toISOString(), requestId },
+    },
+    { status, headers: { 'X-Request-ID': requestId } }
+  );
+}
+
+function getMatchResult(
+  teamId: string,
+  match: any,
+  isHome: boolean
+): 'W' | 'D' | 'L' | 'PENDING' {
+  if (match.status !== 'COMPLETED' || match.homeScore === null || match.awayScore === null) {
+    return 'PENDING';
+  }
+
+  const teamScore = isHome ? match.homeScore : match.awayScore;
+  const opponentScore = isHome ? match.awayScore : match.homeScore;
+
+  if (teamScore > opponentScore) return 'W';
+  if (teamScore === opponentScore) return 'D';
+  return 'L';
+}
+
+async function canManageTeam(
+  userId: string,
+  clubId: string,
+  ownerId: string | null
+): Promise<{ canManage: boolean; role: string | null }> {
+  // Check if superadmin
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (user?.role === 'SUPERADMIN') {
+    return { canManage: true, role: 'SUPERADMIN' };
+  }
+
+  // Check if club owner
+  if (ownerId && userId === ownerId) {
+    return { canManage: true, role: 'CLUB_OWNER' };
+  }
+
+  // Check club membership
+  const membership = await prisma.clubMember.findFirst({
+    where: {
+      userId,
+      clubId,
+      isActive: true,
+      role: { in: ['OWNER', 'MANAGER', 'HEAD_COACH'] },
+    },
+  });
+
+  if (membership) {
+    return { canManage: true, role: membership.role };
+  }
+
+  return { canManage: false, role: null };
+}
+
+// =============================================================================
+// GET /api/teams/[teamId]
+// Get complete team details
+// =============================================================================
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { teamId: string } }
-): Promise<NextResponse<TeamDetailResponse | { success: false; error: string; code: string; requestId: string }>> {
-  const requestId = crypto.randomUUID();
+  { params }: RouteParams
+): Promise<NextResponse<TeamDetailResponse | ErrorResponse>> {
+  const requestId = generateRequestId();
 
   try {
-    // 1. Authentication check
+    // 1. Authentication
     const session = await auth();
-
-    if (!session) {
-      return Response.json(
-        {
-          success: false,
-          error: 'Unauthorized - Authentication required',
-          code: 'AUTH_REQUIRED',
-          requestId,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
+    if (!session?.user?.id) {
+      return createErrorResponse('UNAUTHORIZED', 'Authentication required', requestId, 401);
     }
 
-    // 2. Validate teamId format
-    if (!params.teamId || typeof params.teamId !== 'string') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid team ID format',
-          code: 'INVALID_TEAM_ID',
-          requestId,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
+    const { teamId } = params;
 
-    // 3. Fetch team with comprehensive relationships
+    // 2. Fetch team with comprehensive relations
     const team = await prisma.team.findUnique({
-      where: { id: params.teamId },
+      where: { id: teamId, deletedAt: null },
       include: {
         club: {
           select: {
             id: true,
             name: true,
+            shortName: true,
+            logo: true,
             city: true,
             country: true,
-          },
-        },
-        manager: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-        members: {
-          include: {
-            user: {
+            primaryColor: true,
+            secondaryColor: true,
+            manager: {
               select: {
                 id: true,
                 firstName: true,
                 lastName: true,
-                avatar: true,
-                dateOfBirth: true,
-                nationality: true,
+                email: true,
+              },
+            },
+            owner: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
               },
             },
           },
-          where: { status: 'ACTIVE' },
-          orderBy: { joinedAt: 'desc' },
         },
-        leagues: {
-          select: {
-            id: true,
-            name: true,
-            season: true,
-            sport: true,
+        players: {
+          where: { isActive: true },
+          include: {
+            player: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    avatar: true,
+                  },
+                },
+              },
+            },
           },
+          orderBy: [{ isCaptain: 'desc' }, { isViceCaptain: 'desc' }, { jerseyNumber: 'asc' }],
+          take: 30,
+        },
+        coachAssignments: {
+          where: { isActive: true },
+          include: {
+            coach: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    avatar: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { isPrimary: 'desc' },
           take: 10,
         },
-        homeMatches: {
-          where: { status: 'COMPLETED' },
-          select: {
-            id: true,
-            date: true,
-            homeGoals: true,
-            awayGoals: true,
-            awayTeam: { select: { id: true, name: true } },
+        competitionTeams: {
+          where: { isActive: true, isWithdrawn: false },
+          include: {
+            competition: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+              },
+            },
           },
-          orderBy: { date: 'desc' },
+        },
+        homeMatches: {
+          where: {
+            deletedAt: null,
+            status: { in: ['COMPLETED', 'SCHEDULED', 'IN_PROGRESS'] },
+          },
+          include: {
+            awayTeam: {
+              select: { id: true, name: true, logo: true },
+            },
+            competition: {
+              select: { name: true },
+            },
+          },
+          orderBy: { kickoff: 'desc' },
           take: 10,
         },
         awayMatches: {
-          where: { status: 'COMPLETED' },
-          select: {
-            id: true,
-            date: true,
-            homeGoals: true,
-            awayGoals: true,
-            homeTeam: { select: { id: true, name: true } },
+          where: {
+            deletedAt: null,
+            status: { in: ['COMPLETED', 'SCHEDULED', 'IN_PROGRESS'] },
           },
-          orderBy: { date: 'desc' },
+          include: {
+            homeTeam: {
+              select: { id: true, name: true, logo: true },
+            },
+            competition: {
+              select: { name: true },
+            },
+          },
+          orderBy: { kickoff: 'desc' },
           take: 10,
         },
       },
     });
 
     if (!team) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Team not found',
-          code: 'TEAM_NOT_FOUND',
-          requestId,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
+      return createErrorResponse('TEAM_NOT_FOUND', 'Team not found', requestId, 404);
     }
 
-    // 4. Categorize roster members
-    const players = team.members.filter((m) => !m.role || m.role === 'PLAYER');
-    const coaches = team.members.filter((m) => m.role === 'COACH');
-    const staff = team.members.filter((m) => m.role && !['PLAYER', 'COACH'].includes(m.role));
-    const captain = team.members.find((m) => m.isCaptain);
+    // 3. Format roster
+    const rosterPlayers: TeamMemberSummary[] = team.players.map((tp) => ({
+      id: tp.player.id,
+      firstName: tp.player.user.firstName,
+      lastName: tp.player.user.lastName,
+      fullName: `${tp.player.user.firstName} ${tp.player.user.lastName}`,
+      avatar: tp.player.user.avatar,
+      position: tp.position,
+      jerseyNumber: tp.jerseyNumber,
+      isCaptain: tp.isCaptain,
+      isViceCaptain: tp.isViceCaptain,
+      status: tp.status,
+    }));
 
-    // 5. Format roster members
-    const formatMember = (member: any): TeamMember => ({
-      id: member.userId,
-      firstName: member.user.firstName,
-      lastName: member.user.lastName,
-      fullName: `${member.user.firstName} ${member.user.lastName}`,
-      avatar: member.user.avatar,
-      number: member.number,
-      isCaptain: member.isCaptain,
-      joinedAt: member.joinedAt.toISOString(),
-      status: member.status,
-      age: member.user.dateOfBirth
-        ? Math.floor(
-            (new Date().getTime() - new Date(member.user.dateOfBirth).getTime()) /
-              (365.25 * 24 * 60 * 60 * 1000)
-          )
-        : undefined,
-      nationality: member.user.nationality,
+    const captain = rosterPlayers.find((p) => p.isCaptain) || null;
+    const viceCaptain = rosterPlayers.find((p) => p.isViceCaptain) || null;
+
+    // Count by position
+    const byPosition: Record<string, number> = {};
+    rosterPlayers.forEach((p) => {
+      const pos = p.position || 'Unassigned';
+      byPosition[pos] = (byPosition[pos] || 0) + 1;
     });
 
-    // 6. Calculate match statistics
-    const allMatches = [...team.homeMatches, ...team.awayMatches];
+    // 4. Format staff
+    const coaches: CoachSummary[] = team.coachAssignments.map((ca) => ({
+      id: ca.coach.id,
+      firstName: ca.coach.user.firstName,
+      lastName: ca.coach.user.lastName,
+      fullName: `${ca.coach.user.firstName} ${ca.coach.user.lastName}`,
+      avatar: ca.coach.user.avatar,
+      role: ca.role,
+      isPrimary: ca.isPrimary,
+    }));
+
+    const headCoach = coaches.find((c) => c.role === 'HEAD_COACH' && c.isPrimary) || null;
+
+    // 5. Format competitions
+    const competitions = team.competitionTeams.map((ct) => ({
+      id: ct.competition.id,
+      name: ct.competition.name,
+      type: ct.competition.type,
+      group: ct.group,
+    }));
+
+    // 6. Process matches and calculate statistics
+    const allMatches = [
+      ...team.homeMatches.map((m) => ({ ...m, isHome: true })),
+      ...team.awayMatches.map((m) => ({ ...m, isHome: false })),
+    ].sort((a, b) => new Date(b.kickoff).getTime() - new Date(a.kickoff).getTime());
+
+    const completedMatches = allMatches.filter((m) => m.status === 'COMPLETED');
+    const upcomingMatches = allMatches
+      .filter((m) => m.status === 'SCHEDULED')
+      .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
+
     let wins = 0,
       draws = 0,
       losses = 0,
       goalsFor = 0,
       goalsAgainst = 0;
+    const form: string[] = [];
 
-    const recentMatches = allMatches
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 10)
-      .map((match) => {
-        const isHome = 'awayTeam' in match;
-        const teamGoals = isHome ? match.homeGoals : match.awayGoals;
-        const oppGoals = isHome ? match.awayGoals : match.homeGoals;
+    const recentMatches: MatchSummary[] = completedMatches.slice(0, 5).map((match) => {
+      const opponent = match.isHome
+        ? (match as any).awayTeam
+        : (match as any).homeTeam;
+      const result = getMatchResult(teamId, match, match.isHome);
 
-        if (teamGoals > oppGoals) wins++;
-        else if (teamGoals === oppGoals) draws++;
-        else losses++;
+      // Count stats
+      if (result === 'W') wins++;
+      else if (result === 'D') draws++;
+      else if (result === 'L') losses++;
 
-        goalsFor += teamGoals;
-        goalsAgainst += oppGoals;
+      const teamGoals = match.isHome ? match.homeScore : match.awayScore;
+      const oppGoals = match.isHome ? match.awayScore : match.homeScore;
+      goalsFor += teamGoals || 0;
+      goalsAgainst += oppGoals || 0;
+      form.push(result);
 
-        return {
-          id: match.id,
-          date: match.date.toISOString(),
-          opponent: isHome ? match.awayTeam : match.homeTeam,
-          homeGoals: match.homeGoals,
-          awayGoals: match.awayGoals,
-          result: teamGoals > oppGoals ? 'W' : teamGoals === oppGoals ? 'D' : 'L',
-          status: 'COMPLETED',
-        };
-      });
+      return {
+        id: match.id,
+        date: match.kickoff.toISOString(),
+        opponent: {
+          id: opponent.id,
+          name: opponent.name,
+          logo: opponent.logo,
+        },
+        isHome: match.isHome,
+        homeScore: match.homeScore,
+        awayScore: match.awayScore,
+        result,
+        status: match.status,
+        competition: (match as any).competition?.name || null,
+      };
+    });
+
+    // Count remaining completed matches for stats
+    completedMatches.slice(5).forEach((match) => {
+      const result = getMatchResult(teamId, match, match.isHome);
+      if (result === 'W') wins++;
+      else if (result === 'D') draws++;
+      else if (result === 'L') losses++;
+
+      const teamGoals = match.isHome ? match.homeScore : match.awayScore;
+      const oppGoals = match.isHome ? match.awayScore : match.homeScore;
+      goalsFor += teamGoals || 0;
+      goalsAgainst += oppGoals || 0;
+    });
 
     const matchesPlayed = wins + draws + losses;
     const points = wins * 3 + draws;
+    const winRate = matchesPlayed > 0 ? ((wins / matchesPlayed) * 100).toFixed(1) : '0.0';
 
-    // 7. Create audit log
-    await createAuditLog({
-      userId: session.user.id,
-      action: 'TEAMVIEWED',
-      resourceType: 'Team',
-      resourceId: team.id,
-      details: {
-        teamName: team.name,
-        sport: team.sport,
-      },
-      requestId,
+    // 7. Format upcoming matches
+    const formattedUpcoming: MatchSummary[] = upcomingMatches.slice(0, 5).map((match) => {
+      const opponent = match.isHome
+        ? (match as any).awayTeam
+        : (match as any).homeTeam;
+
+      return {
+        id: match.id,
+        date: match.kickoff.toISOString(),
+        opponent: {
+          id: opponent.id,
+          name: opponent.name,
+          logo: opponent.logo,
+        },
+        isHome: match.isHome,
+        homeScore: null,
+        awayScore: null,
+        result: 'PENDING',
+        status: match.status,
+        competition: (match as any).competition?.name || null,
+      };
     });
 
-    // 8. Build comprehensive response
+    // 8. Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'TEAM_VIEWED',
+        resourceType: 'Team',
+        resourceId: team.id,
+        details: {
+          teamName: team.name,
+          sport: team.sport,
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+        userAgent: request.headers.get('user-agent') || 'unknown',
+      },
+    });
+
+    // 9. Build response
     const response: TeamDetailResponse = {
       success: true,
-      id: team.id,
-      name: team.name,
-      shortCode: team.shortCode,
-      sport: team.sport,
-      club: team.club,
-      manager: {
-        id: team.manager.id,
-        name: `${team.manager.firstName} ${team.manager.lastName}`,
-        email: team.manager.email,
+      data: {
+        id: team.id,
+        name: team.name,
+        shortName: team.shortName,
+        slug: team.slug,
+        description: team.description,
+        logo: team.logo,
+        badge: team.badge,
+        type: team.type,
+        status: team.status,
+        sport: team.sport,
+        ageGroup: team.ageGroup,
+        gender: team.gender,
+        colors: {
+          primary: team.primaryColor || team.club.primaryColor,
+          secondary: team.secondaryColor || team.club.secondaryColor,
+        },
+        formation: team.formation,
+        homeVenueId: team.homeVenueId,
+        maxPlayers: team.maxPlayers,
+        activePlayers: team.activePlayers,
+        registrationOpen: team.registrationOpen,
+        requiresApproval: team.requiresApproval,
+        inviteOnly: team.inviteOnly,
+        isActive: team.isActive,
+        createdAt: team.createdAt.toISOString(),
+        updatedAt: team.updatedAt.toISOString(),
+        club: team.club,
+        roster: {
+          total: rosterPlayers.length,
+          players: rosterPlayers,
+          captain,
+          viceCaptain,
+          byPosition,
+        },
+        staff: {
+          total: coaches.length,
+          coaches,
+          headCoach,
+        },
+        competitions,
+        statistics: {
+          matchesPlayed,
+          wins,
+          draws,
+          losses,
+          winRate,
+          goalsFor,
+          goalsAgainst,
+          goalDifference: goalsFor - goalsAgainst,
+          points,
+          form: form.slice(0, 5),
+        },
+        recentMatches,
+        upcomingMatches: formattedUpcoming,
       },
-      description: team.description,
-      logo: team.logo,
-      colors: team.colors,
-      founded: team.founded,
-      status: team.status,
-      roster: {
-        total: team.members.length,
-        players: players.map(formatMember),
-        coaches: coaches.map(formatMember),
-        staff: staff.map(formatMember),
-        captain: captain ? formatMember(captain) : null,
+      meta: {
+        timestamp: new Date().toISOString(),
+        requestId,
       },
-      leagues: team.leagues,
-      statistics: {
-        matchesPlayed,
-        wins,
-        draws,
-        losses,
-        winRate: matchesPlayed > 0 ? ((wins / matchesPlayed) * 100).toFixed(1) + '%' : 'N/A',
-        goalsFor,
-        goalsAgainst,
-        goalDifference: goalsFor - goalsAgainst,
-        points,
-      },
-      recentMatches,
-      timestamp: new Date().toISOString(),
-      requestId,
     };
 
     return NextResponse.json(response, {
@@ -388,217 +654,222 @@ export async function GET(
       headers: { 'X-Request-ID': requestId },
     });
   } catch (error) {
-    console.error('[GET /api/teams/[teamId]]', {
-      teamId: params.teamId,
-      requestId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
-    return errorResponse(error as Error, {
-      headers: { 'X-Request-ID': requestId },
-    });
+    console.error(`[${requestId}] GET /api/teams/[teamId] error:`, error);
+    return createErrorResponse('INTERNAL_ERROR', 'Failed to fetch team details', requestId, 500);
   }
 }
 
-// ============================================================================
-// PATCH /api/teams/[teamId] - Update Team
-// ============================================================================
+// =============================================================================
+// PATCH /api/teams/[teamId]
+// Update team information
+// =============================================================================
 
-/**
- * PATCH /api/teams/[teamId]
- * Update team information
- * 
- * Path Parameters:
- *   - teamId: string (team ID)
- * 
- * Authorization: Team manager, Club owner, SUPERADMIN
- * 
- * Request Body (all optional):
- *   - name: string (3-100 chars)
- *   - description: string
- *   - logo: string (URL)
- *   - status: string (ACTIVE, ARCHIVED, etc.)
- * 
- * Returns: 200 OK with updated team details
- * 
- * Features:
- *   ✅ Comprehensive input validation
- *   ✅ Change tracking
- *   ✅ Transaction support
- *   ✅ Detailed audit logging
- */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { teamId: string } }
-): Promise<NextResponse<UpdateTeamResponse | { success: false; error: string; code: string; requestId: string }>> {
-  const requestId = crypto.randomUUID();
+  { params }: RouteParams
+): Promise<NextResponse<UpdateTeamResponse | ErrorResponse>> {
+  const requestId = generateRequestId();
 
   try {
-    // 1. Authentication check
+    // 1. Authentication
     const session = await auth();
-
     if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized - Authentication required',
-          code: 'AUTH_REQUIRED',
-          requestId,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
+      return createErrorResponse('UNAUTHORIZED', 'Authentication required', requestId, 401);
     }
 
-    // 2. Validate teamId
-    if (!params.teamId || typeof params.teamId !== 'string') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid team ID format',
-          code: 'INVALID_TEAM_ID',
-          requestId,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
+    const { teamId } = params;
 
-    // 3. Parse request body
-    let body: UpdateTeamRequest;
-    try {
-      body = await parseJsonBody(request);
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid JSON in request body',
-          code: 'INVALID_JSON',
-          requestId,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 4. Fetch current team
+    // 2. Fetch current team
     const team = await prisma.team.findUnique({
-      where: { id: params.teamId },
+      where: { id: teamId, deletedAt: null },
       select: {
         id: true,
         name: true,
+        shortName: true,
         description: true,
         logo: true,
+        badge: true,
         status: true,
-        managerId: true,
+        ageGroup: true,
+        gender: true,
+        formation: true,
+        maxPlayers: true,
+        registrationOpen: true,
+        requiresApproval: true,
+        inviteOnly: true,
         clubId: true,
-        club: { select: { ownerId: true } },
+        club: {
+          select: {
+            ownerId: true,
+            managerId: true,
+          },
+        },
       },
     });
 
     if (!team) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Team not found',
-          code: 'TEAM_NOT_FOUND',
-          requestId,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
+      return createErrorResponse('TEAM_NOT_FOUND', 'Team not found', requestId, 404);
+    }
+
+    // 3. Authorization
+    const { canManage, role } = await canManageTeam(
+      session.user.id,
+      team.clubId,
+      team.club.ownerId
+    );
+
+    if (!canManage) {
+      return createErrorResponse(
+        'FORBIDDEN',
+        'You do not have permission to update this team',
+        requestId,
+        403
       );
     }
 
-    // 5. Authorization check
-    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
-    const isTeamManager = session.user.id === team.managerId;
-    const isClubOwner = session.user.id === team.club.ownerId;
+    // 4. Parse and validate request body
+    const body = await request.json();
+    const validatedData = UpdateTeamSchema.parse(body);
 
-    if (!isSuperAdmin && !isTeamManager && !isClubOwner) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden - Only team manager, club owner, or admin can update teams',
-          code: 'INSUFFICIENT_PERMISSIONS',
-          requestId,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // 6. Track changes
+    // 5. Track changes
     const changes: Record<string, { old: any; new: any }> = {};
-    const updateData: Record<string, any> = {};
+    const updateData: Prisma.TeamUpdateInput = {};
 
-    if (body.name !== undefined && body.name !== team.name) {
-      validateStringLength(body.name, 3, 100, 'Team name');
-      changes.name = { old: team.name, new: body.name };
-      updateData.name = body.name.trim();
+    if (validatedData.name !== undefined && validatedData.name !== team.name) {
+      changes.name = { old: team.name, new: validatedData.name };
+      updateData.name = validatedData.name.trim();
     }
 
-    if (body.description !== undefined && body.description !== team.description) {
-      changes.description = { old: team.description, new: body.description };
-      updateData.description = body.description?.trim() || null;
+    if (validatedData.shortName !== undefined && validatedData.shortName !== team.shortName) {
+      changes.shortName = { old: team.shortName, new: validatedData.shortName };
+      updateData.shortName = validatedData.shortName?.trim() || null;
     }
 
-    if (body.logo !== undefined && body.logo !== team.logo) {
-      changes.logo = { old: team.logo ? '[REDACTED]' : null, new: body.logo ? '[REDACTED]' : null };
-      updateData.logo = body.logo || null;
+    if (validatedData.description !== undefined && validatedData.description !== team.description) {
+      changes.description = { old: '[REDACTED]', new: '[REDACTED]' };
+      updateData.description = validatedData.description?.trim() || null;
     }
 
-    if (body.status !== undefined && body.status !== team.status) {
-      changes.status = { old: team.status, new: body.status };
-      updateData.status = body.status;
+    if (validatedData.logo !== undefined && validatedData.logo !== team.logo) {
+      changes.logo = { old: '[REDACTED]', new: '[REDACTED]' };
+      updateData.logo = validatedData.logo || null;
     }
 
-    // 7. Check if there are changes
+    if (validatedData.badge !== undefined && validatedData.badge !== team.badge) {
+      changes.badge = { old: '[REDACTED]', new: '[REDACTED]' };
+      updateData.badge = validatedData.badge || null;
+    }
+
+    if (validatedData.status !== undefined && validatedData.status !== team.status) {
+      changes.status = { old: team.status, new: validatedData.status };
+      updateData.status = validatedData.status;
+    }
+
+    if (validatedData.ageGroup !== undefined && validatedData.ageGroup !== team.ageGroup) {
+      changes.ageGroup = { old: team.ageGroup, new: validatedData.ageGroup };
+      updateData.ageGroup = validatedData.ageGroup?.trim() || null;
+    }
+
+    if (validatedData.gender !== undefined && validatedData.gender !== team.gender) {
+      changes.gender = { old: team.gender, new: validatedData.gender };
+      updateData.gender = validatedData.gender;
+    }
+
+    if (validatedData.formation !== undefined && validatedData.formation !== team.formation) {
+      changes.formation = { old: team.formation, new: validatedData.formation };
+      updateData.formation = validatedData.formation || null;
+    }
+
+    if (validatedData.maxPlayers !== undefined && validatedData.maxPlayers !== team.maxPlayers) {
+      changes.maxPlayers = { old: team.maxPlayers, new: validatedData.maxPlayers };
+      updateData.maxPlayers = validatedData.maxPlayers;
+    }
+
+    if (
+      validatedData.registrationOpen !== undefined &&
+      validatedData.registrationOpen !== team.registrationOpen
+    ) {
+      changes.registrationOpen = { old: team.registrationOpen, new: validatedData.registrationOpen };
+      updateData.registrationOpen = validatedData.registrationOpen;
+    }
+
+    if (
+      validatedData.requiresApproval !== undefined &&
+      validatedData.requiresApproval !== team.requiresApproval
+    ) {
+      changes.requiresApproval = { old: team.requiresApproval, new: validatedData.requiresApproval };
+      updateData.requiresApproval = validatedData.requiresApproval;
+    }
+
+    if (validatedData.inviteOnly !== undefined && validatedData.inviteOnly !== team.inviteOnly) {
+      changes.inviteOnly = { old: team.inviteOnly, new: validatedData.inviteOnly };
+      updateData.inviteOnly = validatedData.inviteOnly;
+    }
+
+    // 6. Check if there are changes
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
         {
           success: true,
-          id: team.id,
-          name: team.name,
-          description: team.description,
-          logo: team.logo,
-          status: team.status,
-          updatedAt: new Date().toISOString(),
+          data: {
+            id: team.id,
+            name: team.name,
+            description: team.description,
+            logo: team.logo,
+            status: team.status,
+            updatedAt: new Date().toISOString(),
+          },
           message: 'No changes provided',
           changedFields: [],
-          timestamp: new Date().toISOString(),
-          requestId,
+          meta: {
+            timestamp: new Date().toISOString(),
+            requestId,
+          },
         },
         { status: 200, headers: { 'X-Request-ID': requestId } }
       );
     }
 
-    // 8. Update team with transaction
-    const updatedTeam = await prisma.$transaction(async (tx) => {
-      return await tx.team.update({
-        where: { id: params.teamId },
-        data: updateData,
-      });
+    // 7. Update team
+    const updatedTeam = await prisma.team.update({
+      where: { id: teamId },
+      data: updateData,
     });
 
-    // 9. Create audit log
-    await logResourceUpdated(
-      session.user.id,
-      'Team',
-      team.id,
-      team.name,
-      changes,
-      `Updated team "${team.name}"`
-    );
+    // 8. Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'TEAM_UPDATED',
+        resourceType: 'Team',
+        resourceId: team.id,
+        details: {
+          teamName: team.name,
+          changes,
+          updatedBy: role,
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+        userAgent: request.headers.get('user-agent') || 'unknown',
+      },
+    });
 
-    // 10. Build response
+    // 9. Build response
     const response: UpdateTeamResponse = {
       success: true,
-      id: updatedTeam.id,
-      name: updatedTeam.name,
-      description: updatedTeam.description,
-      logo: updatedTeam.logo,
-      status: updatedTeam.status,
-      updatedAt: updatedTeam.updatedAt.toISOString(),
-      message: `Team "${team.name}" updated successfully`,
+      data: {
+        id: updatedTeam.id,
+        name: updatedTeam.name,
+        description: updatedTeam.description,
+        logo: updatedTeam.logo,
+        status: updatedTeam.status,
+        updatedAt: updatedTeam.updatedAt.toISOString(),
+      },
+      message: `Team "${updatedTeam.name}" updated successfully`,
       changedFields: Object.keys(changes),
-      timestamp: new Date().toISOString(),
-      requestId,
+      meta: {
+        timestamp: new Date().toISOString(),
+        requestId,
+      },
     };
 
     return NextResponse.json(response, {
@@ -606,161 +877,165 @@ export async function PATCH(
       headers: { 'X-Request-ID': requestId },
     });
   } catch (error) {
-    console.error('[PATCH /api/teams/[teamId]]', {
-      teamId: params.teamId,
-      requestId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
+    console.error(`[${requestId}] PATCH /api/teams/[teamId] error:`, error);
 
-    if (error instanceof BadRequestError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: error.message,
-          code: 'BADREQUEST',
-          requestId,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
+    if (error instanceof z.ZodError) {
+      return createErrorResponse('VALIDATION_ERROR', 'Invalid request data', requestId, 400, {
+        errors: error.flatten().fieldErrors,
+      });
     }
 
-    return errorResponse(error as Error, {
-      headers: { 'X-Request-ID': requestId },
-    });
+    return createErrorResponse('INTERNAL_ERROR', 'Failed to update team', requestId, 500);
   }
 }
 
-// ============================================================================
-// DELETE /api/teams/[teamId] - Archive Team (Soft Delete)
-// ============================================================================
+// =============================================================================
+// DELETE /api/teams/[teamId]
+// Archive team (soft delete)
+// =============================================================================
 
-/**
- * DELETE /api/teams/[teamId]
- * Archive a team (soft delete)
- * 
- * Path Parameters:
- *   - teamId: string (team ID)
- * 
- * Authorization: Club owner, SUPERADMIN
- * 
- * Returns: 200 OK with archive confirmation
- * 
- * Features:
- *   ✅ Soft delete (preserves data)
- *   ✅ Status-based archival
- *   ✅ Audit logging
- */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { teamId: string } }
-): Promise<NextResponse<{ success: boolean; message: string; requestId: string } | { success: false; error: string; code: string; requestId: string }>> {
-  const requestId = crypto.randomUUID();
+  { params }: RouteParams
+): Promise<NextResponse<DeleteTeamResponse | ErrorResponse>> {
+  const requestId = generateRequestId();
 
   try {
-    // 1. Authentication check
+    // 1. Authentication
     const session = await auth();
-
     if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized - Authentication required',
-          code: 'AUTH_REQUIRED',
-          requestId,
-        },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
+      return createErrorResponse('UNAUTHORIZED', 'Authentication required', requestId, 401);
     }
 
-    // 2. Validate teamId
-    if (!params.teamId || typeof params.teamId !== 'string') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid team ID format',
-          code: 'INVALID_TEAM_ID',
-          requestId,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
+    const { teamId } = params;
 
-    // 3. Fetch team
+    // 2. Fetch team
     const team = await prisma.team.findUnique({
-      where: { id: params.teamId },
+      where: { id: teamId, deletedAt: null },
       select: {
         id: true,
         name: true,
         status: true,
-        club: { select: { ownerId: true } },
+        clubId: true,
+        activePlayers: true,
+        club: {
+          select: {
+            ownerId: true,
+          },
+        },
       },
     });
 
     if (!team) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Team not found',
-          code: 'TEAM_NOT_FOUND',
-          requestId,
-        },
-        { status: 404, headers: { 'X-Request-ID': requestId } }
-      );
+      return createErrorResponse('TEAM_NOT_FOUND', 'Team not found', requestId, 404);
     }
 
-    // 4. Authorization check
-    const isSuperAdmin = session.user.roles?.includes('SUPERADMIN');
-    const isClubOwner = session.user.id === team.club.ownerId;
+    // 3. Authorization - only club owners and superadmins can delete
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true },
+    });
+
+    const isSuperAdmin = user?.role === 'SUPERADMIN';
+    const isClubOwner = team.club.ownerId === session.user.id;
 
     if (!isSuperAdmin && !isClubOwner) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Forbidden - Only club owner or admin can delete teams',
-          code: 'INSUFFICIENT_PERMISSIONS',
-          requestId,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
+      return createErrorResponse(
+        'FORBIDDEN',
+        'Only club owners and administrators can archive teams',
+        requestId,
+        403
       );
     }
 
-    // 5. Soft delete: set status to ARCHIVED
-    const archivedTeam = await prisma.team.update({
-      where: { id: params.teamId },
-      data: { status: 'ARCHIVED' },
+    // 4. Check for active players
+    if (team.activePlayers > 0) {
+      // Optional: warn about active players
+      console.warn(`[${requestId}] Archiving team with ${team.activePlayers} active players`);
+    }
+
+    // 5. Soft delete team
+    const archivedTeam = await prisma.$transaction(async (tx) => {
+      // Update team status and set deletedAt
+      const updated = await tx.team.update({
+        where: { id: teamId },
+        data: {
+          status: 'ARCHIVED',
+          deletedAt: new Date(),
+          isActive: false,
+        },
+      });
+
+      // Deactivate all player associations
+      await tx.teamPlayer.updateMany({
+        where: { teamId },
+        data: {
+          isActive: false,
+          leftAt: new Date(),
+        },
+      });
+
+      // Deactivate coach assignments
+      await tx.coachAssignment.updateMany({
+        where: { teamId },
+        data: {
+          isActive: false,
+          endDate: new Date(),
+        },
+      });
+
+      // Withdraw from competitions
+      await tx.competitionTeam.updateMany({
+        where: { teamId },
+        data: {
+          isWithdrawn: true,
+          withdrawnAt: new Date(),
+          withdrawReason: 'Team archived',
+        },
+      });
+
+      return updated;
     });
 
     // 6. Create audit log
-    await createAuditLog({
-      userId: session.user.id,
-      action: 'TEAMARCHIVED',
-      resourceType: 'Team',
-      resourceId: team.id,
-      details: {
-        teamName: team.name,
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        action: 'TEAM_ARCHIVED',
+        resourceType: 'Team',
+        resourceId: team.id,
+        details: {
+          teamName: team.name,
+          previousStatus: team.status,
+          activePlayers: team.activePlayers,
+          archivedBy: isSuperAdmin ? 'SUPERADMIN' : 'CLUB_OWNER',
+        },
+        ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+        userAgent: request.headers.get('user-agent') || 'unknown',
       },
-      requestId,
     });
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: `Team "${team.name}" has been archived successfully`,
+    // 7. Build response
+    const response: DeleteTeamResponse = {
+      success: true,
+      data: {
+        id: archivedTeam.id,
+        name: archivedTeam.name,
+        archivedAt: archivedTeam.deletedAt?.toISOString() || new Date().toISOString(),
+      },
+      message: `Team "${team.name}" has been archived successfully`,
+      meta: {
+        timestamp: new Date().toISOString(),
         requestId,
       },
-      { status: 200, headers: { 'X-Request-ID': requestId } }
-    );
-  } catch (error) {
-    console.error('[DELETE /api/teams/[teamId]]', {
-      teamId: params.teamId,
-      requestId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
+    };
 
-    return errorResponse(error as Error, {
+    return NextResponse.json(response, {
+      status: 200,
       headers: { 'X-Request-ID': requestId },
     });
+  } catch (error) {
+    console.error(`[${requestId}] DELETE /api/teams/[teamId] error:`, error);
+    return createErrorResponse('INTERNAL_ERROR', 'Failed to archive team', requestId, 500);
   }
 }
