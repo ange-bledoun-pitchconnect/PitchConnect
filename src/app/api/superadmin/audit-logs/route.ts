@@ -1,452 +1,626 @@
-/**
- * ============================================================================
- * SUPERADMIN AUDIT LOGS ROUTE - World-Class Audit & Security
- * ============================================================================
- *
- * @file src/app/api/superadmin/audit-logs/route.ts
- * @description Retrieve comprehensive audit logs with filtering and pagination
- * @version 2.0.0 (Production-Ready)
- *
- * FEATURES:
- * ✅ Full TypeScript type safety
- * ✅ Schema-aligned field names
- * ✅ Comprehensive filtering (action, date range, severity)
- * ✅ Pagination support with configurable limits
- * ✅ SuperAdmin authorization check
- * ✅ Request ID tracking for debugging
- * ✅ Performance monitoring
- * ✅ Audit logging for audit log access
- * ✅ JSDoc documentation
- */
+// =============================================================================
+// 📋 SUPERADMIN AUDIT LOGS API - Enterprise-Grade with Export
+// =============================================================================
+// GET /api/superadmin/audit-logs - Retrieve audit logs with export capability
+// =============================================================================
+// Schema: v7.8.0 | Access: SUPERADMIN only
+// Features: Filtering, pagination, statistics, CSV/JSON export
+// =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 
-export const dynamic = 'force-dynamic';
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-// ============================================================================
-// TYPES
-// ============================================================================
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+  };
+  meta?: {
+    requestId: string;
+    timestamp: string;
+    pagination?: PaginationMeta;
+  };
+}
+
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
 
 interface AuditLogEntry {
   id: string;
-  performedById: string;
-  performedBy: {
+  
+  performer: {
     id: string;
-    firstName: string;
-    lastName: string;
     email: string;
-  };
-  targetUserId: string | null;
+    name: string;
+  } | null;
+  
+  target: {
+    id: string;
+    email: string;
+    name: string;
+  } | null;
+  
   action: string;
-  entityType: string | null;
-  entityId: string | null;
-  changes: Record<string, any> | null;
-  details: Record<string, any>;
+  resourceType: string | null;
+  resourceId: string | null;
+  
+  changes: Record<string, unknown> | null;
+  details: string | null;
+  
+  severity: string;
+  
   ipAddress: string | null;
   userAgent: string | null;
-  severity: string;
-  createdAt: string;
-}
-
-interface AuditLogsResponse {
-  success: boolean;
-  data: AuditLogEntry[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
+  
   timestamp: string;
 }
 
-interface ErrorResponse {
-  success: boolean;
-  error: string;
-  code: string;
-  details?: string;
+interface AuditStatistics {
+  total: number;
+  byAction: Array<{ action: string; count: number }>;
+  byResourceType: Array<{ resourceType: string | null; count: number }>;
+  bySeverity: Array<{ severity: string; count: number }>;
+  topPerformers: Array<{
+    id: string;
+    email: string;
+    name: string;
+    actionCount: number;
+  }>;
 }
 
-// ============================================================================
+interface AuditLogsResponse {
+  logs: AuditLogEntry[];
+  statistics: AuditStatistics;
+}
+
+// =============================================================================
 // CONSTANTS
-// ============================================================================
+// =============================================================================
 
 const ERROR_CODES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
   FORBIDDEN: 'FORBIDDEN',
-  INVALID_REQUEST: 'INVALID_REQUEST',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
 
 const DEFAULT_PAGE_LIMIT = 50;
-const MAX_PAGE_LIMIT = 100;
+const MAX_PAGE_LIMIT = 500;
+const EXPORT_MAX_RECORDS = 10000;
+
 const VALID_SEVERITIES = ['INFO', 'WARNING', 'CRITICAL'];
 
-// ============================================================================
-// VALIDATION HELPERS
-// ============================================================================
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
+
+const GetAuditLogsSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(MAX_PAGE_LIMIT).default(DEFAULT_PAGE_LIMIT),
+  
+  // Filters
+  action: z.string().optional(),
+  resourceType: z.string().optional(),
+  severity: z.enum(['INFO', 'WARNING', 'CRITICAL']).optional(),
+  performerId: z.string().cuid().optional(),
+  targetId: z.string().cuid().optional(),
+  
+  // Date range
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  
+  // Search
+  search: z.string().max(200).optional(),
+  
+  // Export
+  export: z.enum(['json', 'csv']).optional(),
+});
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+function generateRequestId(): string {
+  return `audit_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: { code: string; message: string };
+    requestId: string;
+    status?: number;
+    pagination?: PaginationMeta;
+  }
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    meta: {
+      requestId: options.requestId,
+      timestamp: new Date().toISOString(),
+    },
+  };
+
+  if (options.success && data !== null) {
+    response.data = data;
+  }
+
+  if (options.error) {
+    response.error = options.error;
+  }
+
+  if (options.pagination) {
+    response.meta!.pagination = options.pagination;
+  }
+
+  return NextResponse.json(response, {
+    status: options.status || 200,
+    headers: {
+      'X-Request-ID': options.requestId,
+      'Cache-Control': 'private, no-cache',
+    },
+  });
+}
 
 /**
- * Validate SuperAdmin access
- * Checks if user exists and has SuperAdmin role or flag
+ * Verify SuperAdmin access
  */
-async function validateSuperAdminAccess(email: string) {
+async function verifySuperAdmin(userId: string): Promise<boolean> {
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { id: userId },
     select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
       isSuperAdmin: true,
       roles: true,
     },
   });
 
-  if (!user) {
-    return {
-      isValid: false,
-      error: 'User not found',
-      user: null,
-    };
-  }
+  return user?.isSuperAdmin || user?.roles.includes('SUPERADMIN') || false;
+}
 
-  // Check if user is SuperAdmin
-  if (!user.isSuperAdmin && !user.roles.includes('SUPERADMIN')) {
-    return {
-      isValid: false,
-      error: 'SuperAdmin access required',
-      user: null,
-    };
+/**
+ * Parse date string to Date object
+ */
+function parseDate(dateStr: string, endOfDay: boolean = false): Date | null {
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return null;
+  
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 999);
+  } else {
+    date.setHours(0, 0, 0, 0);
   }
+  
+  return date;
+}
 
+/**
+ * Transform audit log to response format
+ */
+function transformAuditLog(log: any): AuditLogEntry {
   return {
-    isValid: true,
-    error: null,
-    user,
+    id: log.id,
+    
+    performer: log.user ? {
+      id: log.user.id,
+      email: log.user.email,
+      name: `${log.user.firstName || ''} ${log.user.lastName || ''}`.trim() || 'Unknown',
+    } : null,
+    
+    target: log.targetUser ? {
+      id: log.targetUser.id,
+      email: log.targetUser.email,
+      name: `${log.targetUser.firstName || ''} ${log.targetUser.lastName || ''}`.trim() || 'Unknown',
+    } : null,
+    
+    action: log.action,
+    resourceType: log.resourceType,
+    resourceId: log.resourceId,
+    
+    changes: log.changes as Record<string, unknown> | null,
+    details: typeof log.details === 'string' ? log.details : JSON.stringify(log.details),
+    
+    severity: log.severity,
+    
+    ipAddress: log.ipAddress,
+    userAgent: log.userAgent,
+    
+    timestamp: log.createdAt.toISOString(),
   };
 }
 
 /**
- * Parse and validate pagination parameters
- * Ensures page >= 1 and limit is between 1 and MAX_PAGE_LIMIT
+ * Generate CSV from audit logs
  */
-function parsePaginationParams(url: URL): {
-  page: number;
-  limit: number;
-} {
-  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-  const limit = Math.min(
-    MAX_PAGE_LIMIT,
-    Math.max(1, parseInt(url.searchParams.get('limit') || String(DEFAULT_PAGE_LIMIT), 10))
-  );
+function generateCsv(logs: AuditLogEntry[]): string {
+  const headers = [
+    'Timestamp',
+    'Action',
+    'Severity',
+    'Resource Type',
+    'Resource ID',
+    'Performer Email',
+    'Performer Name',
+    'Target Email',
+    'Target Name',
+    'IP Address',
+    'Details',
+  ];
 
-  return { page, limit };
-}
-
-/**
- * Parse and validate filter parameters
- * Supports filtering by action, severity, and date range
- */
-function parseFilterParams(url: URL): {
-  action?: string;
-  dateFrom?: Date;
-  dateTo?: Date;
-  severity?: string;
-  error?: string;
-} {
-  const action = url.searchParams.get('action') || undefined;
-  const severity = url.searchParams.get('severity') || undefined;
-  const dateFromStr = url.searchParams.get('dateFrom');
-  const dateToStr = url.searchParams.get('dateTo');
-
-  // Validate severity if provided
-  if (severity && !VALID_SEVERITIES.includes(severity)) {
-    return {
-      error: `Invalid severity. Valid options: ${VALID_SEVERITIES.join(', ')}`,
-    };
-  }
-
-  // Parse dates
-  let dateFrom: Date | undefined;
-  let dateTo: Date | undefined;
-
-  if (dateFromStr) {
-    dateFrom = new Date(dateFromStr);
-    if (isNaN(dateFrom.getTime())) {
-      return {
-        error: 'Invalid dateFrom format. Use ISO 8601 (YYYY-MM-DD)',
-      };
+  const escapeCell = (value: string | null | undefined): string => {
+    if (value === null || value === undefined) return '';
+    const str = String(value);
+    // Escape quotes and wrap in quotes if contains comma, quote, or newline
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return `"${str.replace(/"/g, '""')}"`;
     }
-  }
-
-  if (dateToStr) {
-    dateTo = new Date(dateToStr);
-    if (isNaN(dateTo.getTime())) {
-      return {
-        error: 'Invalid dateTo format. Use ISO 8601 (YYYY-MM-DD)',
-      };
-    }
-    // Set to end of day for inclusive range
-    dateTo.setHours(23, 59, 59, 999);
-  }
-
-  return {
-    action,
-    dateFrom,
-    dateTo,
-    severity,
+    return str;
   };
+
+  const rows = logs.map(log => [
+    escapeCell(log.timestamp),
+    escapeCell(log.action),
+    escapeCell(log.severity),
+    escapeCell(log.resourceType),
+    escapeCell(log.resourceId),
+    escapeCell(log.performer?.email),
+    escapeCell(log.performer?.name),
+    escapeCell(log.target?.email),
+    escapeCell(log.target?.name),
+    escapeCell(log.ipAddress),
+    escapeCell(log.details),
+  ]);
+
+  return [
+    headers.join(','),
+    ...rows.map(row => row.join(',')),
+  ].join('\n');
 }
 
-// ============================================================================
-// MAIN HANDLER
-// ============================================================================
+// =============================================================================
+// GET HANDLER - Audit Logs with Export
+// =============================================================================
 
-/**
- * GET /api/superadmin/audit-logs
- *
- * Retrieve audit logs with filtering and pagination (SuperAdmin only)
- *
- * Query parameters:
- * - page: number (default: 1, min: 1)
- * - limit: number (default: 50, max: 100)
- * - action: string (filter by action type)
- * - severity: 'INFO' | 'WARNING' | 'CRITICAL' (filter by severity)
- * - dateFrom: ISO 8601 date string (YYYY-MM-DD) - inclusive start date
- * - dateTo: ISO 8601 date string (YYYY-MM-DD) - inclusive end date
- *
- * Example:
- * GET /api/superadmin/audit-logs?page=1&limit=50&severity=CRITICAL&dateFrom=2024-01-01
- *
- * @param request NextRequest
- * @returns AuditLogsResponse on success, ErrorResponse on failure
- */
-export async function GET(
-  request: NextRequest
-): Promise<NextResponse<AuditLogsResponse | ErrorResponse>> {
-  const requestId = crypto.randomUUID();
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const requestId = generateRequestId();
   const startTime = performance.now();
 
   try {
-    // ========================================================================
-    // 1. AUTHENTICATION
-    // ========================================================================
-
-    const session = await auth();
-
-    if (!session) {
-      console.warn('Unauthorized audit logs access - no session', { requestId });
-      return Response.json(
-        {
-          success: false,
-          error: 'Authentication required',
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: {
           code: ERROR_CODES.UNAUTHORIZED,
+          message: 'Authentication required',
         },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
+        requestId,
+        status: 401,
+      });
     }
 
-    // ========================================================================
-    // 2. VALIDATE SUPERADMIN ACCESS
-    // ========================================================================
-
-    const { isValid: isAuthorized, error: authError, user } =
-      await validateSuperAdminAccess(session.user.email);
-
-    if (!isAuthorized || !user) {
-      console.warn('SuperAdmin authorization failed', {
-        requestId,
-        email: session.user.email,
-        error: authError,
-      });
-      return NextResponse.json(
-        {
-          success: false,
-          error: authError || 'SuperAdmin access required',
+    // 2. Verify SuperAdmin access
+    const isSuperAdmin = await verifySuperAdmin(session.user.id);
+    if (!isSuperAdmin) {
+      return createResponse(null, {
+        success: false,
+        error: {
           code: ERROR_CODES.FORBIDDEN,
+          message: 'SuperAdmin access required',
         },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 3. PARSE PAGINATION
-    // ========================================================================
-
-    const { page, limit } = parsePaginationParams(request.nextUrl);
-    const skip = (page - 1) * limit;
-
-    // ========================================================================
-    // 4. PARSE & VALIDATE FILTERS
-    // ========================================================================
-
-    const filterParams = parseFilterParams(request.nextUrl);
-
-    if (filterParams.error) {
-      console.warn('Invalid filter parameters', {
         requestId,
-        error: filterParams.error,
+        status: 403,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: filterParams.error,
-          code: ERROR_CODES.INVALID_REQUEST,
+    }
+
+    // 3. Parse query parameters
+    const { searchParams } = new URL(request.url);
+    const rawParams = Object.fromEntries(searchParams.entries());
+
+    const validation = GetAuditLogsSchema.safeParse(rawParams);
+    if (!validation.success) {
+      return createResponse(null, {
+        success: false,
+        error: {
+          code: ERROR_CODES.VALIDATION_ERROR,
+          message: validation.error.errors[0]?.message || 'Invalid parameters',
         },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
+        requestId,
+        status: 400,
+      });
     }
 
-    // ========================================================================
-    // 5. BUILD QUERY FILTER
-    // ========================================================================
+    const params = validation.data;
 
-    const whereFilter: any = {};
+    // 4. Build where clause
+    const where: Prisma.AuditLogWhereInput = {};
 
-    if (filterParams.action) {
-      whereFilter.action = filterParams.action;
+    if (params.action) {
+      where.action = params.action;
     }
 
-    if (filterParams.severity) {
-      whereFilter.severity = filterParams.severity;
+    if (params.resourceType) {
+      where.resourceType = params.resourceType;
     }
 
-    if (filterParams.dateFrom || filterParams.dateTo) {
-      whereFilter.createdAt = {};
-
-      if (filterParams.dateFrom) {
-        whereFilter.createdAt.gte = filterParams.dateFrom;
-      }
-
-      if (filterParams.dateTo) {
-        whereFilter.createdAt.lte = filterParams.dateTo;
-      }
+    if (params.severity) {
+      where.severity = params.severity;
     }
 
-    // ========================================================================
-    // 6. FETCH LOGS & COUNT
-    // ========================================================================
+    if (params.performerId) {
+      where.userId = params.performerId;
+    }
 
-    const [logs, totalCount] = await Promise.all([
-      prisma.auditLog.findMany({
-        where: whereFilter,
-        include: {
-          performedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              email: true,
+    if (params.targetId) {
+      where.targetUserId = params.targetId;
+    }
+
+    // Date range
+    if (params.startDate || params.endDate) {
+      where.createdAt = {};
+      
+      if (params.startDate) {
+        const startDate = parseDate(params.startDate);
+        if (!startDate) {
+          return createResponse(null, {
+            success: false,
+            error: {
+              code: ERROR_CODES.VALIDATION_ERROR,
+              message: 'Invalid startDate format. Use ISO 8601 (YYYY-MM-DD)',
             },
+            requestId,
+            status: 400,
+          });
+        }
+        where.createdAt.gte = startDate;
+      }
+      
+      if (params.endDate) {
+        const endDate = parseDate(params.endDate, true);
+        if (!endDate) {
+          return createResponse(null, {
+            success: false,
+            error: {
+              code: ERROR_CODES.VALIDATION_ERROR,
+              message: 'Invalid endDate format. Use ISO 8601 (YYYY-MM-DD)',
+            },
+            requestId,
+            status: 400,
+          });
+        }
+        where.createdAt.lte = endDate;
+      }
+    }
+
+    // Search
+    if (params.search) {
+      where.OR = [
+        { action: { contains: params.search, mode: 'insensitive' } },
+        { resourceType: { contains: params.search, mode: 'insensitive' } },
+        { details: { contains: params.search, mode: 'insensitive' } },
+        { user: { email: { contains: params.search, mode: 'insensitive' } } },
+        { user: { firstName: { contains: params.search, mode: 'insensitive' } } },
+      ];
+    }
+
+    // 5. Handle export
+    if (params.export) {
+      const exportLogs = await prisma.auditLog.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, email: true, firstName: true, lastName: true },
+          },
+          targetUser: {
+            select: { id: true, email: true, firstName: true, lastName: true },
           },
         },
         orderBy: { createdAt: 'desc' },
-        take: limit,
-        skip,
+        take: EXPORT_MAX_RECORDS,
+      });
+
+      const transformedLogs = exportLogs.map(transformAuditLog);
+
+      // Log export action
+      await prisma.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: 'DATA_EXPORTED',
+          resourceType: 'AUDIT_LOG',
+          resourceId: 'bulk_export',
+          details: JSON.stringify({
+            format: params.export,
+            recordCount: transformedLogs.length,
+            filters: {
+              action: params.action,
+              severity: params.severity,
+              startDate: params.startDate,
+              endDate: params.endDate,
+            },
+          }),
+          severity: 'INFO',
+        },
+      });
+
+      if (params.export === 'csv') {
+        const csv = generateCsv(transformedLogs);
+        const filename = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+        
+        return new NextResponse(csv, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/csv; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'X-Request-ID': requestId,
+            'X-Record-Count': String(transformedLogs.length),
+          },
+        });
+      } else {
+        const json = JSON.stringify({
+          exportedAt: new Date().toISOString(),
+          exportedBy: session.user.id,
+          recordCount: transformedLogs.length,
+          logs: transformedLogs,
+        }, null, 2);
+        
+        const filename = `audit-logs-${new Date().toISOString().split('T')[0]}.json`;
+        
+        return new NextResponse(json, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'X-Request-ID': requestId,
+            'X-Record-Count': String(transformedLogs.length),
+          },
+        });
+      }
+    }
+
+    // 6. Fetch logs with pagination
+    const offset = (params.page - 1) * params.limit;
+
+    const [logs, total] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, email: true, firstName: true, lastName: true },
+          },
+          targetUser: {
+            select: { id: true, email: true, firstName: true, lastName: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: params.limit,
       }),
-      prisma.auditLog.count({ where: whereFilter }),
+      prisma.auditLog.count({ where }),
     ]);
 
-    // ========================================================================
-    // 7. TRANSFORM DATA
-    // ========================================================================
+    // 7. Fetch statistics
+    const [actionStats, resourceStats, severityStats, topPerformersRaw] = await Promise.all([
+      prisma.auditLog.groupBy({
+        by: ['action'],
+        where,
+        _count: true,
+        orderBy: { _count: { action: 'desc' } },
+        take: 10,
+      }),
+      prisma.auditLog.groupBy({
+        by: ['resourceType'],
+        where,
+        _count: true,
+      }),
+      prisma.auditLog.groupBy({
+        by: ['severity'],
+        where,
+        _count: true,
+      }),
+      prisma.auditLog.groupBy({
+        by: ['userId'],
+        where: {
+          ...where,
+          userId: { not: null },
+        },
+        _count: true,
+        orderBy: { _count: { userId: 'desc' } },
+        take: 5,
+      }),
+    ]);
 
-    const transformedLogs: AuditLogEntry[] = logs.map((log) => ({
-      id: log.id,
-      performedById: log.performedById,
-      performedBy: {
-        id: log.performedBy.id,
-        firstName: log.performedBy.firstName,
-        lastName: log.performedBy.lastName,
-        email: log.performedBy.email,
-      },
-      targetUserId: log.targetUserId,
-      action: log.action,
-      entityType: log.entityType,
-      entityId: log.entityId,
-      changes: log.changes as Record<string, any> | null,
-      details: log.details
-        ? typeof log.details === 'string'
-          ? JSON.parse(log.details)
-          : log.details
-        : {},
-      ipAddress: log.ipAddress,
-      userAgent: log.userAgent,
-      severity: log.severity,
-      createdAt: log.createdAt.toISOString(),
-    }));
+    // Enrich top performers
+    const topPerformerIds = topPerformersRaw
+      .filter(p => p.userId)
+      .map(p => p.userId!);
+    
+    const topPerformerUsers = topPerformerIds.length > 0 
+      ? await prisma.user.findMany({
+          where: { id: { in: topPerformerIds } },
+          select: { id: true, email: true, firstName: true, lastName: true },
+        })
+      : [];
 
-    const pages = Math.ceil(totalCount / limit);
+    const topPerformers = topPerformersRaw
+      .filter(p => p.userId)
+      .map(p => {
+        const user = topPerformerUsers.find(u => u.id === p.userId);
+        return user ? {
+          id: user.id,
+          email: user.email,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Unknown',
+          actionCount: p._count,
+        } : null;
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null);
 
-    // ========================================================================
-    // 8. BUILD RESPONSE
-    // ========================================================================
+    // 8. Transform logs
+    const transformedLogs = logs.map(transformAuditLog);
 
+    // 9. Build response
     const response: AuditLogsResponse = {
-      success: true,
-      data: transformedLogs,
-      pagination: {
-        page,
-        limit,
-        total: totalCount,
-        pages,
+      logs: transformedLogs,
+      statistics: {
+        total,
+        byAction: actionStats.map(s => ({ action: s.action, count: s._count })),
+        byResourceType: resourceStats.map(s => ({ resourceType: s.resourceType, count: s._count })),
+        bySeverity: severityStats.map(s => ({ severity: s.severity, count: s._count })),
+        topPerformers,
       },
-      timestamp: new Date().toISOString(),
     };
-
-    // ========================================================================
-    // 9. LOG & RESPOND
-    // ========================================================================
 
     const duration = performance.now() - startTime;
 
-    console.log('Audit logs retrieved successfully', {
-      requestId,
-      superAdminId: user.id,
-      superAdminEmail: user.email,
-      totalLogs: totalCount,
+    console.log(`[${requestId}] Audit logs retrieved`, {
+      adminId: session.user.id,
+      total,
       returned: transformedLogs.length,
-      page,
-      pages,
-      filters: {
-        action: filterParams.action,
-        severity: filterParams.severity,
-        dateFrom: filterParams.dateFrom?.toISOString(),
-        dateTo: filterParams.dateTo?.toISOString(),
-      },
       duration: `${Math.round(duration)}ms`,
     });
 
-    return NextResponse.json(response, {
-      status: 200,
-      headers: {
-        'Cache-Control': 'private, no-cache',
-        'X-Request-ID': requestId,
-        'X-Response-Time': `${Math.round(duration)}ms`,
+    return createResponse(response, {
+      success: true,
+      requestId,
+      pagination: {
+        page: params.page,
+        limit: params.limit,
+        total,
+        totalPages: Math.ceil(total / params.limit),
+        hasMore: offset + logs.length < total,
       },
     });
   } catch (error) {
-    const duration = performance.now() - startTime;
-
-    console.error('Audit logs error', {
-      requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      duration: `${Math.round(duration)}ms`,
-    });
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch audit logs',
+    console.error(`[${requestId}] GET /api/superadmin/audit-logs error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: {
         code: ERROR_CODES.INTERNAL_ERROR,
-        details: error instanceof Error ? error.message : 'Unknown error occurred',
+        message: 'Failed to fetch audit logs',
       },
-      { status: 500, headers: { 'X-Request-ID': requestId } }
-    );
+      requestId,
+      status: 500,
+    });
   }
 }
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
+
+export const dynamic = 'force-dynamic';

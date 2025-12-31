@@ -1,472 +1,386 @@
-/**
- * ============================================================================
- * SUPERADMIN FEED ROUTE - World-Class Implementation
- * ============================================================================
- *
- * @file src/app/api/superadmin/feed/route.ts
- * @description System-wide activity feed with real-time updates and filtering
- * @version 2.0.0 (Production-Ready)
- *
- * FEATURES:
- * ✅ Full TypeScript type safety
- * ✅ Request validation & rate limiting
- * ✅ Advanced filtering (action type, entity type, date range)
- * ✅ Pagination with cursor support
- * ✅ Real-time capabilities (WebSocket ready)
- * ✅ Activity categorization & severity levels
- * ✅ Audit trail compliance
- * ✅ Performance optimization
- * ✅ Error handling & structured logging
- * ✅ JSDoc documentation
- */
+// =============================================================================
+// 📰 SUPERADMIN ACTIVITY FEED API - Enterprise-Grade Implementation
+// =============================================================================
+// GET /api/superadmin/feed - System-wide activity feed
+// =============================================================================
+// Schema: v7.8.0 | Access: SUPERADMIN only
+// Features: Real-time feed, filtering, categorization, severity levels
+// =============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 
-// ============================================================================
-// TYPES
-// ============================================================================
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
 
-type ActionType =
-  | 'USER_CREATED'
-  | 'USER_UPDATED'
-  | 'USER_DELETED'
-  | 'USER_SUSPENDED'
-  | 'USER_BANNED'
-  | 'USER_UNBANNED'
-  | 'ROLE_UPGRADED'
-  | 'ROLE_DOWNGRADED'
-  | 'SUBSCRIPTION_GRANTED'
-  | 'SUBSCRIPTION_CANCELLED'
-  | 'PAYMENT_REFUNDED'
-  | 'DATA_EXPORTED'
-  | 'USER_IMPERSONATED'
-  | 'IMPERSONATION_ENDED'
-  | 'SECURITY_SETTINGS_UPDATED'
-  | 'TWO_FACTOR_ENABLED'
-  | 'TWO_FACTOR_DISABLED'
-  | 'LOGIN_ATTEMPT'
-  | 'FAILED_LOGIN'
-  | 'API_KEY_GENERATED'
-  | 'API_KEY_REVOKED'
-  | 'BULK_USER_ACTION'
-  | 'SYSTEM_MAINTENANCE';
-
-interface ActivityRecord {
-  id: string;
-  user: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
+interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
   };
-  action: ActionType;
-  entityType: string | null;
-  entityId: string | null;
-  targetUser: {
+  meta?: {
+    requestId: string;
+    timestamp: string;
+    pagination?: PaginationMeta;
+  };
+}
+
+interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+interface ActivityItem {
+  id: string;
+  
+  actor: {
     id: string;
     email: string;
-    firstName: string;
-    lastName: string;
+    name: string;
+    avatar: string | null;
+  };
+  
+  target: {
+    id: string;
+    email: string;
+    name: string;
   } | null;
-  changes: Record<string, unknown> | null;
+  
+  action: string;
+  actionCategory: string;
+  
+  resourceType: string | null;
+  resourceId: string | null;
+  
   details: string | null;
-  severity: string;
+  changes: Record<string, unknown> | null;
+  
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  
   ipAddress: string | null;
-  userAgent: string | null;
+  location: string | null;
+  
   timestamp: string;
+  relativeTime: string;
+}
+
+interface FeedStats {
+  totalActivities: number;
+  criticalCount: number;
+  warningCount: number;
+  uniqueActors: number;
 }
 
 interface FeedResponse {
-  success: boolean;
-  data: ActivityRecord[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-    hasMore: boolean;
-  };
-  stats: {
-    totalActivities: number;
-    activeUsers: number;
-    criticalEvents: number;
-    period: string;
-  };
+  activities: ActivityItem[];
+  stats: FeedStats;
+  period: string;
 }
 
-interface ParsedQueryParams {
-  page: number;
-  limit: number;
-  actionType?: ActionType;
-  entityType?: string;
-  severity?: string;
-  performedById?: string;
-  targetUserId?: string;
-  startDate?: string;
-  endDate?: string;
-  search?: string;
-}
-
-interface ErrorResponse {
-  success: boolean;
-  error: string;
-  code: string;
-  details?: string;
-}
-
-// ============================================================================
+// =============================================================================
 // CONSTANTS
-// ============================================================================
+// =============================================================================
 
 const ERROR_CODES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
   FORBIDDEN: 'FORBIDDEN',
-  INVALID_REQUEST: 'INVALID_REQUEST',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
 
-const DEFAULT_PAGE = 1;
-const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+const DEFAULT_PAGE_LIMIT = 20;
+const MAX_PAGE_LIMIT = 100;
 
-const VALID_SEVERITIES = ['INFO', 'WARNING', 'CRITICAL'];
+// Action category mapping
+const ACTION_CATEGORIES: Record<string, string> = {
+  USER_CREATED: 'User Management',
+  USER_UPDATED: 'User Management',
+  USER_DELETED: 'User Management',
+  USER_SUSPENDED: 'Security',
+  USER_BANNED: 'Security',
+  USER_UNBANNED: 'Security',
+  ROLE_UPGRADED: 'Access Control',
+  ROLE_DOWNGRADED: 'Access Control',
+  SUBSCRIPTION_GRANTED: 'Billing',
+  SUBSCRIPTION_CANCELLED: 'Billing',
+  PAYMENT_RECEIVED: 'Billing',
+  PAYMENT_REFUNDED: 'Billing',
+  DATA_EXPORTED: 'Data Access',
+  USER_IMPERSONATED: 'Security',
+  IMPERSONATION_ENDED: 'Security',
+  BULK_USER_ACTION: 'Administration',
+  SETTINGS_UPDATED: 'Configuration',
+  LOGIN_ATTEMPT: 'Authentication',
+  FAILED_LOGIN: 'Security',
+  API_KEY_GENERATED: 'Security',
+  API_KEY_REVOKED: 'Security',
+};
 
-const SEVERITY_MAPPING: Record<string, string> = {
+// Severity mapping for actions
+const ACTION_SEVERITY: Record<string, 'INFO' | 'WARNING' | 'CRITICAL'> = {
   USER_DELETED: 'CRITICAL',
   USER_BANNED: 'CRITICAL',
+  USER_IMPERSONATED: 'CRITICAL',
+  BULK_USER_ACTION: 'CRITICAL',
+  USER_SUSPENDED: 'WARNING',
   ROLE_UPGRADED: 'WARNING',
   SUBSCRIPTION_CANCELLED: 'WARNING',
   PAYMENT_REFUNDED: 'WARNING',
-  USER_IMPERSONATED: 'CRITICAL',
-  SECURITY_SETTINGS_UPDATED: 'WARNING',
-  TWO_FACTOR_ENABLED: 'INFO',
-  LOGIN_ATTEMPT: 'INFO',
   FAILED_LOGIN: 'WARNING',
-  DEFAULT: 'INFO',
+  API_KEY_REVOKED: 'WARNING',
 };
 
-// ============================================================================
-// HELPERS
-// ============================================================================
+// =============================================================================
+// VALIDATION SCHEMAS
+// =============================================================================
 
-/**
- * Parse and validate query parameters
- * Ensures all parameters are within acceptable ranges and valid formats
- */
-function parseQueryParams(request: NextRequest): ParsedQueryParams {
-  const { searchParams } = new URL(request.url);
+const GetFeedSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(MAX_PAGE_LIMIT).default(DEFAULT_PAGE_LIMIT),
+  
+  // Filters
+  actionType: z.string().optional(),
+  category: z.string().optional(),
+  severity: z.enum(['INFO', 'WARNING', 'CRITICAL']).optional(),
+  actorId: z.string().cuid().optional(),
+  targetId: z.string().cuid().optional(),
+  
+  // Date range
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+  
+  // Search
+  search: z.string().max(200).optional(),
+});
 
-  const page = Math.max(
-    parseInt(searchParams.get('page') || String(DEFAULT_PAGE), 10),
-    1
-  );
-  const limit = Math.min(
-    Math.max(parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10), 1),
-    MAX_LIMIT
-  );
-  const actionType = searchParams.get('actionType') || undefined;
-  const entityType = searchParams.get('entityType') || undefined;
-  const severity = searchParams.get('severity') || undefined;
-  const performedById = searchParams.get('performedById') || undefined;
-  const targetUserId = searchParams.get('targetUserId') || undefined;
-  const startDate = searchParams.get('startDate') || undefined;
-  const endDate = searchParams.get('endDate') || undefined;
-  const search = searchParams.get('search') || undefined;
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
 
-  // Validate severity if provided
-  if (severity && !VALID_SEVERITIES.includes(severity)) {
-    throw new Error(`Invalid severity. Valid options: ${VALID_SEVERITIES.join(', ')}`);
-  }
-
-  // Validate dates
-  if (startDate && isNaN(new Date(startDate).getTime())) {
-    throw new Error('Invalid startDate format. Use ISO 8601 (YYYY-MM-DD)');
-  }
-  if (endDate && isNaN(new Date(endDate).getTime())) {
-    throw new Error('Invalid endDate format. Use ISO 8601 (YYYY-MM-DD)');
-  }
-
-  return {
-    page,
-    limit,
-    actionType: actionType as ActionType | undefined,
-    entityType,
-    severity,
-    performedById,
-    targetUserId,
-    startDate,
-    endDate,
-    search,
-  };
+function generateRequestId(): string {
+  return `feed_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-/**
- * Build Prisma where clause from query parameters
- */
-function buildWhereClause(params: ParsedQueryParams): Record<string, unknown> {
-  const where: Record<string, unknown> = {};
-
-  if (params.actionType) {
-    where.action = params.actionType;
+function createResponse<T>(
+  data: T | null,
+  options: {
+    success: boolean;
+    error?: { code: string; message: string };
+    requestId: string;
+    status?: number;
+    pagination?: PaginationMeta;
   }
-
-  if (params.entityType) {
-    where.entityType = params.entityType;
-  }
-
-  if (params.severity) {
-    where.severity = params.severity;
-  }
-
-  if (params.performedById) {
-    where.performedById = params.performedById;
-  }
-
-  if (params.targetUserId) {
-    where.targetUserId = params.targetUserId;
-  }
-
-  if (params.search) {
-    where.OR = [
-      { details: { contains: params.search, mode: 'insensitive' } },
-      { performedBy: { email: { contains: params.search, mode: 'insensitive' } } },
-      { performedBy: { firstName: { contains: params.search, mode: 'insensitive' } } },
-      { performedBy: { lastName: { contains: params.search, mode: 'insensitive' } } },
-    ];
-  }
-
-  if (params.startDate || params.endDate) {
-    where.createdAt = {};
-
-    if (params.startDate) {
-      (where.createdAt as Record<string, unknown>).gte = new Date(params.startDate);
-    }
-
-    if (params.endDate) {
-      const endDate = new Date(params.endDate);
-      endDate.setHours(23, 59, 59, 999);
-      (where.createdAt as Record<string, unknown>).lte = endDate;
-    }
-  }
-
-  return where;
-}
-
-/**
- * Determine severity level for an action
- */
-function determineSeverity(action: string): string {
-  return SEVERITY_MAPPING[action] || SEVERITY_MAPPING.DEFAULT;
-}
-
-/**
- * Transform audit log to activity record
- */
-function transformAuditLog(auditLog: any): ActivityRecord {
-  return {
-    id: auditLog.id,
-    user: {
-      id: auditLog.performedBy.id,
-      email: auditLog.performedBy.email,
-      firstName: auditLog.performedBy.firstName,
-      lastName: auditLog.performedBy.lastName,
+): NextResponse<ApiResponse<T>> {
+  const response: ApiResponse<T> = {
+    success: options.success,
+    meta: {
+      requestId: options.requestId,
+      timestamp: new Date().toISOString(),
     },
-    action: auditLog.action,
-    entityType: auditLog.entityType,
-    entityId: auditLog.entityId,
-    targetUser: auditLog.targetUser
-      ? {
-          id: auditLog.targetUser.id,
-          email: auditLog.targetUser.email,
-          firstName: auditLog.targetUser.firstName,
-          lastName: auditLog.targetUser.lastName,
-        }
-      : null,
-    changes: auditLog.changes as Record<string, unknown> | null,
-    details: auditLog.details,
-    severity: determineSeverity(auditLog.action),
-    ipAddress: auditLog.ipAddress,
-    userAgent: auditLog.userAgent,
-    timestamp: auditLog.createdAt.toISOString(),
   };
-}
 
-/**
- * Get activity statistics
- * Calculates total activities, active users, and critical events
- */
-async function getActivityStats(
-  where: Record<string, unknown>
-): Promise<{ totalActivities: number; activeUsers: number; criticalEvents: number }> {
-  const [totalActivities, criticalEvents, uniqueUsers] = await Promise.all([
-    prisma.auditLog.count({ where }),
-    prisma.auditLog.count({
-      where: {
-        ...where,
-        severity: 'CRITICAL',
-      },
-    }),
-    prisma.auditLog.groupBy({
-      by: ['performedById'],
-      where,
-    }),
-  ]);
-
-  return {
-    totalActivities,
-    activeUsers: uniqueUsers.length,
-    criticalEvents,
-  };
-}
-
-/**
- * Calculate period description based on date range
- */
-function getPeriodDescription(startDate?: string, endDate?: string): string {
-  if (!startDate && !endDate) {
-    return 'all-time';
+  if (options.success && data !== null) {
+    response.data = data;
   }
 
-  if (startDate && endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffMs = end.getTime() - start.getTime();
-    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 1) return '24 hours';
-    if (diffDays === 7) return '7 days';
-    if (diffDays === 30) return '30 days';
-    return `${diffDays} days`;
+  if (options.error) {
+    response.error = options.error;
   }
 
-  return 'custom';
+  if (options.pagination) {
+    response.meta!.pagination = options.pagination;
+  }
+
+  return NextResponse.json(response, {
+    status: options.status || 200,
+    headers: {
+      'X-Request-ID': options.requestId,
+      'Cache-Control': 'private, max-age=10',
+    },
+  });
 }
 
-// ============================================================================
-// MAIN HANDLER
-// ============================================================================
+/**
+ * Verify SuperAdmin access
+ */
+async function verifySuperAdmin(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      isSuperAdmin: true,
+      roles: true,
+    },
+  });
+
+  return user?.isSuperAdmin || user?.roles.includes('SUPERADMIN') || false;
+}
 
 /**
- * GET /api/superadmin/feed
- *
- * Retrieve system activity feed with filtering and pagination (SuperAdmin only)
- *
- * Query parameters:
- * - page: number (default: 1)
- * - limit: number (default: 20, max: 100)
- * - actionType: string (filter by action type)
- * - entityType: string (filter by entity type)
- * - severity: 'INFO' | 'WARNING' | 'CRITICAL'
- * - performedById: string (filter by user who performed action)
- * - targetUserId: string (filter by target user)
- * - startDate: ISO 8601 date string
- * - endDate: ISO 8601 date string
- * - search: string (search in details and user info)
- *
- * Example:
- * GET /api/superadmin/feed?page=1&limit=20&severity=CRITICAL&search=user@example.com
- *
- * @param request NextRequest
- * @returns FeedResponse on success, ErrorResponse on failure
+ * Calculate relative time string
  */
-export async function GET(
-  request: NextRequest
-): Promise<NextResponse<FeedResponse | ErrorResponse>> {
-  const requestId = crypto.randomUUID();
+function getRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  
+  return date.toLocaleDateString();
+}
+
+/**
+ * Get action category
+ */
+function getActionCategory(action: string): string {
+  return ACTION_CATEGORIES[action] || 'Other';
+}
+
+/**
+ * Get action severity
+ */
+function getActionSeverity(action: string, storedSeverity?: string): 'INFO' | 'WARNING' | 'CRITICAL' {
+  if (storedSeverity && ['INFO', 'WARNING', 'CRITICAL'].includes(storedSeverity)) {
+    return storedSeverity as 'INFO' | 'WARNING' | 'CRITICAL';
+  }
+  return ACTION_SEVERITY[action] || 'INFO';
+}
+
+// =============================================================================
+// GET HANDLER - Activity Feed
+// =============================================================================
+
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const requestId = generateRequestId();
   const startTime = performance.now();
 
   try {
-    // ========================================================================
-    // 1. AUTHENTICATION
-    // ========================================================================
-
-    const session = await auth();
-
-    if (!session) {
-      console.warn('Unauthorized superadmin feed access - no session', { requestId });
-      return Response.json(
-        {
-          success: false,
-          error: 'Authentication required',
+    // 1. Authentication
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return createResponse(null, {
+        success: false,
+        error: {
           code: ERROR_CODES.UNAUTHORIZED,
+          message: 'Authentication required',
         },
-        { status: 401, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    // ========================================================================
-    // 2. VALIDATE SUPERADMIN ACCESS
-    // ========================================================================
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      select: {
-        id: true,
-        email: true,
-        isSuperAdmin: true,
-        roles: true,
-      },
-    });
-
-    if (!user || (!user.isSuperAdmin && !user.roles.includes('SUPERADMIN'))) {
-      console.warn('SuperAdmin authorization failed for feed', {
         requestId,
-        email: session.user.email,
+        status: 401,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'SuperAdmin access required',
-          code: ERROR_CODES.FORBIDDEN,
-        },
-        { status: 403, headers: { 'X-Request-ID': requestId } }
-      );
     }
 
-    // ========================================================================
-    // 3. PARSE & VALIDATE PARAMETERS
-    // ========================================================================
+    // 2. Verify SuperAdmin access
+    const isSuperAdmin = await verifySuperAdmin(session.user.id);
+    if (!isSuperAdmin) {
+      return createResponse(null, {
+        success: false,
+        error: {
+          code: ERROR_CODES.FORBIDDEN,
+          message: 'SuperAdmin access required',
+        },
+        requestId,
+        status: 403,
+      });
+    }
 
-    const query = parseQueryParams(request);
+    // 3. Parse query parameters
+    const { searchParams } = new URL(request.url);
+    const rawParams = Object.fromEntries(searchParams.entries());
 
-    console.log('Feed request', {
-      requestId,
-      superAdminId: user.id,
-      filters: {
-        actionType: query.actionType,
-        entityType: query.entityType,
-        severity: query.severity,
-      },
-      pagination: { page: query.page, limit: query.limit },
-    });
+    const validation = GetFeedSchema.safeParse(rawParams);
+    if (!validation.success) {
+      return createResponse(null, {
+        success: false,
+        error: {
+          code: ERROR_CODES.VALIDATION_ERROR,
+          message: validation.error.errors[0]?.message || 'Invalid parameters',
+        },
+        requestId,
+        status: 400,
+      });
+    }
 
-    // ========================================================================
-    // 4. BUILD QUERY
-    // ========================================================================
+    const params = validation.data;
 
-    const where = buildWhereClause(query);
-    const skip = (query.page - 1) * query.limit;
+    // 4. Build where clause
+    const where: Prisma.AuditLogWhereInput = {};
 
-    // ========================================================================
-    // 5. FETCH DATA
-    // ========================================================================
+    if (params.actionType) {
+      where.action = params.actionType;
+    }
 
-    const [activities, total] = await Promise.all([
+    if (params.severity) {
+      where.severity = params.severity;
+    }
+
+    if (params.actorId) {
+      where.userId = params.actorId;
+    }
+
+    if (params.targetId) {
+      where.targetUserId = params.targetId;
+    }
+
+    if (params.startDate || params.endDate) {
+      where.createdAt = {};
+      if (params.startDate) {
+        where.createdAt.gte = new Date(params.startDate);
+      }
+      if (params.endDate) {
+        const endDate = new Date(params.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        where.createdAt.lte = endDate;
+      }
+    }
+
+    if (params.search) {
+      where.OR = [
+        { action: { contains: params.search, mode: 'insensitive' } },
+        { details: { contains: params.search, mode: 'insensitive' } },
+        { user: { email: { contains: params.search, mode: 'insensitive' } } },
+        { user: { firstName: { contains: params.search, mode: 'insensitive' } } },
+      ];
+    }
+
+    // Filter by category if provided
+    if (params.category) {
+      const actionsInCategory = Object.entries(ACTION_CATEGORIES)
+        .filter(([_, cat]) => cat === params.category)
+        .map(([action]) => action);
+      
+      if (actionsInCategory.length > 0) {
+        where.action = { in: actionsInCategory };
+      }
+    }
+
+    // 5. Fetch activities with pagination
+    const offset = (params.page - 1) * params.limit;
+
+    const [activities, total, severityCounts, uniqueActors] = await Promise.all([
       prisma.auditLog.findMany({
         where,
-        skip,
-        take: query.limit,
-        orderBy: { createdAt: 'desc' },
         include: {
-          performedBy: {
+          user: {
             select: {
               id: true,
               email: true,
               firstName: true,
               lastName: true,
+              avatar: true,
             },
           },
           targetUser: {
@@ -478,107 +392,138 @@ export async function GET(
             },
           },
         },
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: params.limit,
       }),
       prisma.auditLog.count({ where }),
+      prisma.auditLog.groupBy({
+        by: ['severity'],
+        where,
+        _count: true,
+      }),
+      prisma.auditLog.groupBy({
+        by: ['userId'],
+        where,
+      }),
     ]);
 
-    // ========================================================================
-    // 6. TRANSFORM DATA
-    // ========================================================================
-
-    const transformedActivities = activities.map(transformAuditLog);
-
-    // ========================================================================
-    // 7. GET STATISTICS
-    // ========================================================================
-
-    const stats = await getActivityStats(where);
-
-    // ========================================================================
-    // 8. BUILD RESPONSE
-    // ========================================================================
-
-    const totalPages = Math.ceil(total / query.limit);
-    const hasMore = query.page < totalPages;
-
-    const response: FeedResponse = {
-      success: true,
-      data: transformedActivities,
-      pagination: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        pages: totalPages,
-        hasMore,
-      },
-      stats: {
-        totalActivities: stats.totalActivities,
-        activeUsers: stats.activeUsers,
-        criticalEvents: stats.criticalEvents,
-        period: getPeriodDescription(query.startDate, query.endDate),
-      },
+    // 6. Process severity counts
+    const severityMap: Record<string, number> = {
+      INFO: 0,
+      WARNING: 0,
+      CRITICAL: 0,
     };
+    severityCounts.forEach(item => {
+      severityMap[item.severity] = item._count;
+    });
 
-    // ========================================================================
-    // 9. LOG & RESPOND
-    // ========================================================================
+    // 7. Transform activities
+    const transformedActivities: ActivityItem[] = activities.map(activity => ({
+      id: activity.id,
+      
+      actor: activity.user ? {
+        id: activity.user.id,
+        email: activity.user.email,
+        name: `${activity.user.firstName} ${activity.user.lastName}`.trim(),
+        avatar: activity.user.avatar,
+      } : {
+        id: 'system',
+        email: 'system@pitchconnect.com',
+        name: 'System',
+        avatar: null,
+      },
+      
+      target: activity.targetUser ? {
+        id: activity.targetUser.id,
+        email: activity.targetUser.email,
+        name: `${activity.targetUser.firstName} ${activity.targetUser.lastName}`.trim(),
+      } : null,
+      
+      action: activity.action,
+      actionCategory: getActionCategory(activity.action),
+      
+      resourceType: activity.resourceType,
+      resourceId: activity.resourceId,
+      
+      details: typeof activity.details === 'string' 
+        ? activity.details 
+        : activity.details ? JSON.stringify(activity.details) : null,
+      changes: activity.changes as Record<string, unknown> | null,
+      
+      severity: getActionSeverity(activity.action, activity.severity),
+      
+      ipAddress: activity.ipAddress,
+      location: null, // Could add geo-IP lookup
+      
+      timestamp: activity.createdAt.toISOString(),
+      relativeTime: getRelativeTime(activity.createdAt),
+    }));
+
+    // 8. Determine period description
+    let period = 'All time';
+    if (params.startDate && params.endDate) {
+      const start = new Date(params.startDate);
+      const end = new Date(params.endDate);
+      const diffDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      period = `${diffDays} days`;
+    } else if (params.startDate) {
+      period = `Since ${new Date(params.startDate).toLocaleDateString()}`;
+    }
+
+    // 9. Build response
+    const response: FeedResponse = {
+      activities: transformedActivities,
+      stats: {
+        totalActivities: total,
+        criticalCount: severityMap.CRITICAL,
+        warningCount: severityMap.WARNING,
+        uniqueActors: uniqueActors.length,
+      },
+      period,
+    };
 
     const duration = performance.now() - startTime;
 
-    console.log('Feed retrieved successfully', {
-      requestId,
-      superAdminId: user.id,
-      recordCount: transformedActivities.length,
-      totalRecords: total,
+    console.log(`[${requestId}] Activity feed retrieved`, {
+      adminId: session.user.id,
+      total,
+      returned: transformedActivities.length,
+      filters: {
+        actionType: params.actionType,
+        category: params.category,
+        severity: params.severity,
+      },
       duration: `${Math.round(duration)}ms`,
     });
 
-    return NextResponse.json(response, {
-      status: 200,
-      headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-        'X-Request-ID': requestId,
-        'X-Response-Time': `${Math.round(duration)}ms`,
-        'X-Total-Count': String(total),
-        'X-Total-Pages': String(totalPages),
+    return createResponse(response, {
+      success: true,
+      requestId,
+      pagination: {
+        page: params.page,
+        limit: params.limit,
+        total,
+        totalPages: Math.ceil(total / params.limit),
+        hasMore: offset + activities.length < total,
       },
     });
   } catch (error) {
-    const duration = performance.now() - startTime;
-
-    // Validation errors
-    if (error instanceof Error && error.message.includes('Invalid')) {
-      console.warn('Validation error in feed', {
-        requestId,
-        error: error.message,
-        duration: `${Math.round(duration)}ms`,
-      });
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: error.message,
-          code: ERROR_CODES.INVALID_REQUEST,
-        },
-        { status: 400, headers: { 'X-Request-ID': requestId } }
-      );
-    }
-
-    console.error('Feed error', {
-      requestId,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      duration: `${Math.round(duration)}ms`,
-    });
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to retrieve activity feed',
+    console.error(`[${requestId}] GET /api/superadmin/feed error:`, error);
+    return createResponse(null, {
+      success: false,
+      error: {
         code: ERROR_CODES.INTERNAL_ERROR,
-        details: error instanceof Error ? error.message : 'Unknown error occurred',
+        message: 'Failed to fetch activity feed',
       },
-      { status: 500, headers: { 'X-Request-ID': requestId } }
-    );
+      requestId,
+      status: 500,
+    });
   }
 }
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
+
+export const dynamic = 'force-dynamic';
