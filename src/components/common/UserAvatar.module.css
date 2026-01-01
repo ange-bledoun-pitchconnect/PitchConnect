@@ -1,19 +1,55 @@
+/**
+ * ============================================================================
+ * UserAvatar.module.css
+ * ============================================================================
+ * 
+ * Enhanced styles for UserAvatar component with:
+ * - Dark mode support
+ * - Multiple sizes
+ * - Smooth animations
+ * - Accessibility features
+ * 
+ * @version 2.0.0
+ * @since v7.10.1
+ */
+
+/* =============================================================================
+ * CONTAINER
+ * ========================================================================== */
+
 .avatarContainer {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.75rem;
-  cursor: pointer;
   transition: transform 0.2s ease-out;
 }
 
-.avatarContainer:hover:where([role="button"]) {
-  transform: scale(1.05);
+.avatarContainer:where([role="button"]) {
+  cursor: pointer;
 }
+
+.avatarContainer:where([role="button"]):hover {
+  transform: scale(1.02);
+}
+
+.avatarContainer:where([role="button"]):focus {
+  outline: none;
+}
+
+.avatarContainer:where([role="button"]):focus-visible {
+  outline: 2px solid rgba(255, 215, 0, 0.5);
+  outline-offset: 2px;
+  border-radius: 9999px;
+}
+
+/* =============================================================================
+ * AVATAR IMAGE WRAPPER
+ * ========================================================================== */
 
 .avatarImage {
   position: relative;
-  border-radius: 50%;
+  border-radius: 9999px;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -21,39 +57,51 @@
   flex-shrink: 0;
   background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(107, 33, 168, 0.1));
   border: 2px solid rgba(255, 215, 0, 0.2);
-  transition: border-color 0.3s ease-out;
+  transition: border-color 0.3s ease-out, box-shadow 0.3s ease-out;
 }
 
 .avatarContainer:hover .avatarImage {
   border-color: rgba(255, 215, 0, 0.4);
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
 }
 
-/* Size Variants */
-.size-sm .avatarImage {
-  width: 32px;
-  height: 32px;
-  border-width: 1px;
+.avatarError {
+  border-color: rgba(255, 215, 0, 0.3);
 }
 
-.size-md .avatarImage {
-  width: 40px;
-  height: 40px;
-  border-width: 2px;
+/* Dark mode */
+:global(.dark) .avatarImage {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(107, 33, 168, 0.05));
+  border-color: rgba(255, 215, 0, 0.15);
 }
 
-.size-lg .avatarImage {
-  width: 56px;
-  height: 56px;
-  border-width: 2px;
+:global(.dark) .avatarContainer:hover .avatarImage {
+  border-color: rgba(255, 215, 0, 0.3);
 }
 
-.size-xl .avatarImage {
-  width: 80px;
-  height: 80px;
-  border-width: 3px;
-}
+/* =============================================================================
+ * SIZE VARIANTS
+ * ========================================================================== */
 
-/* Avatar Image */
+.size-xs .avatarImage { width: 24px; height: 24px; border-width: 1px; }
+.size-sm .avatarImage { width: 32px; height: 32px; border-width: 1px; }
+.size-md .avatarImage { width: 40px; height: 40px; border-width: 2px; }
+.size-lg .avatarImage { width: 56px; height: 56px; border-width: 2px; }
+.size-xl .avatarImage { width: 80px; height: 80px; border-width: 2px; }
+.size-2xl .avatarImage { width: 112px; height: 112px; border-width: 3px; }
+
+/* Font sizes for initials */
+.size-xs .initials { font-size: 0.625rem; }
+.size-sm .initials { font-size: 0.75rem; }
+.size-md .initials { font-size: 0.875rem; }
+.size-lg .initials { font-size: 1rem; }
+.size-xl .initials { font-size: 1.25rem; }
+.size-2xl .initials { font-size: 1.5rem; }
+
+/* =============================================================================
+ * IMAGE
+ * ========================================================================== */
+
 .avatarImg {
   width: 100%;
   height: 100%;
@@ -66,47 +114,73 @@
   opacity: 1;
 }
 
+/* =============================================================================
+ * LOADING SKELETON
+ * ========================================================================== */
+
 .skeleton {
   position: absolute;
   inset: 0;
-  animation: pulse 2s infinite;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @keyframes pulse {
   0%, 100% {
-    opacity: 0.1;
+    opacity: 0.3;
   }
   50% {
-    opacity: 0.2;
+    opacity: 0.15;
   }
 }
 
 .avatarError .skeleton {
   animation: none;
+  opacity: 0;
 }
 
-/* Fallback Initials */
+/* =============================================================================
+ * INITIALS FALLBACK
+ * ========================================================================== */
+
 .initials {
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.025em;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* Position Badge */
+/* =============================================================================
+ * POSITION BADGE
+ * ========================================================================== */
+
 .positionBadge {
   position: absolute;
   bottom: -4px;
   right: -4px;
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: 9999px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 0.75rem;
   border: 2px solid white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   animation: slideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 10;
 }
+
+:global(.dark) .positionBadge {
+  border-color: rgb(30, 30, 30);
+}
+
+/* Size variants for position badge */
+.size-xs .positionBadge { width: 16px; height: 16px; font-size: 0.5rem; bottom: -2px; right: -2px; }
+.size-sm .positionBadge { width: 20px; height: 20px; font-size: 0.625rem; bottom: -3px; right: -3px; }
+.size-md .positionBadge { width: 24px; height: 24px; font-size: 0.75rem; }
+.size-lg .positionBadge { width: 28px; height: 28px; font-size: 0.875rem; bottom: -5px; right: -5px; }
+.size-xl .positionBadge { width: 32px; height: 32px; font-size: 1rem; bottom: -6px; right: -6px; }
+.size-2xl .positionBadge { width: 40px; height: 40px; font-size: 1.125rem; bottom: -8px; right: -8px; }
 
 @keyframes slideIn {
   from {
@@ -119,11 +193,44 @@
   }
 }
 
-/* Label */
+/* =============================================================================
+ * STATUS INDICATOR
+ * ========================================================================== */
+
+.statusIndicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-radius: 9999px;
+  border: 2px solid white;
+  z-index: 10;
+}
+
+:global(.dark) .statusIndicator {
+  border-color: rgb(30, 30, 30);
+}
+
+.size-xs .statusIndicator { width: 8px; height: 8px; }
+.size-sm .statusIndicator { width: 10px; height: 10px; }
+.size-md .statusIndicator { width: 12px; height: 12px; }
+.size-lg .statusIndicator { width: 14px; height: 14px; }
+.size-xl .statusIndicator { width: 16px; height: 16px; }
+.size-2xl .statusIndicator { width: 20px; height: 20px; }
+
+.statusOnline { background-color: #22c55e; }
+.statusOffline { background-color: #9ca3af; }
+.statusAway { background-color: #eab308; }
+.statusBusy { background-color: #ef4444; }
+
+/* =============================================================================
+ * LABEL
+ * ========================================================================== */
+
 .label {
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
+  min-width: 0;
 }
 
 .name {
@@ -131,7 +238,10 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: #ffffff;
-  line-height: 1;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .position {
@@ -139,25 +249,55 @@
   font-size: 0.75rem;
   font-weight: 500;
   color: #FFD700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.025em;
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Accessibility */
+/* =============================================================================
+ * CLICKABLE STATE
+ * ========================================================================== */
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:active {
+  transform: scale(0.98);
+}
+
+/* =============================================================================
+ * ACCESSIBILITY
+ * ========================================================================== */
+
 @media (prefers-reduced-motion: reduce) {
   .avatarContainer,
   .avatarImg,
   .skeleton,
-  .positionBadge {
+  .positionBadge,
+  .avatarImage {
     transition: none;
     animation: none;
   }
 }
 
-/* High Contrast Mode */
 @media (prefers-contrast: more) {
   .avatarImage {
     border-width: 3px;
     border-color: #FFD700;
   }
+  
+  .positionBadge {
+    border-width: 3px;
+  }
+}
+
+/* =============================================================================
+ * RING EFFECT ON FOCUS
+ * ========================================================================== */
+
+.avatarContainer:focus-visible .avatarImage {
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.5);
 }
