@@ -1,79 +1,79 @@
 /**
- * useConfirmDialog Hook
- * Manage confirm dialog state and actions
+ * ============================================================================
+ * ⚠️ USE CONFIRM DIALOG HOOK v7.10.1
+ * ============================================================================
+ * @version 7.10.1
+ * @path src/hooks/useConfirmDialog.ts
+ * ============================================================================
  */
 
-import { useState, useCallback } from 'react';
+'use client';
 
-interface ConfirmDialogState {
-  isOpen: boolean;
+import { useState, useCallback, useMemo } from 'react';
+
+export type ConfirmDialogVariant = 'default' | 'danger' | 'warning' | 'success';
+
+export interface ConfirmDialogConfig {
   title: string;
-  message: string;
   description?: string;
-  type: 'danger' | 'warning' | 'info' | 'success';
-  onConfirm?: () => void | Promise<void>;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: ConfirmDialogVariant;
+  icon?: React.ReactNode;
+  isDestructive?: boolean;
 }
 
-export function useConfirmDialog() {
-  const [state, setState] = useState<ConfirmDialogState>({
-    isOpen: false,
-    title: '',
-    message: '',
-    type: 'danger',
-  });
+export interface UseConfirmDialogReturn {
+  isOpen: boolean;
+  config: ConfirmDialogConfig | null;
+  confirm: (config: ConfirmDialogConfig) => Promise<boolean>;
+  close: () => void;
+  handleConfirm: () => void;
+  handleCancel: () => void;
+}
 
-  const [isLoading, setIsLoading] = useState(false);
+export function useConfirmDialog(): UseConfirmDialogReturn {
+  const [isOpen, setIsOpen] = useState(false);
+  const [config, setConfig] = useState<ConfirmDialogConfig | null>(null);
+  const [resolveRef, setResolveRef] = useState<((value: boolean) => void) | null>(null);
 
-  const show = useCallback(
-    (
-      title: string,
-      message: string,
-      options?: {
-        description?: string;
-        type?: 'danger' | 'warning' | 'info' | 'success';
-        onConfirm?: () => void | Promise<void>;
-      }
-    ) => {
-      setState({
-        isOpen: true,
-        title,
-        message,
-        description: options?.description,
-        type: options?.type || 'danger',
-        onConfirm: options?.onConfirm,
+  const confirm = useCallback((dialogConfig: ConfirmDialogConfig): Promise<boolean> => {
+    return new Promise((resolve) => {
+      setConfig({
+        confirmLabel: 'Confirm',
+        cancelLabel: 'Cancel',
+        variant: 'default',
+        ...dialogConfig,
       });
-    },
-    []
-  );
-
-  const close = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      isOpen: false,
-    }));
+      setResolveRef(() => resolve);
+      setIsOpen(true);
+    });
   }, []);
 
-  const handleConfirm = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      if (state.onConfirm) {
-        await state.onConfirm();
-      }
-    } finally {
-      setIsLoading(false);
-      close();
-    }
-  }, [state, close]);
+  const close = useCallback(() => {
+    setIsOpen(false);
+    setConfig(null);
+    setResolveRef(null);
+  }, []);
 
-  return {
-    isOpen: state.isOpen,
-    title: state.title,
-    message: state.message,
-    description: state.description,
-    type: state.type,
-    isLoading,
-    show,
+  const handleConfirm = useCallback(() => {
+    resolveRef?.(true);
+    close();
+  }, [resolveRef, close]);
+
+  const handleCancel = useCallback(() => {
+    resolveRef?.(false);
+    close();
+  }, [resolveRef, close]);
+
+  return useMemo(() => ({
+    isOpen,
+    config,
+    confirm,
     close,
     handleConfirm,
-  };
+    handleCancel,
+  }), [isOpen, config, confirm, close, handleConfirm, handleCancel]);
 }
+
+export default useConfirmDialog;

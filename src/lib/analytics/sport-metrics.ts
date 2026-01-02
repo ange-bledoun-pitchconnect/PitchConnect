@@ -1,747 +1,810 @@
-// ============================================================================
-// src/lib/analytics/sport-metrics.ts
-// 🏆 PitchConnect Enterprise Analytics - Multi-Sport Metrics
-// ============================================================================
-// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
-// SUPPORTS: All 12 sports in PitchConnect platform
-// ============================================================================
-
-import type { Sport, Position } from '@prisma/client';
-
-// ============================================================================
-// SPORT METRIC CONFIGURATIONS
-// ============================================================================
-
 /**
- * Sport-specific metric definitions for analytics calculations
+ * ============================================================================
+ * 📊 PITCHCONNECT ANALYTICS - SPORT METRICS v7.10.1
+ * ============================================================================
+ * Multi-sport metric configurations for analytics calculations
+ * Position-specific weights, injury risk factors, age adjustments
+ * ============================================================================
  */
+
+import type { Sport, BodyPart } from './types';
+
+// =============================================================================
+// SPORT METRIC CONFIGURATION TYPE
+// =============================================================================
+
 export interface SportMetricConfig {
   sport: Sport;
   displayName: string;
   
-  // Key performance indicators for this sport
-  keyMetrics: string[];
+  // Base values for market valuation (in GBP)
+  baseValueByTier: {
+    elite: number;          // Top tier professional
+    professional: number;   // Professional league
+    semipro: number;        // Semi-professional
+    amateur: number;        // Amateur/grassroots
+    youth: number;          // Youth development
+  };
   
-  // Position value multipliers for market value
-  positionValueMultipliers: Record<string, number>;
+  // Position value multipliers
+  positionMultipliers: Record<string, number>;
   
-  // Age curve peak and decline
-  ageCurve: {
+  // Age adjustment curve
+  ageFactors: {
     peakAgeStart: number;
     peakAgeEnd: number;
-    earlyCareerEnd: number;
-    declineStart: number;
+    developmentMultiplier: number;  // Under peak
+    declineRate: number;            // Per year over peak
+    youthCeiling: number;           // Max multiplier for youth
   };
   
-  // Injury risk factors by position
-  positionInjuryRisk: Record<string, number>;
+  // Injury risk by position
+  positionInjuryRisk: Record<string, number>;  // 0-100 base risk
   
-  // Performance rating weights
+  // Common injury body parts by sport
+  commonInjuryAreas: BodyPart[];
+  
+  // Key performance metrics
+  keyMetrics: string[];
+  
+  // Rating weights for overall calculation
   ratingWeights: {
-    goals: number;
-    assists: number;
-    minutesPlayed: number;
-    consistency: number;
-    sportSpecific: number;
-  };
-  
-  // Formation configurations
-  formations: Record<string, string[]>;
-  
-  // Position categories
-  positionCategories: {
-    category: string;
-    positions: string[];
-    importance: number;
+    metric: string;
+    weight: number;
+    category: 'ATTACK' | 'DEFENSE' | 'PHYSICAL' | 'MENTAL' | 'TECHNICAL';
   }[];
+  
+  // Formations available
+  formations: string[];
 }
 
-// ============================================================================
-// SPORT CONFIGURATIONS
-// ============================================================================
+// =============================================================================
+// SPORT METRIC CONFIGURATIONS
+// =============================================================================
 
 export const SPORT_METRIC_CONFIGS: Record<Sport, SportMetricConfig> = {
-  // ==========================================================================
-  // FOOTBALL / SOCCER
-  // ==========================================================================
+  // ===========================================================================
+  // FOOTBALL
+  // ===========================================================================
   FOOTBALL: {
     sport: 'FOOTBALL',
     displayName: 'Football',
-    keyMetrics: [
-      'goals', 'assists', 'passAccuracy', 'shotsOnTarget', 'tackles',
-      'interceptions', 'cleanSheets', 'saves', 'dribbles', 'aerialDuels',
-    ],
-    positionValueMultipliers: {
-      STRIKER: 1.5,
-      CENTRE_FORWARD: 1.4,
-      LEFT_WINGER: 1.3,
-      RIGHT_WINGER: 1.3,
-      ATTACKING_MIDFIELDER: 1.25,
-      CENTRAL_MIDFIELDER: 1.0,
-      DEFENSIVE_MIDFIELDER: 0.9,
-      CENTRE_BACK: 0.85,
+    baseValueByTier: {
+      elite: 50000000,        // £50M
+      professional: 5000000,  // £5M
+      semipro: 100000,        // £100K
+      amateur: 5000,          // £5K
+      youth: 50000,           // £50K
+    },
+    positionMultipliers: {
+      GOALKEEPER: 0.7,
       LEFT_BACK: 0.8,
       RIGHT_BACK: 0.8,
-      GOALKEEPER: 0.7,
+      CENTRE_BACK: 0.9,
+      SWEEPER: 0.85,
+      DEFENSIVE_MIDFIELDER: 1.0,
+      CENTRAL_MIDFIELDER: 1.1,
+      ATTACKING_MIDFIELDER: 1.3,
+      LEFT_MIDFIELDER: 1.0,
+      RIGHT_MIDFIELDER: 1.0,
+      LEFT_WINGER: 1.2,
+      RIGHT_WINGER: 1.2,
+      STRIKER: 1.4,
+      CENTRE_FORWARD: 1.5,
+      SECOND_STRIKER: 1.3,
     },
-    ageCurve: {
+    ageFactors: {
       peakAgeStart: 25,
       peakAgeEnd: 29,
-      earlyCareerEnd: 23,
-      declineStart: 32,
+      developmentMultiplier: 1.3,
+      declineRate: 0.08,
+      youthCeiling: 2.0,
     },
     positionInjuryRisk: {
-      STRIKER: 0.7,
-      CENTRAL_MIDFIELDER: 0.65,
-      DEFENSIVE_MIDFIELDER: 0.7,
-      CENTRE_BACK: 0.6,
-      LEFT_BACK: 0.75,
-      RIGHT_BACK: 0.75,
-      GOALKEEPER: 0.4,
-      LEFT_WINGER: 0.8,
-      RIGHT_WINGER: 0.8,
+      GOALKEEPER: 25,
+      LEFT_BACK: 45,
+      RIGHT_BACK: 45,
+      CENTRE_BACK: 40,
+      DEFENSIVE_MIDFIELDER: 50,
+      CENTRAL_MIDFIELDER: 55,
+      ATTACKING_MIDFIELDER: 50,
+      LEFT_WINGER: 55,
+      RIGHT_WINGER: 55,
+      STRIKER: 50,
+      CENTRE_FORWARD: 50,
     },
-    ratingWeights: {
-      goals: 0.3,
-      assists: 0.2,
-      minutesPlayed: 0.15,
-      consistency: 0.2,
-      sportSpecific: 0.15,
-    },
-    formations: {
-      '4-3-3': ['GK', 'RB', 'CB', 'CB', 'LB', 'CM', 'CM', 'CM', 'RW', 'ST', 'LW'],
-      '4-4-2': ['GK', 'RB', 'CB', 'CB', 'LB', 'RM', 'CM', 'CM', 'LM', 'ST', 'ST'],
-      '4-2-3-1': ['GK', 'RB', 'CB', 'CB', 'LB', 'CDM', 'CDM', 'RW', 'CAM', 'LW', 'ST'],
-      '3-5-2': ['GK', 'CB', 'CB', 'CB', 'RWB', 'CM', 'CM', 'CAM', 'LWB', 'ST', 'ST'],
-      '5-3-2': ['GK', 'RWB', 'CB', 'CB', 'CB', 'LWB', 'CM', 'CM', 'CM', 'ST', 'ST'],
-      '4-1-4-1': ['GK', 'RB', 'CB', 'CB', 'LB', 'CDM', 'RM', 'CM', 'CM', 'LM', 'ST'],
-    },
-    positionCategories: [
-      { category: 'Goalkeeper', positions: ['GOALKEEPER'], importance: 15 },
-      { category: 'Defense', positions: ['LEFT_BACK', 'RIGHT_BACK', 'CENTRE_BACK', 'SWEEPER'], importance: 25 },
-      { category: 'Midfield', positions: ['DEFENSIVE_MIDFIELDER', 'CENTRAL_MIDFIELDER', 'ATTACKING_MIDFIELDER', 'LEFT_MIDFIELDER', 'RIGHT_MIDFIELDER'], importance: 30 },
-      { category: 'Attack', positions: ['STRIKER', 'CENTRE_FORWARD', 'LEFT_WINGER', 'RIGHT_WINGER', 'SECOND_STRIKER'], importance: 30 },
+    commonInjuryAreas: ['HAMSTRING', 'KNEE', 'ANKLE', 'GROIN', 'CALF', 'THIGH'],
+    keyMetrics: [
+      'goals', 'assists', 'passAccuracy', 'tacklesWon', 'interceptions',
+      'duelsWon', 'aerialDuelsWon', 'keyPasses', 'shotsOnTarget', 'cleanSheets',
     ],
+    ratingWeights: [
+      { metric: 'goals', weight: 15, category: 'ATTACK' },
+      { metric: 'assists', weight: 12, category: 'ATTACK' },
+      { metric: 'passAccuracy', weight: 15, category: 'TECHNICAL' },
+      { metric: 'tacklesWon', weight: 10, category: 'DEFENSE' },
+      { metric: 'interceptions', weight: 8, category: 'DEFENSE' },
+      { metric: 'duelsWon', weight: 10, category: 'PHYSICAL' },
+      { metric: 'keyPasses', weight: 10, category: 'ATTACK' },
+      { metric: 'shotsOnTarget', weight: 8, category: 'ATTACK' },
+      { metric: 'aerialDuelsWon', weight: 6, category: 'PHYSICAL' },
+      { metric: 'decisionMaking', weight: 6, category: 'MENTAL' },
+    ],
+    formations: ['4-4-2', '4-3-3', '3-5-2', '4-2-3-1', '5-3-2', '4-1-4-1', '3-4-3', '4-4-1-1'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // RUGBY
-  // ==========================================================================
+  // ===========================================================================
   RUGBY: {
     sport: 'RUGBY',
     displayName: 'Rugby',
-    keyMetrics: [
-      'tries', 'conversions', 'penalties', 'tackles', 'carries',
-      'metersGained', 'offloads', 'turnoversWon', 'lineoutWins', 'scrumWins',
-    ],
-    positionValueMultipliers: {
-      FLY_HALF: 1.4,
-      SCRUM_HALF: 1.3,
-      FULL_BACK: 1.2,
-      WINGER: 1.1,
-      INSIDE_CENTRE: 1.0,
-      OUTSIDE_CENTRE: 1.0,
-      NUMBER_EIGHT: 1.0,
-      OPENSIDE_FLANKER: 0.95,
-      BLINDSIDE_FLANKER: 0.9,
-      LOCK: 0.85,
-      HOOKER: 0.85,
-      LOOSEHEAD_PROP: 0.8,
-      TIGHTHEAD_PROP: 0.8,
+    baseValueByTier: {
+      elite: 2000000,
+      professional: 500000,
+      semipro: 50000,
+      amateur: 2000,
+      youth: 20000,
     },
-    ageCurve: {
+    positionMultipliers: {
+      LOOSEHEAD_PROP: 0.9,
+      HOOKER: 1.0,
+      TIGHTHEAD_PROP: 0.9,
+      LOCK: 0.95,
+      BLINDSIDE_FLANKER: 1.0,
+      OPENSIDE_FLANKER: 1.1,
+      NUMBER_EIGHT: 1.15,
+      SCRUM_HALF: 1.2,
+      FLY_HALF: 1.4,
+      INSIDE_CENTRE: 1.1,
+      OUTSIDE_CENTRE: 1.1,
+      WINGER: 1.0,
+      FULL_BACK: 1.2,
+    },
+    ageFactors: {
       peakAgeStart: 26,
       peakAgeEnd: 31,
-      earlyCareerEnd: 24,
-      declineStart: 33,
+      developmentMultiplier: 1.2,
+      declineRate: 0.07,
+      youthCeiling: 1.8,
     },
     positionInjuryRisk: {
-      LOOSEHEAD_PROP: 0.85,
-      HOOKER: 0.8,
-      TIGHTHEAD_PROP: 0.85,
-      LOCK: 0.75,
-      BLINDSIDE_FLANKER: 0.8,
-      OPENSIDE_FLANKER: 0.8,
-      NUMBER_EIGHT: 0.75,
-      SCRUM_HALF: 0.65,
-      FLY_HALF: 0.7,
-      INSIDE_CENTRE: 0.75,
-      OUTSIDE_CENTRE: 0.7,
-      WINGER: 0.65,
-      FULL_BACK: 0.6,
+      LOOSEHEAD_PROP: 55,
+      HOOKER: 60,
+      TIGHTHEAD_PROP: 55,
+      LOCK: 50,
+      BLINDSIDE_FLANKER: 55,
+      OPENSIDE_FLANKER: 60,
+      NUMBER_EIGHT: 55,
+      SCRUM_HALF: 45,
+      FLY_HALF: 50,
+      INSIDE_CENTRE: 55,
+      OUTSIDE_CENTRE: 55,
+      WINGER: 45,
+      FULL_BACK: 50,
     },
-    ratingWeights: {
-      goals: 0.15, // Tries/points
-      assists: 0.15,
-      minutesPlayed: 0.2,
-      consistency: 0.25,
-      sportSpecific: 0.25, // Tackles, carries, etc.
-    },
-    formations: {
-      '15v15': ['FB', 'RW', 'OC', 'IC', 'LW', 'FH', 'SH', 'N8', 'OF', 'BF', 'L', 'L', 'TH', 'H', 'LH'],
-    },
-    positionCategories: [
-      { category: 'Front Row', positions: ['LOOSEHEAD_PROP', 'HOOKER', 'TIGHTHEAD_PROP'], importance: 20 },
-      { category: 'Second Row', positions: ['LOCK'], importance: 15 },
-      { category: 'Back Row', positions: ['BLINDSIDE_FLANKER', 'OPENSIDE_FLANKER', 'NUMBER_EIGHT'], importance: 20 },
-      { category: 'Half Backs', positions: ['SCRUM_HALF', 'FLY_HALF'], importance: 20 },
-      { category: 'Backs', positions: ['INSIDE_CENTRE', 'OUTSIDE_CENTRE', 'WINGER', 'FULL_BACK'], importance: 25 },
+    commonInjuryAreas: ['SHOULDER', 'KNEE', 'HEAD', 'ANKLE', 'HAMSTRING', 'NECK'],
+    keyMetrics: [
+      'tries', 'assists', 'tackles', 'tackleSuccess', 'carries', 'metersGained',
+      'lineBreaks', 'offloads', 'turnoversWon', 'lineoutWins', 'scrumSuccess',
     ],
+    ratingWeights: [
+      { metric: 'tries', weight: 12, category: 'ATTACK' },
+      { metric: 'tackles', weight: 15, category: 'DEFENSE' },
+      { metric: 'tackleSuccess', weight: 10, category: 'DEFENSE' },
+      { metric: 'carries', weight: 10, category: 'ATTACK' },
+      { metric: 'metersGained', weight: 12, category: 'ATTACK' },
+      { metric: 'lineBreaks', weight: 10, category: 'ATTACK' },
+      { metric: 'turnoversWon', weight: 10, category: 'DEFENSE' },
+      { metric: 'workRate', weight: 8, category: 'PHYSICAL' },
+      { metric: 'setpiece', weight: 8, category: 'TECHNICAL' },
+      { metric: 'leadership', weight: 5, category: 'MENTAL' },
+    ],
+    formations: ['15-man', '7s'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // CRICKET
-  // ==========================================================================
+  // ===========================================================================
   CRICKET: {
     sport: 'CRICKET',
     displayName: 'Cricket',
-    keyMetrics: [
-      'runs', 'wickets', 'battingAverage', 'bowlingAverage', 'strikeRate',
-      'economyRate', 'centuries', 'fifties', 'catches', 'stumpings',
-    ],
-    positionValueMultipliers: {
-      ALL_ROUNDER: 1.5,
-      OPENING_BATTER: 1.3,
-      MIDDLE_ORDER_BATTER: 1.1,
-      WICKET_KEEPER: 1.2,
-      FAST_BOWLER: 1.1,
-      SPIN_BOWLER: 1.0,
+    baseValueByTier: {
+      elite: 5000000,
+      professional: 500000,
+      semipro: 30000,
+      amateur: 1000,
+      youth: 15000,
     },
-    ageCurve: {
+    positionMultipliers: {
+      OPENING_BATTER: 1.2,
+      MIDDLE_ORDER_BATTER: 1.1,
+      ALL_ROUNDER: 1.4,
+      WICKET_KEEPER: 1.0,
+      FAST_BOWLER: 1.3,
+      SPIN_BOWLER: 1.1,
+    },
+    ageFactors: {
       peakAgeStart: 27,
       peakAgeEnd: 33,
-      earlyCareerEnd: 25,
-      declineStart: 35,
+      developmentMultiplier: 1.15,
+      declineRate: 0.05,
+      youthCeiling: 1.6,
     },
     positionInjuryRisk: {
-      FAST_BOWLER: 0.9,
-      ALL_ROUNDER: 0.7,
-      WICKET_KEEPER: 0.6,
-      OPENING_BATTER: 0.5,
-      MIDDLE_ORDER_BATTER: 0.4,
-      SPIN_BOWLER: 0.5,
+      OPENING_BATTER: 30,
+      MIDDLE_ORDER_BATTER: 25,
+      ALL_ROUNDER: 50,
+      WICKET_KEEPER: 40,
+      FAST_BOWLER: 65,
+      SPIN_BOWLER: 35,
     },
-    ratingWeights: {
-      goals: 0.35, // Runs/wickets
-      assists: 0.1,
-      minutesPlayed: 0.15,
-      consistency: 0.25,
-      sportSpecific: 0.15,
-    },
-    formations: {
-      '11v11': ['WK', 'OP1', 'OP2', 'MO1', 'MO2', 'MO3', 'AR', 'FB1', 'FB2', 'SB1', 'SB2'],
-    },
-    positionCategories: [
-      { category: 'Wicket Keeper', positions: ['WICKET_KEEPER'], importance: 15 },
-      { category: 'Batters', positions: ['OPENING_BATTER', 'MIDDLE_ORDER_BATTER'], importance: 35 },
-      { category: 'All-Rounders', positions: ['ALL_ROUNDER'], importance: 20 },
-      { category: 'Bowlers', positions: ['FAST_BOWLER', 'SPIN_BOWLER'], importance: 30 },
+    commonInjuryAreas: ['SHOULDER', 'BACK', 'KNEE', 'ANKLE', 'HAND', 'GROIN'],
+    keyMetrics: [
+      'runs', 'battingAverage', 'strikeRate', 'centuries', 'fifties',
+      'wickets', 'bowlingAverage', 'economyRate', 'catches', 'stumpings',
     ],
+    ratingWeights: [
+      { metric: 'battingAverage', weight: 20, category: 'ATTACK' },
+      { metric: 'strikeRate', weight: 10, category: 'ATTACK' },
+      { metric: 'wickets', weight: 15, category: 'ATTACK' },
+      { metric: 'bowlingAverage', weight: 15, category: 'TECHNICAL' },
+      { metric: 'catches', weight: 10, category: 'DEFENSE' },
+      { metric: 'fitness', weight: 10, category: 'PHYSICAL' },
+      { metric: 'temperament', weight: 10, category: 'MENTAL' },
+      { metric: 'consistency', weight: 10, category: 'MENTAL' },
+    ],
+    formations: ['Test', 'ODI', 'T20'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // BASKETBALL
-  // ==========================================================================
+  // ===========================================================================
   BASKETBALL: {
     sport: 'BASKETBALL',
     displayName: 'Basketball',
-    keyMetrics: [
-      'points', 'rebounds', 'assists', 'steals', 'blocks',
-      'fieldGoalPct', 'threePointPct', 'freeThrowPct', 'turnovers', 'plusMinus',
-    ],
-    positionValueMultipliers: {
+    baseValueByTier: {
+      elite: 30000000,
+      professional: 3000000,
+      semipro: 100000,
+      amateur: 5000,
+      youth: 50000,
+    },
+    positionMultipliers: {
       POINT_GUARD: 1.3,
       SHOOTING_GUARD: 1.2,
-      SMALL_FORWARD: 1.15,
-      POWER_FORWARD: 1.1,
-      CENTER: 1.0,
+      SMALL_FORWARD: 1.25,
+      POWER_FORWARD: 1.15,
+      CENTER_BASKETBALL: 1.1,
     },
-    ageCurve: {
+    ageFactors: {
       peakAgeStart: 25,
       peakAgeEnd: 30,
-      earlyCareerEnd: 23,
-      declineStart: 33,
+      developmentMultiplier: 1.4,
+      declineRate: 0.08,
+      youthCeiling: 2.2,
     },
     positionInjuryRisk: {
-      POINT_GUARD: 0.7,
-      SHOOTING_GUARD: 0.65,
-      SMALL_FORWARD: 0.7,
-      POWER_FORWARD: 0.75,
-      CENTER: 0.7,
+      POINT_GUARD: 45,
+      SHOOTING_GUARD: 45,
+      SMALL_FORWARD: 50,
+      POWER_FORWARD: 50,
+      CENTER_BASKETBALL: 55,
     },
-    ratingWeights: {
-      goals: 0.35, // Points
-      assists: 0.2,
-      minutesPlayed: 0.15,
-      consistency: 0.15,
-      sportSpecific: 0.15, // Rebounds, blocks, etc.
-    },
-    formations: {
-      '5v5': ['PG', 'SG', 'SF', 'PF', 'C'],
-    },
-    positionCategories: [
-      { category: 'Guards', positions: ['POINT_GUARD', 'SHOOTING_GUARD'], importance: 40 },
-      { category: 'Forwards', positions: ['SMALL_FORWARD', 'POWER_FORWARD'], importance: 35 },
-      { category: 'Center', positions: ['CENTER'], importance: 25 },
+    commonInjuryAreas: ['KNEE', 'ANKLE', 'BACK', 'SHOULDER', 'HAND', 'FOOT'],
+    keyMetrics: [
+      'points', 'rebounds', 'assists', 'steals', 'blocks',
+      'fieldGoalPercentage', 'threePointPercentage', 'freeThrowPercentage',
+      'turnovers', 'plusMinus',
     ],
+    ratingWeights: [
+      { metric: 'points', weight: 20, category: 'ATTACK' },
+      { metric: 'rebounds', weight: 15, category: 'DEFENSE' },
+      { metric: 'assists', weight: 15, category: 'ATTACK' },
+      { metric: 'steals', weight: 10, category: 'DEFENSE' },
+      { metric: 'blocks', weight: 10, category: 'DEFENSE' },
+      { metric: 'fieldGoalPercentage', weight: 10, category: 'TECHNICAL' },
+      { metric: 'efficiency', weight: 10, category: 'MENTAL' },
+      { metric: 'athleticism', weight: 10, category: 'PHYSICAL' },
+    ],
+    formations: ['Standard'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // AMERICAN FOOTBALL
-  // ==========================================================================
+  // ===========================================================================
   AMERICAN_FOOTBALL: {
     sport: 'AMERICAN_FOOTBALL',
     displayName: 'American Football',
-    keyMetrics: [
-      'passingYards', 'rushingYards', 'receivingYards', 'touchdowns',
-      'interceptions', 'completionPct', 'sacks', 'tackles', 'fumbles',
-    ],
-    positionValueMultipliers: {
-      QUARTERBACK: 2.0,
-      WIDE_RECEIVER: 1.3,
-      RUNNING_BACK: 1.2,
-      TIGHT_END: 1.0,
-      OFFENSIVE_TACKLE: 0.9,
-      GUARD: 0.85,
-      CENTER_NFL: 0.85,
-      DEFENSIVE_END: 1.1,
-      LINEBACKER: 1.0,
-      CORNERBACK: 1.1,
-      SAFETY: 0.95,
+    baseValueByTier: {
+      elite: 40000000,
+      professional: 5000000,
+      semipro: 100000,
+      amateur: 5000,
+      youth: 30000,
     },
-    ageCurve: {
-      peakAgeStart: 25,
+    positionMultipliers: {
+      QUARTERBACK: 2.0,
+      RUNNING_BACK: 1.0,
+      WIDE_RECEIVER: 1.3,
+      TIGHT_END: 1.1,
+      OFFENSIVE_TACKLE: 1.2,
+      OFFENSIVE_GUARD: 0.9,
+      CENTER_NFL: 0.85,
+      DEFENSIVE_END: 1.3,
+      DEFENSIVE_TACKLE: 1.1,
+      LINEBACKER: 1.15,
+      CORNERBACK: 1.4,
+      SAFETY: 1.1,
+      KICKER: 0.4,
+      PUNTER: 0.3,
+    },
+    ageFactors: {
+      peakAgeStart: 26,
       peakAgeEnd: 30,
-      earlyCareerEnd: 24,
-      declineStart: 32,
+      developmentMultiplier: 1.3,
+      declineRate: 0.1,
+      youthCeiling: 1.8,
     },
     positionInjuryRisk: {
-      QUARTERBACK: 0.7,
-      RUNNING_BACK: 0.85,
-      WIDE_RECEIVER: 0.7,
-      TIGHT_END: 0.75,
-      OFFENSIVE_TACKLE: 0.7,
-      LINEBACKER: 0.8,
-      CORNERBACK: 0.65,
-      SAFETY: 0.7,
+      QUARTERBACK: 50,
+      RUNNING_BACK: 70,
+      WIDE_RECEIVER: 55,
+      TIGHT_END: 60,
+      OFFENSIVE_TACKLE: 55,
+      DEFENSIVE_END: 55,
+      LINEBACKER: 65,
+      CORNERBACK: 50,
+      SAFETY: 55,
     },
-    ratingWeights: {
-      goals: 0.35, // Touchdowns/yards
-      assists: 0.1,
-      minutesPlayed: 0.15,
-      consistency: 0.2,
-      sportSpecific: 0.2,
-    },
-    formations: {
-      '11v11-offense': ['QB', 'RB', 'FB', 'WR', 'WR', 'TE', 'OT', 'OG', 'C', 'OG', 'OT'],
-      '11v11-defense': ['DE', 'DT', 'DT', 'DE', 'LB', 'LB', 'LB', 'CB', 'CB', 'S', 'S'],
-    },
-    positionCategories: [
-      { category: 'Quarterback', positions: ['QUARTERBACK'], importance: 25 },
-      { category: 'Skill Players', positions: ['RUNNING_BACK', 'WIDE_RECEIVER', 'TIGHT_END'], importance: 30 },
-      { category: 'Offensive Line', positions: ['OFFENSIVE_TACKLE', 'GUARD', 'CENTER_NFL'], importance: 20 },
-      { category: 'Defense', positions: ['DEFENSIVE_END', 'DEFENSIVE_TACKLE', 'LINEBACKER', 'CORNERBACK', 'SAFETY'], importance: 25 },
+    commonInjuryAreas: ['KNEE', 'HEAD', 'SHOULDER', 'ANKLE', 'BACK', 'HAND'],
+    keyMetrics: [
+      'passingYards', 'rushingYards', 'receivingYards', 'touchdowns',
+      'interceptions', 'sacks', 'tackles', 'completionPercentage',
+      'yardsPerAttempt', 'quarterbackRating',
     ],
+    ratingWeights: [
+      { metric: 'touchdowns', weight: 20, category: 'ATTACK' },
+      { metric: 'yards', weight: 15, category: 'ATTACK' },
+      { metric: 'tackles', weight: 15, category: 'DEFENSE' },
+      { metric: 'turnovers', weight: 10, category: 'MENTAL' },
+      { metric: 'athleticism', weight: 15, category: 'PHYSICAL' },
+      { metric: 'technique', weight: 15, category: 'TECHNICAL' },
+      { metric: 'awareness', weight: 10, category: 'MENTAL' },
+    ],
+    formations: ['4-3', '3-4', 'Nickel', 'Dime', 'Goal Line'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // NETBALL
-  // ==========================================================================
+  // ===========================================================================
   NETBALL: {
     sport: 'NETBALL',
     displayName: 'Netball',
-    keyMetrics: [
-      'goals', 'goalAttempts', 'goalPercentage', 'feeds', 'centrePassReceives',
-      'intercepts', 'deflections', 'rebounds', 'penalties',
-    ],
-    positionValueMultipliers: {
+    baseValueByTier: {
+      elite: 200000,
+      professional: 50000,
+      semipro: 10000,
+      amateur: 500,
+      youth: 5000,
+    },
+    positionMultipliers: {
       GOAL_SHOOTER: 1.3,
-      GOAL_ATTACK: 1.25,
-      WING_ATTACK: 1.1,
+      GOAL_ATTACK: 1.2,
+      WING_ATTACK: 1.0,
       CENTRE: 1.15,
-      WING_DEFENCE: 1.0,
+      WING_DEFENCE: 0.95,
       GOAL_DEFENCE: 1.1,
       GOAL_KEEPER: 1.1,
     },
-    ageCurve: {
+    ageFactors: {
       peakAgeStart: 24,
       peakAgeEnd: 30,
-      earlyCareerEnd: 22,
-      declineStart: 32,
+      developmentMultiplier: 1.2,
+      declineRate: 0.06,
+      youthCeiling: 1.7,
     },
     positionInjuryRisk: {
-      GOAL_SHOOTER: 0.65,
-      GOAL_ATTACK: 0.7,
-      WING_ATTACK: 0.65,
-      CENTRE: 0.7,
-      WING_DEFENCE: 0.65,
-      GOAL_DEFENCE: 0.7,
-      GOAL_KEEPER: 0.65,
+      GOAL_SHOOTER: 45,
+      GOAL_ATTACK: 50,
+      WING_ATTACK: 45,
+      CENTRE: 55,
+      WING_DEFENCE: 45,
+      GOAL_DEFENCE: 50,
+      GOAL_KEEPER: 50,
     },
-    ratingWeights: {
-      goals: 0.35,
-      assists: 0.2,
-      minutesPlayed: 0.15,
-      consistency: 0.15,
-      sportSpecific: 0.15,
-    },
-    formations: {
-      '7v7': ['GS', 'GA', 'WA', 'C', 'WD', 'GD', 'GK'],
-    },
-    positionCategories: [
-      { category: 'Shooters', positions: ['GOAL_SHOOTER', 'GOAL_ATTACK'], importance: 35 },
-      { category: 'Mid Court', positions: ['WING_ATTACK', 'CENTRE', 'WING_DEFENCE'], importance: 35 },
-      { category: 'Defenders', positions: ['GOAL_DEFENCE', 'GOAL_KEEPER'], importance: 30 },
+    commonInjuryAreas: ['KNEE', 'ANKLE', 'SHOULDER', 'BACK', 'HAND', 'FOOT'],
+    keyMetrics: [
+      'goals', 'goalAttempts', 'shootingPercentage', 'centrePassReceives',
+      'feeds', 'goalAssists', 'intercepts', 'deflections', 'rebounds',
     ],
+    ratingWeights: [
+      { metric: 'goals', weight: 20, category: 'ATTACK' },
+      { metric: 'shootingPercentage', weight: 15, category: 'TECHNICAL' },
+      { metric: 'intercepts', weight: 15, category: 'DEFENSE' },
+      { metric: 'feeds', weight: 15, category: 'ATTACK' },
+      { metric: 'centrePassReceives', weight: 10, category: 'ATTACK' },
+      { metric: 'deflections', weight: 10, category: 'DEFENSE' },
+      { metric: 'fitness', weight: 10, category: 'PHYSICAL' },
+      { metric: 'gameAwareness', weight: 5, category: 'MENTAL' },
+    ],
+    formations: ['Standard'],
   },
 
-  // ==========================================================================
-  // HOCKEY (Ice/Field)
-  // ==========================================================================
+  // ===========================================================================
+  // HOCKEY (Field Hockey)
+  // ===========================================================================
   HOCKEY: {
     sport: 'HOCKEY',
     displayName: 'Hockey',
-    keyMetrics: [
-      'goals', 'assists', 'points', 'plusMinus', 'shots',
-      'shootingPct', 'faceoffWins', 'blockedShots', 'hits', 'saves',
-    ],
-    positionValueMultipliers: {
-      CENTER_HOCKEY: 1.3,
-      LEFT_WING: 1.2,
-      RIGHT_WING: 1.2,
-      DEFENSEMAN: 1.0,
-      GOALTENDER: 1.1,
+    baseValueByTier: {
+      elite: 500000,
+      professional: 100000,
+      semipro: 20000,
+      amateur: 1000,
+      youth: 10000,
     },
-    ageCurve: {
+    positionMultipliers: {
+      GOALKEEPER_HOCKEY: 0.9,
+      DEFENDER_HOCKEY: 0.95,
+      MIDFIELDER_HOCKEY: 1.1,
+      FORWARD_HOCKEY: 1.2,
+    },
+    ageFactors: {
       peakAgeStart: 25,
       peakAgeEnd: 30,
-      earlyCareerEnd: 23,
-      declineStart: 33,
+      developmentMultiplier: 1.2,
+      declineRate: 0.06,
+      youthCeiling: 1.6,
     },
     positionInjuryRisk: {
-      CENTER_HOCKEY: 0.75,
-      LEFT_WING: 0.7,
-      RIGHT_WING: 0.7,
-      DEFENSEMAN: 0.8,
-      GOALTENDER: 0.6,
+      GOALKEEPER_HOCKEY: 40,
+      DEFENDER_HOCKEY: 45,
+      MIDFIELDER_HOCKEY: 50,
+      FORWARD_HOCKEY: 50,
     },
-    ratingWeights: {
-      goals: 0.3,
-      assists: 0.25,
-      minutesPlayed: 0.15,
-      consistency: 0.15,
-      sportSpecific: 0.15,
-    },
-    formations: {
-      'standard': ['G', 'LD', 'RD', 'LW', 'C', 'RW'],
-    },
-    positionCategories: [
-      { category: 'Goaltender', positions: ['GOALTENDER'], importance: 25 },
-      { category: 'Defense', positions: ['DEFENSEMAN'], importance: 30 },
-      { category: 'Forwards', positions: ['CENTER_HOCKEY', 'LEFT_WING', 'RIGHT_WING'], importance: 45 },
+    commonInjuryAreas: ['KNEE', 'ANKLE', 'HAND', 'BACK', 'SHOULDER', 'FOOT'],
+    keyMetrics: [
+      'goals', 'assists', 'shotsOnTarget', 'tackles', 'interceptions',
+      'penaltyCornerConversions', 'passAccuracy', 'saves', 'cleanSheets',
     ],
+    ratingWeights: [
+      { metric: 'goals', weight: 18, category: 'ATTACK' },
+      { metric: 'assists', weight: 15, category: 'ATTACK' },
+      { metric: 'tackles', weight: 12, category: 'DEFENSE' },
+      { metric: 'passAccuracy', weight: 15, category: 'TECHNICAL' },
+      { metric: 'penaltyCorners', weight: 10, category: 'ATTACK' },
+      { metric: 'fitness', weight: 15, category: 'PHYSICAL' },
+      { metric: 'positioning', weight: 10, category: 'MENTAL' },
+      { metric: 'technique', weight: 5, category: 'TECHNICAL' },
+    ],
+    formations: ['4-3-3', '3-3-3-1', '4-4-2', '5-3-2'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // LACROSSE
-  // ==========================================================================
+  // ===========================================================================
   LACROSSE: {
     sport: 'LACROSSE',
     displayName: 'Lacrosse',
-    keyMetrics: [
-      'goals', 'assists', 'groundBalls', 'faceoffWins', 'shots',
-      'shotPct', 'saves', 'turnovers', 'causedTurnovers',
-    ],
-    positionValueMultipliers: {
-      ATTACKER_LACROSSE: 1.25,
-      MIDFIELDER_LACROSSE: 1.15,
-      DEFENDER_LACROSSE: 1.0,
-      GOALKEEPER: 1.1,
+    baseValueByTier: {
+      elite: 300000,
+      professional: 75000,
+      semipro: 15000,
+      amateur: 1000,
+      youth: 8000,
     },
-    ageCurve: {
+    positionMultipliers: {
+      GOALKEEPER_LACROSSE: 0.9,
+      DEFENDER_LACROSSE: 0.95,
+      MIDFIELDER_LACROSSE: 1.1,
+      ATTACKER_LACROSSE: 1.2,
+      FOGO: 1.15,
+    },
+    ageFactors: {
       peakAgeStart: 24,
       peakAgeEnd: 29,
-      earlyCareerEnd: 22,
-      declineStart: 31,
+      developmentMultiplier: 1.25,
+      declineRate: 0.07,
+      youthCeiling: 1.7,
     },
     positionInjuryRisk: {
-      ATTACKER_LACROSSE: 0.7,
-      MIDFIELDER_LACROSSE: 0.75,
-      DEFENDER_LACROSSE: 0.7,
-      GOALKEEPER: 0.55,
+      GOALKEEPER_LACROSSE: 35,
+      DEFENDER_LACROSSE: 50,
+      MIDFIELDER_LACROSSE: 55,
+      ATTACKER_LACROSSE: 50,
     },
-    ratingWeights: {
-      goals: 0.3,
-      assists: 0.2,
-      minutesPlayed: 0.15,
-      consistency: 0.2,
-      sportSpecific: 0.15,
-    },
-    formations: {
-      'standard': ['G', 'D', 'D', 'D', 'M', 'M', 'M', 'A', 'A', 'A'],
-    },
-    positionCategories: [
-      { category: 'Goalie', positions: ['GOALKEEPER'], importance: 20 },
-      { category: 'Defense', positions: ['DEFENDER_LACROSSE'], importance: 25 },
-      { category: 'Midfield', positions: ['MIDFIELDER_LACROSSE'], importance: 30 },
-      { category: 'Attack', positions: ['ATTACKER_LACROSSE'], importance: 25 },
+    commonInjuryAreas: ['KNEE', 'ANKLE', 'SHOULDER', 'HEAD', 'HAND', 'BACK'],
+    keyMetrics: [
+      'goals', 'assists', 'groundBalls', 'faceoffWinPercentage',
+      'shotPercentage', 'saves', 'turnovers', 'causedTurnovers',
     ],
+    ratingWeights: [
+      { metric: 'goals', weight: 20, category: 'ATTACK' },
+      { metric: 'assists', weight: 15, category: 'ATTACK' },
+      { metric: 'groundBalls', weight: 15, category: 'PHYSICAL' },
+      { metric: 'faceoffs', weight: 10, category: 'TECHNICAL' },
+      { metric: 'causedTurnovers', weight: 12, category: 'DEFENSE' },
+      { metric: 'saves', weight: 10, category: 'DEFENSE' },
+      { metric: 'stickSkills', weight: 10, category: 'TECHNICAL' },
+      { metric: 'gameIQ', weight: 8, category: 'MENTAL' },
+    ],
+    formations: ['2-3-1', '1-4-1', '2-2-2', '3-3'],
   },
 
-  // ==========================================================================
-  // AUSTRALIAN RULES
-  // ==========================================================================
+  // ===========================================================================
+  // AUSTRALIAN RULES FOOTBALL
+  // ===========================================================================
   AUSTRALIAN_RULES: {
     sport: 'AUSTRALIAN_RULES',
     displayName: 'Australian Rules Football',
-    keyMetrics: [
-      'goals', 'behinds', 'disposals', 'kicks', 'handballs',
-      'marks', 'tackles', 'hitouts', 'clearances', 'inside50s',
-    ],
-    positionValueMultipliers: {
-      FULL_FORWARD: 1.3,
-      HALF_FORWARD: 1.15,
-      RUCK: 1.2,
-      RUCK_ROVER: 1.15,
-      ROVER: 1.1,
-      CENTRE_MIDFIELDER: 1.25,
-      HALF_BACK_AFL: 1.0,
+    baseValueByTier: {
+      elite: 1500000,
+      professional: 400000,
+      semipro: 40000,
+      amateur: 2000,
+      youth: 20000,
+    },
+    positionMultipliers: {
+      FULL_FORWARD_AFL: 1.2,
+      CENTRE_HALF_FORWARD: 1.15,
+      CENTRE_AFL: 1.3,
+      RUCK: 1.1,
+      ROVER: 1.2,
+      CENTRE_HALF_BACK: 1.05,
       FULL_BACK_AFL: 1.0,
     },
-    ageCurve: {
+    ageFactors: {
       peakAgeStart: 25,
       peakAgeEnd: 30,
-      earlyCareerEnd: 23,
-      declineStart: 32,
+      developmentMultiplier: 1.3,
+      declineRate: 0.08,
+      youthCeiling: 1.9,
     },
     positionInjuryRisk: {
-      FULL_FORWARD: 0.7,
-      HALF_FORWARD: 0.7,
-      RUCK: 0.8,
-      CENTRE_MIDFIELDER: 0.75,
-      HALF_BACK_AFL: 0.7,
-      FULL_BACK_AFL: 0.65,
+      FULL_FORWARD_AFL: 50,
+      CENTRE_HALF_FORWARD: 50,
+      CENTRE_AFL: 55,
+      RUCK: 55,
+      ROVER: 55,
+      CENTRE_HALF_BACK: 50,
+      FULL_BACK_AFL: 50,
     },
-    ratingWeights: {
-      goals: 0.25,
-      assists: 0.15,
-      minutesPlayed: 0.15,
-      consistency: 0.2,
-      sportSpecific: 0.25,
-    },
-    formations: {
-      '18v18': ['FB', 'BP', 'BP', 'HB', 'HB', 'HB', 'WI', 'C', 'WI', 'HF', 'HF', 'HF', 'FP', 'FF', 'FP', 'R', 'RR', 'ROV'],
-    },
-    positionCategories: [
-      { category: 'Forwards', positions: ['FULL_FORWARD', 'HALF_FORWARD'], importance: 25 },
-      { category: 'Midfield', positions: ['RUCK', 'RUCK_ROVER', 'ROVER', 'CENTRE_MIDFIELDER'], importance: 35 },
-      { category: 'Defenders', positions: ['HALF_BACK_AFL', 'FULL_BACK_AFL'], importance: 25 },
-      { category: 'Wings', positions: [], importance: 15 },
+    commonInjuryAreas: ['KNEE', 'HAMSTRING', 'SHOULDER', 'ANKLE', 'BACK', 'GROIN'],
+    keyMetrics: [
+      'disposals', 'kicks', 'handballs', 'marks', 'tackles', 'hitouts',
+      'goals', 'behinds', 'clearances', 'inside50s', 'rebounds',
     ],
+    ratingWeights: [
+      { metric: 'disposals', weight: 20, category: 'ATTACK' },
+      { metric: 'goals', weight: 15, category: 'ATTACK' },
+      { metric: 'tackles', weight: 12, category: 'DEFENSE' },
+      { metric: 'marks', weight: 12, category: 'TECHNICAL' },
+      { metric: 'clearances', weight: 12, category: 'PHYSICAL' },
+      { metric: 'hitouts', weight: 8, category: 'PHYSICAL' },
+      { metric: 'inside50s', weight: 10, category: 'ATTACK' },
+      { metric: 'workRate', weight: 6, category: 'PHYSICAL' },
+      { metric: 'composure', weight: 5, category: 'MENTAL' },
+    ],
+    formations: ['Standard 18'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // GAELIC FOOTBALL
-  // ==========================================================================
+  // ===========================================================================
   GAELIC_FOOTBALL: {
     sport: 'GAELIC_FOOTBALL',
     displayName: 'Gaelic Football',
-    keyMetrics: [
-      'goals', 'points', 'totalScore', 'frees', 'kickouts',
-      'tackles', 'turnoversWon', 'marks', 'solos',
-    ],
-    positionValueMultipliers: {
-      FULL_FORWARD_GAA: 1.3,
-      CORNER_FORWARD: 1.2,
-      HALF_FORWARD_GAA: 1.15,
-      MIDFIELDER_GAA: 1.2,
-      CENTRE_BACK: 1.1,
-      WING_BACK: 1.0,
-      FULL_BACK: 1.0,
-      CORNER_BACK: 0.95,
-      GOALKEEPER: 0.9,
+    baseValueByTier: {
+      elite: 0,             // Amateur sport
+      professional: 0,
+      semipro: 0,
+      amateur: 0,
+      youth: 0,
     },
-    ageCurve: {
+    positionMultipliers: {
+      GOALKEEPER_GAA: 1.0,
+      FULL_BACK_GAA: 1.0,
+      CORNER_BACK_LEFT: 1.0,
+      CORNER_BACK_RIGHT: 1.0,
+      CENTRE_BACK_GAA: 1.1,
+      MIDFIELDER_GAA: 1.2,
+      CENTRE_FORWARD_GAA: 1.15,
+      FULL_FORWARD_GAA: 1.1,
+    },
+    ageFactors: {
       peakAgeStart: 24,
       peakAgeEnd: 30,
-      earlyCareerEnd: 22,
-      declineStart: 32,
+      developmentMultiplier: 1.2,
+      declineRate: 0.06,
+      youthCeiling: 1.5,
     },
     positionInjuryRisk: {
-      GOALKEEPER: 0.5,
-      CORNER_BACK: 0.65,
-      FULL_BACK: 0.7,
-      WING_BACK: 0.7,
-      CENTRE_BACK: 0.7,
-      MIDFIELDER_GAA: 0.75,
-      HALF_FORWARD_GAA: 0.7,
-      CORNER_FORWARD: 0.65,
-      FULL_FORWARD_GAA: 0.7,
+      GOALKEEPER_GAA: 30,
+      FULL_BACK_GAA: 45,
+      CENTRE_BACK_GAA: 50,
+      MIDFIELDER_GAA: 55,
+      CENTRE_FORWARD_GAA: 50,
+      FULL_FORWARD_GAA: 45,
     },
-    ratingWeights: {
-      goals: 0.3,
-      assists: 0.15,
-      minutesPlayed: 0.15,
-      consistency: 0.2,
-      sportSpecific: 0.2,
-    },
-    formations: {
-      '15v15': ['GK', 'CB', 'CB', 'CB', 'HB', 'HB', 'HB', 'MF', 'MF', 'HF', 'HF', 'HF', 'CF', 'FF', 'CF'],
-    },
-    positionCategories: [
-      { category: 'Goalkeeper', positions: ['GOALKEEPER'], importance: 10 },
-      { category: 'Full Back Line', positions: ['FULL_BACK', 'CORNER_BACK'], importance: 20 },
-      { category: 'Half Back Line', positions: ['CENTRE_BACK', 'WING_BACK'], importance: 20 },
-      { category: 'Midfield', positions: ['MIDFIELDER_GAA'], importance: 20 },
-      { category: 'Forwards', positions: ['HALF_FORWARD_GAA', 'CORNER_FORWARD', 'FULL_FORWARD_GAA'], importance: 30 },
+    commonInjuryAreas: ['KNEE', 'HAMSTRING', 'ANKLE', 'SHOULDER', 'GROIN', 'BACK'],
+    keyMetrics: [
+      'goals', 'points', 'totalScore', 'frees', 'kickouts',
+      'turnoversWon', 'tackles', 'blocks', 'marks',
     ],
+    ratingWeights: [
+      { metric: 'totalScore', weight: 25, category: 'ATTACK' },
+      { metric: 'tackles', weight: 15, category: 'DEFENSE' },
+      { metric: 'turnoversWon', weight: 12, category: 'DEFENSE' },
+      { metric: 'kickouts', weight: 10, category: 'TECHNICAL' },
+      { metric: 'frees', weight: 10, category: 'TECHNICAL' },
+      { metric: 'workRate', weight: 15, category: 'PHYSICAL' },
+      { metric: 'aerial', weight: 8, category: 'PHYSICAL' },
+      { metric: 'leadership', weight: 5, category: 'MENTAL' },
+    ],
+    formations: ['Standard 15'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // FUTSAL
-  // ==========================================================================
+  // ===========================================================================
   FUTSAL: {
     sport: 'FUTSAL',
     displayName: 'Futsal',
-    keyMetrics: [
-      'goals', 'assists', 'shots', 'shotsOnTarget', 'passes',
-      'passAccuracy', 'tackles', 'interceptions', 'saves',
-    ],
-    positionValueMultipliers: {
-      STRIKER: 1.4,
-      CENTRAL_MIDFIELDER: 1.2,
-      CENTRE_BACK: 1.0,
-      GOALKEEPER: 0.9,
+    baseValueByTier: {
+      elite: 1000000,
+      professional: 200000,
+      semipro: 20000,
+      amateur: 1000,
+      youth: 10000,
     },
-    ageCurve: {
+    positionMultipliers: {
+      GOALKEEPER_FUTSAL: 0.8,
+      FIXO: 1.0,
+      ALA_LEFT: 1.1,
+      ALA_RIGHT: 1.1,
+      PIVOT: 1.2,
+    },
+    ageFactors: {
       peakAgeStart: 25,
       peakAgeEnd: 31,
-      earlyCareerEnd: 23,
-      declineStart: 33,
+      developmentMultiplier: 1.2,
+      declineRate: 0.06,
+      youthCeiling: 1.6,
     },
     positionInjuryRisk: {
-      GOALKEEPER: 0.5,
-      CENTRE_BACK: 0.65,
-      CENTRAL_MIDFIELDER: 0.7,
-      STRIKER: 0.7,
+      GOALKEEPER_FUTSAL: 35,
+      FIXO: 45,
+      ALA_LEFT: 50,
+      ALA_RIGHT: 50,
+      PIVOT: 50,
     },
-    ratingWeights: {
-      goals: 0.35,
-      assists: 0.25,
-      minutesPlayed: 0.1,
-      consistency: 0.15,
-      sportSpecific: 0.15,
-    },
-    formations: {
-      '1-2-1': ['GK', 'D', 'M', 'M', 'F'],
-      '2-2': ['GK', 'D', 'D', 'F', 'F'],
-    },
-    positionCategories: [
-      { category: 'Goalkeeper', positions: ['GOALKEEPER'], importance: 20 },
-      { category: 'Defense', positions: ['CENTRE_BACK'], importance: 25 },
-      { category: 'Midfield', positions: ['CENTRAL_MIDFIELDER'], importance: 30 },
-      { category: 'Attack', positions: ['STRIKER'], importance: 25 },
+    commonInjuryAreas: ['ANKLE', 'KNEE', 'GROIN', 'FOOT', 'BACK', 'HAMSTRING'],
+    keyMetrics: [
+      'goals', 'assists', 'shots', 'passAccuracy', 'tackles',
+      'interceptions', 'saves', 'cleanSheets',
     ],
+    ratingWeights: [
+      { metric: 'goals', weight: 25, category: 'ATTACK' },
+      { metric: 'assists', weight: 15, category: 'ATTACK' },
+      { metric: 'passAccuracy', weight: 15, category: 'TECHNICAL' },
+      { metric: 'tackles', weight: 12, category: 'DEFENSE' },
+      { metric: 'technique', weight: 15, category: 'TECHNICAL' },
+      { metric: 'fitness', weight: 10, category: 'PHYSICAL' },
+      { metric: 'decisionMaking', weight: 8, category: 'MENTAL' },
+    ],
+    formations: ['1-2-1', '2-2', '4-0', '3-1'],
   },
 
-  // ==========================================================================
+  // ===========================================================================
   // BEACH FOOTBALL
-  // ==========================================================================
+  // ===========================================================================
   BEACH_FOOTBALL: {
     sport: 'BEACH_FOOTBALL',
     displayName: 'Beach Football',
-    keyMetrics: [
-      'goals', 'assists', 'shots', 'passes', 'tackles',
-      'saves', 'bicycleKicks', 'scissors',
-    ],
-    positionValueMultipliers: {
-      STRIKER: 1.5,
-      CENTRE_FORWARD: 1.3,
-      GOALKEEPER: 1.0,
+    baseValueByTier: {
+      elite: 300000,
+      professional: 50000,
+      semipro: 10000,
+      amateur: 500,
+      youth: 5000,
     },
-    ageCurve: {
-      peakAgeStart: 25,
+    positionMultipliers: {
+      GOALKEEPER_BEACH: 0.9,
+      DEFENDER_BEACH: 1.0,
+      FORWARD_BEACH: 1.2,
+      PIVOT_BEACH: 1.15,
+    },
+    ageFactors: {
+      peakAgeStart: 26,
       peakAgeEnd: 32,
-      earlyCareerEnd: 23,
-      declineStart: 34,
+      developmentMultiplier: 1.15,
+      declineRate: 0.05,
+      youthCeiling: 1.5,
     },
     positionInjuryRisk: {
-      GOALKEEPER: 0.55,
-      STRIKER: 0.65,
-      CENTRE_FORWARD: 0.6,
+      GOALKEEPER_BEACH: 35,
+      DEFENDER_BEACH: 40,
+      FORWARD_BEACH: 45,
+      PIVOT_BEACH: 45,
     },
-    ratingWeights: {
-      goals: 0.4,
-      assists: 0.2,
-      minutesPlayed: 0.1,
-      consistency: 0.15,
-      sportSpecific: 0.15,
-    },
-    formations: {
-      '1-2-1': ['GK', 'D', 'M', 'F'],
-      '2-1': ['GK', 'D', 'D', 'F'],
-    },
-    positionCategories: [
-      { category: 'Goalkeeper', positions: ['GOALKEEPER'], importance: 25 },
-      { category: 'Outfield', positions: ['STRIKER', 'CENTRE_FORWARD'], importance: 75 },
+    commonInjuryAreas: ['ANKLE', 'KNEE', 'FOOT', 'BACK', 'SHOULDER', 'TOE'],
+    keyMetrics: [
+      'goals', 'assists', 'spectacularGoals', 'bicycleKicks',
+      'volleys', 'saves', 'cleanSheets',
     ],
+    ratingWeights: [
+      { metric: 'goals', weight: 30, category: 'ATTACK' },
+      { metric: 'spectacularGoals', weight: 15, category: 'TECHNICAL' },
+      { metric: 'assists', weight: 15, category: 'ATTACK' },
+      { metric: 'saves', weight: 12, category: 'DEFENSE' },
+      { metric: 'technique', weight: 15, category: 'TECHNICAL' },
+      { metric: 'fitness', weight: 8, category: 'PHYSICAL' },
+      { metric: 'flair', weight: 5, category: 'MENTAL' },
+    ],
+    formations: ['1-2-1', '2-2'],
   },
 };
 
-// ============================================================================
+// =============================================================================
 // HELPER FUNCTIONS
-// ============================================================================
+// =============================================================================
 
 /**
- * Get sport configuration
+ * Get sport metric configuration
  */
 export function getSportMetricConfig(sport: Sport): SportMetricConfig {
   return SPORT_METRIC_CONFIGS[sport];
 }
 
 /**
- * Get position value multiplier for market value calculation
+ * Get position value multiplier
  */
-export function getPositionValueMultiplier(sport: Sport, position: Position | string): number {
+export function getPositionValueMultiplier(sport: Sport, position: string): number {
   const config = SPORT_METRIC_CONFIGS[sport];
-  return config.positionValueMultipliers[position] || 1.0;
+  return config.positionMultipliers[position] ?? 1.0;
 }
 
 /**
- * Get age adjustment factor for market value
+ * Get age adjustment factor
  */
 export function getAgeAdjustmentFactor(sport: Sport, age: number): number {
-  const curve = SPORT_METRIC_CONFIGS[sport].ageCurve;
+  const config = SPORT_METRIC_CONFIGS[sport];
+  const { peakAgeStart, peakAgeEnd, developmentMultiplier, declineRate, youthCeiling } = config.ageFactors;
   
-  if (age < curve.earlyCareerEnd) {
-    // Young player premium
-    return 1.15 - ((curve.earlyCareerEnd - age) * 0.02);
-  } else if (age >= curve.peakAgeStart && age <= curve.peakAgeEnd) {
-    // Peak years - full value
-    return 1.0;
-  } else if (age > curve.peakAgeEnd && age < curve.declineStart) {
-    // Post-peak but not declining
-    return 1.0 - ((age - curve.peakAgeEnd) * 0.02);
-  } else if (age >= curve.declineStart) {
-    // Declining phase
-    return Math.max(0.5, 0.9 - ((age - curve.declineStart) * 0.05));
+  // Youth player (under 21)
+  if (age < 21) {
+    const youthFactor = 1 + ((21 - age) * 0.1);
+    return Math.min(youthFactor, youthCeiling);
   }
   
-  return 1.0;
+  // Pre-peak development
+  if (age < peakAgeStart) {
+    return developmentMultiplier - ((peakAgeStart - age) * 0.03);
+  }
+  
+  // Peak years
+  if (age >= peakAgeStart && age <= peakAgeEnd) {
+    return 1.0;
+  }
+  
+  // Post-peak decline
+  const yearsOverPeak = age - peakAgeEnd;
+  return Math.max(0.3, 1 - (yearsOverPeak * declineRate));
 }
 
 /**
- * Get position injury risk factor
+ * Get position injury risk
  */
-export function getPositionInjuryRisk(sport: Sport, position: Position | string): number {
+export function getPositionInjuryRisk(sport: Sport, position: string): number {
   const config = SPORT_METRIC_CONFIGS[sport];
-  return config.positionInjuryRisk[position] || 0.5;
+  return config.positionInjuryRisk[position] ?? 40;
 }
 
 /**
- * Get available formations for a sport
+ * Get formations for a sport
  */
-export function getFormationsForSport(sport: Sport): Record<string, string[]> {
+export function getFormationsForSport(sport: Sport): string[] {
   return SPORT_METRIC_CONFIGS[sport].formations;
 }
 
@@ -773,8 +836,16 @@ export function getSupportedSports(): Sport[] {
   return Object.keys(SPORT_METRIC_CONFIGS) as Sport[];
 }
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
+/**
+ * Get base market value for tier
+ */
+export function getBaseMarketValue(sport: Sport, tier: keyof SportMetricConfig['baseValueByTier']): number {
+  return SPORT_METRIC_CONFIGS[sport].baseValueByTier[tier];
+}
 
-export default SPORT_METRIC_CONFIGS;
+/**
+ * Get common injury areas for sport
+ */
+export function getCommonInjuryAreas(sport: Sport): BodyPart[] {
+  return SPORT_METRIC_CONFIGS[sport].commonInjuryAreas;
+}

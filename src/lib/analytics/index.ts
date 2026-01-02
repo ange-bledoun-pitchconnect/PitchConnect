@@ -1,132 +1,131 @@
-// ============================================================================
-// src/lib/analytics/index.ts
-// 📊 PitchConnect Enterprise Analytics - Main Export
-// ============================================================================
-// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
-// ============================================================================
-// This is the main entry point for all analytics functionality.
-// Import from '@/lib/analytics' for all analytics needs.
-// ============================================================================
+/**
+ * ============================================================================
+ * 📊 PITCHCONNECT ANALYTICS MODULE v7.10.1
+ * ============================================================================
+ * Enterprise analytics for all 12 sports
+ * Injury prediction, performance analysis, market valuation, comparisons
+ * ============================================================================
+ */
 
-// ============================================================================
+// =============================================================================
 // TYPE EXPORTS
-// ============================================================================
+// =============================================================================
 
 export type {
-  // Injury Prediction Types
+  // Core types
+  Sport,
+  InjuryType,
+  InjurySeverity,
+  InjuryStatus,
+  BodyPart,
+  Position,
+  UserRole,
+  AccountTier,
+  Currency,
+  TimeHorizon,
+  
+  // Injury types
   InjuryRiskAssessment,
   InjuryRiskFactor,
   BodyPartRisk,
   
-  // Performance Prediction Types
+  // Performance types
   PerformancePrediction,
   PerformanceFactor,
-  TimeHorizon,
   
-  // Player Comparison Types
+  // Comparison types
   PlayerComparison,
   PlayerComparisonProfile,
   CategoryComparison,
   
-  // Market Value Types
+  // Market value types
   MarketValueAssessment,
   ValueFactor,
   ComparablePlayer,
   
-  // Formation Types
+  // Team analytics
+  TeamAnalytics,
   FormationAnalysis,
   FormationSuggestion,
   PositionAnalysis,
   RotationSuggestion,
   
-  // Team Analytics Types
-  TeamAnalytics,
-  
-  // Match Analytics Types
-  MatchAnalytics,
-  TeamMatchData,
-  
-  // Competition Analytics Types
-  CompetitionAnalytics,
-  CompetitionStandingEntry,
-  MatchSummary,
-  
-  // Player Analytics Types
-  PlayerAnalytics,
-  
-  // Advanced Analytics Types
-  AdvancedAnalytics,
-  LeaderboardEntry,
-  TeamRankingEntry,
-  TrendData,
-  AnalyticsInsight,
-  
-  // API Types
+  // API
   AnalyticsAPIResponse,
   
-  // Prisma Re-exports
-  Sport,
-  Position,
-  PredictionType,
-  PredictionStatus,
-  PredictionImpact,
-  InjuryType,
-  InjuryStatus,
-  InjurySeverity,
+  // Sport metrics
+  SportMetricConfig,
 } from './types';
 
-// ============================================================================
-// INJURY PREDICTION EXPORTS
-// ============================================================================
+export {
+  SportEnum,
+  InjuryTypeEnum,
+  InjurySeverityEnum,
+  InjuryStatusEnum,
+  BodyPartEnum,
+  UserRoleEnum,
+  AccountTierEnum,
+  CurrencyEnum,
+  CURRENCY_SYMBOLS,
+  CURRENCY_RATES,
+  ANALYTICS_ACCESS_MATRIX,
+  ANALYTICS_MODEL_VERSIONS,
+} from './types';
+
+// =============================================================================
+// INJURY PREDICTOR EXPORTS
+// =============================================================================
 
 export {
   predictInjuryRisk,
+  predictTeamInjuryRisks,
   invalidateInjuryPrediction,
   invalidateTeamInjuryPredictions,
-  predictTeamInjuryRisks,
   RISK_THRESHOLDS,
   WORKLOAD_THRESHOLDS,
   INJURY_MODEL_VERSION,
 } from './injury-predictor';
 
-// ============================================================================
-// PERFORMANCE PREDICTION EXPORTS
-// ============================================================================
+// =============================================================================
+// PERFORMANCE PREDICTOR EXPORTS
+// =============================================================================
 
 export {
   predictPlayerPerformance,
-  invalidatePerformancePredictions,
   predictTeamPerformance,
+  invalidatePerformancePredictions,
   FORM_THRESHOLDS,
   PERFORMANCE_MODEL_VERSION,
 } from './performance-predictor';
 
-// ============================================================================
-// PLAYER COMPARISON EXPORTS
-// ============================================================================
+// =============================================================================
+// PLAYER COMPARATOR EXPORTS
+// =============================================================================
 
 export {
   comparePlayerStats,
+  rankPlayers,
   COMPARISON_CATEGORIES,
   COMPARISON_MODEL_VERSION,
 } from './player-comparator';
 
-// ============================================================================
+// =============================================================================
 // MARKET VALUE EXPORTS
-// ============================================================================
+// =============================================================================
 
 export {
   calculatePlayerMarketValue,
   calculateTeamMarketValues,
   calculateTeamTotalValue,
+  formatMarketValue,
   BASE_VALUES_BY_SPORT,
   PERFORMANCE_TIERS,
   MARKET_VALUE_MODEL_VERSION,
 } from './market-value-calculator';
 
-// ============================================================================
+// =============================================================================
 // SPORT METRICS EXPORTS
-// ============================================================================
+// =============================================================================
 
 export {
   SPORT_METRIC_CONFIGS,
@@ -141,30 +140,20 @@ export {
   getSupportedSports,
 } from './sport-metrics';
 
-export type { SportMetricConfig } from './sport-metrics';
+// =============================================================================
+// ACCESS CONTROL HELPERS
+// =============================================================================
 
-// ============================================================================
-// ACCESS CONTROL EXPORTS
-// ============================================================================
-
-export { ANALYTICS_ACCESS_MATRIX } from './types';
-
-// ============================================================================
-// CONVENIENCE FUNCTIONS
-// ============================================================================
-
-import { prisma } from '@/lib/prisma';
-import { logger } from '@/lib/logging';
+import type { UserRole, AccountTier } from './types';
+import { ANALYTICS_ACCESS_MATRIX } from './types';
 
 /**
  * Check if user has access to analytics feature
  */
 export function hasAnalyticsAccess(
-  userRoles: string[],
+  userRoles: UserRole[],
   feature: string
 ): boolean {
-  const { ANALYTICS_ACCESS_MATRIX } = require('./types');
-  
   for (const role of userRoles) {
     const access = ANALYTICS_ACCESS_MATRIX[role];
     if (!access) continue;
@@ -180,8 +169,7 @@ export function hasAnalyticsAccess(
 /**
  * Get all analytics features available to user
  */
-export function getAvailableFeatures(userRoles: string[]): string[] {
-  const { ANALYTICS_ACCESS_MATRIX } = require('./types');
+export function getAvailableFeatures(userRoles: UserRole[]): string[] {
   const features = new Set<string>();
   
   for (const role of userRoles) {
@@ -203,9 +191,7 @@ export function getAvailableFeatures(userRoles: string[]): string[] {
 /**
  * Check if analytics feature requires club membership
  */
-export function requiresClubMembership(userRoles: string[]): boolean {
-  const { ANALYTICS_ACCESS_MATRIX } = require('./types');
-  
+export function requiresClubMembership(userRoles: UserRole[]): boolean {
   for (const role of userRoles) {
     const access = ANALYTICS_ACCESS_MATRIX[role];
     if (access && !access.requiresClubMembership) {
@@ -216,113 +202,94 @@ export function requiresClubMembership(userRoles: string[]): boolean {
   return true;
 }
 
-// ============================================================================
+/**
+ * Check if user can export analytics data
+ */
+export function canExportAnalytics(userRoles: UserRole[]): boolean {
+  for (const role of userRoles) {
+    const access = ANALYTICS_ACCESS_MATRIX[role];
+    if (access?.exportAllowed) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// =============================================================================
 // ANALYTICS ENGINE FACADE
-// ============================================================================
+// =============================================================================
+
+import { predictInjuryRisk, predictTeamInjuryRisks, invalidateInjuryPrediction } from './injury-predictor';
+import { predictPlayerPerformance, predictTeamPerformance, invalidatePerformancePredictions } from './performance-predictor';
+import { comparePlayerStats, rankPlayers } from './player-comparator';
+import { calculatePlayerMarketValue, calculateTeamMarketValues, calculateTeamTotalValue, formatMarketValue } from './market-value-calculator';
+import { getSportMetricConfig, getFormationsForSport, getKeyMetricsForSport, isSportSupported, getSupportedSports } from './sport-metrics';
+import type { Sport, TimeHorizon, Currency } from './types';
 
 /**
  * Analytics Engine - High-level API for all analytics operations
  */
 export const AnalyticsEngine = {
-  // Injury Prediction
+  // ===========================================================================
+  // INJURY PREDICTION
+  // ===========================================================================
   injury: {
-    predict: async (playerId: string, forceRefresh?: boolean) => {
-      const { predictInjuryRisk } = await import('./injury-predictor');
-      return predictInjuryRisk(playerId, forceRefresh);
-    },
-    predictTeam: async (teamId: string) => {
-      const { predictTeamInjuryRisks } = await import('./injury-predictor');
-      return predictTeamInjuryRisks(teamId);
-    },
-    invalidate: async (playerId: string) => {
-      const { invalidateInjuryPrediction } = await import('./injury-predictor');
-      return invalidateInjuryPrediction(playerId);
-    },
+    predict: predictInjuryRisk,
+    predictTeam: predictTeamInjuryRisks,
+    invalidate: invalidateInjuryPrediction,
   },
   
-  // Performance Prediction
+  // ===========================================================================
+  // PERFORMANCE PREDICTION
+  // ===========================================================================
   performance: {
-    predict: async (playerId: string, horizon?: 'NEXT_MATCH' | 'NEXT_WEEK' | 'NEXT_MONTH' | 'SEASON', forceRefresh?: boolean) => {
-      const { predictPlayerPerformance } = await import('./performance-predictor');
-      return predictPlayerPerformance(playerId, horizon || 'NEXT_MATCH', forceRefresh);
-    },
-    predictTeam: async (teamId: string, horizon?: 'NEXT_MATCH' | 'NEXT_WEEK' | 'NEXT_MONTH' | 'SEASON') => {
-      const { predictTeamPerformance } = await import('./performance-predictor');
-      return predictTeamPerformance(teamId, horizon || 'NEXT_MATCH');
-    },
-    invalidate: async (playerId: string) => {
-      const { invalidatePerformancePredictions } = await import('./performance-predictor');
-      return invalidatePerformancePredictions(playerId);
-    },
+    predictPlayer: predictPlayerPerformance,
+    predictTeam: predictTeamPerformance,
+    invalidate: invalidatePerformancePredictions,
   },
   
-  // Player Comparison
+  // ===========================================================================
+  // PLAYER COMPARISON
+  // ===========================================================================
   comparison: {
-    compare: async (player1Id: string, player2Id: string, forceRefresh?: boolean) => {
-      const { comparePlayerStats } = await import('./player-comparator');
-      return comparePlayerStats(player1Id, player2Id, forceRefresh);
-    },
+    compare: comparePlayerStats,
+    rank: rankPlayers,
   },
   
-  // Market Value
+  // ===========================================================================
+  // MARKET VALUE
+  // ===========================================================================
   marketValue: {
-    calculate: async (playerId: string, forceRefresh?: boolean) => {
-      const { calculatePlayerMarketValue } = await import('./market-value-calculator');
-      return calculatePlayerMarketValue(playerId, forceRefresh);
-    },
-    calculateTeam: async (teamId: string) => {
-      const { calculateTeamMarketValues } = await import('./market-value-calculator');
-      return calculateTeamMarketValues(teamId);
-    },
-    getTeamTotal: async (teamId: string) => {
-      const { calculateTeamTotalValue } = await import('./market-value-calculator');
-      return calculateTeamTotalValue(teamId);
-    },
+    calculate: calculatePlayerMarketValue,
+    calculateTeam: calculateTeamMarketValues,
+    getTeamTotal: calculateTeamTotalValue,
+    format: formatMarketValue,
   },
   
-  // Access Control
+  // ===========================================================================
+  // ACCESS CONTROL
+  // ===========================================================================
   access: {
     hasAccess: hasAnalyticsAccess,
     getFeatures: getAvailableFeatures,
     requiresMembership: requiresClubMembership,
+    canExport: canExportAnalytics,
   },
   
-  // Sport Configuration
+  // ===========================================================================
+  // SPORT CONFIGURATION
+  // ===========================================================================
   sports: {
-    getConfig: (sport: string) => {
-      const { getSportMetricConfig } = require('./sport-metrics');
-      return getSportMetricConfig(sport);
-    },
-    getFormations: (sport: string) => {
-      const { getFormationsForSport } = require('./sport-metrics');
-      return getFormationsForSport(sport);
-    },
-    getKeyMetrics: (sport: string) => {
-      const { getKeyMetricsForSport } = require('./sport-metrics');
-      return getKeyMetricsForSport(sport);
-    },
-    isSupported: (sport: string) => {
-      const { isSportSupported } = require('./sport-metrics');
-      return isSportSupported(sport);
-    },
-    getAllSupported: () => {
-      const { getSupportedSports } = require('./sport-metrics');
-      return getSupportedSports();
-    },
+    getConfig: getSportMetricConfig,
+    getFormations: getFormationsForSport,
+    getKeyMetrics: getKeyMetricsForSport,
+    isSupported: isSportSupported,
+    getAllSupported: getSupportedSports,
   },
 };
 
-// ============================================================================
-// MODEL VERSIONS
-// ============================================================================
+// =============================================================================
+// DEFAULT EXPORT
+// =============================================================================
 
-export const ANALYTICS_MODEL_VERSIONS = {
-  injury: '2.0.0-injury',
-  performance: '2.0.0-performance',
-  comparison: '2.0.0-comparison',
-  marketValue: '2.0.0-market-value',
-  sportMetrics: '2.0.0',
-};
-
-// Default export
 export default AnalyticsEngine;

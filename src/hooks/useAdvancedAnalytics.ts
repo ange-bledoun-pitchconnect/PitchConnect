@@ -1,165 +1,224 @@
+/**
+ * ============================================================================
+ * 📊 USE ADVANCED ANALYTICS HOOK v7.10.1 - MULTI-SPORT ANALYTICS
+ * ============================================================================
+ * @version 7.10.1
+ * @path src/hooks/useAdvancedAnalytics.ts
+ * ============================================================================
+ */
+
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
-import type { Player, Club } from '@/types';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Sport, getSportConfig } from './useSportConfig';
 
-interface PlayerPerformanceStats {
+export interface PlayerAnalytics {
   playerId: string;
   playerName: string;
   position: string;
-  clubId: string;
-  clubName: string;
+  sport: Sport;
   
-  // Performance metrics
-  appearances: number;
+  // Overall ratings
+  overallRating: number;
+  form: number; // 0-100
+  potential: number;
+  
+  // Performance metrics (sport-agnostic)
+  gamesPlayed: number;
   minutesPlayed: number;
-  goals: number;
-  assists: number;
-  cleanSheets: number;
+  starts: number;
   
-  // Advanced metrics
-  passAccuracy: number; // 0-100
-  tacklesPerGame: number;
-  interceptionsPerGame: number;
-  foulsPerGame: number;
+  // Scoring (adapted per sport)
+  scoringContributions: number; // Goals, tries, touchdowns, etc.
+  assists: number;
+  scoringRate: number; // Per 90 minutes / per game
+  
+  // Discipline
   yellowCards: number;
   redCards: number;
+  foulsCommitted: number;
+  foulsWon: number;
   
-  // Calculated ratings
-  overallRating: number; // 0-10
-  formRating: number; // Last 5 games
-  consistency: number; // Standard deviation
+  // Sport-specific stats
+  sportStats: Record<string, number>;
   
-  // Trend
-  trend: 'up' | 'down' | 'stable';
-  trendPercentage: number;
+  // Trends
+  formTrend: ('up' | 'down' | 'stable');
+  recentGames: {
+    matchId: string;
+    rating: number;
+    contributions: number;
+  }[];
 }
 
-interface TeamTrendData {
-  clubId: string;
-  clubName: string;
+export interface TeamAnalytics {
+  teamId: string;
+  teamName: string;
+  sport: Sport;
   
-  // Historical data for trend
-  timestamps: string[]; // ISO dates
-  values: number[]; // Rating or points
-  
-  // Metrics
-  avgPoints: number;
+  // Results
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
   winRate: number;
-  drawRate: number;
-  lossRate: number;
-  goalsFor: number;
-  goalsAgainst: number;
-  goalDifference: number;
   
-  // Calculated metrics
-  momentum: number; // -100 to 100
-  form: 'excellent' | 'good' | 'average' | 'poor';
-  consistency: number; // 0-100
+  // Scoring
+  scored: number;
+  conceded: number;
+  cleanSheets: number;
+  scoringRate: number;
+  concedingRate: number;
+  
+  // Form
+  form: ('W' | 'D' | 'L')[];
+  homeRecord: { won: number; drawn: number; lost: number };
+  awayRecord: { won: number; drawn: number; lost: number };
+  
+  // Advanced
+  possession: number;
+  passAccuracy: number;
+  shotsPerGame: number;
+  
+  // Sport-specific
+  sportStats: Record<string, number>;
 }
 
-interface LeagueAnalyticsData {
-  leagueId: string;
-  leagueName: string;
-  season: number;
-  
-  // Top performers
-  topScorers: PlayerPerformanceStats[];
-  topAssists: PlayerPerformanceStats[];
-  topCleanSheets: PlayerPerformanceStats[];
-  
-  // Team metrics
-  bestDefense: TeamTrendData[];
-  bestAttack: TeamTrendData[];
-  
-  // League-wide stats
-  totalMatches: number;
-  totalGoals: number;
-  avgGoalsPerMatch: number;
-  avgAttendance: number;
-}
-
-interface AdvancedAnalyticsOptions {
-  leagueId?: string;
-  clubId?: string;
-  playerId?: string;
-  timeRange?: 'week' | 'month' | 'season';
+export interface UseAdvancedAnalyticsOptions {
+  entityType: 'player' | 'team';
+  entityId: string;
+  sport?: Sport;
+  seasonId?: string;
+  competitionId?: string;
   enabled?: boolean;
 }
 
-/**
- * Hook for advanced analytics with player/team performance data
- */
-export function useAdvancedAnalytics({
-  leagueId,
-  clubId,
-  playerId,
-  timeRange = 'season',
-  enabled = true,
-}: AdvancedAnalyticsOptions) {
-  // Build query string
-  const queryParams = new URLSearchParams({
-    timeRange,
-  });
+export interface UseAdvancedAnalyticsReturn {
+  data: PlayerAnalytics | TeamAnalytics | null;
+  isLoading: boolean;
+  error: Error | null;
+  refresh: () => Promise<void>;
+  sport: Sport;
+  sportConfig: ReturnType<typeof getSportConfig>;
+  
+  // Helpers
+  getStatLabel: (statKey: string) => string;
+  getStatValue: (statKey: string) => number;
+  getFormattedStat: (statKey: string, decimals?: number) => string;
+}
 
-  if (leagueId) queryParams.append('leagueId', leagueId);
-  if (clubId) queryParams.append('clubId', clubId);
-  if (playerId) queryParams.append('playerId', playerId);
+export function useAdvancedAnalytics(options: UseAdvancedAnalyticsOptions): UseAdvancedAnalyticsReturn {
+  const {
+    entityType,
+    entityId,
+    sport = 'FOOTBALL',
+    seasonId,
+    competitionId,
+    enabled = true,
+  } = options;
 
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['analytics', 'advanced', { leagueId, clubId, playerId, timeRange }],
-    queryFn: async () => {
-      const response = await axios.get(
-        `/api/analytics/advanced?${queryParams.toString()}`,
-      );
-      return response.data.data;
-    },
-    enabled: enabled && (!!leagueId || !!clubId || !!playerId),
-    staleTime: 300000, // 5 minutes
-    refetchInterval: 600000, // 10 minutes
-  });
+  const [data, setData] = useState<PlayerAnalytics | TeamAnalytics | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const sportConfig = useMemo(() => getSportConfig(sport), [sport]);
+
+  const fetchAnalytics = useCallback(async () => {
+    if (!entityId || !enabled) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const params = new URLSearchParams({
+        type: entityType,
+        id: entityId,
+        sport,
+      });
+      if (seasonId) params.append('seasonId', seasonId);
+      if (competitionId) params.append('competitionId', competitionId);
+
+      const response = await fetch(`/api/analytics?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch analytics');
+
+      const result = await response.json();
+      setData(result.data);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Unknown error'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [entityType, entityId, sport, seasonId, competitionId, enabled]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  // Stat label mapping per sport
+  const getStatLabel = useCallback((statKey: string): string => {
+    const labels: Record<string, Record<string, string>> = {
+      FOOTBALL: {
+        scoringContributions: 'Goals',
+        assists: 'Assists',
+        cleanSheets: 'Clean Sheets',
+        passAccuracy: 'Pass Accuracy',
+      },
+      RUGBY: {
+        scoringContributions: 'Tries',
+        assists: 'Try Assists',
+        tackles: 'Tackles',
+        lineBreaks: 'Line Breaks',
+      },
+      BASKETBALL: {
+        scoringContributions: 'Points',
+        assists: 'Assists',
+        rebounds: 'Rebounds',
+        steals: 'Steals',
+      },
+      CRICKET: {
+        scoringContributions: 'Runs',
+        wickets: 'Wickets',
+        battingAverage: 'Batting Avg',
+        bowlingAverage: 'Bowling Avg',
+      },
+      AMERICAN_FOOTBALL: {
+        scoringContributions: 'Touchdowns',
+        passingYards: 'Passing Yards',
+        rushingYards: 'Rushing Yards',
+        sacks: 'Sacks',
+      },
+      NETBALL: {
+        scoringContributions: 'Goals',
+        assists: 'Assists',
+        intercepts: 'Intercepts',
+        rebounds: 'Rebounds',
+      },
+    };
+
+    return labels[sport]?.[statKey] || statKey.replace(/([A-Z])/g, ' $1').trim();
+  }, [sport]);
+
+  const getStatValue = useCallback((statKey: string): number => {
+    if (!data) return 0;
+    return (data as any)[statKey] ?? (data.sportStats as any)?.[statKey] ?? 0;
+  }, [data]);
+
+  const getFormattedStat = useCallback((statKey: string, decimals = 1): string => {
+    const value = getStatValue(statKey);
+    return typeof value === 'number' ? value.toFixed(decimals) : String(value);
+  }, [getStatValue]);
 
   return {
-    data: data as LeagueAnalyticsData | null,
-    playerStats: data?.topScorers as PlayerPerformanceStats[] | undefined,
-    teamTrends: data?.bestAttack as TeamTrendData[] | undefined,
+    data,
     isLoading,
-    error: error as Error | null,
-    refetch,
+    error,
+    refresh: fetchAnalytics,
+    sport,
+    sportConfig,
+    getStatLabel,
+    getStatValue,
+    getFormattedStat,
   };
 }
 
-/**
- * Simplified hook for player performance chart data
- */
-export function usePlayerPerformance(playerId: string) {
-  return useQuery({
-    queryKey: ['player', playerId, 'performance'],
-    queryFn: async () => {
-      const response = await axios.get(
-        `/api/analytics/player/${playerId}/performance`,
-      );
-      return response.data.data;
-    },
-    enabled: !!playerId,
-  });
-}
-
-/**
- * Simplified hook for team trend data
- */
-export function useTeamTrend(clubId: string, timeRange: 'week' | 'month' | 'season' = 'season') {
-  return useQuery({
-    queryKey: ['team', clubId, 'trend', timeRange],
-    queryFn: async () => {
-      const response = await axios.get(
-        `/api/analytics/team/${clubId}/trend?timeRange=${timeRange}`,
-      );
-      return response.data.data;
-    },
-    enabled: !!clubId,
-    staleTime: 300000,
-    refetchInterval: 600000,
-  });
-}
+export default useAdvancedAnalytics;

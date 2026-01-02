@@ -1,270 +1,258 @@
+/**
+ * ============================================================================
+ * 🔔 USE NOTIFICATION HOOK v7.10.1 - MULTI-SPORT NOTIFICATIONS
+ * ============================================================================
+ * 
+ * Enterprise notification system with sport-specific event handling.
+ * Supports all 12 sports with authentic terminology and icons.
+ * 
+ * @version 7.10.1
+ * @path src/hooks/useNotification.ts
+ * ============================================================================
+ */
+
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import type { MatchEvent, Notification, NotificationType } from '@/types';
+import { useSportConfig, Sport, getSportConfig } from './useSportConfig';
+import type { MatchStatus } from './useSportConfig';
 
-// ============================================================================
-// NOTIFICATION CONFIGURATION & CONSTANTS
-// ============================================================================
+// =============================================================================
+// TYPES
+// =============================================================================
 
-interface NotificationConfig {
+export type NotificationType =
+  | 'SYSTEM_ALERT' | 'SYSTEM_MAINTENANCE' | 'SYSTEM_UPDATE'
+  | 'MATCH_SCHEDULED' | 'MATCH_REMINDER' | 'MATCH_STARTING' | 'MATCH_LIVE'
+  | 'MATCH_HALFTIME' | 'MATCH_FULLTIME' | 'MATCH_CANCELLED' | 'MATCH_POSTPONED'
+  | 'MATCH_RESULT' | 'MATCH_LINEUP_ANNOUNCED' | 'MATCH_SQUAD_SELECTED'
+  | 'TEAM_JOINED' | 'TEAM_LEFT' | 'TEAM_INVITE' | 'TEAM_REMOVED' | 'TEAM_UPDATE' | 'TEAM_ANNOUNCEMENT'
+  | 'TRAINING_SCHEDULED' | 'TRAINING_REMINDER' | 'TRAINING_CANCELLED'
+  | 'PLAYER_INJURED' | 'PLAYER_RECOVERED' | 'PLAYER_MILESTONE' | 'PLAYER_ACHIEVEMENT'
+  | 'PAYMENT_RECEIVED' | 'PAYMENT_DUE' | 'PAYMENT_OVERDUE'
+  | 'BADGE_EARNED' | 'ACHIEVEMENT_UNLOCKED' | 'LEVEL_UP' | 'XP_EARNED';
+
+export interface NotificationConfig {
   duration?: number;
   position?: 'top-left' | 'top-right' | 'top-center' | 'bottom-left' | 'bottom-right' | 'bottom-center';
   dismissible?: boolean;
 }
 
-const NOTIFICATION_DEFAULTS: NotificationConfig = {
-  duration: 4000,
-  position: 'top-right',
-  dismissible: true,
-};
-
-const NOTIFICATION_CONFIGS: Record<NotificationType, NotificationConfig> = {
-  MATCH_REMINDER: { duration: 5000, position: 'top-center' },
-  RESULT_UPDATE: { duration: 6000, position: 'top-center' },
-  TEAM_INVITE: { duration: 8000, position: 'top-right' },
-  SYSTEM: { duration: 5000, position: 'top-center' },
-  PROMOTION: { duration: 7000, position: 'top-center' },
-  ACCOUNT: { duration: 5000, position: 'top-right' },
-};
-
-// ============================================================================
-// MATCH EVENT NOTIFICATION HANDLERS
-// ============================================================================
-
-interface MatchEventNotificationOptions {
+export interface MatchEventPayload {
   matchId: string;
+  sport: Sport;
   homeTeam: string;
   awayTeam: string;
-  matchMinute?: number;
+  homeScore: number;
+  awayScore: number;
+  minute?: number;
+  period?: string;
+  eventType: string;
+  player?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    number?: number;
+  };
+  assistPlayer?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+  };
+  team: 'HOME' | 'AWAY';
+  metadata?: Record<string, unknown>;
 }
-
-const createGoalNotification = (
-  options: MatchEventNotificationOptions,
-  event: MatchEvent & { team: 'HOME' | 'AWAY'; player?: { user?: { firstName?: string; lastName?: string } } },
-) => {
-  const playerName =
-    event.player?.user?.firstName && event.player?.user?.lastName
-      ? `${event.player.user.firstName} ${event.player.user.lastName}`
-      : 'Unknown Player';
-
-  const teamName = event.team === 'HOME' ? options.homeTeam : options.awayTeam;
-
-  toast.success(`⚽ GOAL! ${playerName} (${teamName})`, {
-    description: `${event.minute}' - Match: ${options.homeTeam} vs ${options.awayTeam}`,
-    duration: 5000,
-    icon: '⚽',
-  });
-};
-
-const createCardNotification = (
-  options: MatchEventNotificationOptions,
-  event: MatchEvent & { 'color': 'yellow' | 'red'; player?: { user?: { firstName?: string; lastName?: string } } },
-) => {
-  const playerName =
-    event.player?.user?.firstName && event.player?.user?.lastName
-      ? `${event.player.user.firstName} ${event.player.user.lastName}`
-      : 'Unknown Player';
-
-  const teamName = (event.team as 'HOME' | 'AWAY') === 'HOME' ? options.homeTeam : options.awayTeam;
-  const cardEmoji = event.color === 'yellow' ? '🟨' : '🟥';
-  const cardText = event.color === 'yellow' ? 'Yellow Card' : 'Red Card';
-
-  toast.warning(`${cardEmoji} ${cardText} - ${playerName} (${teamName})`, {
-    description: `${event.minute}' - Match: ${options.homeTeam} vs ${options.awayTeam}`,
-    duration: 4000,
-  });
-};
-
-const createSubstitutionNotification = (
-  options: MatchEventNotificationOptions,
-  event: MatchEvent & {
-    'playerOutId'?: string;
-    'playerInId'?: string;
-    'playerOut'?: { user?: { firstName?: string; lastName?: string } };
-    'playerIn'?: { user?: { firstName?: string; lastName?: string } };
-  },
-) => {
-  const playerOutName =
-    event.playerOut?.user?.firstName && event.playerOut?.user?.lastName
-      ? `${event.playerOut.user.firstName} ${event.playerOut.user.lastName}`
-      : 'Player';
-
-  const playerInName =
-    event.playerIn?.user?.firstName && event.playerIn?.user?.lastName
-      ? `${event.playerIn.user.firstName} ${event.playerIn.user.lastName}`
-      : 'Player';
-
-  const teamName = (event.team as 'HOME' | 'AWAY') === 'HOME' ? options.homeTeam : options.awayTeam;
-
-  toast.info(`🔄 Substitution - ${teamName}`, {
-    description: `${playerOutName} → ${playerInName} (${event.minute}')`,
-    duration: 4000,
-  });
-};
-
-const createInjuryNotification = (
-  options: MatchEventNotificationOptions,
-  event: MatchEvent & { severity?: string; player?: { user?: { firstName?: string; lastName?: string } } },
-) => {
-  const playerName =
-    event.player?.user?.firstName && event.player?.user?.lastName
-      ? `${event.player.user.firstName} ${event.player.user.lastName}`
-      : 'Unknown Player';
-
-  const teamName = (event.team as 'HOME' | 'AWAY') === 'HOME' ? options.homeTeam : options.awayTeam;
-
-  toast.warning(`🚨 Player Injury - ${playerName} (${teamName})`, {
-    description: `${event.minute}' - Severity: ${event.severity || 'Unknown'}`,
-    duration: 5000,
-  });
-};
-
-// ============================================================================
-// SYSTEM NOTIFICATION HANDLERS
-// ============================================================================
-
-const createMatchStartNotification = (homeTeam: string, awayTeam: string) => {
-  toast.info(`🏟️ Match Started`, {
-    description: `${homeTeam} vs ${awayTeam} - Match is now LIVE`,
-    duration: 4000,
-    icon: '🏟️',
-  });
-};
-
-const createMatchEndNotification = (homeTeam: string, awayTeam: string, homeGoals: number, awayGoals: number) => {
-  toast.success(`🏁 Final Whistle`, {
-    description: `${homeTeam} ${homeGoals} - ${awayGoals} ${awayTeam}`,
-    duration: 6000,
-    icon: '🏁',
-  });
-};
-
-const createPostponedNotification = (homeTeam: string, awayTeam: string, newDate?: string) => {
-  const dateInfo = newDate ? ` to ${new Date(newDate).toLocaleDateString()}` : '';
-  
-  toast.warning(`⏸️ Match Postponed`, {
-    description: `${homeTeam} vs ${awayTeam}${dateInfo}`,
-    duration: 5000,
-  });
-};
-
-const createCancelledNotification = (homeTeam: string, awayTeam: string, reason?: string) => {
-  toast.error(`❌ Match Cancelled`, {
-    description: `${homeTeam} vs ${awayTeam}${reason ? ` - Reason: ${reason}` : ''}`,
-    duration: 5000,
-  });
-};
-
-// ============================================================================
-// SYSTEM NOTIFICATION TYPES
-// ============================================================================
-
-interface SystemNotificationPayload {
-  type: 'MATCH_START' | 'MATCH_END' | 'MATCH_POSTPONED' | 'MATCH_CANCELLED' | 'TEAM_INVITE' | 'ROLE_UPGRADE';
-  title: string;
-  message: string;
-  icon?: string;
-  actionUrl?: string;
-  metadata?: Record<string, any>;
-}
-
-const createSystemNotification = (payload: SystemNotificationPayload) => {
-  const config = NOTIFICATION_DEFAULTS;
-
-  switch (payload.type) {
-    case 'MATCH_START':
-      toast.info(payload.title, {
-        description: payload.message,
-        duration: config.duration,
-        icon: '🏟️',
-      });
-      break;
-
-    case 'MATCH_END':
-      toast.success(payload.title, {
-        description: payload.message,
-        duration: config.duration,
-        icon: '✅',
-      });
-      break;
-
-    case 'MATCH_POSTPONED':
-      toast.warning(payload.title, {
-        description: payload.message,
-        duration: config.duration,
-        icon: '⏸️',
-      });
-      break;
-
-    case 'MATCH_CANCELLED':
-      toast.error(payload.title, {
-        description: payload.message,
-        duration: config.duration,
-        icon: '❌',
-      });
-      break;
-
-    case 'TEAM_INVITE':
-      toast.success(payload.title, {
-        description: payload.message,
-        duration: config.duration,
-        icon: '👥',
-        action: payload.actionUrl
-          ? { label: 'View', onClick: () => window.location.href = payload.actionUrl! }
-          : undefined,
-      });
-      break;
-
-    case 'ROLE_UPGRADE':
-      toast.success(payload.title, {
-        description: payload.message,
-        duration: config.duration,
-        icon: '⬆️',
-        action: payload.actionUrl
-          ? { label: 'View', onClick: () => window.location.href = payload.actionUrl! }
-          : undefined,
-      });
-      break;
-
-    default:
-      toast.info(payload.title, {
-        description: payload.message,
-        duration: config.duration,
-      });
-  }
-};
-
-// ============================================================================
-// REACT HOOK: useNotifications
-// ============================================================================
 
 interface UseNotificationsOptions {
   enableMatchEvents?: boolean;
   enableSystemNotifications?: boolean;
   matchId?: string;
+  sport?: Sport;
   homeTeam?: string;
   awayTeam?: string;
 }
 
-export function useNotifications(options: UseNotificationsOptions = {}) {
-  const {
-    enableMatchEvents = true,
-    enableSystemNotifications = true,
-    matchId,
-    homeTeam = 'Home Team',
-    awayTeam = 'Away Team',
-  } = options;
+// =============================================================================
+// SPORT-SPECIFIC NOTIFICATION HANDLERS
+// =============================================================================
 
-  const eventHandlersRef = useRef<Map<string, (...args: any[]) => void>>(new Map());
+/**
+ * Get scoring notification for any sport
+ */
+function createScoringNotification(payload: MatchEventPayload): void {
+  const config = getSportConfig(payload.sport);
+  const playerName = payload.player 
+    ? `${payload.player.firstName} ${payload.player.lastName}` 
+    : 'Unknown Player';
+  const teamName = payload.team === 'HOME' ? payload.homeTeam : payload.awayTeam;
+  
+  // Get event details from sport config
+  const eventType = config.eventTypes.find(e => e.key === payload.eventType);
+  const icon = eventType?.icon || config.icon;
+  const label = eventType?.label || payload.eventType;
+  const points = eventType?.points;
+  
+  // Build description based on sport
+  let description = '';
+  if (payload.minute) {
+    description += `${payload.minute}' - `;
+  }
+  description += `${payload.homeTeam} ${payload.homeScore} - ${payload.awayScore} ${payload.awayTeam}`;
+  
+  // Add assist info if available
+  if (payload.assistPlayer) {
+    description += ` (Assist: ${payload.assistPlayer.firstName} ${payload.assistPlayer.lastName})`;
+  }
+  
+  // Format title based on points
+  const title = points && points > 1 
+    ? `${icon} ${label} (${points} pts)! ${playerName}`
+    : `${icon} ${label}! ${playerName} (${teamName})`;
+  
+  toast.success(title, {
+    description,
+    duration: 6000,
+    icon,
+  });
+}
+
+/**
+ * Get disciplinary notification for any sport
+ */
+function createDisciplinaryNotification(payload: MatchEventPayload): void {
+  const config = getSportConfig(payload.sport);
+  const playerName = payload.player 
+    ? `${payload.player.firstName} ${payload.player.lastName}` 
+    : 'Unknown Player';
+  const teamName = payload.team === 'HOME' ? payload.homeTeam : payload.awayTeam;
+  
+  const eventType = config.eventTypes.find(e => e.key === payload.eventType);
+  const icon = eventType?.icon || '⚠️';
+  const label = eventType?.label || payload.eventType;
+  
+  const description = payload.minute 
+    ? `${payload.minute}' - ${payload.homeTeam} vs ${payload.awayTeam}`
+    : `${payload.homeTeam} vs ${payload.awayTeam}`;
+  
+  toast.warning(`${icon} ${label} - ${playerName} (${teamName})`, {
+    description,
+    duration: 5000,
+  });
+}
+
+/**
+ * Create substitution notification
+ */
+function createSubstitutionNotification(
+  payload: MatchEventPayload & {
+    playerOut?: { firstName: string; lastName: string };
+    playerIn?: { firstName: string; lastName: string };
+  }
+): void {
+  const teamName = payload.team === 'HOME' ? payload.homeTeam : payload.awayTeam;
+  const playerOutName = payload.playerOut 
+    ? `${payload.playerOut.firstName} ${payload.playerOut.lastName}` 
+    : 'Player';
+  const playerInName = payload.playerIn 
+    ? `${payload.playerIn.firstName} ${payload.playerIn.lastName}` 
+    : 'Player';
+  
+  toast.info(`🔄 Substitution - ${teamName}`, {
+    description: `${playerOutName} ➡️ ${playerInName} (${payload.minute || '?'}')`,
+    duration: 4000,
+  });
+}
+
+/**
+ * Create match status notification
+ */
+function createMatchStatusNotification(
+  status: 'started' | 'halftime' | 'resumed' | 'ended' | 'postponed' | 'cancelled',
+  payload: {
+    sport: Sport;
+    homeTeam: string;
+    awayTeam: string;
+    homeScore?: number;
+    awayScore?: number;
+    reason?: string;
+    newDate?: string;
+  }
+): void {
+  const config = getSportConfig(payload.sport);
+  
+  switch (status) {
+    case 'started':
+      toast.info(`🏟️ ${config.terms.match} Started`, {
+        description: `${payload.homeTeam} vs ${payload.awayTeam} - Now LIVE`,
+        duration: 5000,
+        icon: config.icon,
+      });
+      break;
+      
+    case 'halftime':
+      toast.info(`⏸️ ${config.periods.name} Break`, {
+        description: `${payload.homeTeam} ${payload.homeScore ?? 0} - ${payload.awayScore ?? 0} ${payload.awayTeam}`,
+        duration: 4000,
+      });
+      break;
+      
+    case 'resumed':
+      toast.info(`▶️ ${config.terms.match} Resumed`, {
+        description: `${payload.homeTeam} vs ${payload.awayTeam}`,
+        duration: 4000,
+      });
+      break;
+      
+    case 'ended':
+      toast.success(`🏁 Full Time`, {
+        description: `${payload.homeTeam} ${payload.homeScore ?? 0} - ${payload.awayScore ?? 0} ${payload.awayTeam}`,
+        duration: 6000,
+      });
+      break;
+      
+    case 'postponed':
+      const dateInfo = payload.newDate ? ` to ${new Date(payload.newDate).toLocaleDateString()}` : '';
+      toast.warning(`⏸️ ${config.terms.match} Postponed`, {
+        description: `${payload.homeTeam} vs ${payload.awayTeam}${dateInfo}`,
+        duration: 5000,
+      });
+      break;
+      
+    case 'cancelled':
+      toast.error(`❌ ${config.terms.match} Cancelled`, {
+        description: `${payload.homeTeam} vs ${payload.awayTeam}${payload.reason ? ` - ${payload.reason}` : ''}`,
+        duration: 5000,
+      });
+      break;
+  }
+}
+
+// =============================================================================
+// MAIN HOOK
+// =============================================================================
+
+export function useNotifications({
+  enableMatchEvents = true,
+  enableSystemNotifications = true,
+  matchId,
+  sport = 'FOOTBALL',
+  homeTeam = 'Home',
+  awayTeam = 'Away',
+}: UseNotificationsOptions = {}) {
   const socketRef = useRef<any>(null);
+  const eventHandlersRef = useRef<Map<string, (data: any) => void>>(new Map());
 
-  // Initialize socket connection (assuming socket is available globally or via context)
+  // Get sport config
+  const sportConfig = getSportConfig(sport);
+
+  // ==========================================================================
+  // SOCKET CONNECTION
+  // ==========================================================================
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Try to get socket from window (should be injected by socket provider)
     socketRef.current = (window as any).socket;
 
     if (!socketRef.current) {
@@ -272,215 +260,187 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       return;
     }
 
-    // ========================================================================
-    // MATCH EVENT LISTENERS
-    // ========================================================================
-
+    // Match event listeners
     if (enableMatchEvents && matchId) {
-      const handleGoal = (event: any) => {
-        createGoalNotification(
-          { matchId, homeTeam, awayTeam },
-          { ...event, team: event.team as 'HOME' | 'AWAY' },
-        );
+      const handleScoringEvent = (event: MatchEventPayload) => {
+        createScoringNotification({ ...event, sport, homeTeam, awayTeam });
       };
 
-      const handleCard = (event: any) => {
-        createCardNotification(
-          { matchId, homeTeam, awayTeam },
-          { ...event, team: event.team as 'HOME' | 'AWAY' },
-        );
+      const handleDisciplinaryEvent = (event: MatchEventPayload) => {
+        createDisciplinaryNotification({ ...event, sport, homeTeam, awayTeam });
       };
 
       const handleSubstitution = (event: any) => {
-        createSubstitutionNotification(
-          { matchId, homeTeam, awayTeam },
-          { ...event, team: event.team as 'HOME' | 'AWAY' },
-        );
+        createSubstitutionNotification({ ...event, sport, homeTeam, awayTeam });
       };
 
-      const handleInjury = (event: any) => {
-        createInjuryNotification(
-          { matchId, homeTeam, awayTeam },
-          { ...event, team: event.team as 'HOME' | 'AWAY' },
-        );
-      };
+      // Register for all scoring events
+      sportConfig.scoringEvents.forEach(eventType => {
+        const handler = (data: any) => handleScoringEvent({ ...data, eventType });
+        socketRef.current.on(`match:${matchId}:${eventType.toLowerCase()}`, handler);
+        eventHandlersRef.current.set(`match:${matchId}:${eventType.toLowerCase()}`, handler);
+      });
 
-      // Register handlers
-      socketRef.current.on(`match:${matchId}:goal`, handleGoal);
-      socketRef.current.on(`match:${matchId}:card`, handleCard);
+      // Register for all disciplinary events
+      sportConfig.disciplinaryEvents.forEach(eventType => {
+        const handler = (data: any) => handleDisciplinaryEvent({ ...data, eventType });
+        socketRef.current.on(`match:${matchId}:${eventType.toLowerCase()}`, handler);
+        eventHandlersRef.current.set(`match:${matchId}:${eventType.toLowerCase()}`, handler);
+      });
+
+      // Register for substitution
       socketRef.current.on(`match:${matchId}:substitution`, handleSubstitution);
-      socketRef.current.on(`match:${matchId}:injury`, handleInjury);
-
-      eventHandlersRef.current.set('goal', handleGoal);
-      eventHandlersRef.current.set('card', handleCard);
-      eventHandlersRef.current.set('substitution', handleSubstitution);
-      eventHandlersRef.current.set('injury', handleInjury);
+      eventHandlersRef.current.set(`match:${matchId}:substitution`, handleSubstitution);
     }
 
-    // ========================================================================
-    // SYSTEM NOTIFICATION LISTENERS
-    // ========================================================================
-
+    // System notification listeners
     if (enableSystemNotifications) {
       const handleMatchStart = (data: any) => {
-        createMatchStartNotification(data.homeTeam, data.awayTeam);
+        createMatchStatusNotification('started', { ...data, sport });
       };
 
       const handleMatchEnd = (data: any) => {
-        createMatchEndNotification(
-          data.homeTeam,
-          data.awayTeam,
-          data.homeGoals,
-          data.awayGoals,
-        );
+        createMatchStatusNotification('ended', { ...data, sport });
       };
 
       const handleMatchPostponed = (data: any) => {
-        createPostponedNotification(data.homeTeam, data.awayTeam, data.newDate);
+        createMatchStatusNotification('postponed', { ...data, sport });
       };
 
       const handleMatchCancelled = (data: any) => {
-        createCancelledNotification(data.homeTeam, data.awayTeam, data.reason);
+        createMatchStatusNotification('cancelled', { ...data, sport });
       };
 
-      const handleSystemNotification = (payload: SystemNotificationPayload) => {
-        createSystemNotification(payload);
-      };
-
-      // Register handlers
       socketRef.current.on('match:started', handleMatchStart);
       socketRef.current.on('match:ended', handleMatchEnd);
       socketRef.current.on('match:postponed', handleMatchPostponed);
       socketRef.current.on('match:cancelled', handleMatchCancelled);
-      socketRef.current.on('notification:system', handleSystemNotification);
 
       eventHandlersRef.current.set('match:started', handleMatchStart);
       eventHandlersRef.current.set('match:ended', handleMatchEnd);
       eventHandlersRef.current.set('match:postponed', handleMatchPostponed);
       eventHandlersRef.current.set('match:cancelled', handleMatchCancelled);
-      eventHandlersRef.current.set('notification:system', handleSystemNotification);
     }
 
-    // Cleanup on unmount
+    // Cleanup
     return () => {
       eventHandlersRef.current.forEach((handler, event) => {
         socketRef.current?.off(event, handler);
       });
       eventHandlersRef.current.clear();
     };
-  }, [enableMatchEvents, enableSystemNotifications, matchId, homeTeam, awayTeam]);
+  }, [enableMatchEvents, enableSystemNotifications, matchId, sport, homeTeam, awayTeam, sportConfig]);
 
-  // ============================================================================
+  // ==========================================================================
   // PUBLIC METHODS
-  // ============================================================================
+  // ==========================================================================
 
-  const notify = useCallback(
-    (
-      type: NotificationType,
-      title: string,
-      message?: string,
-      options?: Partial<NotificationConfig>,
-    ) => {
-      const config = { ...NOTIFICATION_DEFAULTS, ...NOTIFICATION_CONFIGS[type], ...options };
+  const notify = useCallback((
+    type: NotificationType,
+    title: string,
+    message?: string,
+    options?: NotificationConfig
+  ) => {
+    const duration = options?.duration ?? 5000;
 
-      switch (type) {
-        case 'MATCH_REMINDER':
-          toast.info(title, {
-            description: message,
-            duration: config.duration,
-            icon: '🏟️',
-          });
-          break;
+    switch (type) {
+      case 'MATCH_REMINDER':
+      case 'MATCH_STARTING':
+      case 'MATCH_SCHEDULED':
+        toast.info(title, { description: message, duration, icon: sportConfig.icon });
+        break;
 
-        case 'RESULT_UPDATE':
-          toast.success(title, {
-            description: message,
-            duration: config.duration,
-            icon: '✅',
-          });
-          break;
+      case 'MATCH_FULLTIME':
+      case 'MATCH_RESULT':
+      case 'PLAYER_MILESTONE':
+      case 'PLAYER_ACHIEVEMENT':
+      case 'BADGE_EARNED':
+      case 'ACHIEVEMENT_UNLOCKED':
+      case 'LEVEL_UP':
+        toast.success(title, { description: message, duration, icon: '🎉' });
+        break;
 
-        case 'TEAM_INVITE':
-          toast.info(title, {
-            description: message,
-            duration: config.duration,
-            icon: '👥',
-          });
-          break;
+      case 'MATCH_CANCELLED':
+      case 'MATCH_POSTPONED':
+      case 'PLAYER_INJURED':
+      case 'PAYMENT_OVERDUE':
+        toast.warning(title, { description: message, duration, icon: '⚠️' });
+        break;
 
-        case 'SYSTEM':
-          toast.info(title, {
-            description: message,
-            duration: config.duration,
-            icon: '⚙️',
-          });
-          break;
+      case 'SYSTEM_ALERT':
+      case 'SYSTEM_MAINTENANCE':
+        toast.error(title, { description: message, duration, icon: '🚨' });
+        break;
 
-        case 'PROMOTION':
-          toast.success(title, {
-            description: message,
-            duration: config.duration,
-            icon: '🎉',
-          });
-          break;
+      case 'TEAM_JOINED':
+      case 'TEAM_INVITE':
+        toast.success(title, { description: message, duration, icon: '👥' });
+        break;
 
-        case 'ACCOUNT':
-          toast.info(title, {
-            description: message,
-            duration: config.duration,
-            icon: '👤',
-          });
-          break;
+      case 'TRAINING_SCHEDULED':
+      case 'TRAINING_REMINDER':
+        toast.info(title, { description: message, duration, icon: '🏃' });
+        break;
 
-        default:
-          toast.info(title, {
-            description: message,
-            duration: config.duration,
-          });
-      }
-    },
-    [],
-  );
+      case 'PAYMENT_RECEIVED':
+        toast.success(title, { description: message, duration, icon: '💰' });
+        break;
 
-  const success = useCallback(
-    (title: string, message?: string, options?: Partial<NotificationConfig>) => {
-      toast.success(title, {
-        description: message,
-        duration: options?.duration ?? NOTIFICATION_DEFAULTS.duration,
-      });
-    },
-    [],
-  );
+      case 'XP_EARNED':
+        toast.success(title, { description: message, duration, icon: '⭐' });
+        break;
 
-  const error = useCallback(
-    (title: string, message?: string, options?: Partial<NotificationConfig>) => {
-      toast.error(title, {
-        description: message,
-        duration: options?.duration ?? NOTIFICATION_DEFAULTS.duration,
-      });
-    },
-    [],
-  );
+      default:
+        toast.info(title, { description: message, duration });
+    }
+  }, [sportConfig]);
 
-  const warning = useCallback(
-    (title: string, message?: string, options?: Partial<NotificationConfig>) => {
-      toast.warning(title, {
-        description: message,
-        duration: options?.duration ?? NOTIFICATION_DEFAULTS.duration,
-      });
-    },
-    [],
-  );
+  const success = useCallback((title: string, message?: string, options?: NotificationConfig) => {
+    toast.success(title, {
+      description: message,
+      duration: options?.duration ?? 4000,
+    });
+  }, []);
 
-  const info = useCallback(
-    (title: string, message?: string, options?: Partial<NotificationConfig>) => {
-      toast.info(title, {
-        description: message,
-        duration: options?.duration ?? NOTIFICATION_DEFAULTS.duration,
-      });
-    },
-    [],
-  );
+  const error = useCallback((title: string, message?: string, options?: NotificationConfig) => {
+    toast.error(title, {
+      description: message,
+      duration: options?.duration ?? 5000,
+    });
+  }, []);
+
+  const warning = useCallback((title: string, message?: string, options?: NotificationConfig) => {
+    toast.warning(title, {
+      description: message,
+      duration: options?.duration ?? 4000,
+    });
+  }, []);
+
+  const info = useCallback((title: string, message?: string, options?: NotificationConfig) => {
+    toast.info(title, {
+      description: message,
+      duration: options?.duration ?? 4000,
+    });
+  }, []);
+
+  const loading = useCallback((title: string, message?: string) => {
+    return toast.loading(title, { description: message });
+  }, []);
+
+  const dismiss = useCallback((toastId?: string | number) => {
+    toast.dismiss(toastId);
+  }, []);
+
+  const promise = useCallback(<T,>(
+    promise: Promise<T>,
+    messages: {
+      loading: string;
+      success: string | ((data: T) => string);
+      error: string | ((error: Error) => string);
+    }
+  ) => {
+    return toast.promise(promise, messages);
+  }, []);
 
   return {
     notify,
@@ -488,22 +448,17 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     error,
     warning,
     info,
+    loading,
+    dismiss,
+    promise,
     isConnected: !!socketRef.current?.connected,
+    sportConfig,
   };
 }
 
-// ============================================================================
-// EXPORT NOTIFICATION CREATORS FOR EXTERNAL USE
-// ============================================================================
+// =============================================================================
+// EXPORTS
+// =============================================================================
 
-export {
-  createGoalNotification,
-  createCardNotification,
-  createSubstitutionNotification,
-  createInjuryNotification,
-  createMatchStartNotification,
-  createMatchEndNotification,
-  createPostponedNotification,
-  createCancelledNotification,
-  createSystemNotification,
-};
+export { createScoringNotification, createDisciplinaryNotification, createSubstitutionNotification, createMatchStatusNotification };
+export default useNotifications;

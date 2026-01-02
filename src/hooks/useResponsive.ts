@@ -1,96 +1,140 @@
-import { useState, useEffect, useCallback } from 'react'
-
 /**
- * useResponsive - Track responsive breakpoints and device capabilities
- * Production-grade hook with comprehensive device detection for PitchConnect
- * @returns {Object} Responsive state object with complete viewport information
+ * ============================================================================
+ * 📱 USE RESPONSIVE HOOK v7.10.1
+ * ============================================================================
+ * @version 7.10.1
+ * @path src/hooks/useResponsive.ts
+ * ============================================================================
  */
-export const useResponsive = () => {
-  const [width, setWidth] = useState(0)
-  const [height, setHeight] = useState(0)
-  const [isMobile, setIsMobile] = useState(false)
-  const [isTablet, setIsTablet] = useState(false)
-  const [isDesktop, setIsDesktop] = useState(true)
-  const [breakpoint, setBreakpoint] = useState('desktop')
-  const [isTouchDevice, setIsTouchDevice] = useState(false)
 
-  const handleResize = useCallback(() => {
-    const newWidth = window.innerWidth
-    const newHeight = window.innerHeight
+'use client';
 
-    setWidth(newWidth)
-    setHeight(newHeight)
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
-    // Determine breakpoints using Tailwind CSS standards
-    const mobile = newWidth < 768
-    const tablet = newWidth >= 768 && newWidth < 1024
-    const desktop = newWidth >= 1024
+// Tailwind CSS default breakpoints
+export const BREAKPOINTS = {
+  sm: 640,
+  md: 768,
+  lg: 1024,
+  xl: 1280,
+  '2xl': 1536,
+} as const;
 
-    setIsMobile(mobile)
-    setIsTablet(tablet)
-    setIsDesktop(desktop)
+export type Breakpoint = keyof typeof BREAKPOINTS;
 
-    // Set breakpoint label for responsive layouts
-    if (mobile) {
-      setBreakpoint('mobile')
-    } else if (tablet) {
-      setBreakpoint('tablet')
-    } else {
-      setBreakpoint('desktop')
-    }
-  }, [])
-
-  const detectTouchDevice = useCallback(() => {
-    // Multiple methods to detect touch capability
-    const hasTouchPoints =
-      navigator.maxTouchPoints !== undefined && navigator.maxTouchPoints > 0
-
-    const hasTouchEvent =
-      typeof window !== 'undefined' &&
-      ('ontouchstart' in window ||
-        (window.DocumentTouch && document instanceof window.DocumentTouch))
-
-    const hasMsPointer =
-      navigator.msMaxTouchPoints !== undefined &&
-      navigator.msMaxTouchPoints > 0
-
-    // Media query check for touch devices
-    const mediaQueryTouch =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(hover: none) and (pointer: coarse)').matches
-
-    const isTouch = hasTouchPoints || hasTouchEvent || hasMsPointer || mediaQueryTouch
-
-    setIsTouchDevice(isTouch)
-  }, [])
-
-  useEffect(() => {
-    // Initial detection on mount
-    if (typeof window !== 'undefined') {
-      handleResize()
-      detectTouchDevice()
-
-      // Add event listeners
-      window.addEventListener('resize', handleResize)
-      window.addEventListener('orientationchange', handleResize)
-
-      // Cleanup
-      return () => {
-        window.removeEventListener('resize', handleResize)
-        window.removeEventListener('orientationchange', handleResize)
-      }
-    }
-  }, [handleResize, detectTouchDevice])
-
-  return {
-    width,
-    height,
-    isMobile,
-    isTablet,
-    isDesktop,
-    breakpoint,
-    isTouchDevice,
-  }
+export interface UseResponsiveReturn {
+  width: number;
+  height: number;
+  breakpoint: Breakpoint | 'xs';
+  isMobile: boolean;
+  isTablet: boolean;
+  isDesktop: boolean;
+  isTouch: boolean;
+  orientation: 'portrait' | 'landscape';
+  isXs: boolean;
+  isSm: boolean;
+  isMd: boolean;
+  isLg: boolean;
+  isXl: boolean;
+  is2Xl: boolean;
+  isSmUp: boolean;
+  isMdUp: boolean;
+  isLgUp: boolean;
+  isXlUp: boolean;
+  is2XlUp: boolean;
+  isSmDown: boolean;
+  isMdDown: boolean;
+  isLgDown: boolean;
+  isXlDown: boolean;
 }
 
-export default useResponsive
+export function useResponsive(): UseResponsiveReturn {
+  const [dimensions, setDimensions] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1024,
+    height: typeof window !== 'undefined' ? window.innerHeight : 768,
+  });
+
+  const [isTouch, setIsTouch] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleResize = () => {
+      setDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    // Check for touch device
+    setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+    // Initial set
+    handleResize();
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const { width, height } = dimensions;
+
+  const breakpoint = useMemo((): Breakpoint | 'xs' => {
+    if (width >= BREAKPOINTS['2xl']) return '2xl';
+    if (width >= BREAKPOINTS.xl) return 'xl';
+    if (width >= BREAKPOINTS.lg) return 'lg';
+    if (width >= BREAKPOINTS.md) return 'md';
+    if (width >= BREAKPOINTS.sm) return 'sm';
+    return 'xs';
+  }, [width]);
+
+  return useMemo(() => ({
+    width,
+    height,
+    breakpoint,
+    isMobile: width < BREAKPOINTS.md,
+    isTablet: width >= BREAKPOINTS.md && width < BREAKPOINTS.lg,
+    isDesktop: width >= BREAKPOINTS.lg,
+    isTouch,
+    orientation: width > height ? 'landscape' : 'portrait',
+    isXs: width < BREAKPOINTS.sm,
+    isSm: width >= BREAKPOINTS.sm && width < BREAKPOINTS.md,
+    isMd: width >= BREAKPOINTS.md && width < BREAKPOINTS.lg,
+    isLg: width >= BREAKPOINTS.lg && width < BREAKPOINTS.xl,
+    isXl: width >= BREAKPOINTS.xl && width < BREAKPOINTS['2xl'],
+    is2Xl: width >= BREAKPOINTS['2xl'],
+    isSmUp: width >= BREAKPOINTS.sm,
+    isMdUp: width >= BREAKPOINTS.md,
+    isLgUp: width >= BREAKPOINTS.lg,
+    isXlUp: width >= BREAKPOINTS.xl,
+    is2XlUp: width >= BREAKPOINTS['2xl'],
+    isSmDown: width < BREAKPOINTS.md,
+    isMdDown: width < BREAKPOINTS.lg,
+    isLgDown: width < BREAKPOINTS.xl,
+    isXlDown: width < BREAKPOINTS['2xl'],
+  }), [width, height, breakpoint, isTouch]);
+}
+
+// Media query hook
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mediaQuery = window.matchMedia(query);
+    setMatches(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, [query]);
+
+  return matches;
+}
+
+// Breakpoint hook
+export function useBreakpoint(breakpoint: Breakpoint): boolean {
+  return useMediaQuery(`(min-width: ${BREAKPOINTS[breakpoint]}px)`);
+}
+
+export default useResponsive;

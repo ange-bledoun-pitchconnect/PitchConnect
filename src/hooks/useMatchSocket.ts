@@ -1,113 +1,195 @@
-import { useEffect, useState, useCallback } from 'react';
-import io, { Socket } from 'socket.io-client';
+/**
+ * ============================================================================
+ * 🔌 USE MATCH SOCKET HOOK v7.10.1 - WEBSOCKET FOR MATCHES
+ * ============================================================================
+ * @version 7.10.1
+ * @path src/hooks/useMatchSocket.ts
+ * ============================================================================
+ */
 
-interface MatchState {
+'use client';
+
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { Sport, getSportConfig } from './useSportConfig';
+
+export type MatchSocketEvent = 
+  | 'connected' | 'disconnected' | 'reconnecting'
+  | 'match:event' | 'match:score' | 'match:status' | 'match:stats'
+  | 'match:lineup' | 'match:substitution' | 'match:period';
+
+export interface MatchSocketMessage {
+  type: MatchSocketEvent;
   matchId: string;
-  status: string;
-  homeGoals: number;
-  awayGoals: number;
-  events: any[];
-  isConnected: boolean;
+  data: unknown;
+  timestamp: string;
 }
 
-export function useMatchSocket(matchId: string) {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [match, setMatch] = useState<MatchState>({
+export interface UseMatchSocketOptions {
+  matchId: string;
+  sport?: Sport;
+  enabled?: boolean;
+  autoReconnect?: boolean;
+  reconnectInterval?: number;
+  maxReconnectAttempts?: number;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+  onError?: (error: Error) => void;
+  onMessage?: (message: MatchSocketMessage) => void;
+}
+
+export interface UseMatchSocketReturn {
+  isConnected: boolean;
+  connectionState: 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
+  lastMessage: MatchSocketMessage | null;
+  send: (type: string, data: unknown) => void;
+  subscribe: (event: MatchSocketEvent, handler: (data: unknown) => void) => () => void;
+  disconnect: () => void;
+  reconnect: () => void;
+}
+
+export function useMatchSocket(options: UseMatchSocketOptions): UseMatchSocketReturn {
+  const {
     matchId,
-    status: 'SCHEDULED',
-    homeGoals: 0,
-    awayGoals: 0,
-    events: [],
-    isConnected: false,
-  });
+    sport = 'FOOTBALL',
+    enabled = true,
+    autoReconnect = true,
+    reconnectInterval = 3000,
+    maxReconnectAttempts = 5,
+    onConnect,
+    onDisconnect,
+    onError,
+    onMessage,
+  } = options;
 
-  useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io(`${process.env.NEXT_PUBLIC_API_URL}/matches`, {
-      path: '/socket.io',
-    });
+  const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'disconnected' | 'reconnecting'>('disconnected');
+  const [lastMessage, setLastMessage] = useState<MatchSocketMessage | null>(null);
 
-    // Join match room
-    newSocket.emit('match:join', matchId);
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const handlersRef = useRef<Map<MatchSocketEvent, Set<(data: unknown) => void>>>(new Map());
 
-    // Listen for state updates
-    newSocket.on('match:state', (state: any) => {
-      setMatch(prev => ({ ...prev, ...state, isConnected: true }));
-    });
+  const isConnected = connectionState === 'connected';
 
-    // Listen for score updates
-    newSocket.on('match:score:updated', (data: any) => {
-      setMatch(prev => ({
-        ...prev,
-        homeGoals: data.homeGoals,
-        awayGoals: data.awayGoals,
+  const connect = useCallback(() => {
+    if (!enabled || !matchId) return;
+
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 
+      `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/ws`;
+
+    setConnectionState('connecting');
+
+    try {
+      const socket = new WebSocket(wsUrl);
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        setConnectionState('connected');
+        reconnectAttemptsRef.current = 0;
+        
+        // Subscribe to match
+        socket.send(JSON.stringify({
+          type: 'subscribe',
+          matchId,
+          sport,
+        }));
+
+        onConnect?.();
+      };
+
+      socket.onclose = () => {
+        setConnectionState('disconnected');
+        onDisconnect?.();
+
+        // Auto reconnect
+        if (autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
+          setConnectionState('reconnecting');
+          reconnectAttemptsRef.current++;
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, reconnectInterval * reconnectAttemptsRef.current);
+        }
+      };
+
+      socket.onerror = (event) => {
+        onError?.(new Error('WebSocket error'));
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data) as MatchSocketMessage;
+          setLastMessage(message);
+          onMessage?.(message);
+
+          // Notify subscribers
+          const handlers = handlersRef.current.get(message.type as MatchSocketEvent);
+          handlers?.forEach(handler => handler(message.data));
+        } catch (err) {
+          console.error('Failed to parse WebSocket message:', err);
+        }
+      };
+    } catch (err) {
+      setConnectionState('disconnected');
+      onError?.(err instanceof Error ? err : new Error('Connection failed'));
+    }
+  }, [enabled, matchId, sport, autoReconnect, maxReconnectAttempts, reconnectInterval, onConnect, onDisconnect, onError, onMessage]);
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+    }
+    
+    setConnectionState('disconnected');
+  }, []);
+
+  const reconnect = useCallback(() => {
+    disconnect();
+    reconnectAttemptsRef.current = 0;
+    connect();
+  }, [connect, disconnect]);
+
+  const send = useCallback((type: string, data: unknown) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type,
+        matchId,
+        data,
+        timestamp: new Date().toISOString(),
       }));
-    });
-
-    // Listen for events
-    newSocket.on('match:event:added', (event: any) => {
-      setMatch(prev => ({
-        ...prev,
-        events: [event, ...prev.events],
-      }));
-    });
-
-    // Listen for status changes
-    newSocket.on('match:status:changed', (data: any) => {
-      setMatch(prev => ({
-        ...prev,
-        status: data.status,
-      }));
-    });
-
-    newSocket.on('disconnect', () => {
-      setMatch(prev => ({ ...prev, isConnected: false }));
-    });
-
-    setSocket(newSocket);
-
-    return () => {
-      newSocket.emit('match:leave', matchId);
-      newSocket.disconnect();
-    };
+    }
   }, [matchId]);
 
-  const addEvent = useCallback(
-    (eventData: any) => {
-      socket?.emit('match:event:add', {
-        matchId,
-        ...eventData,
-      });
-    },
-    [socket, matchId]
-  );
+  const subscribe = useCallback((event: MatchSocketEvent, handler: (data: unknown) => void): (() => void) => {
+    if (!handlersRef.current.has(event)) {
+      handlersRef.current.set(event, new Set());
+    }
+    handlersRef.current.get(event)!.add(handler);
 
-  const updateScore = useCallback(
-    (homeGoals: number, awayGoals: number) => {
-      socket?.emit('match:score:update', {
-        matchId,
-        homeGoals,
-        awayGoals,
-      });
-    },
-    [socket, matchId]
-  );
+    return () => {
+      handlersRef.current.get(event)?.delete(handler);
+    };
+  }, []);
 
-  const updateStatus = useCallback(
-    (status: string) => {
-      socket?.emit('match:status:change', {
-        matchId,
-        status,
-      });
-    },
-    [socket, matchId]
-  );
+  // Connect on mount
+  useEffect(() => {
+    connect();
+    return () => disconnect();
+  }, [connect, disconnect]);
 
   return {
-    match,
-    addEvent,
-    updateScore,
-    updateStatus,
-    isConnected: match.isConnected,
+    isConnected,
+    connectionState,
+    lastMessage,
+    send,
+    subscribe,
+    disconnect,
+    reconnect,
   };
 }
+
+export default useMatchSocket;

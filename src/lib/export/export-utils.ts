@@ -1,562 +1,841 @@
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-import Papa from 'papaparse';
-
 /**
- * Export Utilities Module
+ * ============================================================================
+ * 🏆 PITCHCONNECT - MULTI-SPORT EXPORT UTILITIES v8.0.0
+ * ============================================================================
  * Path: src/lib/export/export-utils.ts
- * 
- * Provides utilities for:
- * - PDF generation (jsPDF + html2canvas)
- * - CSV formatting and generation
- * - Email template generation
- * - File naming with timestamps
- * - Date and format helpers
+ *
+ * ENHANCEMENTS:
+ * ✅ Multi-sport support (all 12 sports from Prisma schema)
+ * ✅ Sport-specific column headers and data formatters
+ * ✅ Dynamic scoring terminology (goals/points/runs/tries)
+ * ✅ Sport-aware PDF generation
+ * ✅ Enhanced CSV export with proper encoding
+ * ✅ Email template generation
+ * ✅ Type-safe with Prisma types
+ *
+ * DEPENDENCIES:
+ * - jspdf: PDF generation
+ * - jspdf-autotable: PDF tables
+ * - papaparse: CSV parsing/generation
+ * ============================================================================
  */
+
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import Papa from 'papaparse';
+import type { Sport, Position, Player, Team, Match, PlayerStatistic } from '@prisma/client';
+import { 
+  getSportConfig, 
+  getPositionDisplayName, 
+  getRankingCategories,
+  formatCurrency,
+  formatDuration 
+} from '@/lib/sports';
+import { logger } from '@/lib/logging';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
-export type ExportFormat = 'pdf' | 'csv' | 'email';
-export type FileType = 'players' | 'teams' | 'standings' | 'matches' | 'custom';
+export type ExportFormat = 'pdf' | 'csv' | 'excel' | 'json';
 
 export interface ExportOptions {
+  /** Export format */
+  format: ExportFormat;
+  /** Sport type for formatting */
+  sport: Sport;
+  /** Document title */
+  title: string;
+  /** Include headers */
+  includeHeaders?: boolean;
+  /** Date range for filtering */
+  dateRange?: { start: Date; end: Date };
+  /** Currency code */
+  currency?: string;
+  /** Locale for formatting */
+  locale?: string;
+  /** Custom filename */
   filename?: string;
-  title?: string;
-  subtitle?: string;
-  includeHeader?: boolean;
-  includeFooter?: boolean;
-  orientation?: 'portrait' | 'landscape';
-  format?: 'a4' | 'letter';
 }
 
-export interface CSVRow {
-  [key: string]: string | number | boolean | null | undefined;
+export interface PlayerExportData {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  position: Position | null;
+  jerseyNumber: number | null;
+  dateOfBirth?: Date | null;
+  nationality?: string | null;
+  stats: Partial<PlayerStatistic>;
 }
 
-export interface EmailTemplate {
-  subject: string;
-  body: string;
-  html: string;
+export interface MatchExportData {
+  id: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  date: Date;
+  venue?: string;
+  competition?: string;
+  sport: Sport;
+}
+
+export interface TeamExportData {
+  id: string;
+  name: string;
+  sport: Sport;
+  playerCount: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  scored: number;
+  conceded: number;
 }
 
 // ============================================================================
-// CONSTANTS
+// SPORT-SPECIFIC COLUMN CONFIGURATIONS
 // ============================================================================
 
-const PDF_DEFAULTS = {
-  orientation: 'portrait' as const,
-  unit: 'mm' as const,
-  format: 'a4' as const,
-  margins: { top: 15, right: 15, bottom: 15, left: 15 },
-};
+interface ColumnConfig {
+  key: string;
+  header: string;
+  width?: number;
+  align?: 'left' | 'center' | 'right';
+  format?: (value: any, sport: Sport) => string;
+}
 
-const COLOR_PRIMARY = [33, 128, 141]; // Teal-500
-const COLOR_SECONDARY = [94, 82, 64]; // Brown-600
-const COLOR_HEADER = [31, 33, 33]; // Charcoal-700
-const COLOR_TEXT = [19, 52, 59]; // Slate-900
-const COLOR_BORDER = [167, 169, 169]; // Gray-300
-const COLOR_SUCCESS = [33, 128, 141]; // Green
-const COLOR_WARNING = [230, 129, 97]; // Orange
+/**
+ * Get player stat columns based on sport
+ */
+function getPlayerStatColumns(sport: Sport): ColumnConfig[] {
+  const config = getSportConfig(sport);
+  const baseColumns: ColumnConfig[] = [
+    { key: 'name', header: 'Name', width: 40, align: 'left' },
+    { key: 'position', header: 'Position', width: 25, align: 'center' },
+    { key: 'jerseyNumber', header: '#', width: 10, align: 'center' },
+    { key: 'appearances', header: 'Apps', width: 15, align: 'center' },
+    { key: 'minutesPlayed', header: 'Mins', width: 15, align: 'center' },
+  ];
+
+  // Sport-specific stat columns
+  const sportColumns: Record<Sport, ColumnConfig[]> = {
+    FOOTBALL: [
+      { key: 'goals', header: 'Goals', width: 15, align: 'center' },
+      { key: 'assists', header: 'Assists', width: 15, align: 'center' },
+      { key: 'cleanSheets', header: 'CS', width: 12, align: 'center' },
+      { key: 'yellowCards', header: 'YC', width: 12, align: 'center' },
+      { key: 'redCards', header: 'RC', width: 12, align: 'center' },
+      { key: 'passAccuracy', header: 'Pass %', width: 15, align: 'center', format: (v) => v ? `${v.toFixed(1)}%` : '-' },
+      { key: 'averageRating', header: 'Rating', width: 15, align: 'center', format: (v) => v ? v.toFixed(2) : '-' },
+    ],
+    FUTSAL: [
+      { key: 'goals', header: 'Goals', width: 15, align: 'center' },
+      { key: 'assists', header: 'Assists', width: 15, align: 'center' },
+      { key: 'yellowCards', header: 'YC', width: 12, align: 'center' },
+      { key: 'redCards', header: 'RC', width: 12, align: 'center' },
+      { key: 'averageRating', header: 'Rating', width: 15, align: 'center', format: (v) => v ? v.toFixed(2) : '-' },
+    ],
+    BEACH_FOOTBALL: [
+      { key: 'goals', header: 'Goals', width: 15, align: 'center' },
+      { key: 'assists', header: 'Assists', width: 15, align: 'center' },
+      { key: 'averageRating', header: 'Rating', width: 15, align: 'center', format: (v) => v ? v.toFixed(2) : '-' },
+    ],
+    RUGBY: [
+      { key: 'goals', header: 'Tries', width: 15, align: 'center' },
+      { key: 'assists', header: 'Conversions', width: 15, align: 'center' },
+      { key: 'tackles', header: 'Tackles', width: 15, align: 'center' },
+      { key: 'interceptions', header: 'Turnovers', width: 15, align: 'center' },
+      { key: 'yellowCards', header: 'YC', width: 12, align: 'center' },
+      { key: 'redCards', header: 'RC', width: 12, align: 'center' },
+    ],
+    BASKETBALL: [
+      { key: 'goals', header: 'Points', width: 15, align: 'center' },
+      { key: 'assists', header: 'Assists', width: 15, align: 'center' },
+      { key: 'aerialDuelsWon', header: 'Rebounds', width: 15, align: 'center' },
+      { key: 'interceptions', header: 'Steals', width: 15, align: 'center' },
+      { key: 'blocks', header: 'Blocks', width: 15, align: 'center' },
+      { key: 'foulsCommited', header: 'Fouls', width: 12, align: 'center' },
+    ],
+    CRICKET: [
+      { key: 'goals', header: 'Runs', width: 15, align: 'center' },
+      { key: 'assists', header: 'Wickets', width: 15, align: 'center' },
+      { key: 'interceptions', header: 'Catches', width: 15, align: 'center' },
+      { key: 'averageRating', header: 'Avg', width: 15, align: 'center', format: (v) => v ? v.toFixed(2) : '-' },
+      { key: 'shotAccuracy', header: 'SR', width: 15, align: 'center', format: (v) => v ? v.toFixed(2) : '-' },
+    ],
+    AMERICAN_FOOTBALL: [
+      { key: 'goals', header: 'TDs', width: 12, align: 'center' },
+      { key: 'passes', header: 'Pass Yds', width: 18, align: 'center' },
+      { key: 'dribbles', header: 'Rush Yds', width: 18, align: 'center' },
+      { key: 'interceptions', header: 'INTs', width: 12, align: 'center' },
+      { key: 'tackles', header: 'Sacks', width: 12, align: 'center' },
+    ],
+    NETBALL: [
+      { key: 'goals', header: 'Goals', width: 15, align: 'center' },
+      { key: 'shots', header: 'Attempts', width: 15, align: 'center' },
+      { key: 'shotAccuracy', header: 'Acc %', width: 15, align: 'center', format: (v) => v ? `${v.toFixed(1)}%` : '-' },
+      { key: 'interceptions', header: 'Intercepts', width: 15, align: 'center' },
+      { key: 'passes', header: 'CPR', width: 12, align: 'center' },
+    ],
+    HOCKEY: [
+      { key: 'goals', header: 'Goals', width: 15, align: 'center' },
+      { key: 'assists', header: 'Assists', width: 15, align: 'center' },
+      { key: 'saves', header: 'Saves', width: 15, align: 'center' },
+      { key: 'savePercent', header: 'Sv %', width: 15, align: 'center', format: (v) => v ? `${v.toFixed(1)}%` : '-' },
+      { key: 'foulsCommited', header: 'PIM', width: 12, align: 'center' },
+    ],
+    LACROSSE: [
+      { key: 'goals', header: 'Goals', width: 15, align: 'center' },
+      { key: 'assists', header: 'Assists', width: 15, align: 'center' },
+      { key: 'interceptions', header: 'GBs', width: 15, align: 'center' },
+      { key: 'saves', header: 'Saves', width: 15, align: 'center' },
+    ],
+    AUSTRALIAN_RULES: [
+      { key: 'goals', header: 'Goals', width: 15, align: 'center' },
+      { key: 'assists', header: 'Behinds', width: 15, align: 'center' },
+      { key: 'passes', header: 'Disposals', width: 18, align: 'center' },
+      { key: 'aerialDuelsWon', header: 'Marks', width: 15, align: 'center' },
+      { key: 'tackles', header: 'Tackles', width: 15, align: 'center' },
+    ],
+    GAELIC_FOOTBALL: [
+      { key: 'goals', header: 'Goals', width: 15, align: 'center' },
+      { key: 'assists', header: 'Points', width: 15, align: 'center' },
+      { key: 'passes', header: 'Possessions', width: 18, align: 'center' },
+    ],
+  };
+
+  return [...baseColumns, ...(sportColumns[sport] || sportColumns.FOOTBALL)];
+}
+
+/**
+ * Get match result columns based on sport
+ */
+function getMatchColumns(sport: Sport): ColumnConfig[] {
+  const config = getSportConfig(sport);
+  
+  return [
+    { key: 'date', header: 'Date', width: 25, align: 'center', format: (v) => formatDate(v) },
+    { key: 'homeTeam', header: 'Home', width: 35, align: 'left' },
+    { key: 'score', header: 'Score', width: 20, align: 'center' },
+    { key: 'awayTeam', header: 'Away', width: 35, align: 'left' },
+    { key: 'venue', header: 'Venue', width: 30, align: 'left' },
+    { key: 'competition', header: 'Competition', width: 30, align: 'left' },
+  ];
+}
+
+/**
+ * Get standings columns based on sport
+ */
+function getStandingsColumns(sport: Sport): ColumnConfig[] {
+  const config = getSportConfig(sport);
+  const scoringLabel = config.usesGoals ? 'GF' : 'PF';
+  const concededLabel = config.usesGoals ? 'GA' : 'PA';
+  const diffLabel = config.usesGoals ? 'GD' : 'PD';
+
+  return [
+    { key: 'position', header: 'Pos', width: 10, align: 'center' },
+    { key: 'team', header: 'Team', width: 40, align: 'left' },
+    { key: 'played', header: 'P', width: 10, align: 'center' },
+    { key: 'won', header: 'W', width: 10, align: 'center' },
+    { key: 'drawn', header: 'D', width: 10, align: 'center' },
+    { key: 'lost', header: 'L', width: 10, align: 'center' },
+    { key: 'scored', header: scoringLabel, width: 12, align: 'center' },
+    { key: 'conceded', header: concededLabel, width: 12, align: 'center' },
+    { key: 'difference', header: diffLabel, width: 12, align: 'center', format: (v) => v > 0 ? `+${v}` : String(v) },
+    { key: 'points', header: 'Pts', width: 12, align: 'center' },
+  ];
+}
 
 // ============================================================================
-// PDF UTILITIES
+// FORMATTING UTILITIES
 // ============================================================================
 
 /**
- * Generate PDF from HTML element
- * @param element HTML element to convert
- * @param options PDF options
- * @returns Promise<jsPDF>
+ * Format date for export
  */
-export async function generatePDFFromHTML(
-  element: HTMLElement,
-  options: ExportOptions = {}
-): Promise<jsPDF> {
-  try {
-    const canvas = await html2canvas(element, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
+function formatDate(date: Date | string, format: 'short' | 'long' = 'short'): string {
+  const d = new Date(date);
+  if (format === 'long') {
+    return d.toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
     });
-
-    const imgData = canvas.toDataURL('image/png');
-    const imgWidth = 210; // A4 width in mm
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    const pdf = new jsPDF({
-      orientation: options.orientation || 'portrait',
-      unit: 'mm',
-      format: options.format || 'a4',
-    });
-
-    pdf.addImage(imgData, 'PNG', 10, 10, imgWidth - 20, imgHeight);
-
-    return pdf;
-  } catch (error) {
-    console.error('PDF generation error:', error);
-    throw new Error('Failed to generate PDF');
   }
-}
-
-/**
- * Create a formatted PDF document
- * @param title Document title
- * @param subtitle Document subtitle
- * @param data Table data array
- * @param options PDF options
- * @returns Promise<jsPDF>
- */
-export async function createFormattedPDF(
-  title: string,
-  subtitle: string,
-  data: CSVRow[],
-  options: ExportOptions = {}
-): Promise<jsPDF> {
-  const pdf = new jsPDF({
-    orientation: options.orientation || 'portrait',
-    unit: 'mm',
-    format: options.format || 'a4',
-  });
-
-  let yPosition = PDF_DEFAULTS.margins.top;
-
-  // Add header
-  pdf.setFontSize(20);
-  pdf.setTextColor(...COLOR_HEADER);
-  pdf.text(title, PDF_DEFAULTS.margins.left, yPosition);
-  yPosition += 10;
-
-  // Add subtitle
-  pdf.setFontSize(12);
-  pdf.setTextColor(...COLOR_SECONDARY);
-  pdf.text(subtitle, PDF_DEFAULTS.margins.left, yPosition);
-  yPosition += 8;
-
-  // Add timestamp
-  pdf.setFontSize(10);
-  pdf.setTextColor(...COLOR_TEXT);
-  const timestamp = new Date().toLocaleDateString('en-US', {
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
     year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   });
-  pdf.text(`Generated: ${timestamp}`, PDF_DEFAULTS.margins.left, yPosition);
-  yPosition += 8;
+}
 
-  // Add separator
-  pdf.setDrawColor(...COLOR_BORDER);
-  pdf.line(
-    PDF_DEFAULTS.margins.left,
-    yPosition,
-    210 - PDF_DEFAULTS.margins.right,
-    yPosition
-  );
-  yPosition += 5;
+/**
+ * Format player name
+ */
+function formatPlayerName(firstName: string, lastName: string): string {
+  return `${firstName} ${lastName}`;
+}
 
-  // Add table
-  if (data.length > 0) {
-    const columns = Object.keys(data);
-    const rows = data.map((row) => columns.map((col) => String(row[col] || '')));
+/**
+ * Format position for display
+ */
+function formatPosition(position: Position | null, sport: Sport): string {
+  if (!position) return '-';
+  return getPositionDisplayName(position, sport);
+}
 
-    // Table setup
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const tableStartY = yPosition;
-    const rowHeight = 7;
-    const columnWidth = (210 - 30) / columns.length;
-
-    // Header row
-    pdf.setFillColor(...COLOR_PRIMARY);
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(10);
-    pdf.setFont(undefined, 'bold');
-
-    columns.forEach((col, i) => {
-      pdf.rect(
-        PDF_DEFAULTS.margins.left + i * columnWidth,
-        tableStartY,
-        columnWidth,
-        rowHeight,
-        'F'
-      );
-      pdf.text(
-        col.toUpperCase(),
-        PDF_DEFAULTS.margins.left + i * columnWidth + 1,
-        tableStartY + 5
-      );
-    });
-
-    // Data rows
-    pdf.setTextColor(...COLOR_TEXT);
-    pdf.setFont(undefined, 'normal');
-    pdf.setFontSize(9);
-
-    rows.forEach((row, rowIndex) => {
-      const currentY = tableStartY + (rowIndex + 1) * rowHeight;
-
-      // Check if we need a new page
-      if (currentY > pageHeight - 20) {
-        pdf.addPage();
-        yPosition = PDF_DEFAULTS.margins.top;
-      }
-
-      // Alternate row colors
-      if (rowIndex % 2 === 0) {
-        pdf.setFillColor(245, 245, 245);
-        pdf.rect(
-          PDF_DEFAULTS.margins.left,
-          currentY,
-          210 - 30,
-          rowHeight,
-          'F'
-        );
-      }
-
-      row.forEach((cell, colIndex) => {
-        pdf.text(
-          cell,
-          PDF_DEFAULTS.margins.left + colIndex * columnWidth + 1,
-          currentY + 5
-        );
-      });
-    });
+/**
+ * Format stat value with fallback
+ */
+function formatStatValue(value: any, defaultValue: string = '-'): string {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
+  return String(value);
+}
 
-  // Add footer
-  const pageCount = pdf.getNumberOfPages();
-  pdf.setFontSize(8);
-  pdf.setTextColor(...COLOR_TEXT);
+// ============================================================================
+// CSV EXPORT
+// ============================================================================
+
+/**
+ * Generate CSV from player data
+ */
+export function generatePlayerCSV(
+  players: PlayerExportData[],
+  options: ExportOptions
+): string {
+  const columns = getPlayerStatColumns(options.sport);
+  
+  const data = players.map((player) => {
+    const row: Record<string, any> = {
+      name: formatPlayerName(player.firstName, player.lastName),
+      position: formatPosition(player.position, options.sport),
+      jerseyNumber: player.jerseyNumber ?? '-',
+      appearances: player.stats.matches ?? 0,
+      minutesPlayed: player.stats.minutesPlayed ?? 0,
+    };
+
+    // Add sport-specific stats
+    columns.forEach((col) => {
+      if (!row[col.key] && player.stats[col.key as keyof PlayerStatistic] !== undefined) {
+        const value = player.stats[col.key as keyof PlayerStatistic];
+        row[col.key] = col.format ? col.format(value, options.sport) : formatStatValue(value);
+      }
+    });
+
+    return row;
+  });
+
+  const headers = columns.map((col) => col.header);
+  const csv = Papa.unparse(data, {
+    columns: columns.map((col) => col.key),
+    header: options.includeHeaders !== false,
+  });
+
+  // Add BOM for Excel compatibility with UTF-8
+  return '\ufeff' + csv;
+}
+
+/**
+ * Generate CSV from match data
+ */
+export function generateMatchCSV(
+  matches: MatchExportData[],
+  options: ExportOptions
+): string {
+  const columns = getMatchColumns(options.sport);
+  
+  const data = matches.map((match) => ({
+    date: formatDate(match.date),
+    homeTeam: match.homeTeam,
+    score: `${match.homeScore ?? '-'} - ${match.awayScore ?? '-'}`,
+    awayTeam: match.awayTeam,
+    venue: match.venue || '-',
+    competition: match.competition || '-',
+  }));
+
+  const csv = Papa.unparse(data, {
+    columns: columns.map((col) => col.key),
+    header: options.includeHeaders !== false,
+  });
+
+  return '\ufeff' + csv;
+}
+
+/**
+ * Generate CSV from standings data
+ */
+export function generateStandingsCSV(
+  teams: TeamExportData[],
+  options: ExportOptions
+): string {
+  const columns = getStandingsColumns(options.sport);
+  
+  const data = teams.map((team, index) => ({
+    position: index + 1,
+    team: team.name,
+    played: team.wins + team.draws + team.losses,
+    won: team.wins,
+    drawn: team.draws,
+    lost: team.losses,
+    scored: team.scored,
+    conceded: team.conceded,
+    difference: team.scored - team.conceded,
+    points: (team.wins * 3) + team.draws,
+  }));
+
+  const csv = Papa.unparse(data, {
+    columns: columns.map((col) => col.key),
+    header: options.includeHeaders !== false,
+  });
+
+  return '\ufeff' + csv;
+}
+
+// ============================================================================
+// PDF EXPORT
+// ============================================================================
+
+/**
+ * Generate PDF from player data
+ */
+export async function generatePlayerPDF(
+  players: PlayerExportData[],
+  options: ExportOptions
+): Promise<Blob> {
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const config = getSportConfig(options.sport);
+  const columns = getPlayerStatColumns(options.sport);
+
+  // Header
+  doc.setFontSize(18);
+  doc.setTextColor(34, 197, 94); // Green
+  doc.text(options.title || `${config.name} Player Statistics`, 14, 15);
+
+  doc.setFontSize(10);
+  doc.setTextColor(107, 114, 128); // Gray
+  doc.text(`Generated: ${formatDate(new Date(), 'long')}`, 14, 22);
+  doc.text(`Sport: ${config.name}`, 14, 27);
+
+  // Table
+  const tableData = players.map((player) => {
+    const row: string[] = [
+      formatPlayerName(player.firstName, player.lastName),
+      formatPosition(player.position, options.sport),
+      String(player.jerseyNumber ?? '-'),
+      String(player.stats.matches ?? 0),
+      String(player.stats.minutesPlayed ?? 0),
+    ];
+
+    // Add sport-specific stats
+    columns.slice(5).forEach((col) => {
+      const value = player.stats[col.key as keyof PlayerStatistic];
+      row.push(col.format ? col.format(value, options.sport) : formatStatValue(value));
+    });
+
+    return row;
+  });
+
+  autoTable(doc, {
+    head: [columns.map((col) => col.header)],
+    body: tableData,
+    startY: 32,
+    styles: {
+      fontSize: 8,
+      cellPadding: 2,
+    },
+    headStyles: {
+      fillColor: [34, 197, 94],
+      textColor: 255,
+      fontStyle: 'bold',
+    },
+    alternateRowStyles: {
+      fillColor: [249, 250, 251],
+    },
+    columnStyles: columns.reduce((acc, col, index) => {
+      acc[index] = {
+        halign: col.align || 'left',
+        cellWidth: col.width ? col.width * 0.7 : 'auto',
+      };
+      return acc;
+    }, {} as Record<number, any>),
+  });
+
+  // Footer
+  const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
-    pdf.setPage(i);
-    pdf.text(
-      `Page ${i} of ${pageCount}`,
-      210 / 2,
-      pdf.internal.pageSize.getHeight() - 8,
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(156, 163, 175);
+    doc.text(
+      `Page ${i} of ${pageCount} | PitchConnect`,
+      doc.internal.pageSize.width / 2,
+      doc.internal.pageSize.height - 10,
       { align: 'center' }
     );
   }
 
-  return pdf;
+  return doc.output('blob');
 }
 
 /**
- * Save PDF to file
- * @param pdf jsPDF instance
- * @param filename Filename
+ * Generate PDF from match data
  */
-export function savePDF(pdf: jsPDF, filename: string): void {
-  pdf.save(`${filename}.pdf`);
-}
-
-// ============================================================================
-// CSV UTILITIES
-// ============================================================================
-
-/**
- * Convert data to CSV string
- * @param data Array of objects
- * @param filename Filename for output
- * @returns CSV string
- */
-export function generateCSV(data: CSVRow[], filename?: string): string {
-  try {
-    const csv = Papa.unparse(data, {
-      header: true,
-      quotes: true,
-      quoteChar: '"',
-      escapeChar: '"',
-    });
-    return csv;
-  } catch (error) {
-    console.error('CSV generation error:', error);
-    throw new Error('Failed to generate CSV');
-  }
-}
-
-/**
- * Save CSV to file
- * @param csvContent CSV string content
- * @param filename Filename without extension
- */
-export function saveCSV(csvContent: string, filename: string): void {
-  try {
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${filename}.csv`);
-    link.style.visibility = 'hidden';
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch (error) {
-    console.error('CSV save error:', error);
-    throw new Error('Failed to save CSV file');
-  }
-}
-
-/**
- * Parse CSV string to array of objects
- * @param csvContent CSV string
- * @returns Array of objects
- */
-export function parseCSV(csvContent: string): CSVRow[] {
-  try {
-    const result = Papa.parse(csvContent, {
-      header: true,
-      skipEmptyLines: true,
-    });
-    return result.data as CSVRow[];
-  } catch (error) {
-    console.error('CSV parse error:', error);
-    throw new Error('Failed to parse CSV');
-  }
-}
-
-// ============================================================================
-// EMAIL UTILITIES
-// ============================================================================
-
-/**
- * Generate email template for report delivery
- * @param fileType Type of file/report
- * @param filename Filename
- * @param message Optional custom message
- * @returns EmailTemplate object
- */
-export function generateEmailTemplate(
-  fileType: FileType,
-  filename: string,
-  message?: string
-): EmailTemplate {
-  const fileTypeLabels: Record<FileType, string> = {
-    players: 'Player Statistics Report',
-    teams: 'Team Standings Report',
-    standings: 'League Standings Report',
-    matches: 'Match Results Report',
-    custom: 'Custom Report',
-  };
-
-  const label = fileTypeLabels[fileType];
-
-  const htmlBody = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #216580 0%, #e6819a 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-          .header h1 { margin: 0; font-size: 24px; }
-          .content { background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-          .content p { margin: 10px 0; line-height: 1.6; }
-          .footer { color: #666; font-size: 12px; text-align: center; }
-          .cta { display: inline-block; background: #216580; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; margin: 10px 0; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>📊 ${label}</h1>
-          </div>
-          <div class="content">
-            <p>Hi there,</p>
-            <p>Your requested ${label.toLowerCase()} has been generated and is ready for download.</p>
-            ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
-            <p><strong>File:</strong> ${filename}</p>
-            <p>This report contains the latest information from PitchConnect sports management system.</p>
-          </div>
-          <div class="footer">
-            <p>Generated by PitchConnect © ${new Date().getFullYear()}</p>
-            <p>This is an automated message. Please do not reply to this email.</p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `;
-
-  return {
-    subject: `PitchConnect: ${label}`,
-    body: `Your ${label.toLowerCase()} has been generated. File: ${filename}`,
-    html: htmlBody,
-  };
-}
-
-// ============================================================================
-// FILE NAMING UTILITIES
-// ============================================================================
-
-/**
- * Generate filename with timestamp
- * @param fileType Type of file
- * @param extension File extension
- * @returns Filename with timestamp
- */
-export function generateFilename(
-  fileType: FileType,
-  extension: 'pdf' | 'csv' = 'pdf'
-): string {
-  const timestamp = new Date()
-    .toISOString()
-    .split('T')
-    .replace(/-/g, '');
-  const time = new Date().toTimeString().split(' ').replace(/:/g, '');
-
-  const fileTypeNames: Record<FileType, string> = {
-    players: 'PlayerStatistics',
-    teams: 'TeamStandings',
-    standings: 'LeagueTable',
-    matches: 'MatchResults',
-    custom: 'Report',
-  };
-
-  const name = fileTypeNames[fileType];
-  return `${name}_${timestamp}_${time}.${extension}`;
-}
-
-/**
- * Generate human-readable timestamp
- * @returns Formatted timestamp string
- */
-export function getFormattedTimestamp(): string {
-  return new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+export async function generateMatchPDF(
+  matches: MatchExportData[],
+  options: ExportOptions
+): Promise<Blob> {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
   });
+
+  const config = getSportConfig(options.sport);
+  const columns = getMatchColumns(options.sport);
+
+  // Header
+  doc.setFontSize(18);
+  doc.setTextColor(34, 197, 94);
+  doc.text(options.title || `${config.name} Match Results`, 14, 15);
+
+  doc.setFontSize(10);
+  doc.setTextColor(107, 114, 128);
+  doc.text(`Generated: ${formatDate(new Date(), 'long')}`, 14, 22);
+
+  // Table
+  const tableData = matches.map((match) => [
+    formatDate(match.date),
+    match.homeTeam,
+    `${match.homeScore ?? '-'} - ${match.awayScore ?? '-'}`,
+    match.awayTeam,
+    match.venue || '-',
+    match.competition || '-',
+  ]);
+
+  autoTable(doc, {
+    head: [columns.map((col) => col.header)],
+    body: tableData,
+    startY: 28,
+    styles: {
+      fontSize: 9,
+      cellPadding: 3,
+    },
+    headStyles: {
+      fillColor: [34, 197, 94],
+      textColor: 255,
+      fontStyle: 'bold',
+    },
+    alternateRowStyles: {
+      fillColor: [249, 250, 251],
+    },
+  });
+
+  return doc.output('blob');
 }
 
 /**
- * Format file size for display
- * @param bytes File size in bytes
- * @returns Formatted size string
+ * Generate PDF from standings data
  */
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
+export async function generateStandingsPDF(
+  teams: TeamExportData[],
+  options: ExportOptions
+): Promise<Blob> {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
 
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const config = getSportConfig(options.sport);
+  const columns = getStandingsColumns(options.sport);
 
-  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  // Header
+  doc.setFontSize(18);
+  doc.setTextColor(34, 197, 94);
+  doc.text(options.title || `${config.name} League Standings`, 14, 15);
+
+  doc.setFontSize(10);
+  doc.setTextColor(107, 114, 128);
+  doc.text(`Generated: ${formatDate(new Date(), 'long')}`, 14, 22);
+
+  // Table
+  const tableData = teams.map((team, index) => {
+    const played = team.wins + team.draws + team.losses;
+    const diff = team.scored - team.conceded;
+    const points = (team.wins * 3) + team.draws;
+
+    return [
+      String(index + 1),
+      team.name,
+      String(played),
+      String(team.wins),
+      String(team.draws),
+      String(team.losses),
+      String(team.scored),
+      String(team.conceded),
+      diff > 0 ? `+${diff}` : String(diff),
+      String(points),
+    ];
+  });
+
+  autoTable(doc, {
+    head: [columns.map((col) => col.header)],
+    body: tableData,
+    startY: 28,
+    styles: {
+      fontSize: 9,
+      cellPadding: 3,
+    },
+    headStyles: {
+      fillColor: [34, 197, 94],
+      textColor: 255,
+      fontStyle: 'bold',
+    },
+    alternateRowStyles: {
+      fillColor: [249, 250, 251],
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 12 },
+      1: { halign: 'left', cellWidth: 50 },
+      2: { halign: 'center', cellWidth: 12 },
+      3: { halign: 'center', cellWidth: 12 },
+      4: { halign: 'center', cellWidth: 12 },
+      5: { halign: 'center', cellWidth: 12 },
+      6: { halign: 'center', cellWidth: 15 },
+      7: { halign: 'center', cellWidth: 15 },
+      8: { halign: 'center', cellWidth: 15 },
+      9: { halign: 'center', cellWidth: 15, fontStyle: 'bold' },
+    },
+  });
+
+  return doc.output('blob');
 }
 
 // ============================================================================
-// DATA FORMATTING UTILITIES
+// JSON EXPORT
 // ============================================================================
 
 /**
- * Format player data for export
- * @param players Player array
- * @returns Formatted CSV rows
+ * Generate JSON export
  */
-export function formatPlayerData(
-  players: any[]
-): CSVRow[] {
-  return players.map((player) => ({
-    'Player Name': player.name || '',
-    'Jersey Number': player.jerseyNumber || '',
-    'Position': player.position || '',
-    'Club': player.club?.name || '',
-    'Date of Birth': player.dateOfBirth
-      ? new Date(player.dateOfBirth).toLocaleDateString()
-      : '',
-    'Nationality': player.nationality || '',
-    'Rating': player.rating || 0,
-    'Appearances': player.appearances || 0,
-    'Goals': player.goals || 0,
-    'Assists': player.assists || 0,
-    'Yellow Cards': player.yellowCards || 0,
-    'Red Cards': player.redCards || 0,
-  }));
-}
+export function generateJSON<T>(data: T[], options: ExportOptions): string {
+  const exportData = {
+    metadata: {
+      title: options.title,
+      sport: options.sport,
+      sportName: getSportConfig(options.sport).name,
+      generatedAt: new Date().toISOString(),
+      recordCount: data.length,
+    },
+    data,
+  };
 
-/**
- * Format team data for export
- * @param teams Team array
- * @returns Formatted CSV rows
- */
-export function formatTeamData(teams: any[]): CSVRow[] {
-  return teams.map((team) => ({
-    'Team Name': team.name || '',
-    'Short Name': team.shortName || '',
-    'League': team.league?.name || '',
-    'Manager': team.manager?.name || '',
-    'Stadium': team.stadium || '',
-    'City': team.city || '',
-    'Players': team.players?.length || 0,
-    'Founded': team.founded || '',
-    'Status': team.status || 'active',
-  }));
-}
-
-/**
- * Format standings data for export
- * @param standings Standings array
- * @returns Formatted CSV rows
- */
-export function formatStandingsData(standings: any[]): CSVRow[] {
-  return standings.map((entry, index) => ({
-    'Position': index + 1,
-    'Team': entry.club?.name || '',
-    'Played': entry.played || 0,
-    'Won': entry.won || 0,
-    'Drawn': entry.drawn || 0,
-    'Lost': entry.lost || 0,
-    'Goals For': entry.goalsFor || 0,
-    'Goals Against': entry.goalsAgainst || 0,
-    'Goal Difference': (entry.goalsFor || 0) - (entry.goalsAgainst || 0),
-    'Points': entry.points || 0,
-  }));
-}
-
-/**
- * Format match data for export
- * @param matches Match array
- * @returns Formatted CSV rows
- */
-export function formatMatchData(matches: any[]): CSVRow[] {
-  return matches.map((match) => ({
-    'Date': match.date ? new Date(match.date).toLocaleDateString() : '',
-    'Home Team': match.homeClub?.name || '',
-    'Away Team': match.awayClub?.name || '',
-    'Score': `${match.homeScore || 0}-${match.awayScore || 0}`,
-    'Status': match.status || 'scheduled',
-    'Venue': match.venue || '',
-    'Attendance': match.attendance || '',
-    'Referee': match.referee?.name || '',
-    'Round': match.round || '',
-    'League': match.league?.name || '',
-  }));
+  return JSON.stringify(exportData, null, 2);
 }
 
 // ============================================================================
-// EXPORT DISPLAY NAME
+// EMAIL TEMPLATES
 // ============================================================================
 
-export const exportUtils = {
-  generatePDFFromHTML,
-  createFormattedPDF,
-  savePDF,
-  generateCSV,
-  saveCSV,
-  parseCSV,
+export interface EmailTemplateOptions {
+  recipientName: string;
+  sport: Sport;
+  teamName?: string;
+  subject: string;
+  content: string;
+  ctaText?: string;
+  ctaUrl?: string;
+}
+
+/**
+ * Generate HTML email template
+ */
+export function generateEmailTemplate(options: EmailTemplateOptions): string {
+  const config = getSportConfig(options.sport);
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${options.subject}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+    <!-- Header -->
+    <tr>
+      <td style="background: linear-gradient(135deg, ${config.gradientFrom}, ${config.gradientTo}); padding: 24px; text-align: center;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700;">
+          ${config.emoji} PitchConnect
+        </h1>
+        ${options.teamName ? `<p style="margin: 8px 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">${options.teamName}</p>` : ''}
+      </td>
+    </tr>
+    
+    <!-- Content -->
+    <tr>
+      <td style="padding: 32px 24px;">
+        <p style="margin: 0 0 16px; color: #374151; font-size: 16px;">
+          Hi ${options.recipientName},
+        </p>
+        <div style="color: #4b5563; font-size: 15px; line-height: 1.6;">
+          ${options.content}
+        </div>
+        
+        ${options.ctaText && options.ctaUrl ? `
+        <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 24px 0;">
+          <tr>
+            <td style="background-color: ${config.color}; border-radius: 8px;">
+              <a href="${options.ctaUrl}" style="display: inline-block; padding: 12px 24px; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 15px;">
+                ${options.ctaText}
+              </a>
+            </td>
+          </tr>
+        </table>
+        ` : ''}
+      </td>
+    </tr>
+    
+    <!-- Footer -->
+    <tr>
+      <td style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #e5e7eb;">
+        <p style="margin: 0 0 8px; color: #6b7280; font-size: 13px;">
+          Powered by PitchConnect - Your ${config.name} Management Platform
+        </p>
+        <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+          © ${new Date().getFullYear()} PitchConnect. All rights reserved.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
+// ============================================================================
+// FILE DOWNLOAD UTILITIES
+// ============================================================================
+
+/**
+ * Trigger file download in browser
+ */
+export function downloadFile(
+  content: string | Blob,
+  filename: string,
+  mimeType: string
+): void {
+  const blob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Get appropriate filename for export
+ */
+export function getExportFilename(
+  baseName: string,
+  format: ExportFormat,
+  sport?: Sport
+): string {
+  const timestamp = new Date().toISOString().split('T')[0];
+  const sportSuffix = sport ? `-${sport.toLowerCase()}` : '';
+  const extension = format === 'excel' ? 'xlsx' : format;
+  return `${baseName}${sportSuffix}-${timestamp}.${extension}`;
+}
+
+// ============================================================================
+// MAIN EXPORT FUNCTION
+// ============================================================================
+
+/**
+ * Universal export function
+ */
+export async function exportData<T extends PlayerExportData | MatchExportData | TeamExportData>(
+  data: T[],
+  dataType: 'players' | 'matches' | 'standings',
+  options: ExportOptions
+): Promise<string | Blob> {
+  logger.info('Exporting data', {
+    dataType,
+    format: options.format,
+    sport: options.sport,
+    recordCount: data.length,
+  });
+
+  try {
+    switch (options.format) {
+      case 'csv':
+        if (dataType === 'players') {
+          return generatePlayerCSV(data as PlayerExportData[], options);
+        } else if (dataType === 'matches') {
+          return generateMatchCSV(data as MatchExportData[], options);
+        } else {
+          return generateStandingsCSV(data as TeamExportData[], options);
+        }
+
+      case 'pdf':
+        if (dataType === 'players') {
+          return generatePlayerPDF(data as PlayerExportData[], options);
+        } else if (dataType === 'matches') {
+          return generateMatchPDF(data as MatchExportData[], options);
+        } else {
+          return generateStandingsPDF(data as TeamExportData[], options);
+        }
+
+      case 'json':
+        return generateJSON(data, options);
+
+      default:
+        throw new Error(`Unsupported export format: ${options.format}`);
+    }
+  } catch (error) {
+    logger.error('Export failed', { dataType, format: options.format, error });
+    throw error;
+  }
+}
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
+
+export type {
+  ExportFormat,
+  ExportOptions,
+  PlayerExportData,
+  MatchExportData,
+  TeamExportData,
+  EmailTemplateOptions,
+};
+
+export default {
+  generatePlayerCSV,
+  generateMatchCSV,
+  generateStandingsCSV,
+  generatePlayerPDF,
+  generateMatchPDF,
+  generateStandingsPDF,
+  generateJSON,
   generateEmailTemplate,
-  generateFilename,
-  getFormattedTimestamp,
-  formatFileSize,
-  formatPlayerData,
-  formatTeamData,
-  formatStandingsData,
-  formatMatchData,
+  downloadFile,
+  getExportFilename,
+  exportData,
 };

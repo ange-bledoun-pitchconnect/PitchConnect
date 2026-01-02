@@ -1,215 +1,278 @@
-// ============================================================================
-// src/lib/analytics/types.ts
-// 📊 PitchConnect Enterprise Analytics - Type Definitions
-// ============================================================================
-// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
-// MULTI-SPORT: All 12 sports supported
-// ============================================================================
-
-import type {
-  Sport,
-  Position,
-  PredictionType,
-  PredictionStatus,
-  PredictionImpact,
-  InjuryType,
-  InjuryStatus,
-  InjurySeverity,
-} from '@prisma/client';
-
-// ============================================================================
-// INJURY PREDICTION TYPES
-// ============================================================================
-
 /**
- * Injury risk assessment result
+ * ============================================================================
+ * 📊 PITCHCONNECT ANALYTICS - TYPE DEFINITIONS v7.10.1
+ * ============================================================================
+ * Enterprise analytics types aligned with Prisma schema v7.10.1
+ * Supports injury prediction, performance analysis, market valuation
+ * ============================================================================
  */
+
+import { z } from 'zod';
+
+// =============================================================================
+// PRISMA ENUM RE-EXPORTS
+// =============================================================================
+
+export const SportEnum = z.enum([
+  'FOOTBALL', 'NETBALL', 'RUGBY', 'CRICKET', 'AMERICAN_FOOTBALL',
+  'BASKETBALL', 'HOCKEY', 'LACROSSE', 'AUSTRALIAN_RULES',
+  'GAELIC_FOOTBALL', 'FUTSAL', 'BEACH_FOOTBALL',
+]);
+export type Sport = z.infer<typeof SportEnum>;
+
+export const InjuryTypeEnum = z.enum([
+  'MUSCLE', 'LIGAMENT', 'BONE', 'CONCUSSION', 'ILLNESS',
+  'OTHER', 'TENDON', 'JOINT', 'BACK', 'KNEE', 'ANKLE',
+  'HAMSTRING', 'GROIN', 'CALF', 'THIGH', 'SHOULDER',
+]);
+export type InjuryType = z.infer<typeof InjuryTypeEnum>;
+
+export const InjurySeverityEnum = z.enum([
+  'MINOR', 'MODERATE', 'SEVERE', 'CAREER_THREATENING',
+]);
+export type InjurySeverity = z.infer<typeof InjurySeverityEnum>;
+
+export const InjuryStatusEnum = z.enum([
+  'ACTIVE', 'RECOVERING', 'REHABILITATION', 'CLEARED', 'CHRONIC',
+]);
+export type InjuryStatus = z.infer<typeof InjuryStatusEnum>;
+
+export const BodyPartEnum = z.enum([
+  'HEAD', 'NECK', 'SHOULDER', 'ARM', 'ELBOW', 'WRIST', 'HAND',
+  'CHEST', 'BACK', 'ABDOMEN', 'HIP', 'GROIN', 'THIGH', 'KNEE',
+  'CALF', 'ANKLE', 'FOOT', 'TOE', 'FINGER', 'OTHER',
+]);
+export type BodyPart = z.infer<typeof BodyPartEnum>;
+
+export const PositionEnum = z.enum([
+  // Football
+  'GOALKEEPER', 'LEFT_BACK', 'RIGHT_BACK', 'CENTRE_BACK', 'SWEEPER',
+  'DEFENSIVE_MIDFIELDER', 'CENTRAL_MIDFIELDER', 'ATTACKING_MIDFIELDER',
+  'LEFT_MIDFIELDER', 'RIGHT_MIDFIELDER', 'LEFT_WINGER', 'RIGHT_WINGER',
+  'STRIKER', 'CENTRE_FORWARD', 'SECOND_STRIKER',
+  // Rugby
+  'LOOSEHEAD_PROP', 'HOOKER', 'TIGHTHEAD_PROP', 'LOCK', 'FLANKER',
+  'BLINDSIDE_FLANKER', 'OPENSIDE_FLANKER', 'NUMBER_EIGHT', 'SCRUM_HALF',
+  'FLY_HALF', 'INSIDE_CENTRE', 'OUTSIDE_CENTRE', 'WINGER', 'FULL_BACK',
+  // Cricket
+  'OPENING_BATTER', 'MIDDLE_ORDER_BATTER', 'ALL_ROUNDER', 'WICKET_KEEPER',
+  'FAST_BOWLER', 'SPIN_BOWLER',
+  // Basketball
+  'POINT_GUARD', 'SHOOTING_GUARD', 'SMALL_FORWARD', 'POWER_FORWARD', 'CENTER_BASKETBALL',
+  // American Football
+  'QUARTERBACK', 'RUNNING_BACK', 'WIDE_RECEIVER', 'TIGHT_END', 'OFFENSIVE_TACKLE',
+  'OFFENSIVE_GUARD', 'CENTER_NFL', 'DEFENSIVE_END', 'DEFENSIVE_TACKLE',
+  'LINEBACKER', 'CORNERBACK', 'SAFETY', 'KICKER', 'PUNTER',
+  // Netball
+  'GOAL_SHOOTER', 'GOAL_ATTACK', 'WING_ATTACK', 'CENTRE', 'WING_DEFENCE',
+  'GOAL_DEFENCE', 'GOAL_KEEPER',
+  // Other positions...
+]);
+export type Position = z.infer<typeof PositionEnum>;
+
+export const UserRoleEnum = z.enum([
+  'SUPERADMIN', 'ADMIN', 'PLAYER', 'PLAYER_PRO', 'COACH', 'COACH_PRO',
+  'MANAGER', 'CLUB_MANAGER', 'CLUB_OWNER', 'TREASURER', 'REFEREE',
+  'SCOUT', 'ANALYST', 'PARENT', 'GUARDIAN', 'LEAGUE_ADMIN',
+  'MEDICAL_STAFF', 'MEDIA_MANAGER', 'FAN',
+]);
+export type UserRole = z.infer<typeof UserRoleEnum>;
+
+export const AccountTierEnum = z.enum(['FREE', 'PRO', 'PREMIUM', 'ENTERPRISE']);
+export type AccountTier = z.infer<typeof AccountTierEnum>;
+
+// =============================================================================
+// CURRENCY SUPPORT
+// =============================================================================
+
+export const CurrencyEnum = z.enum(['GBP', 'EUR', 'USD', 'AUD', 'CAD', 'CHF', 'JPY']);
+export type Currency = z.infer<typeof CurrencyEnum>;
+
+export const CURRENCY_SYMBOLS: Record<Currency, string> = {
+  GBP: '£',
+  EUR: '€',
+  USD: '$',
+  AUD: 'A$',
+  CAD: 'C$',
+  CHF: 'CHF',
+  JPY: '¥',
+};
+
+export const CURRENCY_RATES: Record<Currency, number> = {
+  GBP: 1.00,
+  EUR: 1.17,
+  USD: 1.27,
+  AUD: 1.93,
+  CAD: 1.72,
+  CHF: 1.11,
+  JPY: 189.5,
+};
+
+// =============================================================================
+// INJURY PREDICTION TYPES
+// =============================================================================
+
 export interface InjuryRiskAssessment {
   playerId: string;
   playerName: string;
   sport: Sport;
-  position: Position | null;
+  position: string;
   
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  riskScore: number; // 0-100
-  confidence: number; // 0-100
+  // Overall risk
+  overallRiskScore: number;         // 0-100
+  riskLevel: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
   
+  // Risk breakdown by factor
   riskFactors: InjuryRiskFactor[];
   
+  // Body part specific risks
   bodyPartRisks: BodyPartRisk[];
   
-  recommendations: string[];
-  
-  historicalData: {
-    totalInjuries: number;
-    injuriesLastYear: number;
-    avgRecoveryDays: number;
-    mostCommonInjuryType: InjuryType | null;
-    daysSinceLastInjury: number | null;
-  };
-  
+  // Workload analysis
   workloadAnalysis: {
-    recentMinutesPlayed: number;
-    avgMinutesPerMatch: number;
-    matchesLast30Days: number;
-    restDaysBetweenMatches: number;
-    trainingLoadScore: number; // 0-100
-    fatigueLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+    acuteLoad: number;              // Last 7 days
+    chronicLoad: number;            // Last 28 days
+    acuteChronicRatio: number;      // ACWR
+    trend: 'INCREASING' | 'STABLE' | 'DECREASING';
+    riskZone: 'SAFE' | 'CAUTION' | 'DANGER';
   };
   
-  metadata: {
-    modelVersion: string;
-    generatedAt: Date;
-    validUntil: Date;
-    dataPointsUsed: number;
+  // Historical context
+  injuryHistory: {
+    totalInjuries: number;
+    lastInjuryDate?: Date;
+    daysSinceLastInjury: number;
+    mostCommonType?: InjuryType;
+    mostAffectedBodyPart?: BodyPart;
   };
+  
+  // Recommendations
+  recommendations: string[];
+  suggestedLoadReduction?: number;  // Percentage
+  
+  // Metadata
+  generatedAt: Date;
+  validUntil: Date;
+  modelVersion: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export interface InjuryRiskFactor {
   factor: string;
-  impact: 'HIGH' | 'MEDIUM' | 'LOW';
-  score: number;
+  contribution: number;             // 0-100
   description: string;
-  mitigation?: string;
+  isModifiable: boolean;
+  mitigationActions?: string[];
 }
 
 export interface BodyPartRisk {
-  bodyPart: string;
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-  previousInjuries: number;
-  lastInjuryDate: Date | null;
+  bodyPart: BodyPart;
+  riskScore: number;                // 0-100
+  historicalInjuries: number;
+  lastInjuryDate?: Date;
+  vulnerabilityReason?: string;
 }
 
-// ============================================================================
+// =============================================================================
 // PERFORMANCE PREDICTION TYPES
-// ============================================================================
+// =============================================================================
 
-/**
- * Performance prediction result
- */
+export type TimeHorizon = 'NEXT_MATCH' | 'NEXT_WEEK' | 'NEXT_MONTH' | 'SEASON';
+
 export interface PerformancePrediction {
   playerId: string;
   playerName: string;
   sport: Sport;
-  position: Position | null;
+  position: string;
   timeHorizon: TimeHorizon;
   
-  predictions: {
-    expectedRating: number;
-    ratingRange: { min: number; max: number };
-    goalsPredicted: number;
-    assistsPredicted: number;
-    minutesPredicted: number;
-  };
+  // Predicted metrics
+  predictedRating: number;          // 1-10
+  ratingRange: { min: number; max: number };
   
-  form: {
-    current: 'EXCELLENT' | 'GOOD' | 'AVERAGE' | 'POOR' | 'CRITICAL';
-    trend: 'IMPROVING' | 'STABLE' | 'DECLINING';
-    consistency: number; // 0-100
-    peakProbability: number; // Chance of peak performance
-  };
-  
-  factors: PerformanceFactor[];
-  
-  sportSpecificMetrics: Record<string, number>;
-  
-  comparison: {
-    vsPositionAverage: number; // Percentage difference
-    vsTeamAverage: number;
-    vsLeagueAverage: number;
-    percentileRank: number;
-  };
-  
-  recommendations: string[];
-  
-  metadata: {
-    modelVersion: string;
-    generatedAt: Date;
-    validUntil: Date;
-    matchesAnalyzed: number;
+  // Sport-specific contributions
+  expectedContributions: {
+    metric: string;
+    predicted: number;
     confidence: number;
-  };
+    seasonAverage: number;
+  }[];
+  
+  // Form analysis
+  currentForm: 'EXCELLENT' | 'GOOD' | 'AVERAGE' | 'POOR' | 'CRITICAL';
+  formTrend: 'IMPROVING' | 'STABLE' | 'DECLINING';
+  formScore: number;                // 0-100
+  
+  // Factors
+  positiveFactors: PerformanceFactor[];
+  negativeFactors: PerformanceFactor[];
+  
+  // Context
+  upcomingFixtures?: {
+    matchId: string;
+    opponent: string;
+    expectedDifficulty: number;     // 1-10
+  }[];
+  
+  // Metadata
+  generatedAt: Date;
+  validUntil: Date;
+  modelVersion: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  dataPoints: number;
 }
-
-export type TimeHorizon = 'NEXT_MATCH' | 'NEXT_WEEK' | 'NEXT_MONTH' | 'SEASON';
 
 export interface PerformanceFactor {
   factor: string;
-  impact: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
-  weight: number;
+  impact: number;                   // -100 to +100
   description: string;
+  trend?: 'IMPROVING' | 'STABLE' | 'DECLINING';
 }
 
-// ============================================================================
+// =============================================================================
 // PLAYER COMPARISON TYPES
-// ============================================================================
+// =============================================================================
 
-/**
- * Player comparison result
- */
 export interface PlayerComparison {
   player1: PlayerComparisonProfile;
   player2: PlayerComparisonProfile;
+  sport: Sport;
   
-  overallSimilarity: number; // 0-100
+  // Category comparisons
+  categories: CategoryComparison[];
   
-  headToHead: {
-    winner: 'PLAYER1' | 'PLAYER2' | 'DRAW';
-    winningCategories: {
-      player1: string[];
-      player2: string[];
-      tied: string[];
-    };
-    margin: number; // How decisive the comparison is
-  };
+  // Overall verdict
+  overallWinner?: 'PLAYER1' | 'PLAYER2' | 'DRAW';
+  winnerAdvantage: number;          // Percentage
   
-  categoryComparison: CategoryComparison[];
-  
-  strengthsComparison: {
-    player1Advantages: string[];
-    player2Advantages: string[];
-    sharedStrengths: string[];
-  };
-  
-  valueComparison: {
+  // Key differentiators
+  keyDifferences: {
+    metric: string;
     player1Value: number;
     player2Value: number;
-    valueDifference: number;
-    betterValue: 'PLAYER1' | 'PLAYER2' | 'EQUAL';
+    advantage: 'PLAYER1' | 'PLAYER2';
+    significance: 'HIGH' | 'MEDIUM' | 'LOW';
+  }[];
+  
+  // Recommendations
+  recommendations: {
+    forPlayer1: string[];
+    forPlayer2: string[];
   };
   
-  recommendation: {
-    summary: string;
-    bestFor: Record<string, 'PLAYER1' | 'PLAYER2'>;
-    context: string;
-  };
-  
-  metadata: {
-    modelVersion: string;
-    generatedAt: Date;
-    sport: Sport;
-    positionsCompared: string;
-  };
+  // Metadata
+  generatedAt: Date;
+  modelVersion: string;
 }
 
 export interface PlayerComparisonProfile {
-  id: string;
+  playerId: string;
   name: string;
-  position: Position | null;
-  age: number | null;
-  overallRating: number;
-  formRating: number;
-  marketValue: number;
-  
-  stats: {
-    appearances: number;
-    goals: number;
-    assists: number;
-    minutesPlayed: number;
-    avgRating: number;
-  };
-  
-  attributes: Record<string, number>;
+  position: string;
+  age: number;
+  matchesPlayed: number;
+  averageRating: number;
+  marketValue?: number;
 }
 
 export interface CategoryComparison {
@@ -217,548 +280,329 @@ export interface CategoryComparison {
   player1Score: number;
   player2Score: number;
   winner: 'PLAYER1' | 'PLAYER2' | 'DRAW';
-  difference: number;
-  weight: number; // Importance of this category
+  metrics: {
+    name: string;
+    player1: number;
+    player2: number;
+    unit?: string;
+  }[];
 }
 
-// ============================================================================
+// =============================================================================
 // MARKET VALUE TYPES
-// ============================================================================
+// =============================================================================
 
-/**
- * Market value assessment
- */
 export interface MarketValueAssessment {
   playerId: string;
   playerName: string;
   sport: Sport;
-  position: Position | null;
-  age: number | null;
+  position: string;
+  age: number;
   
-  valuation: {
-    currentValue: number;
-    previousValue: number;
-    valueChange: number;
-    valueChangePercent: number;
-    projectedValue6Months: number;
-    projectedValue12Months: number;
+  // Valuation
+  estimatedValue: number;
+  currency: Currency;
+  valueRange: { min: number; max: number };
+  
+  // Historical
+  previousValue?: number;
+  valueChange: number;              // Percentage
+  valueTrajectory: 'RISING' | 'STABLE' | 'FALLING';
+  peakValue?: number;
+  peakValueDate?: Date;
+  
+  // Factors
+  valueFactors: ValueFactor[];
+  
+  // Comparables
+  comparablePlayers: ComparablePlayer[];
+  
+  // Contract context
+  contractInfo?: {
+    expiryDate?: Date;
+    yearsRemaining?: number;
+    contractEffect: number;         // Multiplier
   };
   
-  breakdown: {
-    baseValue: number;
-    performanceAdjustment: number;
-    ageAdjustment: number;
-    contractAdjustment: number;
-    injuryAdjustment: number;
-    marketDemandAdjustment: number;
+  // Market context
+  marketContext: {
+    positionDemand: 'HIGH' | 'MEDIUM' | 'LOW';
+    ageProfile: 'PRIME' | 'DEVELOPING' | 'DECLINING';
+    transferWindow: 'OPEN' | 'CLOSED';
+    marketTrend: 'INFLATING' | 'STABLE' | 'DEFLATING';
   };
   
-  factors: ValueFactor[];
-  
-  trend: 'RISING' | 'STABLE' | 'DECLINING';
-  trendStrength: 'STRONG' | 'MODERATE' | 'WEAK';
-  
-  comparables: ComparablePlayer[];
-  
-  transferWindow: {
-    recommendedAction: 'SELL' | 'HOLD' | 'BUY' | 'MONITOR';
-    optimalSellingPrice: number;
-    minimumAcceptablePrice: number;
-    reasoning: string;
-  };
-  
-  metadata: {
-    modelVersion: string;
-    generatedAt: Date;
-    validUntil: Date;
-    dataSourcesUsed: string[];
-  };
+  // Metadata
+  generatedAt: Date;
+  validUntil: Date;
+  modelVersion: string;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export interface ValueFactor {
   factor: string;
-  impact: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
-  adjustment: number;
+  impact: number;                   // Percentage multiplier
   description: string;
+  direction: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
 }
 
 export interface ComparablePlayer {
   playerId: string;
-  playerName: string;
-  position: Position | null;
-  marketValue: number;
-  similarity: number; // 0-100
-  recentTransfer?: {
-    fee: number;
-    date: Date;
-    fromClub: string;
-    toClub: string;
-  };
-}
-
-// ============================================================================
-// FORMATION OPTIMIZATION TYPES
-// ============================================================================
-
-/**
- * Formation analysis result
- */
-export interface FormationAnalysis {
-  teamId: string;
-  teamName: string;
-  sport: Sport;
-  
-  currentFormation: string | null;
-  
-  squadSummary: {
-    totalPlayers: number;
-    availablePlayers: number;
-    injuredPlayers: number;
-    suspendedPlayers: number;
-    averageRating: number;
-    positionBreakdown: Record<string, number>;
-  };
-  
-  suggestedFormations: FormationSuggestion[];
-  
-  positionAnalysis: PositionAnalysis[];
-  
-  teamAnalysis: {
-    strengths: string[];
-    weaknesses: string[];
-    opportunities: string[];
-    threats: string[];
-  };
-  
-  rotationSuggestions: RotationSuggestion[];
-  
-  strategicRecommendations: string[];
-  
-  metadata: {
-    modelVersion: string;
-    generatedAt: Date;
-    analysisType: string;
-  };
-}
-
-export interface FormationSuggestion {
-  formation: string;
-  suitabilityScore: number; // 0-100
-  reasoning: string;
-  positionsFilled: string[];
-  positionsNeeded: string[];
-  expectedPerformance: number;
-}
-
-export interface PositionAnalysis {
+  name: string;
+  age: number;
   position: string;
-  playerCount: number;
-  averageRating: number;
-  bestPlayer: { id: string; name: string; rating: number } | null;
-  depth: 'EXCELLENT' | 'GOOD' | 'ADEQUATE' | 'POOR' | 'CRITICAL';
-  recommendation: string;
+  marketValue: number;
+  similarity: number;               // 0-100
+  recentTransferFee?: number;
 }
 
-export interface RotationSuggestion {
-  playerIn: { id: string; name: string; position: string };
-  playerOut: { id: string; name: string; position: string };
-  reason: string;
-  expectedImpact: string;
-  priority: 'HIGH' | 'MEDIUM' | 'LOW';
-}
-
-// ============================================================================
+// =============================================================================
 // TEAM ANALYTICS TYPES
-// ============================================================================
+// =============================================================================
 
-/**
- * Team analytics result
- */
 export interface TeamAnalytics {
   teamId: string;
   teamName: string;
-  clubId: string;
-  clubName: string;
   sport: Sport;
+  seasonId?: string;
   
+  // Performance overview
   performance: {
-    played: number;
+    matchesPlayed: number;
     wins: number;
     draws: number;
     losses: number;
+    winRate: number;
     goalsFor: number;
     goalsAgainst: number;
     goalDifference: number;
-    points: number;
-    winRate: number;
-    avgGoalsScored: number;
-    avgGoalsConceded: number;
+    cleanSheets: number;
   };
   
+  // Form
   form: {
-    current: 'EXCELLENT' | 'GOOD' | 'AVERAGE' | 'POOR' | 'CRITICAL';
-    recentResults: string; // e.g., "WWDLW"
-    trend: 'IMPROVING' | 'STABLE' | 'DECLINING';
-    homeForm: string;
-    awayForm: string;
+    last5: ('W' | 'D' | 'L')[];
+    last10: ('W' | 'D' | 'L')[];
+    homeForm: number;
+    awayForm: number;
+    currentStreak: { type: 'W' | 'D' | 'L'; count: number };
   };
   
+  // Squad analysis
   squad: {
     totalPlayers: number;
     averageAge: number;
     averageRating: number;
+    totalMarketValue: number;
     injuredCount: number;
-    topScorer: { id: string; name: string; goals: number } | null;
-    topAssister: { id: string; name: string; assists: number } | null;
+    suspendedCount: number;
   };
   
-  standings: {
-    position: number | null;
-    pointsFromTop: number | null;
-    pointsFromSafety: number | null;
-    competitionId: string | null;
-    competitionName: string | null;
-  } | null;
-  
-  sportSpecificStats: Record<string, number>;
-}
-
-// ============================================================================
-// MATCH ANALYTICS TYPES
-// ============================================================================
-
-/**
- * Match analytics result
- */
-export interface MatchAnalytics {
-  matchId: string;
-  date: Date;
-  status: string;
-  sport: Sport;
-  
-  competition: {
-    id: string;
+  // Key players
+  keyPlayers: {
+    playerId: string;
     name: string;
-  } | null;
+    position: string;
+    rating: number;
+    contributions: number;
+  }[];
   
-  homeTeam: TeamMatchData;
-  awayTeam: TeamMatchData;
-  
-  statistics: {
-    totalGoals: number;
-    goalDifference: number;
-    outcome: 'HOME_WIN' | 'AWAY_WIN' | 'DRAW';
-    totalEvents: number;
-  };
-  
-  eventBreakdown: {
-    goals: number;
-    yellowCards: number;
-    redCards: number;
-    substitutions: number;
-    penalties: number;
-  };
-  
-  performanceHighlights: {
-    motm: { id: string; name: string; rating: number } | null;
-    topScorer: { id: string; name: string; goals: number } | null;
+  // Strengths & Weaknesses
+  analysis: {
+    strengths: string[];
+    weaknesses: string[];
   };
 }
 
-export interface TeamMatchData {
-  id: string;
-  name: string;
-  shortName: string | null;
-  score: number;
-  outcome: 'WIN' | 'DRAW' | 'LOSS';
-  possession?: number;
-  shots?: number;
-  shotsOnTarget?: number;
-}
+// =============================================================================
+// FORMATION ANALYSIS TYPES
+// =============================================================================
 
-// ============================================================================
-// COMPETITION ANALYTICS TYPES
-// ============================================================================
-
-/**
- * Competition analytics result
- */
-export interface CompetitionAnalytics {
-  competitionId: string;
-  competitionName: string;
-  type: string;
-  sport: Sport;
-  season: string | null;
-  
-  statistics: {
-    totalTeams: number;
-    totalMatches: number;
-    completedMatches: number;
-    totalGoals: number;
-    avgGoalsPerMatch: number;
-    totalCards: number;
-  };
-  
-  topPerformers: {
-    leader: {
-      teamId: string;
-      teamName: string;
-      position: number;
-      points: number;
-    } | null;
-    topScorer: {
-      playerId: string;
-      playerName: string;
-      goals: number;
-    } | null;
-    topAssister: {
-      playerId: string;
-      playerName: string;
-      assists: number;
-    } | null;
-  };
-  
-  standings: CompetitionStandingEntry[];
-  
-  recentMatches: MatchSummary[];
-}
-
-export interface CompetitionStandingEntry {
-  position: number;
+export interface FormationAnalysis {
   teamId: string;
-  teamName: string;
-  played: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  goalsFor: number;
-  goalsAgainst: number;
-  goalDifference: number;
-  points: number;
-}
-
-export interface MatchSummary {
-  matchId: string;
-  date: Date;
-  homeTeam: string;
-  awayTeam: string;
-  homeScore: number;
-  awayScore: number;
-  status: string;
-}
-
-// ============================================================================
-// PLAYER ANALYTICS TYPES
-// ============================================================================
-
-/**
- * Player analytics result
- */
-export interface PlayerAnalytics {
-  playerId: string;
-  playerName: string;
-  position: Position | null;
-  secondaryPosition: Position | null;
   sport: Sport;
   
-  team: {
-    id: string;
-    name: string;
-    clubId: string;
-    clubName: string;
-  } | null;
+  // Current formation
+  currentFormation: string;
+  formationRating: number;
   
-  stats: {
-    season: string;
-    appearances: number;
-    starts: number;
-    minutesPlayed: number;
-    goals: number;
-    assists: number;
-    yellowCards: number;
-    redCards: number;
-  };
+  // Alternative suggestions
+  suggestions: FormationSuggestion[];
   
-  ratings: {
-    overall: number;
-    form: number;
-    potential: number;
-    consistency: number;
-  };
+  // Position analysis
+  positionAnalysis: PositionAnalysis[];
   
-  performance: {
-    form: 'EXCELLENT' | 'GOOD' | 'AVERAGE' | 'POOR' | 'CRITICAL';
-    trend: 'IMPROVING' | 'STABLE' | 'DECLINING';
-    peakRating: number;
-    avgRating: number;
-  };
-  
-  health: {
-    availabilityStatus: string;
-    activeInjuries: number;
-    injuryRisk: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-    fatigueLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-  };
-  
-  sportSpecificStats: Record<string, number>;
+  // Rotation suggestions
+  rotationSuggestions: RotationSuggestion[];
 }
 
-// ============================================================================
-// ADVANCED ANALYTICS TYPES
-// ============================================================================
-
-/**
- * Advanced analytics result
- */
-export interface AdvancedAnalytics {
-  scope: {
-    type: 'COMPETITION' | 'CLUB' | 'TEAM' | 'PLAYER';
-    id: string;
-    name: string;
-  };
-  
-  timeRange: {
-    start: Date;
-    end: Date;
-    label: string;
-  };
-  
-  sport: Sport;
-  
-  topScorers: LeaderboardEntry[];
-  topAssisters: LeaderboardEntry[];
-  topRated: LeaderboardEntry[];
-  
-  teamRankings: TeamRankingEntry[];
-  
-  trends: {
-    goalsPerMatch: TrendData[];
-    winRates: TrendData[];
-    averageRatings: TrendData[];
-  };
-  
-  insights: AnalyticsInsight[];
-  
-  metadata: {
-    modelVersion: string;
-    generatedAt: Date;
-    matchesAnalyzed: number;
-    playersAnalyzed: number;
-  };
+export interface FormationSuggestion {
+  formation: string;
+  suitability: number;              // 0-100
+  advantages: string[];
+  disadvantages: string[];
+  idealLineup: {
+    position: string;
+    playerId: string;
+    playerName: string;
+    rating: number;
+  }[];
 }
 
-export interface LeaderboardEntry {
-  playerId: string;
-  playerName: string;
-  teamName: string;
+export interface PositionAnalysis {
   position: string;
-  value: number;
-  appearances: number;
-  trend: 'UP' | 'DOWN' | 'STABLE';
+  currentPlayer?: string;
+  depthOptions: {
+    playerId: string;
+    name: string;
+    suitability: number;
+  }[];
+  isVulnerable: boolean;
+  recommendation?: string;
 }
 
-export interface TeamRankingEntry {
-  teamId: string;
-  teamName: string;
-  rank: number;
-  score: number;
-  wins: number;
-  draws: number;
-  losses: number;
+export interface RotationSuggestion {
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  currentPlayer: string;
+  suggestedReplacement: string;
+  reason: string;
+  expectedImpact: string;
 }
 
-export interface TrendData {
-  period: string;
-  value: number;
-  change: number;
-}
+// =============================================================================
+// ACCESS CONTROL MATRIX
+// =============================================================================
 
-export interface AnalyticsInsight {
-  type: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
-  category: string;
-  message: string;
-  importance: 'HIGH' | 'MEDIUM' | 'LOW';
-}
-
-// ============================================================================
-// API REQUEST/RESPONSE TYPES
-// ============================================================================
-
-export interface AnalyticsAPIResponse<T> {
-  success: boolean;
-  requestId: string;
-  data: T;
-  meta: {
-    generatedAt: string;
-    processingTimeMs: number;
-    cacheHit: boolean;
-    sport?: Sport;
-  };
-  pagination?: {
-    total: number;
-    limit: number;
-    offset: number;
-    hasMore: boolean;
-  };
-}
-
-// ============================================================================
-// ROLE-BASED ACCESS
-// ============================================================================
-
-export const ANALYTICS_ACCESS_MATRIX: Record<string, {
+export const ANALYTICS_ACCESS_MATRIX: Record<UserRole, {
   canAccess: string[];
   requiresClubMembership: boolean;
+  exportAllowed: boolean;
 }> = {
-  SUPER_ADMIN: {
+  SUPERADMIN: {
     canAccess: ['ALL'],
     requiresClubMembership: false,
+    exportAllowed: true,
+  },
+  ADMIN: {
+    canAccess: ['ALL'],
+    requiresClubMembership: false,
+    exportAllowed: true,
+  },
+  LEAGUE_ADMIN: {
+    canAccess: ['TEAM_ANALYTICS', 'MATCH_ANALYTICS', 'COMPETITION_ANALYTICS'],
+    requiresClubMembership: false,
+    exportAllowed: true,
   },
   CLUB_OWNER: {
-    canAccess: ['team', 'player', 'competition', 'market-value', 'formation', 'advanced'],
+    canAccess: ['TEAM_ANALYTICS', 'PLAYER_ANALYTICS', 'MARKET_VALUE', 'INJURY_RISK', 'FORMATION'],
     requiresClubMembership: true,
+    exportAllowed: true,
+  },
+  CLUB_MANAGER: {
+    canAccess: ['TEAM_ANALYTICS', 'PLAYER_ANALYTICS', 'INJURY_RISK', 'FORMATION', 'PERFORMANCE'],
+    requiresClubMembership: true,
+    exportAllowed: true,
   },
   MANAGER: {
-    canAccess: ['team', 'player', 'competition', 'formation', 'injury', 'performance', 'comparison', 'advanced'],
+    canAccess: ['TEAM_ANALYTICS', 'PLAYER_ANALYTICS', 'INJURY_RISK', 'FORMATION', 'PERFORMANCE'],
     requiresClubMembership: true,
+    exportAllowed: true,
   },
-  HEAD_COACH: {
-    canAccess: ['team', 'player', 'formation', 'injury', 'performance', 'comparison', 'matches'],
+  COACH_PRO: {
+    canAccess: ['PLAYER_ANALYTICS', 'INJURY_RISK', 'PERFORMANCE', 'FORMATION', 'COMPARISON'],
     requiresClubMembership: true,
+    exportAllowed: true,
+  },
+  COACH: {
+    canAccess: ['PLAYER_ANALYTICS', 'INJURY_RISK', 'PERFORMANCE'],
+    requiresClubMembership: true,
+    exportAllowed: false,
   },
   ANALYST: {
-    canAccess: ['team', 'player', 'competition', 'formation', 'performance', 'comparison', 'matches', 'advanced'],
+    canAccess: ['TEAM_ANALYTICS', 'PLAYER_ANALYTICS', 'PERFORMANCE', 'COMPARISON', 'FORMATION'],
     requiresClubMembership: true,
+    exportAllowed: true,
   },
   SCOUT: {
-    canAccess: ['player', 'market-value', 'comparison', 'performance'],
+    canAccess: ['PLAYER_ANALYTICS', 'MARKET_VALUE', 'COMPARISON', 'PERFORMANCE'],
     requiresClubMembership: false,
+    exportAllowed: false,
+  },
+  TREASURER: {
+    canAccess: ['MARKET_VALUE'],
+    requiresClubMembership: true,
+    exportAllowed: true,
   },
   MEDICAL_STAFF: {
-    canAccess: ['injury', 'player'],
+    canAccess: ['INJURY_RISK', 'PLAYER_ANALYTICS'],
     requiresClubMembership: true,
+    exportAllowed: true,
   },
-  PERFORMANCE_COACH: {
-    canAccess: ['player', 'performance', 'injury', 'matches'],
+  PLAYER_PRO: {
+    canAccess: ['PLAYER_ANALYTICS', 'PERFORMANCE', 'INJURY_RISK'],
     requiresClubMembership: true,
+    exportAllowed: true,
   },
   PLAYER: {
-    canAccess: ['player-own', 'performance-own', 'injury-own'],
+    canAccess: ['PLAYER_ANALYTICS', 'PERFORMANCE'],
     requiresClubMembership: true,
+    exportAllowed: false,
+  },
+  PARENT: {
+    canAccess: ['PLAYER_ANALYTICS', 'INJURY_RISK'],
+    requiresClubMembership: true,
+    exportAllowed: false,
+  },
+  GUARDIAN: {
+    canAccess: ['PLAYER_ANALYTICS', 'INJURY_RISK'],
+    requiresClubMembership: true,
+    exportAllowed: false,
+  },
+  REFEREE: {
+    canAccess: ['MATCH_ANALYTICS'],
+    requiresClubMembership: false,
+    exportAllowed: false,
+  },
+  MEDIA_MANAGER: {
+    canAccess: ['TEAM_ANALYTICS'],
+    requiresClubMembership: true,
+    exportAllowed: false,
+  },
+  FAN: {
+    canAccess: [],
+    requiresClubMembership: false,
+    exportAllowed: false,
   },
 };
 
-// ============================================================================
-// EXPORTS
-// ============================================================================
+// =============================================================================
+// API RESPONSE TYPE
+// =============================================================================
 
-export type {
-  Sport,
-  Position,
-  PredictionType,
-  PredictionStatus,
-  PredictionImpact,
-  InjuryType,
-  InjuryStatus,
-  InjurySeverity,
+export interface AnalyticsAPIResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+  metadata: {
+    cached: boolean;
+    generatedAt: string;
+    processingTimeMs: number;
+    modelVersion: string;
+  };
+}
+
+// =============================================================================
+// MODEL VERSIONS
+// =============================================================================
+
+export const ANALYTICS_MODEL_VERSIONS = {
+  injury: '7.10.1-injury',
+  performance: '7.10.1-performance',
+  comparison: '7.10.1-comparison',
+  marketValue: '7.10.1-market-value',
+  formation: '7.10.1-formation',
 };

@@ -1,726 +1,511 @@
-// ============================================================================
-// src/lib/analytics/market-value-calculator.ts
-// 💰 PitchConnect Enterprise Analytics - Market Value Engine
-// ============================================================================
-// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
-// INTEGRATES: Multi-sport metrics, Position value multipliers, Age curves
-// ============================================================================
+/**
+ * ============================================================================
+ * 💰 PITCHCONNECT ANALYTICS - MARKET VALUE CALCULATOR v7.10.1
+ * ============================================================================
+ * Enterprise player market value estimation for all 12 sports
+ * Supports multiple currencies with GBP as default
+ * ============================================================================
+ */
 
-import { prisma } from '@/lib/prisma';
-import { getOrSetCache } from '@/lib/cache/redis';
-import { logger } from '@/lib/logging';
+import type {
+  Sport,
+  Currency,
+  MarketValueAssessment,
+  ValueFactor,
+  ComparablePlayer,
+  CURRENCY_RATES,
+  CURRENCY_SYMBOLS,
+} from './types';
 import {
   getSportMetricConfig,
   getPositionValueMultiplier,
   getAgeAdjustmentFactor,
 } from './sport-metrics';
-import type {
-  MarketValueAssessment,
-  ValueFactor,
-  ComparablePlayer,
-} from './types';
-import type { Sport, Position } from '@prisma/client';
 
-// ============================================================================
+// =============================================================================
 // CONSTANTS
-// ============================================================================
+// =============================================================================
 
-const MODEL_VERSION = '2.0.0-market-value';
-const CACHE_TTL_SECONDS = 24 * 60 * 60; // 24 hours (market values change slowly)
-const CACHE_PREFIX = 'analytics:market-value';
+export const MARKET_VALUE_MODEL_VERSION = '7.10.1-market-value';
 
-// Base values by sport (in currency units - e.g., GBP)
-const BASE_VALUES_BY_SPORT: Record<Sport, number> = {
-  FOOTBALL: 100000,
-  RUGBY: 80000,
-  CRICKET: 70000,
-  BASKETBALL: 90000,
-  AMERICAN_FOOTBALL: 120000,
-  NETBALL: 50000,
-  HOCKEY: 60000,
-  LACROSSE: 40000,
-  AUSTRALIAN_RULES: 85000,
-  GAELIC_FOOTBALL: 30000,
-  FUTSAL: 40000,
-  BEACH_FOOTBALL: 25000,
+// Base values by sport (in GBP) - grassroots/amateur level
+export const BASE_VALUES_BY_SPORT: Record<Sport, number> = {
+  FOOTBALL: 50000,
+  RUGBY: 40000,
+  CRICKET: 35000,
+  BASKETBALL: 45000,
+  AMERICAN_FOOTBALL: 50000,
+  NETBALL: 25000,
+  HOCKEY: 30000,
+  LACROSSE: 30000,
+  AUSTRALIAN_RULES: 45000,
+  GAELIC_FOOTBALL: 20000,  // Amateur sport
+  FUTSAL: 25000,
+  BEACH_FOOTBALL: 20000,
 };
 
-// Performance multipliers
-const PERFORMANCE_TIERS = {
-  ELITE: { minRating: 8.5, multiplier: 3.0 },
-  EXCELLENT: { minRating: 7.5, multiplier: 2.0 },
-  GOOD: { minRating: 6.5, multiplier: 1.3 },
-  AVERAGE: { minRating: 5.5, multiplier: 1.0 },
-  BELOW_AVERAGE: { minRating: 0, multiplier: 0.7 },
+// Performance tier multipliers
+export const PERFORMANCE_TIERS: Record<string, { minRating: number; multiplier: number }> = {
+  ELITE: { minRating: 8.5, multiplier: 20.0 },
+  EXCELLENT: { minRating: 7.5, multiplier: 10.0 },
+  GOOD: { minRating: 6.5, multiplier: 5.0 },
+  AVERAGE: { minRating: 5.5, multiplier: 2.0 },
+  BELOW_AVERAGE: { minRating: 4.5, multiplier: 1.0 },
+  POOR: { minRating: 0, multiplier: 0.5 },
 };
 
-// Contract situation multipliers
-const CONTRACT_MULTIPLIERS = {
-  EXPIRING_12_MONTHS: 0.6,
-  EXPIRING_24_MONTHS: 0.8,
-  LONG_TERM: 1.0,
-  NEW_CONTRACT: 1.1,
+// Contract effect on value
+const CONTRACT_FACTORS = {
+  YEARS_4_PLUS: 1.0,
+  YEARS_3: 0.95,
+  YEARS_2: 0.85,
+  YEARS_1: 0.7,
+  EXPIRING: 0.5,
+  FREE_AGENT: 0.3,
 };
 
-// ============================================================================
-// MAIN VALUATION FUNCTION
-// ============================================================================
+// =============================================================================
+// CACHE
+// =============================================================================
+
+interface ValueCache {
+  assessments: Map<string, { data: MarketValueAssessment; expiresAt: Date }>;
+}
+
+const valueCache: ValueCache = {
+  assessments: new Map(),
+};
+
+const CACHE_TTL = 60 * 60 * 24 * 1000; // 24 hours
+
+// =============================================================================
+// MAIN CALCULATION FUNCTION
+// =============================================================================
 
 /**
- * Calculate market value for a player
+ * Calculate player market value
  */
 export async function calculatePlayerMarketValue(
   playerId: string,
+  playerData: {
+    name: string;
+    sport: Sport;
+    position: string;
+    age: number;
+    
+    // Performance
+    averageRating: number;
+    matchesPlayed: number;
+    goalsOrContributions: number;
+    assists?: number;
+    
+    // Form
+    formTrend: 'RISING' | 'STABLE' | 'FALLING';
+    consistencyScore: number;      // 0-100
+    
+    // Contract
+    contractYearsRemaining?: number;
+    currentSalary?: number;
+    
+    // Previous value
+    previousAssessmentValue?: number;
+    previousAssessmentDate?: Date;
+    
+    // Comparable context
+    comparablePlayers?: ComparablePlayer[];
+    recentTransferFee?: number;
+  },
+  currency: Currency = 'GBP',
   forceRefresh: boolean = false
 ): Promise<MarketValueAssessment> {
-  const cacheKey = `${CACHE_PREFIX}:${playerId}`;
-
+  // Check cache
+  const cacheKey = `value:${playerId}:${currency}`;
   if (!forceRefresh) {
-    try {
-      const cached = await getOrSetCache<MarketValueAssessment>(
-        cacheKey,
-        async () => generateValuation(playerId),
-        CACHE_TTL_SECONDS
-      );
-      return cached;
-    } catch (error) {
-      logger.warn({ playerId, error }, 'Cache miss, generating fresh valuation');
+    const cached = valueCache.assessments.get(cacheKey);
+    if (cached && cached.expiresAt > new Date()) {
+      return cached.data;
     }
   }
-
-  return generateValuation(playerId);
-}
-
-/**
- * Generate market value assessment (internal)
- */
-async function generateValuation(playerId: string): Promise<MarketValueAssessment> {
-  // Fetch player with all related data
-  const player = await prisma.player.findUnique({
-    where: { id: playerId },
-    include: {
-      user: {
-        select: {
-          firstName: true,
-          lastName: true,
-          dateOfBirth: true,
-        },
-      },
-      teamPlayers: {
-        where: { isActive: true },
-        include: {
-          team: {
-            include: {
-              club: {
-                select: {
-                  id: true,
-                  name: true,
-                  sport: true,
-                },
-              },
-            },
-          },
-        },
-        take: 1,
-      },
-      contracts: {
-        where: { status: 'ACTIVE' },
-        orderBy: { endDate: 'desc' },
-        take: 1,
-      },
-      matchPerformances: {
-        orderBy: { createdAt: 'desc' },
-        take: 30,
-        select: {
-          rating: true,
-          goals: true,
-          assists: true,
-          minutesPlayed: true,
-          createdAt: true,
-        },
-      },
-      statistics: {
-        orderBy: { season: 'desc' },
-        take: 2,
-      },
-      injuries: {
-        where: {
-          dateFrom: {
-            gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // Last year
-          },
-        },
-        orderBy: { dateFrom: 'desc' },
-      },
-    },
+  
+  const sportConfig = getSportMetricConfig(playerData.sport);
+  
+  // Start with base value for sport
+  let baseValue = BASE_VALUES_BY_SPORT[playerData.sport];
+  
+  // Initialize factors
+  const valueFactors: ValueFactor[] = [];
+  
+  // 1. Performance tier multiplier
+  const performanceTier = getPerformanceTier(playerData.averageRating);
+  const tierMultiplier = PERFORMANCE_TIERS[performanceTier].multiplier;
+  baseValue *= tierMultiplier;
+  valueFactors.push({
+    factor: 'Performance Level',
+    impact: tierMultiplier,
+    description: `${performanceTier} tier (Rating: ${playerData.averageRating.toFixed(1)})`,
+    direction: tierMultiplier > 2 ? 'POSITIVE' : tierMultiplier < 1 ? 'NEGATIVE' : 'NEUTRAL',
   });
-
-  if (!player) {
-    throw new Error(`Player not found: ${playerId}`);
+  
+  // 2. Position value multiplier
+  const positionMultiplier = getPositionValueMultiplier(playerData.sport, playerData.position);
+  baseValue *= positionMultiplier;
+  valueFactors.push({
+    factor: 'Position Premium',
+    impact: positionMultiplier,
+    description: `${playerData.position} position value factor`,
+    direction: positionMultiplier > 1.1 ? 'POSITIVE' : positionMultiplier < 0.95 ? 'NEGATIVE' : 'NEUTRAL',
+  });
+  
+  // 3. Age adjustment
+  const ageMultiplier = getAgeAdjustmentFactor(playerData.sport, playerData.age);
+  baseValue *= ageMultiplier;
+  const ageDirection: ValueFactor['direction'] = 
+    playerData.age < sportConfig.ageFactors.peakAgeMin ? 'POSITIVE' :
+    playerData.age > sportConfig.ageFactors.peakAgeMax ? 'NEGATIVE' : 'NEUTRAL';
+  valueFactors.push({
+    factor: 'Age Profile',
+    impact: ageMultiplier,
+    description: `Age ${playerData.age} - ${getAgeProfile(playerData.age, sportConfig.ageFactors)}`,
+    direction: ageDirection,
+  });
+  
+  // 4. Experience/matches played factor
+  const experienceMultiplier = calculateExperienceMultiplier(playerData.matchesPlayed);
+  baseValue *= experienceMultiplier;
+  valueFactors.push({
+    factor: 'Experience',
+    impact: experienceMultiplier,
+    description: `${playerData.matchesPlayed} matches played`,
+    direction: experienceMultiplier > 1 ? 'POSITIVE' : 'NEUTRAL',
+  });
+  
+  // 5. Form trend factor
+  const formMultiplier = playerData.formTrend === 'RISING' ? 1.15 :
+                         playerData.formTrend === 'FALLING' ? 0.85 : 1.0;
+  baseValue *= formMultiplier;
+  valueFactors.push({
+    factor: 'Current Form',
+    impact: formMultiplier,
+    description: `Form trend: ${playerData.formTrend}`,
+    direction: playerData.formTrend === 'RISING' ? 'POSITIVE' : 
+               playerData.formTrend === 'FALLING' ? 'NEGATIVE' : 'NEUTRAL',
+  });
+  
+  // 6. Consistency factor
+  const consistencyMultiplier = 0.8 + (playerData.consistencyScore / 100) * 0.4;
+  baseValue *= consistencyMultiplier;
+  valueFactors.push({
+    factor: 'Consistency',
+    impact: consistencyMultiplier,
+    description: `Consistency score: ${playerData.consistencyScore}%`,
+    direction: playerData.consistencyScore > 70 ? 'POSITIVE' : 
+               playerData.consistencyScore < 40 ? 'NEGATIVE' : 'NEUTRAL',
+  });
+  
+  // 7. Contract situation
+  let contractMultiplier = 1.0;
+  let contractEffect = 1.0;
+  if (playerData.contractYearsRemaining !== undefined) {
+    if (playerData.contractYearsRemaining >= 4) {
+      contractMultiplier = CONTRACT_FACTORS.YEARS_4_PLUS;
+    } else if (playerData.contractYearsRemaining >= 3) {
+      contractMultiplier = CONTRACT_FACTORS.YEARS_3;
+    } else if (playerData.contractYearsRemaining >= 2) {
+      contractMultiplier = CONTRACT_FACTORS.YEARS_2;
+    } else if (playerData.contractYearsRemaining >= 1) {
+      contractMultiplier = CONTRACT_FACTORS.YEARS_1;
+    } else if (playerData.contractYearsRemaining > 0) {
+      contractMultiplier = CONTRACT_FACTORS.EXPIRING;
+    } else {
+      contractMultiplier = CONTRACT_FACTORS.FREE_AGENT;
+    }
+    contractEffect = contractMultiplier;
+    baseValue *= contractMultiplier;
+    valueFactors.push({
+      factor: 'Contract Situation',
+      impact: contractMultiplier,
+      description: `${playerData.contractYearsRemaining?.toFixed(1) ?? 0} years remaining`,
+      direction: contractMultiplier >= 0.85 ? 'NEUTRAL' : 'NEGATIVE',
+    });
   }
-
-  const sport = player.teamPlayers[0]?.team.club.sport || 'FOOTBALL';
-  const playerName = `${player.user.firstName} ${player.user.lastName}`;
-
-  // Calculate age
-  let age: number | null = null;
-  if (player.user.dateOfBirth) {
-    age = Math.floor(
-      (Date.now() - new Date(player.user.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365)
-    );
+  
+  // 8. Contribution bonus (goals/assists for attackers)
+  if (playerData.goalsOrContributions > 0) {
+    const contributionBonus = 1 + (playerData.goalsOrContributions * 0.02);
+    baseValue *= Math.min(contributionBonus, 1.5);
+    valueFactors.push({
+      factor: 'Goal Contributions',
+      impact: contributionBonus,
+      description: `${playerData.goalsOrContributions} goals/key contributions`,
+      direction: contributionBonus > 1.1 ? 'POSITIVE' : 'NEUTRAL',
+    });
   }
-
-  // Calculate value components
-  const baseValue = calculateBaseValue(sport, player.primaryPosition);
-  const performanceAdjustment = calculatePerformanceAdjustment(player.matchPerformances, sport);
-  const ageAdjustment = calculateAgeAdjustment(age, sport);
-  const contractAdjustment = calculateContractAdjustment(player.contracts[0]);
-  const injuryAdjustment = calculateInjuryAdjustment(player.injuries);
-  const marketDemandAdjustment = calculateMarketDemandAdjustment(player.primaryPosition, sport);
-
-  // Calculate total value
-  const adjustedBase = baseValue * (1 + performanceAdjustment);
-  const withAge = adjustedBase * ageAdjustment;
-  const withContract = withAge * contractAdjustment;
-  const withInjury = withContract * (1 - injuryAdjustment);
-  const currentValue = Math.round(withInjury * (1 + marketDemandAdjustment));
-
-  // Previous value (from database or estimate)
-  const previousValue = player.marketValue || currentValue * 0.95;
-  const valueChange = currentValue - previousValue;
-  const valueChangePercent = previousValue > 0 ? (valueChange / previousValue) * 100 : 0;
-
-  // Calculate trend
-  const trend = determineTrend(player.matchPerformances, player.statistics);
-  const trendStrength = determineTrendStrength(valueChangePercent);
-
-  // Get comparable players
-  const comparables = await findComparablePlayers(playerId, sport, player.primaryPosition, currentValue);
-
-  // Generate value factors
-  const factors = generateValueFactors(
-    performanceAdjustment,
-    ageAdjustment,
-    contractAdjustment,
-    injuryAdjustment,
-    marketDemandAdjustment
-  );
-
-  // Transfer window recommendations
-  const transferWindow = generateTransferRecommendation(
-    currentValue,
-    trend,
-    player.contracts[0],
-    age
-  );
-
-  // Project future values
-  const projectedValue6Months = projectValue(currentValue, trend, 6);
-  const projectedValue12Months = projectValue(currentValue, trend, 12);
-
+  
+  // Calculate value range
+  const estimatedValue = Math.round(baseValue);
+  const valueRange = {
+    min: Math.round(estimatedValue * 0.8),
+    max: Math.round(estimatedValue * 1.2),
+  };
+  
+  // Calculate value trajectory
+  let valueTrajectory: MarketValueAssessment['valueTrajectory'] = 'STABLE';
+  let valueChange = 0;
+  if (playerData.previousAssessmentValue) {
+    valueChange = ((estimatedValue - playerData.previousAssessmentValue) / playerData.previousAssessmentValue) * 100;
+    if (valueChange > 10) valueTrajectory = 'RISING';
+    else if (valueChange < -10) valueTrajectory = 'FALLING';
+  }
+  
+  // Determine market context
+  const marketContext = {
+    positionDemand: getPositionDemand(playerData.sport, playerData.position),
+    ageProfile: getAgeProfile(playerData.age, sportConfig.ageFactors),
+    transferWindow: 'CLOSED' as const, // Would be dynamic in production
+    marketTrend: 'STABLE' as const,
+  };
+  
+  // Convert to requested currency
+  const currencyRate = getCurrencyRate(currency);
+  const finalValue = Math.round(estimatedValue * currencyRate);
+  const finalRange = {
+    min: Math.round(valueRange.min * currencyRate),
+    max: Math.round(valueRange.max * currencyRate),
+  };
+  
+  // Build assessment
   const assessment: MarketValueAssessment = {
     playerId,
-    playerName,
-    sport,
-    position: player.primaryPosition,
-    age,
-    valuation: {
-      currentValue,
-      previousValue,
-      valueChange,
-      valueChangePercent: Math.round(valueChangePercent * 10) / 10,
-      projectedValue6Months,
-      projectedValue12Months,
-    },
-    breakdown: {
-      baseValue,
-      performanceAdjustment: Math.round(performanceAdjustment * baseValue),
-      ageAdjustment: Math.round((ageAdjustment - 1) * adjustedBase),
-      contractAdjustment: Math.round((contractAdjustment - 1) * withAge),
-      injuryAdjustment: Math.round(injuryAdjustment * withContract),
-      marketDemandAdjustment: Math.round(marketDemandAdjustment * withInjury),
-    },
-    factors,
-    trend,
-    trendStrength,
-    comparables,
-    transferWindow,
-    metadata: {
-      modelVersion: MODEL_VERSION,
-      generatedAt: new Date(),
-      validUntil: new Date(Date.now() + CACHE_TTL_SECONDS * 1000),
-      dataSourcesUsed: ['match_performances', 'player_statistics', 'contracts', 'injury_history'],
-    },
+    playerName: playerData.name,
+    sport: playerData.sport,
+    position: playerData.position,
+    age: playerData.age,
+    estimatedValue: finalValue,
+    currency,
+    valueRange: finalRange,
+    previousValue: playerData.previousAssessmentValue 
+      ? Math.round(playerData.previousAssessmentValue * currencyRate) 
+      : undefined,
+    valueChange: Math.round(valueChange * 10) / 10,
+    valueTrajectory,
+    peakValue: playerData.recentTransferFee 
+      ? Math.round(playerData.recentTransferFee * currencyRate)
+      : undefined,
+    valueFactors: valueFactors.sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact)),
+    comparablePlayers: playerData.comparablePlayers?.map(p => ({
+      ...p,
+      marketValue: Math.round(p.marketValue * currencyRate),
+      recentTransferFee: p.recentTransferFee 
+        ? Math.round(p.recentTransferFee * currencyRate)
+        : undefined,
+    })) ?? [],
+    contractInfo: playerData.contractYearsRemaining !== undefined ? {
+      yearsRemaining: playerData.contractYearsRemaining,
+      contractEffect,
+    } : undefined,
+    marketContext,
+    generatedAt: new Date(),
+    validUntil: new Date(Date.now() + CACHE_TTL),
+    modelVersion: MARKET_VALUE_MODEL_VERSION,
+    confidence: playerData.matchesPlayed >= 30 ? 'HIGH' :
+                playerData.matchesPlayed >= 15 ? 'MEDIUM' : 'LOW',
   };
-
-  // Update player's market value in database
-  await updatePlayerMarketValue(playerId, currentValue);
-
-  logger.info({
-    playerId,
-    currentValue,
-    trend,
-  }, 'Market value calculated');
-
+  
+  // Cache result
+  valueCache.assessments.set(cacheKey, {
+    data: assessment,
+    expiresAt: new Date(Date.now() + CACHE_TTL),
+  });
+  
   return assessment;
 }
 
-// ============================================================================
-// VALUE CALCULATION FUNCTIONS
-// ============================================================================
-
-/**
- * Calculate base value by sport and position
- */
-function calculateBaseValue(sport: Sport, position: Position | null): number {
-  const sportBase = BASE_VALUES_BY_SPORT[sport] || 100000;
-  const positionMultiplier = position ? getPositionValueMultiplier(sport, position) : 1.0;
-  
-  return Math.round(sportBase * positionMultiplier);
-}
-
-/**
- * Calculate performance-based adjustment
- */
-function calculatePerformanceAdjustment(performances: any[], sport: Sport): number {
-  if (performances.length === 0) return 0;
-
-  const ratings = performances.map(p => p.rating).filter(r => r != null);
-  if (ratings.length === 0) return 0;
-
-  const avgRating = ratings.reduce((a, b) => a + b, 0) / ratings.length;
-
-  // Find performance tier
-  for (const tier of Object.values(PERFORMANCE_TIERS)) {
-    if (avgRating >= tier.minRating) {
-      return tier.multiplier - 1; // Return as adjustment factor
-    }
-  }
-
-  return 0;
-}
-
-/**
- * Calculate age-based adjustment
- */
-function calculateAgeAdjustment(age: number | null, sport: Sport): number {
-  if (age === null) return 1.0;
-  return getAgeAdjustmentFactor(sport, age);
-}
-
-/**
- * Calculate contract-based adjustment
- */
-function calculateContractAdjustment(contract: any): number {
-  if (!contract || !contract.endDate) return CONTRACT_MULTIPLIERS.LONG_TERM;
-
-  const monthsRemaining = Math.floor(
-    (new Date(contract.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30)
-  );
-
-  if (monthsRemaining <= 12) return CONTRACT_MULTIPLIERS.EXPIRING_12_MONTHS;
-  if (monthsRemaining <= 24) return CONTRACT_MULTIPLIERS.EXPIRING_24_MONTHS;
-  
-  // Check if recently signed
-  if (contract.startDate) {
-    const monthsSinceSigned = Math.floor(
-      (Date.now() - new Date(contract.startDate).getTime()) / (1000 * 60 * 60 * 24 * 30)
-    );
-    if (monthsSinceSigned <= 6) return CONTRACT_MULTIPLIERS.NEW_CONTRACT;
-  }
-
-  return CONTRACT_MULTIPLIERS.LONG_TERM;
-}
-
-/**
- * Calculate injury-based deduction
- */
-function calculateInjuryAdjustment(injuries: any[]): number {
-  if (injuries.length === 0) return 0;
-
-  // Count injuries and severity
-  const recentInjuries = injuries.length;
-  
-  // Calculate total days missed
-  const totalDaysMissed = injuries.reduce((sum, injury) => {
-    if (injury.dateFrom && injury.dateTo) {
-      const days = Math.ceil(
-        (new Date(injury.dateTo).getTime() - new Date(injury.dateFrom).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      return sum + days;
-    }
-    return sum + 14; // Default estimate
-  }, 0);
-
-  // Calculate deduction (max 30%)
-  let deduction = 0;
-  deduction += Math.min(0.15, recentInjuries * 0.03); // Up to 15% for frequency
-  deduction += Math.min(0.15, totalDaysMissed * 0.001); // Up to 15% for severity
-
-  return Math.min(0.3, deduction);
-}
-
-/**
- * Calculate market demand adjustment
- */
-function calculateMarketDemandAdjustment(position: Position | null, sport: Sport): number {
-  if (!position) return 0;
-
-  // High-demand positions get premium
-  const highDemandPositions: Record<Sport, string[]> = {
-    FOOTBALL: ['STRIKER', 'CENTRE_FORWARD', 'ATTACKING_MIDFIELDER'],
-    RUGBY: ['FLY_HALF', 'SCRUM_HALF', 'FULL_BACK'],
-    CRICKET: ['ALL_ROUNDER', 'FAST_BOWLER'],
-    BASKETBALL: ['POINT_GUARD', 'SHOOTING_GUARD'],
-    AMERICAN_FOOTBALL: ['QUARTERBACK', 'WIDE_RECEIVER'],
-    NETBALL: ['GOAL_SHOOTER', 'GOAL_ATTACK'],
-    HOCKEY: ['CENTER_HOCKEY', 'GOALTENDER'],
-    LACROSSE: ['ATTACKER_LACROSSE', 'MIDFIELDER_LACROSSE'],
-    AUSTRALIAN_RULES: ['CENTRE_MIDFIELDER', 'FULL_FORWARD'],
-    GAELIC_FOOTBALL: ['FULL_FORWARD_GAA', 'MIDFIELDER_GAA'],
-    FUTSAL: ['STRIKER'],
-    BEACH_FOOTBALL: ['STRIKER'],
-  };
-
-  const demandPositions = highDemandPositions[sport] || [];
-  
-  if (demandPositions.includes(position)) {
-    return 0.15; // 15% premium for high-demand positions
-  }
-
-  return 0;
-}
-
-// ============================================================================
+// =============================================================================
 // HELPER FUNCTIONS
-// ============================================================================
+// =============================================================================
 
-/**
- * Determine value trend
- */
-function determineTrend(performances: any[], statistics: any[]): MarketValueAssessment['trend'] {
-  if (performances.length < 5) return 'STABLE';
-
-  const recentRatings = performances.slice(0, 5).map(p => p.rating).filter(r => r != null);
-  const olderRatings = performances.slice(5, 10).map(p => p.rating).filter(r => r != null);
-
-  if (recentRatings.length === 0 || olderRatings.length === 0) return 'STABLE';
-
-  const recentAvg = recentRatings.reduce((a, b) => a + b, 0) / recentRatings.length;
-  const olderAvg = olderRatings.reduce((a, b) => a + b, 0) / olderRatings.length;
-
-  if (recentAvg > olderAvg + 0.3) return 'RISING';
-  if (recentAvg < olderAvg - 0.3) return 'DECLINING';
-  return 'STABLE';
-}
-
-/**
- * Determine trend strength
- */
-function determineTrendStrength(changePercent: number): MarketValueAssessment['trendStrength'] {
-  const absChange = Math.abs(changePercent);
-  if (absChange >= 20) return 'STRONG';
-  if (absChange >= 10) return 'MODERATE';
-  return 'WEAK';
-}
-
-/**
- * Project future value
- */
-function projectValue(currentValue: number, trend: string, months: number): number {
-  const monthlyChangeRates = {
-    RISING: 0.02, // 2% per month
-    STABLE: 0.005, // 0.5% per month
-    DECLINING: -0.015, // -1.5% per month
-  };
-
-  const rate = monthlyChangeRates[trend as keyof typeof monthlyChangeRates] || 0;
-  const projected = currentValue * Math.pow(1 + rate, months);
-  
-  return Math.round(projected);
-}
-
-/**
- * Find comparable players
- */
-async function findComparablePlayers(
-  playerId: string,
-  sport: Sport,
-  position: Position | null,
-  targetValue: number
-): Promise<ComparablePlayer[]> {
-  if (!position) return [];
-
-  try {
-    const comparables = await prisma.player.findMany({
-      where: {
-        id: { not: playerId },
-        primaryPosition: position,
-        teamPlayers: {
-          some: {
-            isActive: true,
-            team: {
-              club: {
-                sport,
-              },
-            },
-          },
-        },
-        marketValue: {
-          gte: targetValue * 0.5,
-          lte: targetValue * 2,
-        },
-      },
-      include: {
-        user: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-      take: 5,
-      orderBy: {
-        marketValue: 'desc',
-      },
-    });
-
-    return comparables.map(p => {
-      const similarity = calculateSimilarity(targetValue, p.marketValue || 0);
-      return {
-        playerId: p.id,
-        playerName: `${p.user.firstName} ${p.user.lastName}`,
-        position: p.primaryPosition,
-        marketValue: p.marketValue || 0,
-        similarity,
-      };
-    });
-  } catch (error) {
-    logger.error({ error }, 'Failed to find comparable players');
-    return [];
+function getPerformanceTier(rating: number): string {
+  for (const [tier, config] of Object.entries(PERFORMANCE_TIERS)) {
+    if (rating >= config.minRating) {
+      return tier;
+    }
   }
+  return 'POOR';
 }
 
-/**
- * Calculate similarity score
- */
-function calculateSimilarity(value1: number, value2: number): number {
-  if (value1 === 0 || value2 === 0) return 0;
-  const ratio = Math.min(value1, value2) / Math.max(value1, value2);
-  return Math.round(ratio * 100);
+function calculateExperienceMultiplier(matchesPlayed: number): number {
+  if (matchesPlayed >= 200) return 1.3;
+  if (matchesPlayed >= 100) return 1.2;
+  if (matchesPlayed >= 50) return 1.1;
+  if (matchesPlayed >= 20) return 1.0;
+  return 0.9;
 }
 
-/**
- * Generate value factors
- */
-function generateValueFactors(
-  performance: number,
+function getAgeProfile(
   age: number,
-  contract: number,
-  injury: number,
-  demand: number
-): ValueFactor[] {
-  const factors: ValueFactor[] = [];
-
-  // Performance factor
-  factors.push({
-    factor: 'Performance',
-    impact: performance > 0 ? 'POSITIVE' : performance < 0 ? 'NEGATIVE' : 'NEUTRAL',
-    adjustment: Math.round(performance * 100),
-    description: performance > 0
-      ? 'Strong recent performances increase value'
-      : performance < 0
-      ? 'Below average performances reduce value'
-      : 'Average performance, no adjustment',
-  });
-
-  // Age factor
-  factors.push({
-    factor: 'Age Profile',
-    impact: age > 1 ? 'POSITIVE' : age < 1 ? 'NEGATIVE' : 'NEUTRAL',
-    adjustment: Math.round((age - 1) * 100),
-    description: age > 1
-      ? 'Prime career age adds value'
-      : age < 1
-      ? 'Age-related value adjustment'
-      : 'Age at market standard',
-  });
-
-  // Contract factor
-  factors.push({
-    factor: 'Contract Situation',
-    impact: contract > 1 ? 'POSITIVE' : contract < 1 ? 'NEGATIVE' : 'NEUTRAL',
-    adjustment: Math.round((contract - 1) * 100),
-    description: contract < 1
-      ? 'Expiring contract reduces value'
-      : contract > 1
-      ? 'Long-term contract adds security'
-      : 'Standard contract situation',
-  });
-
-  // Injury factor
-  if (injury > 0) {
-    factors.push({
-      factor: 'Injury History',
-      impact: 'NEGATIVE',
-      adjustment: Math.round(-injury * 100),
-      description: 'Recent injury history reduces value',
-    });
-  }
-
-  // Demand factor
-  if (demand > 0) {
-    factors.push({
-      factor: 'Market Demand',
-      impact: 'POSITIVE',
-      adjustment: Math.round(demand * 100),
-      description: 'High-demand position increases value',
-    });
-  }
-
-  return factors;
+  factors: { peakAgeMin: number; peakAgeMax: number }
+): 'PRIME' | 'DEVELOPING' | 'DECLINING' {
+  if (age < factors.peakAgeMin) return 'DEVELOPING';
+  if (age > factors.peakAgeMax) return 'DECLINING';
+  return 'PRIME';
 }
 
-/**
- * Generate transfer recommendation
- */
-function generateTransferRecommendation(
-  currentValue: number,
-  trend: string,
-  contract: any,
-  age: number | null
-): MarketValueAssessment['transferWindow'] {
-  let recommendedAction: 'SELL' | 'HOLD' | 'BUY' | 'MONITOR' = 'HOLD';
-  let reasoning = '';
-
-  // Contract expiring soon
-  if (contract?.endDate) {
-    const monthsRemaining = Math.floor(
-      (new Date(contract.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30)
-    );
-
-    if (monthsRemaining <= 12 && trend === 'DECLINING') {
-      recommendedAction = 'SELL';
-      reasoning = 'Contract expiring with declining performance - consider sale';
-    } else if (monthsRemaining <= 6) {
-      recommendedAction = 'SELL';
-      reasoning = 'Contract expiring imminently - sell or risk losing for free';
-    }
-  }
-
-  // Age considerations
-  if (age !== null) {
-    if (age >= 30 && trend !== 'RISING') {
-      recommendedAction = recommendedAction === 'HOLD' ? 'MONITOR' : recommendedAction;
-      reasoning = reasoning || 'Player approaching end of peak years - monitor closely';
-    } else if (age <= 23 && trend === 'RISING') {
-      recommendedAction = 'HOLD';
-      reasoning = 'Young player with rising value - hold for maximum return';
-    }
-  }
-
-  // Trend considerations
-  if (trend === 'RISING' && recommendedAction === 'HOLD') {
-    reasoning = 'Value trending upward - hold for better return';
-  } else if (trend === 'DECLINING' && recommendedAction !== 'SELL') {
-    recommendedAction = 'MONITOR';
-    reasoning = reasoning || 'Value declining - monitor and consider options';
-  }
-
-  // Default reasoning
-  if (!reasoning) {
-    reasoning = 'Stable value and situation - no immediate action required';
-  }
-
-  // Calculate prices
-  const optimalSellingPrice = Math.round(currentValue * (trend === 'RISING' ? 1.2 : 1.1));
-  const minimumAcceptablePrice = Math.round(currentValue * 0.85);
-
-  return {
-    recommendedAction,
-    optimalSellingPrice,
-    minimumAcceptablePrice,
-    reasoning,
+function getPositionDemand(sport: Sport, position: string): 'HIGH' | 'MEDIUM' | 'LOW' {
+  // High-demand positions by sport
+  const highDemand: Record<Sport, string[]> = {
+    FOOTBALL: ['STRIKER', 'ATTACKING_MIDFIELDER', 'CENTRE_BACK'],
+    RUGBY: ['FLY_HALF', 'SCRUM_HALF', 'NUMBER_EIGHT'],
+    CRICKET: ['ALL_ROUNDER', 'FAST_BOWLER'],
+    BASKETBALL: ['POINT_GUARD', 'SMALL_FORWARD'],
+    AMERICAN_FOOTBALL: ['QUARTERBACK', 'EDGE_RUSHER'],
+    NETBALL: ['GOAL_SHOOTER', 'CENTRE'],
+    HOCKEY: ['FORWARD_HOCKEY', 'MIDFIELDER_HOCKEY'],
+    LACROSSE: ['ATTACKER_LACROSSE', 'MIDFIELDER_LACROSSE'],
+    AUSTRALIAN_RULES: ['MIDFIELDER_AFL', 'KEY_FORWARD'],
+    GAELIC_FOOTBALL: ['MIDFIELDER_GAA', 'CENTRE_FORWARD_GAA'],
+    FUTSAL: ['PIVOT', 'WINGER_FUTSAL'],
+    BEACH_FOOTBALL: ['FORWARD_BEACH', 'PIVOT_BEACH'],
   };
+  
+  if (highDemand[sport]?.includes(position)) return 'HIGH';
+  return 'MEDIUM';
+}
+
+function getCurrencyRate(currency: Currency): number {
+  const rates: Record<Currency, number> = {
+    GBP: 1.00,
+    EUR: 1.17,
+    USD: 1.27,
+    AUD: 1.93,
+    CAD: 1.72,
+    CHF: 1.11,
+    JPY: 189.5,
+  };
+  return rates[currency] ?? 1.0;
 }
 
 /**
- * Update player's market value in database
+ * Format value with currency symbol
  */
-async function updatePlayerMarketValue(playerId: string, value: number): Promise<void> {
-  try {
-    await prisma.player.update({
-      where: { id: playerId },
-      data: { marketValue: value },
-    });
-  } catch (error) {
-    logger.error({ playerId, error }, 'Failed to update player market value');
+export function formatMarketValue(value: number, currency: Currency): string {
+  const symbols: Record<Currency, string> = {
+    GBP: '£',
+    EUR: '€',
+    USD: '$',
+    AUD: 'A$',
+    CAD: 'C$',
+    CHF: 'CHF ',
+    JPY: '¥',
+  };
+  
+  const symbol = symbols[currency] ?? '£';
+  
+  if (value >= 1000000) {
+    return `${symbol}${(value / 1000000).toFixed(1)}M`;
+  } else if (value >= 1000) {
+    return `${symbol}${(value / 1000).toFixed(0)}K`;
   }
+  return `${symbol}${value.toLocaleString()}`;
 }
 
-// ============================================================================
-// BATCH OPERATIONS
-// ============================================================================
+// =============================================================================
+// BATCH CALCULATIONS
+// =============================================================================
 
 /**
- * Calculate market values for all players in a team
+ * Calculate market values for entire team
  */
 export async function calculateTeamMarketValues(
-  teamId: string
-): Promise<MarketValueAssessment[]> {
-  const teamPlayers = await prisma.teamPlayer.findMany({
-    where: { teamId, isActive: true },
-    select: { playerId: true },
-  });
-
-  const assessments: MarketValueAssessment[] = [];
-
-  for (const tp of teamPlayers) {
-    try {
-      const assessment = await calculatePlayerMarketValue(tp.playerId);
-      assessments.push(assessment);
-    } catch (error) {
-      logger.error({ playerId: tp.playerId, error }, 'Failed to calculate market value');
-    }
-  }
-
-  // Sort by value descending
-  return assessments.sort((a, b) => b.valuation.currentValue - a.valuation.currentValue);
-}
-
-/**
- * Get team total market value
- */
-export async function calculateTeamTotalValue(teamId: string): Promise<{
+  teamId: string,
+  players: Parameters<typeof calculatePlayerMarketValue>[1][],
+  currency: Currency = 'GBP'
+): Promise<{
+  teamId: string;
+  assessments: MarketValueAssessment[];
   totalValue: number;
-  playerCount: number;
-  avgValue: number;
-  highestValue: { playerId: string; name: string; value: number } | null;
+  averageValue: number;
+  mostValuable: { playerId: string; name: string; value: number };
 }> {
-  const assessments = await calculateTeamMarketValues(teamId);
-
-  const totalValue = assessments.reduce((sum, a) => sum + a.valuation.currentValue, 0);
-  const avgValue = assessments.length > 0 ? Math.round(totalValue / assessments.length) : 0;
+  const assessments: MarketValueAssessment[] = [];
   
-  const highest = assessments[0];
-
+  for (const player of players) {
+    const assessment = await calculatePlayerMarketValue(player.name, player, currency);
+    assessments.push(assessment);
+  }
+  
+  const totalValue = assessments.reduce((sum, a) => sum + a.estimatedValue, 0);
+  const averageValue = totalValue / assessments.length;
+  
+  const mostValuable = assessments.reduce((max, a) => 
+    a.estimatedValue > max.value 
+      ? { playerId: a.playerId, name: a.playerName, value: a.estimatedValue }
+      : max,
+    { playerId: '', name: '', value: 0 }
+  );
+  
   return {
+    teamId,
+    assessments,
     totalValue,
-    playerCount: assessments.length,
-    avgValue,
-    highestValue: highest ? {
-      playerId: highest.playerId,
-      name: highest.playerName,
-      value: highest.valuation.currentValue,
-    } : null,
+    averageValue: Math.round(averageValue),
+    mostValuable,
   };
 }
 
-// ============================================================================
+/**
+ * Calculate total team market value
+ */
+export async function calculateTeamTotalValue(
+  teamId: string,
+  players: Parameters<typeof calculatePlayerMarketValue>[1][],
+  currency: Currency = 'GBP'
+): Promise<{
+  teamId: string;
+  totalValue: number;
+  currency: Currency;
+  playerCount: number;
+  breakdown: {
+    position: string;
+    totalValue: number;
+    playerCount: number;
+  }[];
+}> {
+  const result = await calculateTeamMarketValues(teamId, players, currency);
+  
+  // Calculate breakdown by position
+  const positionMap = new Map<string, { total: number; count: number }>();
+  for (const assessment of result.assessments) {
+    const existing = positionMap.get(assessment.position) || { total: 0, count: 0 };
+    existing.total += assessment.estimatedValue;
+    existing.count += 1;
+    positionMap.set(assessment.position, existing);
+  }
+  
+  const breakdown = Array.from(positionMap.entries()).map(([position, data]) => ({
+    position,
+    totalValue: data.total,
+    playerCount: data.count,
+  })).sort((a, b) => b.totalValue - a.totalValue);
+  
+  return {
+    teamId,
+    totalValue: result.totalValue,
+    currency,
+    playerCount: result.assessments.length,
+    breakdown,
+  };
+}
+
+// =============================================================================
 // EXPORTS
-// ============================================================================
+// =============================================================================
 
 export {
+  calculatePlayerMarketValue,
+  calculateTeamMarketValues,
+  calculateTeamTotalValue,
+  formatMarketValue,
   BASE_VALUES_BY_SPORT,
   PERFORMANCE_TIERS,
-  MODEL_VERSION as MARKET_VALUE_MODEL_VERSION,
+  MARKET_VALUE_MODEL_VERSION,
 };

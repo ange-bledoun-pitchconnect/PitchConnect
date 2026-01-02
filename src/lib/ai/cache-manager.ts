@@ -1,10 +1,11 @@
-// ============================================================================
-// src/lib/ai/cache-manager.ts
-// 🗃️ PitchConnect Enterprise AI - Prediction Cache Manager
-// ============================================================================
-// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
-// STRATEGY: Pre-computed predictions with time-based invalidation
-// ============================================================================
+/**
+ * ============================================================================
+ * 🗃️ PITCHCONNECT AI - PREDICTION CACHE MANAGER v7.10.1
+ * ============================================================================
+ * Enterprise caching for AI predictions with TTL, LRU eviction, and Redis-ready
+ * Supports pre-computed predictions with background refresh
+ * ============================================================================
+ */
 
 import type {
   CachedPrediction,
@@ -13,25 +14,36 @@ import type {
   PlayerPrediction,
   TeamPrediction,
   TeamRecommendation,
+  Sport,
+  PredictionType,
 } from './types';
-import type { PredictionType, Sport } from '@prisma/client';
 
-// ============================================================================
-// DEFAULT CONFIGURATION
-// ============================================================================
+// =============================================================================
+// CONFIGURATION
+// =============================================================================
 
-const DEFAULT_CACHE_CONFIG: CacheConfig = {
+export const DEFAULT_CACHE_CONFIG: CacheConfig = {
   matchPredictionTTL: 60 * 60 * 4,      // 4 hours
   playerPredictionTTL: 60 * 60 * 6,     // 6 hours
   teamPredictionTTL: 60 * 60 * 12,      // 12 hours
   recommendationTTL: 60 * 60 * 24,      // 24 hours
-  maxCacheSize: 10000,                  // entries
+  maxCacheSize: 10000,                  // entries per store
   cleanupInterval: 60 * 60,             // 1 hour
 };
 
-// ============================================================================
-// IN-MEMORY CACHE STORE (Production should use Redis)
-// ============================================================================
+// Dynamic TTL based on proximity to match
+export const DYNAMIC_MATCH_TTL = {
+  DAYS_BEFORE_7: 60 * 60 * 24,          // 24 hours
+  DAYS_BEFORE_3: 60 * 60 * 12,          // 12 hours
+  DAYS_BEFORE_1: 60 * 60 * 4,           // 4 hours
+  HOURS_BEFORE_6: 60 * 60 * 1,          // 1 hour
+  HOURS_BEFORE_1: 60 * 15,              // 15 minutes
+  LIVE: 60 * 5,                         // 5 minutes (live updates)
+};
+
+// =============================================================================
+// CACHE STORE (In-Memory - Production should use Redis)
+// =============================================================================
 
 interface CacheStore {
   matches: Map<string, CachedPrediction<MatchPrediction>>;
@@ -47,12 +59,16 @@ const cacheStore: CacheStore = {
   recommendations: new Map(),
 };
 
-// Track cache stats
+// =============================================================================
+// CACHE STATISTICS
+// =============================================================================
+
 interface CacheStats {
   hits: number;
   misses: number;
   evictions: number;
   lastCleanup: Date;
+  totalSize: number;
 }
 
 const cacheStats: CacheStats = {
@@ -60,11 +76,12 @@ const cacheStats: CacheStats = {
   misses: 0,
   evictions: 0,
   lastCleanup: new Date(),
+  totalSize: 0,
 };
 
-// ============================================================================
+// =============================================================================
 // CACHE KEY GENERATORS
-// ============================================================================
+// =============================================================================
 
 /**
  * Generate cache key for match prediction
@@ -109,9 +126,29 @@ export function generateRecommendationCacheKey(
   return `rec:${teamId}:${category}${ctxKey}`;
 }
 
-// ============================================================================
-// CACHE OPERATIONS
-// ============================================================================
+/**
+ * Parse cache key to extract components
+ */
+export function parseCacheKey(cacheKey: string): {
+  type: 'match' | 'player' | 'team' | 'rec';
+  sport?: Sport;
+  entityId: string;
+  extra?: string;
+} | null {
+  const parts = cacheKey.split(':');
+  if (parts.length < 3) return null;
+  
+  return {
+    type: parts[0] as 'match' | 'player' | 'team' | 'rec',
+    sport: parts[1] as Sport,
+    entityId: parts[2],
+    extra: parts[3],
+  };
+}
+
+// =============================================================================
+// MATCH PREDICTION CACHE
+// =============================================================================
 
 /**
  * Get cached match prediction
@@ -133,36 +170,63 @@ export function getCachedMatchPrediction(
     return null;
   }
   
-  // Update hit count
+  // Update access tracking
   cached.hitCount++;
+  cached.lastAccessed = new Date();
   cacheStats.hits++;
   
   return cached;
 }
 
 /**
- * Set cached match prediction
+ * Set cached match prediction with dynamic TTL
  */
 export function setCachedMatchPrediction(
   cacheKey: string,
   prediction: MatchPrediction,
-  ttlSeconds: number = DEFAULT_CACHE_CONFIG.matchPredictionTTL
+  matchDateTime?: Date,
+  ttlSeconds?: number
 ): void {
+  // Calculate dynamic TTL based on match proximity
+  let ttl = ttlSeconds ?? DEFAULT_CACHE_CONFIG.matchPredictionTTL;
+  
+  if (matchDateTime) {
+    const hoursUntilMatch = (matchDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
+    
+    if (hoursUntilMatch <= 0) {
+      ttl = DYNAMIC_MATCH_TTL.LIVE;
+    } else if (hoursUntilMatch <= 1) {
+      ttl = DYNAMIC_MATCH_TTL.HOURS_BEFORE_1;
+    } else if (hoursUntilMatch <= 6) {
+      ttl = DYNAMIC_MATCH_TTL.HOURS_BEFORE_6;
+    } else if (hoursUntilMatch <= 24) {
+      ttl = DYNAMIC_MATCH_TTL.DAYS_BEFORE_1;
+    } else if (hoursUntilMatch <= 72) {
+      ttl = DYNAMIC_MATCH_TTL.DAYS_BEFORE_3;
+    }
+  }
+  
   const cached: CachedPrediction<MatchPrediction> = {
     data: prediction,
     cachedAt: new Date(),
-    expiresAt: new Date(Date.now() + ttlSeconds * 1000),
+    expiresAt: new Date(Date.now() + ttl * 1000),
     cacheKey,
     hitCount: 0,
+    lastAccessed: new Date(),
   };
   
-  // Enforce max cache size
+  // Enforce max cache size with LRU eviction
   if (cacheStore.matches.size >= DEFAULT_CACHE_CONFIG.maxCacheSize) {
-    evictOldestEntries(cacheStore.matches);
+    evictLRUEntries(cacheStore.matches);
   }
   
   cacheStore.matches.set(cacheKey, cached);
+  updateCacheSize();
 }
+
+// =============================================================================
+// PLAYER PREDICTION CACHE
+// =============================================================================
 
 /**
  * Get cached player prediction
@@ -184,6 +248,7 @@ export function getCachedPlayerPrediction(
   }
   
   cached.hitCount++;
+  cached.lastAccessed = new Date();
   cacheStats.hits++;
   
   return cached;
@@ -203,14 +268,20 @@ export function setCachedPlayerPrediction(
     expiresAt: new Date(Date.now() + ttlSeconds * 1000),
     cacheKey,
     hitCount: 0,
+    lastAccessed: new Date(),
   };
   
   if (cacheStore.players.size >= DEFAULT_CACHE_CONFIG.maxCacheSize) {
-    evictOldestEntries(cacheStore.players);
+    evictLRUEntries(cacheStore.players);
   }
   
   cacheStore.players.set(cacheKey, cached);
+  updateCacheSize();
 }
+
+// =============================================================================
+// TEAM PREDICTION CACHE
+// =============================================================================
 
 /**
  * Get cached team prediction
@@ -232,6 +303,7 @@ export function getCachedTeamPrediction(
   }
   
   cached.hitCount++;
+  cached.lastAccessed = new Date();
   cacheStats.hits++;
   
   return cached;
@@ -251,14 +323,20 @@ export function setCachedTeamPrediction(
     expiresAt: new Date(Date.now() + ttlSeconds * 1000),
     cacheKey,
     hitCount: 0,
+    lastAccessed: new Date(),
   };
   
   if (cacheStore.teams.size >= DEFAULT_CACHE_CONFIG.maxCacheSize) {
-    evictOldestEntries(cacheStore.teams);
+    evictLRUEntries(cacheStore.teams);
   }
   
   cacheStore.teams.set(cacheKey, cached);
+  updateCacheSize();
 }
+
+// =============================================================================
+// RECOMMENDATIONS CACHE
+// =============================================================================
 
 /**
  * Get cached recommendations
@@ -280,6 +358,7 @@ export function getCachedRecommendations(
   }
   
   cached.hitCount++;
+  cached.lastAccessed = new Date();
   cacheStats.hits++;
   
   return cached;
@@ -299,18 +378,20 @@ export function setCachedRecommendations(
     expiresAt: new Date(Date.now() + ttlSeconds * 1000),
     cacheKey,
     hitCount: 0,
+    lastAccessed: new Date(),
   };
   
   if (cacheStore.recommendations.size >= DEFAULT_CACHE_CONFIG.maxCacheSize) {
-    evictOldestEntries(cacheStore.recommendations);
+    evictLRUEntries(cacheStore.recommendations);
   }
   
   cacheStore.recommendations.set(cacheKey, cached);
+  updateCacheSize();
 }
 
-// ============================================================================
+// =============================================================================
 // CACHE INVALIDATION
-// ============================================================================
+// =============================================================================
 
 /**
  * Invalidate specific cache entry
@@ -339,7 +420,7 @@ export function invalidateCacheEntry(
 export function invalidateEntityCache(entityId: string): number {
   let invalidated = 0;
   
-  // Scan and remove entries containing the entity ID
+  // Scan all stores for matching entity
   for (const [key] of cacheStore.matches) {
     if (key.includes(entityId)) {
       cacheStore.matches.delete(key);
@@ -368,6 +449,39 @@ export function invalidateEntityCache(entityId: string): number {
     }
   }
   
+  updateCacheSize();
+  return invalidated;
+}
+
+/**
+ * Invalidate cache entries by sport
+ */
+export function invalidateSportCache(sport: Sport): number {
+  let invalidated = 0;
+  const sportKey = `:${sport}:`;
+  
+  for (const [key] of cacheStore.matches) {
+    if (key.includes(sportKey)) {
+      cacheStore.matches.delete(key);
+      invalidated++;
+    }
+  }
+  
+  for (const [key] of cacheStore.players) {
+    if (key.includes(sportKey)) {
+      cacheStore.players.delete(key);
+      invalidated++;
+    }
+  }
+  
+  for (const [key] of cacheStore.teams) {
+    if (key.includes(sportKey)) {
+      cacheStore.teams.delete(key);
+      invalidated++;
+    }
+  }
+  
+  updateCacheSize();
   return invalidated;
 }
 
@@ -380,23 +494,31 @@ export function clearAllCache(): void {
   cacheStore.teams.clear();
   cacheStore.recommendations.clear();
   
-  // Reset stats
   cacheStats.hits = 0;
   cacheStats.misses = 0;
   cacheStats.evictions = 0;
+  cacheStats.totalSize = 0;
 }
 
+// =============================================================================
+// CACHE EVICTION & CLEANUP
+// =============================================================================
+
 /**
- * Evict oldest entries from a cache map
+ * Evict entries using LRU (Least Recently Used) strategy
  */
-function evictOldestEntries<T>(
+function evictLRUEntries<T>(
   map: Map<string, CachedPrediction<T>>,
   count: number = 100
 ): void {
   const entries = Array.from(map.entries());
   
-  // Sort by cachedAt (oldest first)
-  entries.sort((a, b) => a[1].cachedAt.getTime() - b[1].cachedAt.getTime());
+  // Sort by lastAccessed (oldest first)
+  entries.sort((a, b) => {
+    const aTime = a[1].lastAccessed?.getTime() ?? a[1].cachedAt.getTime();
+    const bTime = b[1].lastAccessed?.getTime() ?? b[1].cachedAt.getTime();
+    return aTime - bTime;
+  });
   
   // Remove oldest entries
   for (let i = 0; i < Math.min(count, entries.length); i++) {
@@ -406,7 +528,7 @@ function evictOldestEntries<T>(
 }
 
 /**
- * Run cache cleanup (remove expired entries)
+ * Run cache cleanup - remove expired entries
  */
 export function runCacheCleanup(): number {
   const now = new Date();
@@ -441,16 +563,28 @@ export function runCacheCleanup(): number {
   }
   
   cacheStats.lastCleanup = now;
+  updateCacheSize();
   
   return cleaned;
 }
 
-// ============================================================================
-// CACHE STATISTICS
-// ============================================================================
+/**
+ * Update total cache size
+ */
+function updateCacheSize(): void {
+  cacheStats.totalSize =
+    cacheStore.matches.size +
+    cacheStore.players.size +
+    cacheStore.teams.size +
+    cacheStore.recommendations.size;
+}
+
+// =============================================================================
+// CACHE STATISTICS & MONITORING
+// =============================================================================
 
 /**
- * Get cache statistics
+ * Get comprehensive cache statistics
  */
 export function getCacheStats(): {
   stats: CacheStats;
@@ -462,6 +596,7 @@ export function getCacheStats(): {
     total: number;
   };
   hitRate: number;
+  config: CacheConfig;
 } {
   const total = cacheStats.hits + cacheStats.misses;
   const hitRate = total > 0 ? (cacheStats.hits / total) * 100 : 0;
@@ -473,33 +608,80 @@ export function getCacheStats(): {
       players: cacheStore.players.size,
       teams: cacheStore.teams.size,
       recommendations: cacheStore.recommendations.size,
-      total: cacheStore.matches.size + cacheStore.players.size + 
-             cacheStore.teams.size + cacheStore.recommendations.size,
+      total: cacheStats.totalSize,
     },
     hitRate: Math.round(hitRate * 100) / 100,
+    config: { ...DEFAULT_CACHE_CONFIG },
   };
 }
 
 /**
- * Get cache configuration
+ * Get cache health status
  */
-export function getCacheConfig(): CacheConfig {
-  return { ...DEFAULT_CACHE_CONFIG };
+export function getCacheHealth(): {
+  status: 'HEALTHY' | 'WARNING' | 'CRITICAL';
+  issues: string[];
+  recommendations: string[];
+} {
+  const issues: string[] = [];
+  const recommendations: string[] = [];
+  
+  const stats = getCacheStats();
+  
+  // Check hit rate
+  if (stats.hitRate < 50 && (cacheStats.hits + cacheStats.misses) > 100) {
+    issues.push(`Low cache hit rate: ${stats.hitRate}%`);
+    recommendations.push('Consider pre-warming cache for popular entities');
+  }
+  
+  // Check eviction rate
+  const evictionRate = cacheStats.evictions / Math.max(stats.sizes.total, 1);
+  if (evictionRate > 0.2) {
+    issues.push('High eviction rate - cache may be undersized');
+    recommendations.push('Consider increasing maxCacheSize');
+  }
+  
+  // Check store balance
+  const maxStore = Math.max(
+    stats.sizes.matches,
+    stats.sizes.players,
+    stats.sizes.teams,
+    stats.sizes.recommendations
+  );
+  const minStore = Math.min(
+    stats.sizes.matches,
+    stats.sizes.players,
+    stats.sizes.teams,
+    stats.sizes.recommendations
+  );
+  if (maxStore > minStore * 10 && minStore > 0) {
+    issues.push('Unbalanced cache usage across stores');
+  }
+  
+  // Determine status
+  let status: 'HEALTHY' | 'WARNING' | 'CRITICAL' = 'HEALTHY';
+  if (issues.length > 2 || stats.hitRate < 30) {
+    status = 'CRITICAL';
+  } else if (issues.length > 0) {
+    status = 'WARNING';
+  }
+  
+  return { status, issues, recommendations };
 }
 
-// ============================================================================
-// BACKGROUND REFRESH (for pre-computed caching)
-// ============================================================================
+// =============================================================================
+// BACKGROUND REFRESH SUPPORT
+// =============================================================================
 
 /**
- * Schedule prediction refresh before expiry
- * Call this from a background job/cron
+ * Get entries expiring soon (for background refresh)
  */
 export function getExpiringSoonEntries(
   type: 'match' | 'player' | 'team' | 'recommendation',
   minutesBeforeExpiry: number = 30
 ): string[] {
   const threshold = new Date(Date.now() + minutesBeforeExpiry * 60 * 1000);
+  const now = new Date();
   const expiring: string[] = [];
   
   let store: Map<string, CachedPrediction<any>>;
@@ -522,7 +704,7 @@ export function getExpiringSoonEntries(
   }
   
   for (const [key, cached] of store) {
-    if (cached.expiresAt <= threshold && cached.expiresAt > new Date()) {
+    if (cached.expiresAt <= threshold && cached.expiresAt > now) {
       expiring.push(key);
     }
   }
@@ -530,11 +712,81 @@ export function getExpiringSoonEntries(
   return expiring;
 }
 
-// ============================================================================
+/**
+ * Get most frequently accessed entries (for prioritized refresh)
+ */
+export function getHotEntries(
+  type: 'match' | 'player' | 'team' | 'recommendation',
+  limit: number = 50
+): { key: string; hits: number }[] {
+  let store: Map<string, CachedPrediction<any>>;
+  
+  switch (type) {
+    case 'match':
+      store = cacheStore.matches;
+      break;
+    case 'player':
+      store = cacheStore.players;
+      break;
+    case 'team':
+      store = cacheStore.teams;
+      break;
+    case 'recommendation':
+      store = cacheStore.recommendations;
+      break;
+    default:
+      return [];
+  }
+  
+  const entries = Array.from(store.entries())
+    .map(([key, cached]) => ({ key, hits: cached.hitCount }))
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, limit);
+  
+  return entries;
+}
+
+// =============================================================================
+// CACHE WARMING
+// =============================================================================
+
+/**
+ * Pre-warm cache with predictions for upcoming matches
+ */
+export async function warmMatchCache(
+  matchIds: string[],
+  sport: Sport,
+  generatePrediction: (matchId: string, sport: Sport) => Promise<MatchPrediction>
+): Promise<{ warmed: number; failed: number }> {
+  let warmed = 0;
+  let failed = 0;
+  
+  for (const matchId of matchIds) {
+    const cacheKey = generateMatchCacheKey(matchId, sport);
+    
+    // Skip if already cached
+    if (getCachedMatchPrediction(cacheKey)) {
+      continue;
+    }
+    
+    try {
+      const prediction = await generatePrediction(matchId, sport);
+      setCachedMatchPrediction(cacheKey, prediction);
+      warmed++;
+    } catch {
+      failed++;
+    }
+  }
+  
+  return { warmed, failed };
+}
+
+// =============================================================================
 // EXPORTS
-// ============================================================================
+// =============================================================================
 
 export {
   DEFAULT_CACHE_CONFIG,
+  DYNAMIC_MATCH_TTL,
   cacheStats,
 };

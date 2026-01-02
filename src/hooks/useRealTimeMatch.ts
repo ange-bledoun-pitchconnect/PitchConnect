@@ -1,29 +1,111 @@
-// ============================================================================
-// 🔄 USE REAL-TIME MATCH HOOK v7.4.0
-// ============================================================================
-// WebSocket-based live match updates with automatic polling fallback
-// ============================================================================
+/**
+ * ============================================================================
+ * 🔄 USE REAL-TIME MATCH HOOK v7.10.1 - MULTI-SPORT LIVE UPDATES
+ * ============================================================================
+ * 
+ * WebSocket-based live match updates with sport-aware period handling.
+ * Supports all 12 sports with automatic polling fallback.
+ * 
+ * @version 7.10.1
+ * @path src/hooks/useRealTimeMatch.ts
+ * ============================================================================
+ */
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { 
-  Match, 
-  MatchEvent, 
-  LiveMatchState, 
-  LiveMatchStats, 
-  TeamStats,
-  PlayerMatchPerformance,
-} from '@/types/match';
-import type { MatchStatus } from '@prisma/client';
-import { LIVE_STATUSES } from '@/types/match';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { z } from 'zod';
+import { Sport, MatchStatus, getSportConfig, SportConfig } from './useSportConfig';
 
-// ============================================================================
+// =============================================================================
+// ZOD SCHEMAS
+// =============================================================================
+
+const MatchEventSchema = z.object({
+  id: z.string(),
+  matchId: z.string(),
+  eventType: z.string(),
+  minute: z.number().optional(),
+  second: z.number().optional(),
+  period: z.number().optional(),
+  teamSide: z.enum(['home', 'away']),
+  playerId: z.string().optional(),
+  player: z.object({
+    id: z.string(),
+    firstName: z.string(),
+    lastName: z.string(),
+    number: z.number().optional(),
+  }).optional(),
+  assistPlayerId: z.string().optional(),
+  assistPlayer: z.object({
+    id: z.string(),
+    firstName: z.string(),
+    lastName: z.string(),
+  }).optional(),
+  description: z.string().optional(),
+  metadata: z.record(z.unknown()).optional(),
+  createdAt: z.string(),
+});
+
+export type MatchEvent = z.infer<typeof MatchEventSchema>;
+
+const TeamStatsSchema = z.object({
+  possession: z.number().default(0),
+  shots: z.number().default(0),
+  shotsOnTarget: z.number().default(0),
+  corners: z.number().default(0),
+  fouls: z.number().default(0),
+  yellowCards: z.number().default(0),
+  redCards: z.number().default(0),
+  offsides: z.number().default(0),
+  passes: z.number().default(0),
+  passAccuracy: z.number().default(0),
+});
+
+export type TeamStats = z.infer<typeof TeamStatsSchema>;
+
+// =============================================================================
 // TYPES
-// ============================================================================
+// =============================================================================
+
+export interface Match {
+  id: string;
+  sport: Sport;
+  status: MatchStatus;
+  homeClubId: string;
+  awayClubId: string;
+  homeClubName: string;
+  awayClubName: string;
+  homeScore: number;
+  awayScore: number;
+  homeScoreDetail?: Record<string, number>; // For AFL: { goals: 5, behinds: 3 }
+  awayScoreDetail?: Record<string, number>;
+  kickOffTime?: string;
+  venue?: string;
+  currentPeriod: number;
+  currentMinute: number;
+  injuryTime: number;
+  attendance?: number;
+}
+
+export interface LiveMatchStats {
+  home: TeamStats;
+  away: TeamStats;
+}
+
+export interface PlayerMatchPerformance {
+  playerId: string;
+  playerName: string;
+  position: string;
+  minutesPlayed: number;
+  rating: number;
+  events: MatchEvent[];
+  stats: Record<string, number>;
+}
 
 export interface UseRealTimeMatchOptions {
   matchId: string;
+  sport?: Sport;
   enabled?: boolean;
   pollingInterval?: number;
   enableWebSocket?: boolean;
@@ -34,18 +116,18 @@ export interface UseRealTimeMatchOptions {
 }
 
 export interface UseRealTimeMatchReturn {
-  // Match data
   match: Match | null;
   events: MatchEvent[];
   performances: PlayerMatchPerformance[];
   stats: LiveMatchStats;
+  sportConfig: SportConfig;
   
   // Live state
-  liveState: LiveMatchState | null;
   isLive: boolean;
   isFinished: boolean;
   currentMinute: number;
-  currentPeriod: string;
+  currentPeriod: number;
+  periodName: string;
   injuryTime: number;
   
   // Connection state
@@ -54,7 +136,7 @@ export interface UseRealTimeMatchReturn {
   
   // Actions
   refresh: () => Promise<void>;
-  addEvent: (event: MatchEvent) => void;
+  addEvent: (event: Partial<MatchEvent>) => void;
   updateScore: (homeScore: number, awayScore: number) => void;
   updateStatus: (status: MatchStatus) => void;
   
@@ -63,12 +145,12 @@ export interface UseRealTimeMatchReturn {
   error: Error | null;
 }
 
-// ============================================================================
+// =============================================================================
 // SOCKET MANAGER (Singleton)
-// ============================================================================
+// =============================================================================
 
 interface SocketMessage {
-  type: 'event' | 'score' | 'status' | 'stats' | 'sync';
+  type: 'event' | 'score' | 'status' | 'stats' | 'sync' | 'period';
   matchId: string;
   data: unknown;
   timestamp: string;
@@ -82,19 +164,19 @@ class SocketManager {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private isConnecting = false;
-  
+
   static getInstance(): SocketManager {
     if (!SocketManager.instance) {
       SocketManager.instance = new SocketManager();
     }
     return SocketManager.instance;
   }
-  
+
   connect(url: string): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) {
       return Promise.resolve();
     }
-    
+
     if (this.isConnecting) {
       return new Promise((resolve) => {
         const checkConnection = setInterval(() => {
@@ -105,29 +187,29 @@ class SocketManager {
         }, 100);
       });
     }
-    
+
     this.isConnecting = true;
-    
+
     return new Promise((resolve, reject) => {
       try {
         this.socket = new WebSocket(url);
-        
+
         this.socket.onopen = () => {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           resolve();
         };
-        
+
         this.socket.onclose = () => {
           this.isConnecting = false;
           this.handleReconnect(url);
         };
-        
+
         this.socket.onerror = (error) => {
           this.isConnecting = false;
           reject(error);
         };
-        
+
         this.socket.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data) as SocketMessage;
@@ -142,36 +224,31 @@ class SocketManager {
       }
     });
   }
-  
+
   private handleReconnect(url: string): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       return;
     }
-    
+
     this.reconnectAttempts++;
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    
+
     setTimeout(() => {
       this.connect(url).catch(() => {});
     }, delay);
   }
-  
+
   subscribe(matchId: string, callback: (message: SocketMessage) => void): () => void {
     if (!this.listeners.has(matchId)) {
       this.listeners.set(matchId, new Set());
     }
-    
+
     this.listeners.get(matchId)!.add(callback);
-    
-    // Send subscription message
+
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({
-        type: 'subscribe',
-        matchId,
-      }));
+      this.socket.send(JSON.stringify({ type: 'subscribe', matchId }));
     }
-    
-    // Return unsubscribe function
+
     return () => {
       const callbacks = this.listeners.get(matchId);
       if (callbacks) {
@@ -179,27 +256,24 @@ class SocketManager {
         if (callbacks.size === 0) {
           this.listeners.delete(matchId);
           if (this.socket?.readyState === WebSocket.OPEN) {
-            this.socket.send(JSON.stringify({
-              type: 'unsubscribe',
-              matchId,
-            }));
+            this.socket.send(JSON.stringify({ type: 'unsubscribe', matchId }));
           }
         }
       }
     };
   }
-  
+
   private notifyListeners(matchId: string, message: SocketMessage): void {
     const callbacks = this.listeners.get(matchId);
     if (callbacks) {
       callbacks.forEach((callback) => callback(message));
     }
   }
-  
+
   isConnected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN;
   }
-  
+
   disconnect(): void {
     if (this.socket) {
       this.socket.close();
@@ -213,9 +287,9 @@ export function getSocketManager(): SocketManager {
   return SocketManager.getInstance();
 }
 
-// ============================================================================
+// =============================================================================
 // HELPER FUNCTIONS
-// ============================================================================
+// =============================================================================
 
 function createEmptyStats(): LiveMatchStats {
   const emptyTeamStats: TeamStats = {
@@ -230,75 +304,73 @@ function createEmptyStats(): LiveMatchStats {
     passes: 0,
     passAccuracy: 0,
   };
-  
+
   return {
     home: { ...emptyTeamStats },
     away: { ...emptyTeamStats },
   };
 }
 
-function calculateMinute(match: Match, now: Date): number {
-  if (!match.kickOffTime) return 0;
-  
+function calculateMinute(match: Match, sportConfig: SportConfig, now: Date): number {
+  if (!match.kickOffTime) return match.currentMinute || 0;
+
   const kickOff = new Date(match.kickOffTime);
   const elapsed = Math.floor((now.getTime() - kickOff.getTime()) / 60000);
-  
-  // Adjust for halftime (15 min break)
+  const periodDuration = sportConfig.periods.durationMinutes;
+  const periodCount = sportConfig.periods.count;
+
+  // Handle different period structures
   if (match.status === 'HALFTIME') {
-    return 45;
+    return periodDuration; // End of first period
   }
-  
+
   if (match.status === 'SECOND_HALF') {
-    return Math.min(90, 45 + Math.max(0, elapsed - 60));
+    // For 2-period sports
+    return Math.min(periodDuration * 2, periodDuration + Math.max(0, elapsed - periodDuration - 15));
   }
-  
-  if (match.status === 'EXTRA_TIME_FIRST') {
-    return Math.min(105, 90 + Math.max(0, elapsed - 105));
-  }
-  
-  if (match.status === 'EXTRA_TIME_SECOND') {
-    return Math.min(120, 105 + Math.max(0, elapsed - 120));
-  }
-  
+
   if (match.status === 'LIVE') {
-    return Math.min(45, Math.max(0, elapsed));
+    return Math.min(periodDuration, Math.max(0, elapsed));
   }
-  
-  return Math.min(90, Math.max(0, elapsed));
+
+  return match.currentMinute || 0;
 }
 
-function getPeriodName(status: MatchStatus): string {
+function getPeriodName(status: MatchStatus, period: number, sportConfig: SportConfig): string {
+  const { name, count } = sportConfig.periods;
+
   switch (status) {
     case 'WARMUP':
       return 'Warm Up';
-    case 'LIVE':
-      return '1st Half';
     case 'HALFTIME':
-      return 'Half Time';
-    case 'SECOND_HALF':
-      return '2nd Half';
-    case 'EXTRA_TIME_FIRST':
-      return 'Extra Time 1st';
-    case 'EXTRA_TIME_SECOND':
-      return 'Extra Time 2nd';
-    case 'PENALTIES':
-      return 'Penalties';
+      return count === 2 ? 'Half Time' : `${name} Break`;
     case 'FINISHED':
       return 'Full Time';
+    case 'LIVE':
+    case 'SECOND_HALF':
+    case 'EXTRA_TIME_FIRST':
+    case 'EXTRA_TIME_SECOND':
+      if (count === 2) {
+        return status === 'LIVE' ? '1st Half' : status === 'SECOND_HALF' ? '2nd Half' : 'Extra Time';
+      } else {
+        const suffix = ['st', 'nd', 'rd', 'th'][Math.min(period - 1, 3)];
+        return `${period}${suffix} ${name}`;
+      }
+    case 'PENALTIES':
+      return sportConfig.periods.shootoutName || 'Penalties';
     default:
       return status;
   }
 }
 
-// ============================================================================
+// =============================================================================
 // MAIN HOOK
-// ============================================================================
+// =============================================================================
 
-export function useRealTimeMatch(
-  options: UseRealTimeMatchOptions
-): UseRealTimeMatchReturn {
+export function useRealTimeMatch(options: UseRealTimeMatchOptions): UseRealTimeMatchReturn {
   const {
     matchId,
+    sport = 'FOOTBALL',
     enabled = true,
     pollingInterval = 30000,
     enableWebSocket = true,
@@ -307,7 +379,7 @@ export function useRealTimeMatch(
     onScoreChange,
     onError,
   } = options;
-  
+
   // State
   const [match, setMatch] = useState<Match | null>(null);
   const [events, setEvents] = useState<MatchEvent[]>([]);
@@ -318,146 +390,110 @@ export function useRealTimeMatch(
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [currentMinute, setCurrentMinute] = useState(0);
-  
+
   // Refs
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const minuteRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout>();
+  const minuteRef = useRef<NodeJS.Timeout>();
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  
-  // Computed values
-  const isLive = match ? LIVE_STATUSES.includes(match.status) : false;
-  const isFinished = match?.status === 'FINISHED';
-  const currentPeriod = match ? getPeriodName(match.status) : '';
-  const injuryTime = match?.injuryTimeFirst || match?.injuryTimeSecond || 0;
-  
-  // Live state
-  const liveState: LiveMatchState | null = match ? {
-    matchId: match.id,
-    status: match.status,
-    homeScore: match.homeScore || 0,
-    awayScore: match.awayScore || 0,
-    minute: currentMinute,
-    period: currentPeriod,
-    injuryTime,
-    lastEvent: events[0] || null,
-    recentEvents: events.slice(0, 5),
-    stats,
-  } : null;
-  
+
+  // Sport config
+  const sportConfig = useMemo(() => getSportConfig(sport), [sport]);
+
+  // Derived state
+  const isLive = useMemo(() => {
+    return sportConfig.liveStatuses.includes(match?.status as MatchStatus);
+  }, [match?.status, sportConfig]);
+
+  const isFinished = useMemo(() => {
+    return sportConfig.finishedStatuses.includes(match?.status as MatchStatus);
+  }, [match?.status, sportConfig]);
+
+  const currentPeriod = match?.currentPeriod || 1;
+  const injuryTime = match?.injuryTime || 0;
+
+  const periodName = useMemo(() => {
+    return getPeriodName(match?.status as MatchStatus, currentPeriod, sportConfig);
+  }, [match?.status, currentPeriod, sportConfig]);
+
   // Fetch match data
-  const fetchMatch = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (): Promise<void> => {
     try {
+      setIsLoading(true);
       const response = await fetch(`/api/matches/${matchId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch match');
-      }
+      if (!response.ok) throw new Error('Failed to fetch match');
       const data = await response.json();
+
       setMatch(data.match);
-      setEvents(data.match.events || []);
-      setPerformances(data.match.playerPerformances || []);
+      setEvents(data.events || []);
+      setStats(data.stats || createEmptyStats());
+      setPerformances(data.performances || []);
       setLastUpdated(new Date());
       setError(null);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Unknown error');
       setError(error);
       onError?.(error);
+    } finally {
+      setIsLoading(false);
     }
   }, [matchId, onError]);
-  
-  // Fetch events
-  const fetchEvents = useCallback(async (): Promise<void> => {
-    try {
-      const response = await fetch(`/api/matches/${matchId}/events`);
-      if (response.ok) {
-        const data = await response.json();
-        setEvents(data.events || []);
-      }
-    } catch (err) {
-      console.error('Failed to fetch events:', err);
-    }
-  }, [matchId]);
-  
-  // Fetch stats
-  const fetchStats = useCallback(async (): Promise<void> => {
-    try {
-      const response = await fetch(`/api/matches/${matchId}/stats`);
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data.stats || createEmptyStats());
-      }
-    } catch (err) {
-      console.error('Failed to fetch stats:', err);
-    }
-  }, [matchId]);
-  
-  // Refresh all data
-  const refresh = useCallback(async (): Promise<void> => {
-    setIsLoading(true);
-    await Promise.all([fetchMatch(), fetchEvents(), fetchStats()]);
-    setIsLoading(false);
-  }, [fetchMatch, fetchEvents, fetchStats]);
-  
+
   // Add event
-  const addEvent = useCallback((event: MatchEvent): void => {
-    setEvents((prev) => [event, ...prev]);
-    onEvent?.(event);
-    
-    // Update score if scoring event
-    if (event.eventType === 'GOAL' || event.eventType === 'PENALTY_SCORED') {
+  const addEvent = useCallback((eventData: Partial<MatchEvent>): void => {
+    const newEvent: MatchEvent = {
+      id: `temp-${Date.now()}`,
+      matchId,
+      eventType: eventData.eventType || 'UNKNOWN',
+      teamSide: eventData.teamSide || 'home',
+      createdAt: new Date().toISOString(),
+      ...eventData,
+    } as MatchEvent;
+
+    setEvents((prev) => [newEvent, ...prev]);
+    onEvent?.(newEvent);
+
+    // Update score for scoring events
+    if (sportConfig.scoringEvents.includes(eventData.eventType || '')) {
+      const points = sportConfig.eventTypes.find(e => e.key === eventData.eventType)?.points || 1;
       setMatch((prev) => {
         if (!prev) return prev;
-        const isHome = event.teamSide === 'home';
-        const newHomeScore = isHome ? (prev.homeScore || 0) + 1 : prev.homeScore;
-        const newAwayScore = !isHome ? (prev.awayScore || 0) + 1 : prev.awayScore;
-        onScoreChange?.(newHomeScore || 0, newAwayScore || 0);
-        return {
-          ...prev,
-          homeScore: newHomeScore,
-          awayScore: newAwayScore,
-        };
+        const newHomeScore = eventData.teamSide === 'home' ? prev.homeScore + points : prev.homeScore;
+        const newAwayScore = eventData.teamSide === 'away' ? prev.awayScore + points : prev.awayScore;
+        onScoreChange?.(newHomeScore, newAwayScore);
+        return { ...prev, homeScore: newHomeScore, awayScore: newAwayScore };
       });
     }
-    
+
     // Update cards in stats
-    if (event.eventType === 'YELLOW_CARD' || event.eventType === 'SECOND_YELLOW') {
+    if (sportConfig.disciplinaryEvents.includes(eventData.eventType || '')) {
       setStats((prev) => {
-        const side = event.teamSide === 'home' ? 'home' : 'away';
+        const side = eventData.teamSide === 'home' ? 'home' : 'away';
+        const isYellow = eventData.eventType?.includes('YELLOW');
+        const isRed = eventData.eventType?.includes('RED') || eventData.eventType === 'SECOND_YELLOW';
         return {
           ...prev,
           [side]: {
             ...prev[side],
-            yellowCards: prev[side].yellowCards + 1,
+            yellowCards: prev[side].yellowCards + (isYellow ? 1 : 0),
+            redCards: prev[side].redCards + (isRed ? 1 : 0),
           },
         };
       });
     }
-    
-    if (event.eventType === 'RED_CARD' || event.eventType === 'SECOND_YELLOW') {
-      setStats((prev) => {
-        const side = event.teamSide === 'home' ? 'home' : 'away';
-        return {
-          ...prev,
-          [side]: {
-            ...prev[side],
-            redCards: prev[side].redCards + 1,
-          },
-        };
-      });
-    }
-  }, [onEvent, onScoreChange]);
-  
+  }, [matchId, onEvent, onScoreChange, sportConfig]);
+
   // Update score
   const updateScore = useCallback((homeScore: number, awayScore: number): void => {
     setMatch((prev) => prev ? { ...prev, homeScore, awayScore } : prev);
     onScoreChange?.(homeScore, awayScore);
   }, [onScoreChange]);
-  
+
   // Update status
   const updateStatus = useCallback((status: MatchStatus): void => {
     setMatch((prev) => prev ? { ...prev, status } : prev);
     onStatusChange?.(status);
   }, [onStatusChange]);
-  
+
   // Handle WebSocket message
   const handleSocketMessage = useCallback((message: SocketMessage): void => {
     switch (message.type) {
@@ -481,16 +517,16 @@ export function useRealTimeMatch(
     }
     setLastUpdated(new Date());
   }, [addEvent, updateScore, updateStatus, refresh]);
-  
-  // Set up WebSocket connection
+
+  // WebSocket setup
   useEffect(() => {
     if (!enabled || !enableWebSocket) return;
-    
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || `wss://${window.location.host}/api/ws`;
+
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || `wss://${typeof window !== 'undefined' ? window.location.host : ''}/api/ws`;
     const socketManager = getSocketManager();
-    
+
     setConnectionStatus('connecting');
-    
+
     socketManager
       .connect(wsUrl)
       .then(() => {
@@ -500,74 +536,70 @@ export function useRealTimeMatch(
       .catch(() => {
         setConnectionStatus('polling');
       });
-    
+
     return () => {
       unsubscribeRef.current?.();
     };
   }, [matchId, enabled, enableWebSocket, handleSocketMessage]);
-  
-  // Set up polling fallback
+
+  // Polling fallback
   useEffect(() => {
     if (!enabled) return;
     if (connectionStatus === 'connected') return;
-    
+
     setConnectionStatus('polling');
-    
-    // Initial fetch
     refresh();
-    
-    // Set up polling interval
+
     pollingRef.current = setInterval(() => {
       if (isLive) {
         refresh();
       }
     }, pollingInterval);
-    
+
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
       }
     };
   }, [enabled, connectionStatus, isLive, pollingInterval, refresh]);
-  
-  // Update minute counter for live matches
+
+  // Minute counter
   useEffect(() => {
-    if (!isLive || !match) {
-      return;
-    }
-    
+    if (!isLive || !match) return;
+
     const updateMinute = () => {
-      const minute = calculateMinute(match, new Date());
+      const minute = calculateMinute(match, sportConfig, new Date());
       setCurrentMinute(minute);
     };
-    
+
     updateMinute();
     minuteRef.current = setInterval(updateMinute, 1000);
-    
+
     return () => {
       if (minuteRef.current) {
         clearInterval(minuteRef.current);
       }
     };
-  }, [isLive, match]);
-  
+  }, [isLive, match, sportConfig]);
+
   // Initial fetch
   useEffect(() => {
     if (enabled) {
       refresh();
     }
   }, [enabled, matchId]); // eslint-disable-line react-hooks/exhaustive-deps
-  
+
   return {
     match,
     events,
     performances,
     stats,
-    liveState,
+    sportConfig,
     isLive,
     isFinished,
     currentMinute,
     currentPeriod,
+    periodName,
     injuryTime,
     connectionStatus,
     lastUpdated,
@@ -580,20 +612,21 @@ export function useRealTimeMatch(
   };
 }
 
-// ============================================================================
+// =============================================================================
 // ADDITIONAL HOOKS
-// ============================================================================
+// =============================================================================
 
 /**
- * Hook for match timeline with virtual scrolling support
+ * Hook for match timeline
  */
-export function useMatchTimeline(matchId: string, enabled = true) {
+export function useMatchTimeline(matchId: string, sport: Sport = 'FOOTBALL', enabled = true) {
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+  const sportConfig = useMemo(() => getSportConfig(sport), [sport]);
+
   useEffect(() => {
     if (!enabled) return;
-    
+
     const fetchTimeline = async () => {
       try {
         const response = await fetch(`/api/matches/${matchId}/events?limit=100`);
@@ -607,23 +640,24 @@ export function useMatchTimeline(matchId: string, enabled = true) {
         setIsLoading(false);
       }
     };
-    
+
     fetchTimeline();
   }, [matchId, enabled]);
-  
-  return { events, isLoading };
+
+  return { events, isLoading, sportConfig };
 }
 
 /**
- * Hook for match stats aggregation
+ * Hook for match stats
  */
-export function useMatchStats(matchId: string, enabled = true) {
+export function useMatchStats(matchId: string, sport: Sport = 'FOOTBALL', enabled = true) {
   const [stats, setStats] = useState<LiveMatchStats>(createEmptyStats());
   const [isLoading, setIsLoading] = useState(true);
-  
+  const sportConfig = useMemo(() => getSportConfig(sport), [sport]);
+
   useEffect(() => {
     if (!enabled) return;
-    
+
     const fetchStats = async () => {
       try {
         const response = await fetch(`/api/matches/${matchId}/stats`);
@@ -637,84 +671,15 @@ export function useMatchStats(matchId: string, enabled = true) {
         setIsLoading(false);
       }
     };
-    
+
     fetchStats();
   }, [matchId, enabled]);
-  
-  const aggregateFromEvents = useCallback((events: MatchEvent[]) => {
-    const home: TeamStats = {
-      possession: 50,
-      shots: 0,
-      shotsOnTarget: 0,
-      corners: 0,
-      fouls: 0,
-      yellowCards: 0,
-      redCards: 0,
-      offsides: 0,
-      passes: 0,
-      passAccuracy: 0,
-    };
-    
-    const away: TeamStats = { ...home };
-    
-    events.forEach((event) => {
-      const target = event.teamSide === 'home' ? home : away;
-      
-      switch (event.eventType) {
-        case 'YELLOW_CARD':
-        case 'SECOND_YELLOW':
-          target.yellowCards++;
-          break;
-        case 'RED_CARD':
-          target.redCards++;
-          break;
-        case 'CORNER':
-          target.corners++;
-          break;
-        case 'FOUL':
-          target.fouls++;
-          break;
-        case 'OFFSIDE':
-          target.offsides++;
-          break;
-      }
-    });
-    
-    setStats({ home, away });
-  }, []);
-  
-  return { stats, isLoading, aggregateFromEvents };
+
+  return { stats, isLoading, sportConfig };
 }
 
-/**
- * Hook for player performances in a match
- */
-export function useMatchPerformances(matchId: string, teamId?: string, enabled = true) {
-  const [performances, setPerformances] = useState<PlayerMatchPerformance[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  useEffect(() => {
-    if (!enabled) return;
-    
-    const fetchPerformances = async () => {
-      try {
-        const url = teamId
-          ? `/api/matches/${matchId}/performances?teamId=${teamId}`
-          : `/api/matches/${matchId}/performances`;
-        const response = await fetch(url);
-        if (response.ok) {
-          const data = await response.json();
-          setPerformances(data.performances || []);
-        }
-      } catch (err) {
-        console.error('Failed to fetch performances:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchPerformances();
-  }, [matchId, teamId, enabled]);
-  
-  return { performances, isLoading };
-}
+// =============================================================================
+// EXPORTS
+// =============================================================================
+
+export default useRealTimeMatch;

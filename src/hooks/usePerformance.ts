@@ -1,287 +1,225 @@
 /**
  * ============================================================================
- * USE PERFORMANCE HOOK - WEB VITALS MONITORING
+ * ⚡ USE PERFORMANCE HOOK v7.10.1 - WEB VITALS MONITORING
  * ============================================================================
- * 
- * Tracks Core Web Vitals:
- * - LCP (Largest Contentful Paint)
- * - FID (First Input Delay)
- * - CLS (Cumulative Layout Shift)
- * - TTFB (Time to First Byte)
- * - FCP (First Contentful Paint)
- * 
- * Usage:
- * const { vitals, metrics, score } = usePerformance();
+ * @version 7.10.1
+ * @path src/hooks/usePerformance.ts
+ * ============================================================================
  */
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { getCLS, getFID, getFCP, getLCP, getTTFB, Metric } from 'web-vitals';
+import { useEffect, useRef, useCallback, useState } from 'react';
 
-// ============================================================================
-// TYPES
-// ============================================================================
-
-interface WebVitals {
-  lcp: number | null;
-  fid: number | null;
-  cls: number | null;
-  ttfb: number | null;
-  fcp: number | null;
+export interface WebVitals {
+  // Core Web Vitals
+  LCP: number | null;  // Largest Contentful Paint
+  FID: number | null;  // First Input Delay
+  CLS: number | null;  // Cumulative Layout Shift
+  INP: number | null;  // Interaction to Next Paint
+  
+  // Other metrics
+  TTFB: number | null; // Time to First Byte
+  FCP: number | null;  // First Contentful Paint
 }
 
-interface MetricData extends Metric {
-  timestamp: number;
+export interface PerformanceThresholds {
+  LCP: { good: number; needsImprovement: number };
+  FID: { good: number; needsImprovement: number };
+  CLS: { good: number; needsImprovement: number };
+  INP: { good: number; needsImprovement: number };
+  TTFB: { good: number; needsImprovement: number };
+  FCP: { good: number; needsImprovement: number };
 }
 
-interface PerformanceMetrics {
-  vitals: WebVitals;
-  metrics: MetricData[];
-  score: number;
-  isGood: boolean;
-  rating: 'good' | 'needs improvement' | 'poor';
-}
+export type VitalRating = 'good' | 'needs-improvement' | 'poor';
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-/** Core Web Vitals thresholds (Good) */
-const THRESHOLDS = {
-  LCP: 2500, // Largest Contentful Paint: 2.5s
-  FID: 100, // First Input Delay: 100ms
-  CLS: 0.1, // Cumulative Layout Shift: 0.1
-  TTFB: 600, // Time to First Byte: 600ms
-  FCP: 1800, // First Contentful Paint: 1.8s
-} as const;
-
-/** Metric type to threshold mapping */
-const METRIC_THRESHOLDS: Record<string, number> = {
-  LCP: THRESHOLDS.LCP,
-  FID: THRESHOLDS.FID,
-  CLS: THRESHOLDS.CLS,
-  TTFB: THRESHOLDS.TTFB,
-  FCP: THRESHOLDS.FCP,
+// Google's recommended thresholds
+const DEFAULT_THRESHOLDS: PerformanceThresholds = {
+  LCP: { good: 2500, needsImprovement: 4000 },
+  FID: { good: 100, needsImprovement: 300 },
+  CLS: { good: 0.1, needsImprovement: 0.25 },
+  INP: { good: 200, needsImprovement: 500 },
+  TTFB: { good: 800, needsImprovement: 1800 },
+  FCP: { good: 1800, needsImprovement: 3000 },
 };
 
-// ============================================================================
-// USE PERFORMANCE HOOK
-// ============================================================================
+export interface UsePerformanceOptions {
+  enabled?: boolean;
+  reportToAnalytics?: boolean;
+  analyticsEndpoint?: string;
+  thresholds?: Partial<PerformanceThresholds>;
+  onMetric?: (name: keyof WebVitals, value: number, rating: VitalRating) => void;
+}
 
-/**
- * Hook to track and monitor Web Vitals performance metrics
- * @returns Performance metrics including vitals, raw metrics, and score
- */
-export function usePerformance(): PerformanceMetrics {
+export interface UsePerformanceReturn {
+  vitals: WebVitals;
+  isLoading: boolean;
+  getVitalRating: (name: keyof WebVitals) => VitalRating | null;
+  getVitalScore: () => number;
+  refresh: () => void;
+}
+
+export function usePerformance(options: UsePerformanceOptions = {}): UsePerformanceReturn {
+  const {
+    enabled = true,
+    reportToAnalytics = false,
+    analyticsEndpoint = '/api/analytics/vitals',
+    thresholds = {},
+    onMetric,
+  } = options;
+
+  const mergedThresholds = { ...DEFAULT_THRESHOLDS, ...thresholds };
+
   const [vitals, setVitals] = useState<WebVitals>({
-    lcp: null,
-    fid: null,
-    cls: null,
-    ttfb: null,
-    fcp: null,
+    LCP: null,
+    FID: null,
+    CLS: null,
+    INP: null,
+    TTFB: null,
+    FCP: null,
   });
 
-  const [metrics, setMetrics] = useState<MetricData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const observerRef = useRef<PerformanceObserver | null>(null);
 
-  // ========================================================================
-  // CALCULATE PERFORMANCE SCORE
-  // ========================================================================
-
-  const calculateScore = useCallback((): number => {
-    const scores: number[] = [];
-
-    // LCP Score (0-25)
-    if (vitals.lcp !== null) {
-      const lcpScore = Math.max(0, 25 - (vitals.lcp / THRESHOLDS.LCP) * 25);
-      scores.push(lcpScore);
-    }
-
-    // FID Score (0-25)
-    if (vitals.fid !== null) {
-      const fidScore = Math.max(0, 25 - (vitals.fid / THRESHOLDS.FID) * 25);
-      scores.push(fidScore);
-    }
-
-    // CLS Score (0-25)
-    if (vitals.cls !== null) {
-      const clsScore = Math.max(0, 25 - (vitals.cls / THRESHOLDS.CLS) * 25);
-      scores.push(clsScore);
-    }
-
-    // TTFB Score (0-10)
-    if (vitals.ttfb !== null) {
-      const ttfbScore = Math.max(0, 10 - (vitals.ttfb / THRESHOLDS.TTFB) * 10);
-      scores.push(ttfbScore);
-    }
-
-    // FCP Score (0-10)
-    if (vitals.fcp !== null) {
-      const fcpScore = Math.max(0, 10 - (vitals.fcp / THRESHOLDS.FCP) * 10);
-      scores.push(fcpScore);
-    }
-
-    const average = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-    return Math.round(Math.max(0, Math.min(100, average)));
-  }, [vitals]);
-
-  // ========================================================================
-  // DETERMINE RATING
-  // ========================================================================
-
-  const getRating = useCallback((): 'good' | 'needs improvement' | 'poor' => {
-    const score = calculateScore();
-
-    if (score >= 90) return 'good';
-    if (score >= 50) return 'needs improvement';
+  const getRating = useCallback((name: keyof WebVitals, value: number): VitalRating => {
+    const threshold = mergedThresholds[name];
+    if (!threshold) return 'poor';
+    
+    if (value <= threshold.good) return 'good';
+    if (value <= threshold.needsImprovement) return 'needs-improvement';
     return 'poor';
-  }, [calculateScore]);
+  }, [mergedThresholds]);
 
-  // ========================================================================
-  // METRIC HANDLER
-  // ========================================================================
+  const reportMetric = useCallback(async (name: keyof WebVitals, value: number, rating: VitalRating) => {
+    onMetric?.(name, value, rating);
 
-  const handleMetric = useCallback((metric: Metric) => {
-    // Update vitals
-    setVitals((prev) => {
-      const key = metric.name.toLowerCase() as keyof WebVitals;
-      return {
-        ...prev,
-        [key]: metric.value,
-      };
-    });
-
-    // Store metric
-    setMetrics((prev) => [
-      ...prev,
-      {
-        ...metric,
-        timestamp: Date.now(),
-      },
-    ]);
-
-    // Log in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`📊 ${metric.name}: ${metric.value.toFixed(2)}`);
-    }
-
-    // Report to analytics in production
-    if (process.env.NODE_ENV === 'production' && typeof window !== 'undefined') {
-      // Send to your analytics service
-      if ((window as any).gtag) {
-        (window as any).gtag('event', 'page_view', {
-          page_title: document.title,
-          page_location: window.location.href,
-          [`metric_${metric.name}`]: metric.value,
+    if (reportToAnalytics) {
+      try {
+        await fetch(analyticsEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            metric: name,
+            value,
+            rating,
+            url: window.location.href,
+            timestamp: Date.now(),
+          }),
         });
+      } catch (err) {
+        console.error('Failed to report metric:', err);
       }
     }
-  }, []);
+  }, [onMetric, reportToAnalytics, analyticsEndpoint]);
 
-  // ========================================================================
-  // SETUP LISTENERS
-  // ========================================================================
+  const updateVital = useCallback((name: keyof WebVitals, value: number) => {
+    const rating = getRating(name, value);
+    
+    setVitals(prev => ({ ...prev, [name]: value }));
+    reportMetric(name, value, rating);
+  }, [getRating, reportMetric]);
 
   useEffect(() => {
-    // Only run in browser
-    if (typeof window === 'undefined') return;
-
-    try {
-      // Collect all metrics
-      getCLS(handleMetric);
-      getFID(handleMetric);
-      getFCP(handleMetric);
-      getLCP(handleMetric);
-      getTTFB(handleMetric);
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Error collecting Web Vitals:', error);
-      }
+    if (!enabled || typeof window === 'undefined') {
+      setIsLoading(false);
+      return;
     }
 
-    return () => {
-      // Cleanup if needed
+    // Use web-vitals library if available
+    const loadWebVitals = async () => {
+      try {
+        const { onLCP, onFID, onCLS, onINP, onTTFB, onFCP } = await import('web-vitals');
+
+        onLCP(({ value }) => updateVital('LCP', value));
+        onFID(({ value }) => updateVital('FID', value));
+        onCLS(({ value }) => updateVital('CLS', value));
+        onINP(({ value }) => updateVital('INP', value));
+        onTTFB(({ value }) => updateVital('TTFB', value));
+        onFCP(({ value }) => updateVital('FCP', value));
+      } catch {
+        // Fallback to Performance API
+        if ('PerformanceObserver' in window) {
+          try {
+            const observer = new PerformanceObserver((list) => {
+              for (const entry of list.getEntries()) {
+                if (entry.entryType === 'largest-contentful-paint') {
+                  updateVital('LCP', entry.startTime);
+                }
+                if (entry.entryType === 'first-input') {
+                  updateVital('FID', (entry as PerformanceEventTiming).processingStart - entry.startTime);
+                }
+                if (entry.entryType === 'layout-shift' && !(entry as any).hadRecentInput) {
+                  setVitals(prev => ({
+                    ...prev,
+                    CLS: (prev.CLS || 0) + (entry as any).value,
+                  }));
+                }
+              }
+            });
+
+            observer.observe({ type: 'largest-contentful-paint', buffered: true });
+            observer.observe({ type: 'first-input', buffered: true });
+            observer.observe({ type: 'layout-shift', buffered: true });
+
+            observerRef.current = observer;
+          } catch (err) {
+            console.error('PerformanceObserver error:', err);
+          }
+        }
+
+        // Get navigation timing
+        if ('performance' in window && performance.timing) {
+          const timing = performance.timing;
+          const ttfb = timing.responseStart - timing.requestStart;
+          if (ttfb > 0) updateVital('TTFB', ttfb);
+        }
+      }
+
+      setIsLoading(false);
     };
-  }, [handleMetric]);
 
-  // ========================================================================
-  // RETURN PERFORMANCE METRICS
-  // ========================================================================
+    loadWebVitals();
 
-  const score = calculateScore();
-  const rating = getRating();
-  const isGood = rating === 'good';
+    return () => {
+      observerRef.current?.disconnect();
+    };
+  }, [enabled, updateVital]);
+
+  const getVitalRating = useCallback((name: keyof WebVitals): VitalRating | null => {
+    const value = vitals[name];
+    if (value === null) return null;
+    return getRating(name, value);
+  }, [vitals, getRating]);
+
+  const getVitalScore = useCallback((): number => {
+    const scores: number[] = [];
+    
+    Object.entries(vitals).forEach(([name, value]) => {
+      if (value === null) return;
+      const rating = getRating(name as keyof WebVitals, value);
+      scores.push(rating === 'good' ? 100 : rating === 'needs-improvement' ? 50 : 0);
+    });
+
+    if (scores.length === 0) return 0;
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  }, [vitals, getRating]);
+
+  const refresh = useCallback(() => {
+    setVitals({
+      LCP: null, FID: null, CLS: null, INP: null, TTFB: null, FCP: null,
+    });
+    setIsLoading(true);
+  }, []);
 
   return {
     vitals,
-    metrics,
-    score,
-    isGood,
-    rating,
+    isLoading,
+    getVitalRating,
+    getVitalScore,
+    refresh,
   };
-}
-
-// ============================================================================
-// PERFORMANCE MONITORING DASHBOARD HOOK
-// ============================================================================
-
-interface PerformanceStats {
-  metric: string;
-  value: number;
-  unit: string;
-  threshold: number;
-  status: 'good' | 'needs improvement' | 'poor';
-  percentage: number;
-}
-
-/**
- * Hook to get formatted performance statistics for display
- */
-export function usePerformanceStats(): PerformanceStats[] {
-  const { vitals } = usePerformance();
-
-  return [
-    {
-      metric: 'LCP',
-      value: vitals.lcp || 0,
-      unit: 'ms',
-      threshold: THRESHOLDS.LCP,
-      status: vitals.lcp ? (vitals.lcp <= THRESHOLDS.LCP ? 'good' : 'poor') : 'needs improvement',
-      percentage: vitals.lcp ? Math.min(100, (vitals.lcp / THRESHOLDS.LCP) * 100) : 0,
-    },
-    {
-      metric: 'FID',
-      value: vitals.fid || 0,
-      unit: 'ms',
-      threshold: THRESHOLDS.FID,
-      status: vitals.fid ? (vitals.fid <= THRESHOLDS.FID ? 'good' : 'poor') : 'needs improvement',
-      percentage: vitals.fid ? Math.min(100, (vitals.fid / THRESHOLDS.FID) * 100) : 0,
-    },
-    {
-      metric: 'CLS',
-      value: vitals.cls || 0,
-      unit: '',
-      threshold: THRESHOLDS.CLS,
-      status: vitals.cls ? (vitals.cls <= THRESHOLDS.CLS ? 'good' : 'poor') : 'needs improvement',
-      percentage: vitals.cls ? Math.min(100, (vitals.cls / THRESHOLDS.CLS) * 100) : 0,
-    },
-    {
-      metric: 'TTFB',
-      value: vitals.ttfb || 0,
-      unit: 'ms',
-      threshold: THRESHOLDS.TTFB,
-      status: vitals.ttfb ? (vitals.ttfb <= THRESHOLDS.TTFB ? 'good' : 'poor') : 'needs improvement',
-      percentage: vitals.ttfb ? Math.min(100, (vitals.ttfb / THRESHOLDS.TTFB) * 100) : 0,
-    },
-    {
-      metric: 'FCP',
-      value: vitals.fcp || 0,
-      unit: 'ms',
-      threshold: THRESHOLDS.FCP,
-      status: vitals.fcp ? (vitals.fcp <= THRESHOLDS.FCP ? 'good' : 'poor') : 'needs improvement',
-      percentage: vitals.fcp ? Math.min(100, (vitals.fcp / THRESHOLDS.FCP) * 100) : 0,
-    },
-  ];
 }
 
 export default usePerformance;

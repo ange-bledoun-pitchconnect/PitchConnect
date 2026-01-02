@@ -1,79 +1,83 @@
-// ============================================================================
-// PHASE 9: src/hooks/useFetch.ts
-// Custom Hook for Data Fetching with Caching & Error Handling
-//
-// Features:
-// - Automatic data fetching on mount
-// - Caching to prevent redundant requests
-// - Error handling & retry logic
-// - Loading states
-// - Manual refetch capability
-//
-// Usage:
-// const { data, loading, error, refetch } = useFetch('/api/analytics/teams/1')
-// ============================================================================
+/**
+ * ============================================================================
+ * 📡 USE FETCH HOOK v7.10.1 - DATA FETCHING WITH CACHING
+ * ============================================================================
+ * 
+ * Custom fetch hook with caching, error handling, and retry logic.
+ * 
+ * @version 7.10.1
+ * @path src/hooks/useFetch.ts
+ * ============================================================================
+ */
 
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 
-// ============================================================================
+// =============================================================================
 // TYPES
-// ============================================================================
+// =============================================================================
 
-interface UseFetchOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+interface UseFetchOptions<T> {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   headers?: Record<string, string>;
-  body?: Record<string, unknown>;
-  cache?: number; // Cache duration in milliseconds (default: 5 minutes)
-  skip?: boolean; // Skip fetching initially
-  onSuccess?: (data: unknown) => void;
+  body?: Record<string, unknown> | FormData;
+  cache?: number;
+  skip?: boolean;
+  onSuccess?: (data: T) => void;
   onError?: (error: Error) => void;
+  retryCount?: number;
+  retryDelay?: number;
 }
 
-interface CacheEntry {
-  data: unknown;
+interface CacheEntry<T> {
+  data: T;
   timestamp: number;
 }
 
-// ============================================================================
-// GLOBAL CACHE - Shared across component instances
-// ============================================================================
+interface UseFetchReturn<T> {
+  data: T | null;
+  loading: boolean;
+  error: Error | null;
+  refetch: () => Promise<void>;
+  clearCache: () => void;
+  mutate: (newData: T | ((prev: T | null) => T)) => void;
+}
 
-const globalCache = new Map<string, CacheEntry>();
+// =============================================================================
+// GLOBAL CACHE
+// =============================================================================
 
-// ============================================================================
-// HOOK: useFetch
-// ============================================================================
+const globalCache = new Map<string, CacheEntry<unknown>>();
+
+// =============================================================================
+// HOOK
+// =============================================================================
 
 export function useFetch<T = unknown>(
   url: string,
-  options: UseFetchOptions = {}
-) {
-  // State management
+  options: UseFetchOptions<T> = {}
+): UseFetchReturn<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(!options.skip);
   const [error, setError] = useState<Error | null>(null);
 
-  // References
   const cacheKeyRef = useRef<string>(`${options.method || 'GET'}:${url}`);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const retryCountRef = useRef(0);
 
-  // Destructure options with defaults
   const {
     method = 'GET',
     headers = {},
     body,
-    cache = 5 * 60 * 1000, // 5 minutes default
+    cache = 5 * 60 * 1000,
     skip = false,
     onSuccess,
     onError,
+    retryCount = 3,
+    retryDelay = 1000,
   } = options;
 
-  /**
-   * Fetch data from API
-   * Includes caching and error handling
-   */
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -81,21 +85,20 @@ export function useFetch<T = unknown>(
 
       const cacheKey = cacheKeyRef.current;
 
-      // Check if data is cached and still valid
+      // Check cache for GET requests
       if (method === 'GET' && globalCache.has(cacheKey)) {
-        const cached = globalCache.get(cacheKey)!;
+        const cached = globalCache.get(cacheKey) as CacheEntry<T>;
         if (Date.now() - cached.timestamp < cache) {
-          setData(cached.data as T);
+          setData(cached.data);
           setLoading(false);
           onSuccess?.(cached.data);
           return;
         }
       }
 
-      // Create abort controller for this request
+      // Create abort controller
       abortControllerRef.current = new AbortController();
 
-      // Prepare request options
       const fetchOptions: RequestInit = {
         method,
         headers: {
@@ -105,261 +108,51 @@ export function useFetch<T = unknown>(
         signal: abortControllerRef.current.signal,
       };
 
-      // Add body for non-GET requests
       if (body && method !== 'GET') {
-        fetchOptions.body = JSON.stringify(body);
-      }
-
-      // Execute fetch
-      const response = await fetch(url, fetchOptions);
-
-      // Handle response errors
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage =
-          errorData.message ||
-          `HTTP ${response.status}: ${response.statusText}`;
-        throw new Error(errorMessage);
-      }
-
-      // Parse JSON response
-      const result = await response.json();
-
-      // Cache successful GET responses
-      if (method === 'GET') {
-        globalCache.set(cacheKey, {
-          data: result,
-          timestamp: Date.now(),
-        });
-      }
-
-      // Update state
-      setData(result as T);
-      setError(null);
-      onSuccess?.(result);
-    } catch (err) {
-      // Handle abort errors silently
-      if (err instanceof Error && err.name === 'AbortError') {
-        return;
-      }
-
-      // Set error state
-      const error = err instanceof Error ? err : new Error(String(err));
-      setError(error);
-      setData(null);
-      onError?.(error);
-    } finally {
-      setLoading(false);
-    }
-  }, [url, method, headers, body, cache, onSuccess, onError]);
-
-  /**
-   * Fetch on mount or when dependencies change
-   */
-  useEffect(() => {
-    if (skip) {
-      setLoading(false);
-      return;
-    }
-
-    fetchData();
-
-    // Cleanup: abort request if component unmounts
-    return () => {
-      abortControllerRef.current?.abort();
-    };
-  }, [url, method, skip, fetchData]);
-
-  /**
-   * Manual refetch function
-   */
-  const refetch = useCallback(async () => {
-    // Clear cache for this URL
-    globalCache.delete(cacheKeyRef.current);
-    // Refetch data
-    await fetchData();
-  }, [fetchData]);
-
-  /**
-   * Clear cache for this URL
-   */
-  const clearCache = useCallback(() => {
-    globalCache.delete(cacheKeyRef.current);
-  }, []);
-
-  return {
-    data,
-    loading,
-    error,
-    refetch,
-    clearCache,
-  };
-}
-
-// ============================================================================
-// EXPORT
-// ============================================================================
-
-export default useFetch;
-
-// ============================================================================
-// src/hooks/useFetch.ts
-// Custom Hook for Data Fetching with Caching & Error Handling
-//
-// Features:
-// - Automatic data fetching on mount
-// - Caching to prevent redundant requests
-// - Error handling & retry logic
-// - Loading states
-// - Manual refetch capability
-//
-// Usage:
-// const { data, loading, error, refetch } = useFetch('/api/analytics/teams/1')
-// ============================================================================
-
-'use client';
-
-import { useEffect, useState, useCallback, useRef } from 'react';
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-interface UseFetchOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  headers?: Record<string, string>;
-  body?: Record<string, unknown>;
-  cache?: number; // Cache duration in milliseconds (default: 5 minutes)
-  skip?: boolean; // Skip fetching initially
-  onSuccess?: (data: unknown) => void;
-  onError?: (error: Error) => void;
-}
-
-interface CacheEntry {
-  data: unknown;
-  timestamp: number;
-}
-
-// ============================================================================
-// GLOBAL CACHE - Shared across component instances
-// ============================================================================
-
-const globalCache = new Map<string, CacheEntry>();
-
-// ============================================================================
-// HOOK: useFetch
-// ============================================================================
-
-export function useFetch<T = unknown>(
-  url: string,
-  options: UseFetchOptions = {}
-) {
-  // State management
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(!options.skip);
-  const [error, setError] = useState<Error | null>(null);
-
-  // References
-  const cacheKeyRef = useRef<string>(`${options.method || 'GET'}:${url}`);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Destructure options with defaults
-  const {
-    method = 'GET',
-    headers = {},
-    body,
-    cache = 5 * 60 * 1000, // 5 minutes default
-    skip = false,
-    onSuccess,
-    onError,
-  } = options;
-
-  /**
-   * Fetch data from API
-   * Includes caching and error handling
-   */
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const cacheKey = cacheKeyRef.current;
-
-      // Check if data is cached and still valid
-      if (method === 'GET' && globalCache.has(cacheKey)) {
-        const cached = globalCache.get(cacheKey)!;
-        if (Date.now() - cached.timestamp < cache) {
-          setData(cached.data as T);
-          setLoading(false);
-          onSuccess?.(cached.data);
-          return;
+        fetchOptions.body = body instanceof FormData ? body : JSON.stringify(body);
+        if (body instanceof FormData) {
+          delete (fetchOptions.headers as Record<string, string>)['Content-Type'];
         }
       }
 
-      // Create abort controller for this request
-      abortControllerRef.current = new AbortController();
-
-      // Prepare request options
-      const fetchOptions: RequestInit = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...headers,
-        },
-        signal: abortControllerRef.current.signal,
-      };
-
-      // Add body for non-GET requests
-      if (body && method !== 'GET') {
-        fetchOptions.body = JSON.stringify(body);
-      }
-
-      // Execute fetch
       const response = await fetch(url, fetchOptions);
 
-      // Handle response errors
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorMessage =
-          errorData.message ||
-          `HTTP ${response.status}: ${response.statusText}`;
-        throw new Error(errorMessage);
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Parse JSON response
       const result = await response.json();
 
       // Cache successful GET responses
       if (method === 'GET') {
-        globalCache.set(cacheKey, {
-          data: result,
-          timestamp: Date.now(),
-        });
+        globalCache.set(cacheKey, { data: result, timestamp: Date.now() });
       }
 
-      // Update state
       setData(result as T);
       setError(null);
-      onSuccess?.(result);
+      retryCountRef.current = 0;
+      onSuccess?.(result as T);
     } catch (err) {
-      // Handle abort errors silently
-      if (err instanceof Error && err.name === 'AbortError') {
+      if (err instanceof Error && err.name === 'AbortError') return;
+
+      const error = err instanceof Error ? err : new Error(String(err));
+      
+      // Retry logic
+      if (retryCountRef.current < retryCount) {
+        retryCountRef.current++;
+        setTimeout(() => fetchData(), retryDelay * retryCountRef.current);
         return;
       }
 
-      // Set error state
-      const error = err instanceof Error ? err : new Error(String(err));
       setError(error);
       setData(null);
       onError?.(error);
     } finally {
       setLoading(false);
     }
-  }, [url, method, headers, body, cache, onSuccess, onError]);
+  }, [url, method, headers, body, cache, onSuccess, onError, retryCount, retryDelay]);
 
-  /**
-   * Fetch on mount or when dependencies change
-   */
   useEffect(() => {
     if (skip) {
       setLoading(false);
@@ -368,40 +161,97 @@ export function useFetch<T = unknown>(
 
     fetchData();
 
-    // Cleanup: abort request if component unmounts
     return () => {
       abortControllerRef.current?.abort();
     };
   }, [url, method, skip, fetchData]);
 
-  /**
-   * Manual refetch function
-   */
   const refetch = useCallback(async () => {
-    // Clear cache for this URL
     globalCache.delete(cacheKeyRef.current);
-    // Refetch data
+    retryCountRef.current = 0;
     await fetchData();
   }, [fetchData]);
 
-  /**
-   * Clear cache for this URL
-   */
   const clearCache = useCallback(() => {
     globalCache.delete(cacheKeyRef.current);
   }, []);
 
-  return {
-    data,
-    loading,
-    error,
-    refetch,
-    clearCache,
-  };
+  const mutate = useCallback((newData: T | ((prev: T | null) => T)) => {
+    setData(prev => typeof newData === 'function' ? (newData as (prev: T | null) => T)(prev) : newData);
+  }, []);
+
+  return { data, loading, error, refetch, clearCache, mutate };
 }
 
-// ============================================================================
-// EXPORT
-// ============================================================================
+// =============================================================================
+// MUTATION HOOK
+// =============================================================================
+
+interface UseMutationOptions<T, V> {
+  onSuccess?: (data: T, variables: V) => void;
+  onError?: (error: Error, variables: V) => void;
+  onSettled?: (data: T | null, error: Error | null, variables: V) => void;
+}
+
+interface UseMutationReturn<T, V> {
+  mutate: (variables: V) => Promise<T>;
+  mutateAsync: (variables: V) => Promise<T>;
+  data: T | null;
+  error: Error | null;
+  isLoading: boolean;
+  isSuccess: boolean;
+  isError: boolean;
+  reset: () => void;
+}
+
+export function useMutation<T = unknown, V = unknown>(
+  mutationFn: (variables: V) => Promise<T>,
+  options: UseMutationOptions<T, V> = {}
+): UseMutationReturn<T, V> {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [isError, setIsError] = useState(false);
+
+  const mutateAsync = useCallback(async (variables: V): Promise<T> => {
+    setIsLoading(true);
+    setIsSuccess(false);
+    setIsError(false);
+    setError(null);
+
+    try {
+      const result = await mutationFn(variables);
+      setData(result);
+      setIsSuccess(true);
+      options.onSuccess?.(result, variables);
+      options.onSettled?.(result, null, variables);
+      return result;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      setError(error);
+      setIsError(true);
+      options.onError?.(error, variables);
+      options.onSettled?.(null, error, variables);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [mutationFn, options]);
+
+  const mutate = useCallback((variables: V): Promise<T> => {
+    return mutateAsync(variables).catch(() => null as unknown as T);
+  }, [mutateAsync]);
+
+  const reset = useCallback(() => {
+    setData(null);
+    setError(null);
+    setIsLoading(false);
+    setIsSuccess(false);
+    setIsError(false);
+  }, []);
+
+  return { mutate, mutateAsync, data, error, isLoading, isSuccess, isError, reset };
+}
 
 export default useFetch;

@@ -1,12 +1,13 @@
-// ============================================================================
-// src/lib/ai/prediction-engine.ts
-// 🤖 PitchConnect Enterprise AI - Core Prediction Engine
-// ============================================================================
-// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
-// ALGORITHMS: Statistical modeling, form analysis, feature-based predictions
-// ============================================================================
+/**
+ * ============================================================================
+ * 🤖 PITCHCONNECT AI - PREDICTION ENGINE v7.10.1
+ * ============================================================================
+ * Enterprise algorithmic prediction engine for all 12 sports
+ * Uses statistical modeling, form analysis, and feature-based predictions
+ * ============================================================================
+ */
 
-import type { Sport, Position, PredictionType } from '@prisma/client';
+import type { Sport } from './types';
 import type {
   MatchFeatureVector,
   PlayerFeatureVector,
@@ -17,19 +18,292 @@ import type {
   PredictionFactor,
   TeamRecommendation,
 } from './types';
-import { getSportConfig, getSportWeights, sportHasDraws } from './sport-config';
+import {
+  getSportConfig,
+  getSportWeights,
+  sportHasDraws,
+  getScoringTerminology,
+  getPositionImportance,
+} from './sport-config';
 
-// ============================================================================
+// =============================================================================
 // CONSTANTS
-// ============================================================================
+// =============================================================================
 
-const MODEL_VERSION = '2.0.0-enterprise';
+export const MODEL_VERSION = '7.10.1-enterprise';
 const CONFIDENCE_HIGH_THRESHOLD = 25;
 const CONFIDENCE_MEDIUM_THRESHOLD = 12;
 
-// ============================================================================
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
+
+/**
+ * Normalize a value to a 0-100 scale
+ */
+function normalizeToScale(
+  value: number,
+  inputMin: number,
+  inputMax: number,
+  outputMin: number = 0,
+  outputMax: number = 100
+): number {
+  const normalized = (value - inputMin) / (inputMax - inputMin);
+  return Math.max(outputMin, Math.min(outputMax, outputMin + normalized * (outputMax - outputMin)));
+}
+
+/**
+ * Calculate head-to-head factor
+ */
+function calculateH2HFactor(features: MatchFeatureVector): { homeScore: number; awayScore: number } {
+  const totalH2H = features.h2hTotalMatches;
+  
+  if (totalH2H === 0) {
+    return { homeScore: 50, awayScore: 50 };
+  }
+  
+  const homeWinRate = features.h2hHomeWins / totalH2H;
+  const awayWinRate = features.h2hAwayWins / totalH2H;
+  const drawRate = features.h2hDraws / totalH2H;
+  
+  // Include goal difference in H2H analysis
+  const goalDiff = features.h2hHomeGoals - features.h2hAwayGoals;
+  const normalizedGoalDiff = normalizeToScale(goalDiff, -10, 10, -20, 20);
+  
+  const homeScore = (homeWinRate * 100) + (drawRate * 50) + normalizedGoalDiff;
+  const awayScore = (awayWinRate * 100) + (drawRate * 50) - normalizedGoalDiff;
+  
+  return {
+    homeScore: Math.max(0, Math.min(100, homeScore)),
+    awayScore: Math.max(0, Math.min(100, awayScore)),
+  };
+}
+
+/**
+ * Calculate expected goals/points based on sport
+ */
+function calculateExpectedScore(
+  avgScored: number,
+  oppAvgConceded: number,
+  strengthFactor: number,
+  sport: Sport
+): number {
+  const config = getSportConfig(sport);
+  
+  // Base expected score from averages
+  const baseExpected = (avgScored + oppAvgConceded) / 2;
+  
+  // Apply strength factor
+  const adjusted = baseExpected * (0.5 + strengthFactor * 0.5);
+  
+  // Sport-specific adjustments
+  switch (sport) {
+    case 'CRICKET':
+      // Cricket scores are much higher
+      return Math.max(0, adjusted * 30);
+    case 'BASKETBALL':
+      // Basketball typically 80-120 points
+      return Math.max(0, adjusted * 25);
+    case 'AMERICAN_FOOTBALL':
+      // NFL typically 17-35 points
+      return Math.max(0, adjusted * 8);
+    case 'AUSTRALIAN_RULES':
+      // AFL typically 60-120 points
+      return Math.max(0, adjusted * 20);
+    default:
+      // Most sports: 0-5 goals/tries typical
+      return Math.max(0, adjusted);
+  }
+}
+
+/**
+ * Calculate injury risk score for a player
+ */
+function calculateInjuryRisk(features: PlayerFeatureVector): number {
+  let riskScore = 0;
+  
+  // Fatigue contribution (40% weight)
+  riskScore += (features.fatigueLevel / 100) * 40;
+  
+  // Historical injury risk (30% weight)
+  riskScore += (features.injuryHistoryScore / 100) * 30;
+  
+  // Recent workload (days since injury - less is more risky) (20% weight)
+  const daysFactor = features.daysSinceLastInjury < 30 ? 20 :
+                     features.daysSinceLastInjury < 90 ? 10 :
+                     features.daysSinceLastInjury < 180 ? 5 : 0;
+  riskScore += daysFactor;
+  
+  // Age factor (10% weight) - older and very young players have higher risk
+  const ageFactor = features.age < 18 ? 8 :
+                    features.age > 32 ? 10 :
+                    features.age > 30 ? 5 : 0;
+  riskScore += ageFactor;
+  
+  // Minutes played factor - overuse risk
+  const avgMinutes = features.minutesPlayed / Math.max(features.matchesPlayed, 1);
+  if (avgMinutes > 85) riskScore += 5; // Full match regular
+  
+  return Math.min(100, Math.max(0, riskScore));
+}
+
+/**
+ * Generate key factors for match prediction
+ */
+function generateMatchKeyFactors(
+  features: MatchFeatureVector,
+  homeScore: number,
+  awayScore: number,
+  sport: Sport
+): PredictionFactor[] {
+  const factors: PredictionFactor[] = [];
+  const terminology = getScoringTerminology(sport);
+  
+  // Form factor
+  if (features.homeRecentForm > features.awayRecentForm + 15) {
+    factors.push({
+      factor: 'Home Team Form',
+      impact: 'POSITIVE',
+      weight: 25,
+      description: `Home team in significantly better form (${features.homeRecentForm.toFixed(0)}% vs ${features.awayRecentForm.toFixed(0)}%)`,
+      value: features.homeRecentForm,
+    });
+  } else if (features.awayRecentForm > features.homeRecentForm + 15) {
+    factors.push({
+      factor: 'Away Team Form',
+      impact: 'NEGATIVE',
+      weight: 25,
+      description: `Away team in significantly better form (${features.awayRecentForm.toFixed(0)}% vs ${features.homeRecentForm.toFixed(0)}%)`,
+      value: features.awayRecentForm,
+    });
+  }
+  
+  // Home advantage
+  if (!features.isNeutralVenue) {
+    const homeAdvantage = getSportConfig(sport).weights.homeAdvantage;
+    factors.push({
+      factor: 'Home Advantage',
+      impact: 'POSITIVE',
+      weight: homeAdvantage,
+      description: `Playing at home venue provides ${homeAdvantage}% boost`,
+      value: homeAdvantage,
+    });
+  }
+  
+  // Squad availability
+  if (features.homeKeyPlayersAvailable < 70) {
+    factors.push({
+      factor: 'Home Squad Issues',
+      impact: 'NEGATIVE',
+      weight: 15,
+      description: `Key player availability at ${features.homeKeyPlayersAvailable.toFixed(0)}%`,
+      value: features.homeKeyPlayersAvailable,
+    });
+  }
+  if (features.awayKeyPlayersAvailable < 70) {
+    factors.push({
+      factor: 'Away Squad Issues',
+      impact: 'POSITIVE',
+      weight: 15,
+      description: `Opposition key player availability at ${features.awayKeyPlayersAvailable.toFixed(0)}%`,
+      value: features.awayKeyPlayersAvailable,
+    });
+  }
+  
+  // Rest days
+  if (features.homeRestDays < 3) {
+    factors.push({
+      factor: 'Home Team Fatigue',
+      impact: 'NEGATIVE',
+      weight: 8,
+      description: `Only ${features.homeRestDays} days rest since last match`,
+      value: features.homeRestDays,
+    });
+  }
+  if (features.awayRestDays < 3) {
+    factors.push({
+      factor: 'Away Team Fatigue',
+      impact: 'POSITIVE',
+      weight: 8,
+      description: `Opposition only ${features.awayRestDays} days rest`,
+      value: features.awayRestDays,
+    });
+  }
+  
+  // Head-to-head
+  if (features.h2hTotalMatches >= 3) {
+    const homeH2HWinRate = (features.h2hHomeWins / features.h2hTotalMatches) * 100;
+    if (homeH2HWinRate > 60) {
+      factors.push({
+        factor: 'Historical Dominance',
+        impact: 'POSITIVE',
+        weight: 10,
+        description: `Home team won ${features.h2hHomeWins} of last ${features.h2hTotalMatches} meetings`,
+        value: homeH2HWinRate,
+      });
+    } else if (homeH2HWinRate < 30) {
+      factors.push({
+        factor: 'Historical Struggles',
+        impact: 'NEGATIVE',
+        weight: 10,
+        description: `Home team won only ${features.h2hHomeWins} of last ${features.h2hTotalMatches} meetings`,
+        value: homeH2HWinRate,
+      });
+    }
+  }
+  
+  // Scoring patterns
+  const homeAvgScored = features.homeGoalsScoredAvg;
+  const awayAvgConceded = features.awayGoalsConcededAvg;
+  if (homeAvgScored > 2 && awayAvgConceded > 1.5) {
+    factors.push({
+      factor: `${terminology.primary} Threat`,
+      impact: 'POSITIVE',
+      weight: 20,
+      description: `High-scoring home attack (${homeAvgScored.toFixed(1)}/match) vs leaky defence (${awayAvgConceded.toFixed(1)} conceded/match)`,
+      value: homeAvgScored,
+    });
+  }
+  
+  return factors.slice(0, 6); // Return top 6 factors
+}
+
+/**
+ * Generate risk factors for prediction
+ */
+function generateRiskFactors(features: MatchFeatureVector, confidenceScore: number): string[] {
+  const risks: string[] = [];
+  
+  if (confidenceScore < 10) {
+    risks.push('Very close match - outcome highly unpredictable');
+  }
+  
+  if (features.h2hTotalMatches < 3) {
+    risks.push('Limited head-to-head data available');
+  }
+  
+  if (features.homeKeyPlayersAvailable < 80 || features.awayKeyPlayersAvailable < 80) {
+    risks.push('Key player availability may impact result');
+  }
+  
+  if (features.isKnockout) {
+    risks.push('Knockout match - higher stakes may affect performance');
+  }
+  
+  if (features.competitionImportance > 70) {
+    risks.push('High-stakes match - form patterns may not apply');
+  }
+  
+  if (features.weatherConditions && features.weatherConditions !== 'CLEAR') {
+    risks.push(`Weather conditions (${features.weatherConditions}) may affect play`);
+  }
+  
+  return risks;
+}
+
+// =============================================================================
 // MATCH PREDICTION ENGINE
-// ============================================================================
+// =============================================================================
 
 /**
  * Generate match outcome prediction
@@ -37,7 +311,7 @@ const CONFIDENCE_MEDIUM_THRESHOLD = 12;
  */
 export function predictMatchOutcome(
   features: MatchFeatureVector,
-  sport: Sport
+  sport: Sport = 'FOOTBALL'
 ): MatchPrediction {
   const weights = getSportWeights(sport);
   const config = getSportConfig(sport);
@@ -53,7 +327,7 @@ export function predictMatchOutcome(
   const homeAdvantageScore = features.isNeutralVenue ? 0 : weights.homeAdvantage;
   
   // Squad strength differential
-  const squadDifferential = (features.homeSquadRating - features.awaySquadRating);
+  const squadDifferential = features.homeSquadRating - features.awaySquadRating;
   const squadFactor = normalizeToScale(squadDifferential, -50, 50, 0, 100);
   
   // Injury impact
@@ -79,7 +353,7 @@ export function predictMatchOutcome(
   const awayRawScore = 
     (awayFormScore * weights.recentForm / 100) +
     (h2hFactor.awayScore * weights.headToHead / 100) +
-    (squadFactor * weights.squadStrength / 100 * -1 + 50) +
+    ((100 - squadFactor) * weights.squadStrength / 100) +
     (awayInjuryImpact * weights.injuryImpact / 100) +
     (awayRestFactor * weights.restDays / 100);
   
@@ -118,9 +392,19 @@ export function predictMatchOutcome(
     predictedOutcome = 'AWAY_WIN';
   }
   
-  // Calculate expected goals
-  const expectedHomeScore = calculateExpectedGoals(features.homeGoalsScoredAvg, features.awayGoalsConcededAvg, homeScore / 100, sport);
-  const expectedAwayScore = calculateExpectedGoals(features.awayGoalsScoredAvg, features.homeGoalsConcededAvg, awayScore / 100, sport);
+  // Calculate expected scores
+  const expectedHomeScore = calculateExpectedScore(
+    features.homeGoalsScoredAvg,
+    features.awayGoalsConcededAvg,
+    homeScore / 100,
+    sport
+  );
+  const expectedAwayScore = calculateExpectedScore(
+    features.awayGoalsScoredAvg,
+    features.homeGoalsConcededAvg,
+    awayScore / 100,
+    sport
+  );
   
   // Determine confidence level
   const confidenceScore = Math.abs(homeWinProbability - awayWinProbability);
@@ -131,14 +415,14 @@ export function predictMatchOutcome(
     confidence = 'MEDIUM';
   }
   
-  // Generate key factors
+  // Generate key factors and risks
   const keyFactors = generateMatchKeyFactors(features, homeScore, awayScore, sport);
-  
-  // Generate risk assessment
   const riskFactors = generateRiskFactors(features, confidenceScore);
   
   return {
-    matchId: '', // To be set by caller
+    matchId: '',
+    homeClubId: features.homeClubId,
+    awayClubId: features.awayClubId,
     homeWinProbability,
     drawProbability,
     awayWinProbability,
@@ -152,439 +436,131 @@ export function predictMatchOutcome(
     riskLevel: confidenceScore < 10 ? 'HIGH' : confidenceScore < 20 ? 'MEDIUM' : 'LOW',
     riskFactors,
     modelVersion: MODEL_VERSION,
-    dataPoints: 0, // To be set by caller
+    dataPoints: 0,
     generatedAt: new Date(),
-    validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+    validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    sport,
   };
 }
 
-// ============================================================================
+// =============================================================================
 // PLAYER PREDICTION ENGINE
-// ============================================================================
+// =============================================================================
 
 /**
  * Generate player performance prediction
  */
 export function predictPlayerPerformance(
   features: PlayerFeatureVector,
-  sport: Sport
+  sport: Sport = 'FOOTBALL'
 ): PlayerPrediction {
   const config = getSportConfig(sport);
+  const terminology = getScoringTerminology(sport);
   
   // Calculate performance projections based on recent form
   const matchAvg = features.matchesPlayed > 0 ? features.goalsScored / features.matchesPlayed : 0;
   const assistAvg = features.matchesPlayed > 0 ? features.assists / features.matchesPlayed : 0;
   
   // Trend factor adjustment
-  const trendMultiplier = features.ratingTrend === 'IMPROVING' ? 1.1 : 
+  const trendMultiplier = features.ratingTrend === 'IMPROVING' ? 1.1 :
                           features.ratingTrend === 'DECLINING' ? 0.9 : 1.0;
   
   // Fatigue adjustment
-  const fatigueMultiplier = 1 - (features.fatigueLevel / 200); // Max 50% reduction
+  const fatigueMultiplier = 1 - (features.fatigueLevel / 200);
   
   // Calculate injury risk
   const injuryRiskScore = calculateInjuryRisk(features);
   
   // Calculate predicted metrics
-  const predictedRating = Math.min(10, Math.max(1, 
+  const predictedRating = Math.min(10, Math.max(1,
     features.averageRating * trendMultiplier * fatigueMultiplier
   ));
   
-  const predictedGoals = Math.round(matchAvg * 5 * trendMultiplier * fatigueMultiplier * 10) / 10;
-  const predictedAssists = Math.round(assistAvg * 5 * trendMultiplier * fatigueMultiplier * 10) / 10;
+  // Calculate expected contributions (over next 5 matches)
+  const contributionMultiplier = trendMultiplier * fatigueMultiplier;
+  const expectedContributions: PlayerPrediction['expectedContributions'] = [
+    {
+      metric: terminology.primary + 's',
+      value: Math.round(matchAvg * 5 * contributionMultiplier * 10) / 10,
+      unit: 'per 5 matches',
+    },
+    {
+      metric: 'Assists',
+      value: Math.round(assistAvg * 5 * contributionMultiplier * 10) / 10,
+      unit: 'per 5 matches',
+    },
+  ];
   
-  // Calculate expected minutes
-  const expectedMinutes = Math.round(
-    (features.minutesPlayed / Math.max(features.matchesPlayed, 1)) * fatigueMultiplier
-  );
+  // Position-specific metrics
+  const positionImportance = getPositionImportance(sport, features.position);
   
-  // Generate development insights
-  const development = generateDevelopmentInsights(features, sport);
+  // Calculate expected minutes based on fatigue and importance
+  const avgMinutes = features.matchesPlayed > 0
+    ? features.minutesPlayed / features.matchesPlayed
+    : config.match.standardDuration * 0.8;
+  const expectedMinutes = Math.round(avgMinutes * fatigueMultiplier);
   
-  // Calculate weekly/monthly/season changes
-  const weeklyChange = features.ratingTrend === 'IMPROVING' ? 0.2 : 
-                       features.ratingTrend === 'DECLINING' ? -0.15 : 0;
+  // Determine form status
+  const formScore = features.formScore;
+  let currentForm: PlayerPrediction['formAnalysis']['currentForm'] = 'AVERAGE';
+  if (formScore >= 80) currentForm = 'EXCELLENT';
+  else if (formScore >= 65) currentForm = 'GOOD';
+  else if (formScore <= 35) currentForm = 'POOR';
+  else if (formScore <= 20) currentForm = 'CRITICAL';
   
-  // Determine confidence
-  const confidence = features.matchesPlayed >= 10 ? 'HIGH' : 
-                     features.matchesPlayed >= 5 ? 'MEDIUM' : 'LOW';
+  // Calculate season comparison
+  const seasonComparison = Math.round((predictedRating - features.averageRating) / features.averageRating * 100);
   
   // Generate recommendations
   const recommendations = generatePlayerRecommendations(features, injuryRiskScore, sport);
   
-  return {
-    playerId: features.playerId,
-    playerName: '', // To be set by caller
-    position: features.position,
-    sport,
-    predictions: {
-      nextMatchRating: Math.round(predictedRating * 10) / 10,
-      goalsNext5Matches: predictedGoals,
-      assistsNext5Matches: predictedAssists,
-      minutesExpected: expectedMinutes,
-    },
-    risks: {
-      injuryRisk: injuryRiskScore > 70 ? 'HIGH' : injuryRiskScore > 40 ? 'MEDIUM' : 'LOW',
-      injuryRiskScore: Math.round(injuryRiskScore),
-      fatigueLevel: features.fatigueLevel > 70 ? 'HIGH' : features.fatigueLevel > 40 ? 'MEDIUM' : 'LOW',
-      formDropRisk: features.ratingTrend === 'DECLINING' ? 60 : 20,
-    },
-    development,
-    trends: {
-      performanceTrend: features.ratingTrend,
-      weeklyChange: Math.round(weeklyChange * 100) / 100,
-      monthlyChange: Math.round(weeklyChange * 4 * 100) / 100,
-      seasonChange: Math.round(weeklyChange * 16 * 100) / 100,
-    },
-    recommendations,
-    confidence,
-    modelVersion: MODEL_VERSION,
-    generatedAt: new Date(),
-  };
-}
-
-// ============================================================================
-// TEAM PREDICTION ENGINE
-// ============================================================================
-
-/**
- * Generate team analytics prediction
- */
-export function predictTeamPerformance(
-  features: TeamFeatureVector,
-  sport: Sport,
-  totalTeamsInCompetition: number = 20
-): TeamPrediction {
-  const config = getSportConfig(sport);
-  
-  // Calculate form score
-  const pointsPerMatch = features.matchesPlayed > 0 
-    ? ((features.wins * config.scoring.winPoints) + (features.draws * config.scoring.drawPoints)) / features.matchesPlayed
-    : 0;
-  
-  const maxPointsPerMatch = config.scoring.maxPointsPerMatch;
-  const formPercentage = (pointsPerMatch / maxPointsPerMatch) * 100;
-  
-  // Determine form category
-  let currentForm: TeamPrediction['formAnalysis']['currentForm'] = 'AVERAGE';
-  if (formPercentage >= 80) currentForm = 'EXCELLENT';
-  else if (formPercentage >= 65) currentForm = 'GOOD';
-  else if (formPercentage >= 40) currentForm = 'AVERAGE';
-  else if (formPercentage >= 25) currentForm = 'POOR';
-  else currentForm = 'CRITICAL';
-  
-  // Calculate goal differential trend
-  const goalDifferential = features.goalsFor - features.goalsAgainst;
-  const goalDifferentialPerMatch = features.matchesPlayed > 0 ? goalDifferential / features.matchesPlayed : 0;
-  
-  // Project season finish
-  const matchesRemaining = Math.max(0, (totalTeamsInCompetition - 1) * 2 - features.matchesPlayed);
-  const predictedPoints = Math.round(
-    ((features.wins * config.scoring.winPoints) + (features.draws * config.scoring.drawPoints)) +
-    (matchesRemaining * pointsPerMatch)
-  );
-  
-  // Position prediction (simplified linear projection)
-  const predictedPosition = features.leaguePosition ?? Math.ceil(totalTeamsInCompetition / 2);
-  
-  // Calculate promotion/relegation probabilities
-  const promotionProbability = features.leaguePosition && features.leaguePosition <= 3 
-    ? Math.max(0, 80 - (features.leaguePosition * 20)) 
-    : 0;
-  
-  const relegationRisk = features.leaguePosition && features.leaguePosition >= totalTeamsInCompetition - 3
-    ? Math.min(100, (features.leaguePosition - totalTeamsInCompetition + 4) * 25)
-    : 0;
-  
-  // Title chance
-  const titleChance = features.leaguePosition === 1 && features.pointsFromTop === 0
-    ? Math.min(80, formPercentage)
-    : features.pointsFromTop && features.pointsFromTop <= 6
-      ? Math.max(0, 50 - features.pointsFromTop * 8)
-      : 0;
-  
-  // Squad health assessment
-  const squadHealth = {
-    overallFitness: Math.round((100 - (features.injuredPlayerCount * 5)) * features.squadDepth / 100),
-    injuryCount: features.injuredPlayerCount,
-    suspensionCount: 0, // To be set by caller
-    fatigueLevel: features.matchesPlayed > 10 ? 'MEDIUM' : 'LOW' as const,
-    squadDepthScore: Math.round(features.squadDepth),
-  };
-  
-  // Generate SWOT analysis
-  const analysis = generateTeamAnalysis(features, sport, currentForm);
-  
-  // Generate recommendations
-  const recommendations = generateTeamRecommendations(features, sport, currentForm);
+  // Generate development insights for youth players
+  let developmentInsights: PlayerPrediction['developmentInsights'];
+  if (features.isYouth) {
+    developmentInsights = {
+      areasOfStrength: identifyStrengths(features, sport),
+      areasForImprovement: identifyWeaknesses(features, sport),
+      potentialCeiling: features.potentialRating,
+      timeToReachPotential: calculateDevelopmentTime(features),
+    };
+  }
   
   // Determine confidence
-  const confidence: 'HIGH' | 'MEDIUM' | 'LOW' = features.matchesPlayed >= 15 ? 'HIGH' : 
-                    features.matchesPlayed >= 8 ? 'MEDIUM' : 'LOW';
+  const dataPointsCount = features.matchesPlayed;
+  const confidence: PlayerPrediction['confidence'] = 
+    dataPointsCount >= 20 ? 'HIGH' :
+    dataPointsCount >= 10 ? 'MEDIUM' : 'LOW';
   
   return {
-    teamId: features.teamId,
-    teamName: '', // To be set by caller
-    clubId: features.clubId,
-    sport,
-    seasonProjection: {
-      predictedPosition,
-      predictedPoints,
-      promotionProbability: Math.round(promotionProbability),
-      relegationRisk: Math.round(relegationRisk),
-      titleChanceProbability: Math.round(titleChance),
+    playerId: features.playerId,
+    playerName: '',
+    position: features.position,
+    predictionType: 'PLAYER_PERFORMANCE',
+    predictedRating: Math.round(predictedRating * 10) / 10,
+    ratingRange: {
+      min: Math.round((predictedRating - 0.5) * 10) / 10,
+      max: Math.round((predictedRating + 0.5) * 10) / 10,
     },
+    expectedContributions,
+    injuryRiskScore: Math.round(injuryRiskScore),
+    injuryRiskFactors: generateInjuryRiskFactors(features),
+    fatigueLevel: features.fatigueLevel,
+    recommendedMinutes: expectedMinutes,
     formAnalysis: {
       currentForm,
-      formScore: Math.round(formPercentage),
-      formTrend: features.goalDifferentialTrend > 0 ? 'IMPROVING' : 
-                 features.goalDifferentialTrend < 0 ? 'DECLINING' : 'STABLE',
-      expectedPointsNext5: Math.round(pointsPerMatch * 5 * 10) / 10,
+      trend: features.ratingTrend,
+      comparedToSeason: seasonComparison,
     },
-    squadHealth,
-    analysis,
+    developmentInsights,
     recommendations,
-    confidence,
+    trainingFocus: generateTrainingFocus(features, sport),
     modelVersion: MODEL_VERSION,
     generatedAt: new Date(),
-  };
-}
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Calculate head-to-head factor scores
- */
-function calculateH2HFactor(features: MatchFeatureVector): { homeScore: number; awayScore: number } {
-  if (features.h2hTotalMatches === 0) {
-    return { homeScore: 50, awayScore: 50 }; // Neutral if no history
-  }
-  
-  const homeWinRate = features.h2hHomeWins / features.h2hTotalMatches;
-  const awayWinRate = features.h2hAwayWins / features.h2hTotalMatches;
-  
-  return {
-    homeScore: homeWinRate * 100,
-    awayScore: awayWinRate * 100,
-  };
-}
-
-/**
- * Calculate expected goals based on attack/defense ratings
- */
-function calculateExpectedGoals(
-  scoringAvg: number,
-  concedingAvg: number,
-  strengthFactor: number,
-  sport: Sport
-): number {
-  const config = getSportConfig(sport);
-  
-  // Base expected goals from historical averages
-  const baseExpected = (scoringAvg + concedingAvg) / 2;
-  
-  // Apply strength factor adjustment
-  const adjustedExpected = baseExpected * (0.5 + strengthFactor);
-  
-  // Sport-specific scoring adjustments
-  const scoringMultiplier = sport === 'BASKETBALL' ? 0.01 : // Points → Goals equivalent
-                            sport === 'CRICKET' ? 0.005 :   // Runs → Goals equivalent
-                            1;
-  
-  return Math.max(0, adjustedExpected * scoringMultiplier);
-}
-
-/**
- * Calculate injury risk score (0-100)
- */
-function calculateInjuryRisk(features: PlayerFeatureVector): number {
-  let riskScore = 0;
-  
-  // Base risk from injury history
-  riskScore += features.injuryHistory * 20;
-  
-  // Fatigue contribution
-  riskScore += features.fatigueLevel * 0.3;
-  
-  // High training load risk
-  if (features.recentTrainingLoad > 80) {
-    riskScore += 15;
-  }
-  
-  // Short rest period risk
-  if (features.daysSinceLastMatch < 3) {
-    riskScore += 20;
-  } else if (features.daysSinceLastMatch < 5) {
-    riskScore += 10;
-  }
-  
-  // High minutes played risk
-  if (features.minutesPlayed / Math.max(features.matchesPlayed, 1) > 85) {
-    riskScore += 10;
-  }
-  
-  return Math.min(100, Math.max(0, riskScore));
-}
-
-/**
- * Normalize a value to a scale
- */
-function normalizeToScale(value: number, min: number, max: number, targetMin: number, targetMax: number): number {
-  const normalized = (value - min) / (max - min);
-  return targetMin + (normalized * (targetMax - targetMin));
-}
-
-/**
- * Generate key factors for match prediction
- */
-function generateMatchKeyFactors(
-  features: MatchFeatureVector,
-  homeScore: number,
-  awayScore: number,
-  sport: Sport
-): PredictionFactor[] {
-  const factors: PredictionFactor[] = [];
-  
-  // Form comparison
-  const formDiff = features.homeRecentForm - features.awayRecentForm;
-  factors.push({
-    factor: 'Recent Form',
-    impact: formDiff > 10 ? 'POSITIVE' : formDiff < -10 ? 'NEGATIVE' : 'NEUTRAL',
-    weight: 25,
-    description: `Home team form: ${features.homeRecentForm.toFixed(0)}% vs Away: ${features.awayRecentForm.toFixed(0)}%`,
-    dataPoint: `${formDiff > 0 ? '+' : ''}${formDiff.toFixed(0)}%`,
-  });
-  
-  // Squad strength
-  const squadDiff = features.homeSquadRating - features.awaySquadRating;
-  factors.push({
-    factor: 'Squad Strength',
-    impact: squadDiff > 5 ? 'POSITIVE' : squadDiff < -5 ? 'NEGATIVE' : 'NEUTRAL',
-    weight: 20,
-    description: `Squad rating differential: ${squadDiff > 0 ? '+' : ''}${squadDiff.toFixed(1)}`,
-    dataPoint: squadDiff.toFixed(1),
-  });
-  
-  // Home advantage
-  if (!features.isNeutralVenue) {
-    factors.push({
-      factor: 'Home Advantage',
-      impact: 'POSITIVE',
-      weight: getSportWeights(sport).homeAdvantage,
-      description: `Playing at home provides tactical advantage`,
-      dataPoint: `+${getSportWeights(sport).homeAdvantage}%`,
-    });
-  }
-  
-  // Key players availability
-  const availabilityDiff = features.homeKeyPlayersAvailable - features.awayKeyPlayersAvailable;
-  if (Math.abs(availabilityDiff) > 10) {
-    factors.push({
-      factor: 'Key Players Available',
-      impact: availabilityDiff > 0 ? 'POSITIVE' : 'NEGATIVE',
-      weight: 15,
-      description: `Home: ${features.homeKeyPlayersAvailable}% vs Away: ${features.awayKeyPlayersAvailable}% key players fit`,
-      dataPoint: `${availabilityDiff > 0 ? '+' : ''}${availabilityDiff}%`,
-    });
-  }
-  
-  // Rest days
-  const restDiff = features.homeRestDays - features.awayRestDays;
-  if (Math.abs(restDiff) >= 2) {
-    factors.push({
-      factor: 'Rest Advantage',
-      impact: restDiff > 0 ? 'POSITIVE' : 'NEGATIVE',
-      weight: 8,
-      description: `Home: ${features.homeRestDays} days rest vs Away: ${features.awayRestDays} days`,
-      dataPoint: `${restDiff > 0 ? '+' : ''}${restDiff} days`,
-    });
-  }
-  
-  return factors;
-}
-
-/**
- * Generate risk factors for prediction
- */
-function generateRiskFactors(features: MatchFeatureVector, confidenceScore: number): string[] {
-  const risks: string[] = [];
-  
-  if (confidenceScore < 15) {
-    risks.push('Low prediction confidence due to similar team strengths');
-  }
-  
-  if (features.h2hTotalMatches < 3) {
-    risks.push('Limited head-to-head history between teams');
-  }
-  
-  if (features.homeKeyPlayersAvailable < 80 || features.awayKeyPlayersAvailable < 80) {
-    risks.push('Significant injury concerns may affect team performance');
-  }
-  
-  if (features.competitionImportance > 80) {
-    risks.push('High-stakes match may produce unpredictable results');
-  }
-  
-  if (Math.abs(features.homeRestDays - features.awayRestDays) >= 3) {
-    risks.push('Significant rest disparity may impact fitness levels');
-  }
-  
-  return risks;
-}
-
-/**
- * Generate player development insights
- */
-function generateDevelopmentInsights(
-  features: PlayerFeatureVector,
-  sport: Sport
-): PlayerPrediction['development'] {
-  // Determine current level based on rating
-  let currentLevel = 'Developing';
-  if (features.averageRating >= 8.5) currentLevel = 'World Class';
-  else if (features.averageRating >= 7.5) currentLevel = 'Elite';
-  else if (features.averageRating >= 6.5) currentLevel = 'Established';
-  else if (features.averageRating >= 5.5) currentLevel = 'Promising';
-  
-  // Calculate potential (simplified)
-  const potentialRating = Math.min(10, features.averageRating + 1 + (features.consistencyScore * 0.5));
-  
-  // Generate areas based on sport and performance
-  const developmentAreas: string[] = [];
-  const strengths: string[] = [];
-  const weaknesses: string[] = [];
-  
-  // Generic assessments based on consistency
-  if (features.consistencyScore > 70) {
-    strengths.push('Highly consistent performances');
-  } else if (features.consistencyScore < 40) {
-    weaknesses.push('Performance consistency needs improvement');
-    developmentAreas.push('Mental conditioning for consistency');
-  }
-  
-  // Trend-based assessments
-  if (features.ratingTrend === 'IMPROVING') {
-    strengths.push('Strong upward trajectory in recent matches');
-    developmentAreas.push('Maintain training intensity to continue growth');
-  } else if (features.ratingTrend === 'DECLINING') {
-    weaknesses.push('Recent form showing decline');
-    developmentAreas.push('Technical refinement and confidence building');
-  }
-  
-  // Physical assessments
-  if (features.fatigueLevel > 60) {
-    weaknesses.push('Showing signs of fatigue');
-    developmentAreas.push('Recovery and load management');
-  }
-  
-  return {
-    currentLevel,
-    potentialRating: Math.round(potentialRating * 10) / 10,
-    developmentAreas,
-    strengths,
-    weaknesses,
+    validUntil: new Date(Date.now() + 6 * 60 * 60 * 1000),
+    confidence,
+    confidenceScore: confidence === 'HIGH' ? 85 : confidence === 'MEDIUM' ? 60 : 35,
+    dataPoints: dataPointsCount,
+    sport,
   };
 }
 
@@ -623,13 +599,228 @@ function generatePlayerRecommendations(
     recommendations.push('Mentor younger players in the squad');
   }
   
-  // Ensure at least 2 recommendations
+  if (features.isYouth && features.trainingAttendance < 90) {
+    recommendations.push('Improve training attendance for consistent development');
+  }
+  
+  // Ensure minimum recommendations
   if (recommendations.length < 2) {
     recommendations.push('Maintain current training intensity');
     recommendations.push('Continue building chemistry with teammates');
   }
   
   return recommendations;
+}
+
+/**
+ * Generate injury risk factors
+ */
+function generateInjuryRiskFactors(features: PlayerFeatureVector): string[] {
+  const factors: string[] = [];
+  
+  if (features.fatigueLevel > 70) {
+    factors.push('High accumulated fatigue level');
+  }
+  
+  if (features.daysSinceLastInjury < 60) {
+    factors.push('Recent injury history increases risk');
+  }
+  
+  if (features.injuryHistoryScore > 50) {
+    factors.push('Historical pattern of injuries');
+  }
+  
+  if (features.age > 30) {
+    factors.push('Age-related recovery considerations');
+  } else if (features.age < 18) {
+    factors.push('Youth player - muscle development still ongoing');
+  }
+  
+  const avgMinutes = features.minutesPlayed / Math.max(features.matchesPlayed, 1);
+  if (avgMinutes > 85) {
+    factors.push('High match load - limited rotation');
+  }
+  
+  return factors;
+}
+
+/**
+ * Identify player strengths
+ */
+function identifyStrengths(features: PlayerFeatureVector, sport: Sport): string[] {
+  const strengths: string[] = [];
+  
+  if (features.averageRating >= 7.0) strengths.push('Consistent match performances');
+  if (features.consistencyScore >= 70) strengths.push('Reliable and dependable');
+  if (features.formScore >= 70) strengths.push('Currently in excellent form');
+  if (features.fitnessScore >= 80) strengths.push('Excellent physical condition');
+  if (features.trainingAttendance >= 95) strengths.push('Exceptional training commitment');
+  
+  // Ensure at least 2 strengths
+  if (strengths.length < 2) {
+    strengths.push('Good attitude and work ethic');
+    strengths.push('Developing technical skills');
+  }
+  
+  return strengths.slice(0, 4);
+}
+
+/**
+ * Identify areas for improvement
+ */
+function identifyWeaknesses(features: PlayerFeatureVector, sport: Sport): string[] {
+  const weaknesses: string[] = [];
+  
+  if (features.consistencyScore < 50) weaknesses.push('Match-to-match consistency');
+  if (features.formScore < 40) weaknesses.push('Current form needs improvement');
+  if (features.fitnessScore < 60) weaknesses.push('Physical conditioning');
+  if (features.trainingAttendance < 85) weaknesses.push('Training attendance');
+  if (features.averageRating < 6.5) weaknesses.push('Overall performance level');
+  
+  // Ensure at least 2 areas
+  if (weaknesses.length < 2) {
+    weaknesses.push('Fine-tuning decision making');
+    weaknesses.push('Developing leadership qualities');
+  }
+  
+  return weaknesses.slice(0, 4);
+}
+
+/**
+ * Calculate time to reach potential
+ */
+function calculateDevelopmentTime(features: PlayerFeatureVector): string {
+  const gap = features.potentialRating - features.averageRating;
+  const progress = features.developmentProgress / 100;
+  
+  if (gap <= 0.5) return 'Already near potential';
+  if (gap <= 1.0 && progress > 0.7) return '6-12 months';
+  if (gap <= 1.5) return '1-2 years';
+  if (gap <= 2.5) return '2-4 years';
+  return '4+ years';
+}
+
+/**
+ * Generate training focus areas
+ */
+function generateTrainingFocus(features: PlayerFeatureVector, sport: Sport): string[] {
+  const focus: string[] = [];
+  
+  if (features.consistencyScore < 60) {
+    focus.push('Mental consistency and focus');
+  }
+  
+  if (features.fitnessScore < 70) {
+    focus.push('Aerobic conditioning');
+  }
+  
+  if (features.ratingTrend === 'DECLINING') {
+    focus.push('Confidence building exercises');
+  }
+  
+  if (features.isYouth) {
+    focus.push('Technical skill development');
+    focus.push('Tactical awareness');
+  }
+  
+  return focus.slice(0, 3);
+}
+
+// =============================================================================
+// TEAM PREDICTION ENGINE
+// =============================================================================
+
+/**
+ * Generate team performance prediction
+ */
+export function predictTeamPerformance(
+  features: TeamFeatureVector,
+  sport: Sport = 'FOOTBALL'
+): TeamPrediction {
+  const config = getSportConfig(sport);
+  
+  // Calculate form status
+  const formScore = features.overallFormScore;
+  let currentForm: TeamPrediction['formAnalysis']['currentForm'] = 'AVERAGE';
+  if (formScore >= 80) currentForm = 'EXCELLENT';
+  else if (formScore >= 65) currentForm = 'GOOD';
+  else if (formScore <= 35) currentForm = 'POOR';
+  else if (formScore <= 20) currentForm = 'CRITICAL';
+  
+  // Calculate form trend
+  const recentWins = features.last5Results.filter(r => r === 'W').length;
+  const trend: TeamPrediction['formAnalysis']['trend'] =
+    recentWins >= 4 ? 'IMPROVING' :
+    recentWins <= 1 ? 'DECLINING' : 'STABLE';
+  
+  // Calculate win rate and projected points
+  const winRate = features.matchesPlayed > 0 ? features.wins / features.matchesPlayed : 0;
+  const drawRate = features.matchesPlayed > 0 ? features.draws / features.matchesPlayed : 0;
+  const pointsPerMatch = (winRate * config.scoring.winPoints) + (drawRate * config.scoring.drawPoints);
+  
+  // Project season finish (assuming 38 match season for most leagues)
+  const remainingMatches = 38 - features.matchesPlayed;
+  const currentPoints = (features.wins * config.scoring.winPoints) + (features.draws * config.scoring.drawPoints);
+  const projectedPoints = Math.round(currentPoints + (remainingMatches * pointsPerMatch));
+  
+  // Calculate finish positions based on form
+  const formAdjustment = (formScore - 50) / 100; // -0.5 to +0.5
+  const basePosition = Math.round(10 - (winRate * 15)); // Rough estimate
+  
+  const projectedFinish = {
+    bestCase: Math.max(1, basePosition - 4 + Math.round(formAdjustment * -3)),
+    mostLikely: Math.max(1, basePosition + Math.round(formAdjustment * -2)),
+    worstCase: Math.min(20, basePosition + 4 + Math.round(formAdjustment * 3)),
+  };
+  
+  // Calculate squad health
+  const availabilityRate = 1 - (features.injuredPlayerCount + features.suspendedPlayerCount) / 25;
+  const overallFitness = Math.round(availabilityRate * 100 * (features.squadDepth / 100));
+  
+  const squadHealth: TeamPrediction['squadHealth'] = {
+    overallFitness,
+    injuryRisk: features.injuredPlayerCount > 4 ? 'HIGH' : features.injuredPlayerCount > 2 ? 'MEDIUM' : 'LOW',
+    keyPlayerAvailability: Math.round(availabilityRate * 100),
+    depthScore: features.squadDepth,
+  };
+  
+  // Generate SWOT analysis
+  const analysis = generateTeamAnalysis(features, sport, currentForm);
+  
+  // Generate recommendations
+  const recommendations = generateTeamRecommendations(features, sport, currentForm);
+  
+  // Determine confidence
+  const confidence: TeamPrediction['confidence'] =
+    features.matchesPlayed >= 15 ? 'HIGH' :
+    features.matchesPlayed >= 8 ? 'MEDIUM' : 'LOW';
+  
+  return {
+    teamId: features.teamId,
+    teamName: '',
+    competitionId: features.competitionId,
+    projectedFinish,
+    projectedPoints,
+    formAnalysis: {
+      currentForm,
+      formScore,
+      trend,
+      homeVsAway: {
+        homeStrength: features.homeFormScore,
+        awayStrength: features.awayFormScore,
+      },
+    },
+    analysis,
+    squadHealth,
+    recommendations,
+    modelVersion: MODEL_VERSION,
+    generatedAt: new Date(),
+    validUntil: new Date(Date.now() + 12 * 60 * 60 * 1000),
+    confidence,
+    confidenceScore: confidence === 'HIGH' ? 80 : confidence === 'MEDIUM' ? 55 : 30,
+    dataPoints: features.matchesPlayed,
+    sport,
+  };
 }
 
 /**
@@ -645,22 +836,24 @@ function generateTeamAnalysis(
   const opportunities: string[] = [];
   const threats: string[] = [];
   
-  // Analyze based on metrics
   const winRate = features.matchesPlayed > 0 ? features.wins / features.matchesPlayed : 0;
-  const goalDifferential = features.goalsFor - features.goalsAgainst;
+  const goalsPerMatch = features.matchesPlayed > 0 ? features.goalsFor / features.matchesPlayed : 0;
+  const concededPerMatch = features.matchesPlayed > 0 ? features.goalsAgainst / features.matchesPlayed : 0;
   
   // Strengths
   if (winRate > 0.6) strengths.push('Strong winning record');
   if (features.cleanSheetPercentage > 40) strengths.push('Excellent defensive organization');
-  if (features.goalsFor / Math.max(features.matchesPlayed, 1) > 2) strengths.push('Prolific scoring output');
+  if (goalsPerMatch > 2) strengths.push('Prolific scoring output');
   if (features.homeFormScore > 70) strengths.push('Dominant home form');
   if (features.squadDepth > 80) strengths.push('Deep squad with quality rotation options');
+  if (features.teamChemistryScore > 75) strengths.push('Strong team chemistry and cohesion');
   
   // Weaknesses
-  if (features.goalsAgainst / Math.max(features.matchesPlayed, 1) > 1.5) weaknesses.push('Defensive vulnerabilities');
+  if (concededPerMatch > 1.5) weaknesses.push('Defensive vulnerabilities');
   if (features.awayFormScore < 40) weaknesses.push('Struggles in away fixtures');
   if (features.injuredPlayerCount > 3) weaknesses.push('Injury concerns affecting squad depth');
   if (features.cleanSheetPercentage < 20) weaknesses.push('Inability to keep clean sheets');
+  if (goalsPerMatch < 1) weaknesses.push('Struggling to create and convert chances');
   
   // Opportunities
   if (currentForm === 'IMPROVING' || currentForm === 'EXCELLENT') {
@@ -668,6 +861,9 @@ function generateTeamAnalysis(
   }
   if (features.keyPlayerCount >= 5) {
     opportunities.push('Quality players to execute tactical game plans');
+  }
+  if (features.averageSquadAge < 26) {
+    opportunities.push('Young squad with room for development');
   }
   opportunities.push('Potential for improvement in set-piece efficiency');
   
@@ -678,9 +874,12 @@ function generateTeamAnalysis(
   if (currentForm === 'POOR' || currentForm === 'CRITICAL') {
     threats.push('Poor form could affect team confidence');
   }
+  if (features.managerTenure < 90) {
+    threats.push('New management still implementing philosophy');
+  }
   threats.push('Competitive league environment');
   
-  // Ensure at least one item in each category
+  // Ensure minimum items
   if (strengths.length === 0) strengths.push('Team cohesion and work ethic');
   if (weaknesses.length === 0) weaknesses.push('Room for improvement in overall consistency');
   if (opportunities.length === 0) opportunities.push('Upcoming fixture list presents winnable matches');
@@ -699,10 +898,10 @@ function generateTeamRecommendations(
 ): TeamRecommendation[] {
   const recommendations: TeamRecommendation[] = [];
   
-  // Strategic recommendations based on form
+  // Form-based recommendations
   if (currentForm === 'POOR' || currentForm === 'CRITICAL') {
     recommendations.push({
-      priority: 'HIGH',
+      priority: 'CRITICAL',
       category: 'STRATEGY',
       recommendation: 'Implement defensive-first approach in upcoming matches',
       rationale: 'Current poor form requires stability before attacking ambitions',
@@ -712,10 +911,11 @@ function generateTeamRecommendations(
         'Reduce high-pressing intensity temporarily',
         'Prioritize set-piece defending',
       ],
+      timeframe: 'Immediate - next 3 matches',
     });
   }
   
-  // Squad rotation recommendation
+  // Squad rotation
   if (features.matchesPlayed > 10 && features.squadDepth > 60) {
     recommendations.push({
       priority: 'MEDIUM',
@@ -728,6 +928,7 @@ function generateTeamRecommendations(
         'Prioritize rest for players with highest minutes',
         'Use cup competitions to give fringe players experience',
       ],
+      timeframe: 'Ongoing throughout season',
     });
   }
   
@@ -744,26 +945,29 @@ function generateTeamRecommendations(
         'Implement additional recovery sessions',
         'Assess injury patterns for prevention insights',
       ],
+      timeframe: '2-4 weeks',
     });
   }
   
   // Attacking improvement
-  if (features.goalsFor / Math.max(features.matchesPlayed, 1) < 1.2) {
+  const goalsPerMatch = features.goalsFor / Math.max(features.matchesPlayed, 1);
+  if (goalsPerMatch < 1.2) {
     recommendations.push({
       priority: 'MEDIUM',
-      category: 'STRATEGY',
+      category: 'TRAINING',
       recommendation: 'Improve attacking efficiency and creativity',
-      rationale: `Averaging only ${(features.goalsFor / Math.max(features.matchesPlayed, 1)).toFixed(1)} goals per match`,
+      rationale: `Averaging only ${goalsPerMatch.toFixed(1)} goals per match`,
       expectedImpact: 'Increased goal output and match-winning capability',
       implementation: [
         'Focus on finishing drills in training',
         'Work on attacking movement patterns',
         'Increase set-piece goal threat',
       ],
+      timeframe: '4-6 weeks',
     });
   }
   
-  // Development recommendation
+  // Youth development
   recommendations.push({
     priority: 'LOW',
     category: 'PLAYER_DEVELOPMENT',
@@ -775,18 +979,20 @@ function generateTeamRecommendations(
       'Schedule reserve/U21 fixtures for development',
       'Assign senior player mentors for young talents',
     ],
+    timeframe: 'Season-long initiative',
   });
   
   return recommendations;
 }
 
-// ============================================================================
+// =============================================================================
 // EXPORTS
-// ============================================================================
+// =============================================================================
 
 export {
   predictMatchOutcome,
   predictPlayerPerformance,
   predictTeamPerformance,
+  calculateInjuryRisk,
   MODEL_VERSION,
 };

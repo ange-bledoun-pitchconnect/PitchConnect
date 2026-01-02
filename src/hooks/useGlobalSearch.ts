@@ -1,363 +1,221 @@
 /**
- * useGlobalSearch Hook - WORLD-CLASS VERSION
- * Path: /hooks/useGlobalSearch.ts
- *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * 🔍 USE GLOBAL SEARCH HOOK v7.10.1 - MULTI-ENTITY SEARCH
  * ============================================================================
- * ✅ Removed @tanstack/react-query dependency (custom fetch logic)
- * ✅ Global search across players, clubs, leagues, matches
- * ✅ Debounced search queries
- * ✅ Search history with localStorage persistence
- * ✅ Advanced filtering with multiple criteria
- * ✅ Loading and error states
- * ✅ Result caching mechanism
- * ✅ Configurable debounce and max results
- * ✅ Search history management
- * ✅ Advanced filter builder
- * ✅ Refetch capability
- * ✅ Request cancellation support
- * ✅ Error handling with retry logic
- * ✅ Performance optimized
- * ✅ Production-ready code
+ * @version 7.10.1
+ * @path src/hooks/useGlobalSearch.ts
+ * ============================================================================
  */
 
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import axios, { AxiosError } from 'axios';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useDebounce } from './useDebounce';
+import { Sport } from './useSportConfig';
 
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
+export type SearchEntityType = 
+  | 'player' | 'team' | 'club' | 'match' | 'league' 
+  | 'coach' | 'referee' | 'venue' | 'competition' | 'user';
 
 export interface SearchResult {
   id: string;
-  type: 'player' | 'club' | 'league' | 'match';
+  type: SearchEntityType;
   title: string;
   subtitle?: string;
-  description?: string;
-  icon?: string;
-  href: string;
-  metadata?: Record<string, any>;
+  imageUrl?: string;
+  url?: string;
+  sport?: Sport;
+  metadata?: Record<string, unknown>;
+  score?: number;
 }
 
-export interface SearchHistory {
-  id: string;
-  query: string;
-  timestamp: Date;
-  resultCount: number;
+export interface SearchFilters {
+  types?: SearchEntityType[];
+  sport?: Sport;
+  clubId?: string;
+  leagueId?: string;
+  limit?: number;
 }
 
-interface CacheEntry {
-  data: SearchResult[];
-  timestamp: number;
-}
-
-interface UseGlobalSearchOptions {
-  enabled?: boolean;
+export interface UseGlobalSearchOptions {
   debounceMs?: number;
-  maxResults?: number;
-  maxHistory?: number;
-  cacheTimeMs?: number;
-}
-
-export interface FilterOptions {
-  type?: ('player' | 'club' | 'league' | 'match')[];
-  status?: string[];
-  dateRange?: {
-    from: Date;
-    to: Date;
-  };
-  position?: string[];
-  league?: string[];
-  club?: string[];
-  minRating?: number;
-  maxRating?: number;
-}
-
-interface UseAdvancedFilterOptions {
+  minChars?: number;
+  filters?: SearchFilters;
   enabled?: boolean;
-  cacheTimeMs?: number;
+  onSelect?: (result: SearchResult) => void;
 }
 
-interface SearchState {
-  data: SearchResult[];
+export interface UseGlobalSearchReturn {
+  query: string;
+  setQuery: (query: string) => void;
+  results: SearchResult[];
+  groupedResults: Record<SearchEntityType, SearchResult[]>;
   isLoading: boolean;
   error: Error | null;
-  isFetching: boolean;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+  selectedIndex: number;
+  setSelectedIndex: (index: number) => void;
+  handleKeyDown: (e: React.KeyboardEvent) => void;
+  selectResult: (result: SearchResult) => void;
+  clear: () => void;
+  totalResults: number;
+  hasResults: boolean;
 }
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
+// Cache for search results
+const searchCache = new Map<string, { results: SearchResult[]; timestamp: number }>();
+const CACHE_TTL = 60000; // 1 minute
 
-const SEARCH_HISTORY_KEY = 'pitchconnect_search_history';
-const MAX_HISTORY_DEFAULT = 10;
-const CACHE_TIME_DEFAULT = 5 * 60 * 1000; // 5 minutes
-const DEBOUNCE_DEFAULT = 300;
+export function useGlobalSearch(options: UseGlobalSearchOptions = {}): UseGlobalSearchReturn {
+  const {
+    debounceMs = 300,
+    minChars = 2,
+    filters = {},
+    enabled = true,
+    onSelect,
+  } = options;
 
-// ============================================================================
-// HOOKS
-// ============================================================================
-
-/**
- * Custom hook for managing async requests with caching
- */
-function useAsync<T>(
-  asyncFunction: () => Promise<T>,
-  dependencies: any[] = [],
-  cacheTime = CACHE_TIME_DEFAULT
-) {
-  const [state, setState] = useState<SearchState>({
-    data: [] as any,
-    isLoading: false,
-    error: null,
-    isFetching: false,
-  });
-
-  const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  const execute = useCallback(async () => {
-    abortControllerRef.current = new AbortController();
-    setState((prev) => ({ ...prev, isLoading: true, isFetching: true }));
-
-    try {
-      const result = await asyncFunction();
-      setState({
-        data: result as any,
-        isLoading: false,
-        error: null,
-        isFetching: false,
-      });
-      return result;
-    } catch (error) {
-      if (error instanceof Error && error.name !== 'AbortError') {
-        setState({
-          data: [] as any,
-          isLoading: false,
-          error: error as Error,
-          isFetching: false,
-        });
-      }
-      throw error;
-    }
-  }, dependencies);
-
-  const refetch = useCallback(() => {
-    execute();
-  }, [execute]);
-
-  const cancel = useCallback(() => {
-    abortControllerRef.current?.abort();
-  }, []);
-
-  return {
-    ...state,
-    execute,
-    refetch,
-    cancel,
-  };
-}
-
-/**
- * Hook for global search across players, clubs, leagues, and matches
- * Includes search history and debouncing
- */
-export function useGlobalSearch({
-  enabled = true,
-  debounceMs = DEBOUNCE_DEFAULT,
-  maxResults = 20,
-  maxHistory = MAX_HISTORY_DEFAULT,
-  cacheTimeMs = CACHE_TIME_DEFAULT,
-}: UseGlobalSearchOptions = {}) {
   const [query, setQuery] = useState('');
-  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
 
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
   const abortControllerRef = useRef<AbortController | null>(null);
+  const debouncedQuery = useDebounce(query, debounceMs);
 
-  // Load search history from localStorage on mount
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  // Group results by type
+  const groupedResults = useMemo(() => {
+    const grouped: Record<SearchEntityType, SearchResult[]> = {
+      player: [],
+      team: [],
+      club: [],
+      match: [],
+      league: [],
+      coach: [],
+      referee: [],
+      venue: [],
+      competition: [],
+      user: [],
+    };
 
-    try {
-      const stored = localStorage.getItem(SEARCH_HISTORY_KEY);
-      if (stored) {
-        const history = JSON.parse(stored) as SearchHistory[];
-        setSearchHistory(
-          history.map((item) => ({
-            ...item,
-            timestamp: new Date(item.timestamp),
-          })).slice(0, maxHistory)
-        );
+    results.forEach(result => {
+      if (grouped[result.type]) {
+        grouped[result.type].push(result);
       }
-    } catch (error) {
-      console.warn('Failed to load search history:', error);
-    }
-  }, [maxHistory]);
+    });
 
-  // Debounced search
-  useEffect(() => {
-    if (!enabled) return;
+    return grouped;
+  }, [results]);
 
-    // Clear existing timer
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
+  const totalResults = results.length;
+  const hasResults = totalResults > 0;
 
-    // If query is empty, clear results
-    if (!query.trim()) {
+  // Search function
+  const search = useCallback(async (searchQuery: string) => {
+    if (!enabled || searchQuery.length < minChars) {
       setResults([]);
-      setError(null);
       return;
     }
 
-    // Set new timer
-    debounceTimerRef.current = setTimeout(() => {
-      performSearch(query);
-    }, debounceMs);
+    // Check cache
+    const cacheKey = JSON.stringify({ query: searchQuery, filters });
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      setResults(cached.results);
+      return;
+    }
 
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [query, debounceMs, enabled]);
+    // Cancel previous request
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
 
-  /**
-   * Perform search with caching and error handling
-   */
-  const performSearch = useCallback(
-    async (searchQuery: string) => {
-      const trimmedQuery = searchQuery.trim();
-      if (!trimmedQuery) {
-        setResults([]);
-        return;
-      }
-
-      // Check cache
-      const cacheKey = `search:${trimmedQuery}:${maxResults}`;
-      const cached = cacheRef.current.get(cacheKey);
-
-      if (cached && Date.now() - cached.timestamp < cacheTimeMs) {
-        setResults(cached.data);
-        setError(null);
-        return;
-      }
-
-      // Cancel previous request
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = new AbortController();
-
+    try {
       setIsLoading(true);
       setError(null);
 
-      try {
-        const response = await axios.get('/api/search', {
-          params: {
-            q: trimmedQuery,
-            limit: maxResults,
-          },
-          signal: abortControllerRef.current.signal,
-        });
+      const params = new URLSearchParams({ q: searchQuery });
+      if (filters.types?.length) params.append('types', filters.types.join(','));
+      if (filters.sport) params.append('sport', filters.sport);
+      if (filters.clubId) params.append('clubId', filters.clubId);
+      if (filters.leagueId) params.append('leagueId', filters.leagueId);
+      if (filters.limit) params.append('limit', filters.limit.toString());
 
-        const data = response.data.data || [];
-        setResults(data);
+      const response = await fetch(`/api/search?${params}`, {
+        signal: abortControllerRef.current.signal,
+      });
 
-        // Update cache
-        cacheRef.current.set(cacheKey, {
-          data,
-          timestamp: Date.now(),
-        });
-      } catch (err) {
-        if (err instanceof AxiosError) {
-          if (err.code !== 'CANCELED') {
-            setError(
-              err instanceof Error
-                ? err
-                : new Error('Failed to perform search')
-            );
-          }
-        } else if (err instanceof Error) {
-          if (err.name !== 'AbortError') {
-            setError(err);
-          }
-        }
-        setResults([]);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [maxResults, cacheTimeMs]
-  );
+      if (!response.ok) throw new Error('Search failed');
 
-  /**
-   * Add search to history and save to localStorage
-   */
-  const addToHistory = useCallback((searchQuery: string, resultCount: number) => {
-    if (!searchQuery.trim()) return;
+      const data = await response.json();
+      const searchResults = data.results || [];
 
-    const newEntry: SearchHistory = {
-      id: Date.now().toString(),
-      query: searchQuery,
-      timestamp: new Date(),
-      resultCount,
-    };
-
-    setSearchHistory((prev) => {
-      const updated = [newEntry, ...prev].slice(0, maxHistory);
-
-      try {
-        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
-      } catch (error) {
-        console.warn('Failed to save search history:', error);
-      }
-
-      return updated;
-    });
-  }, [maxHistory]);
-
-  /**
-   * Clear search history
-   */
-  const clearHistory = useCallback(() => {
-    setSearchHistory([]);
-    try {
-      localStorage.removeItem(SEARCH_HISTORY_KEY);
-    } catch (error) {
-      console.warn('Failed to clear search history:', error);
+      // Cache results
+      searchCache.set(cacheKey, { results: searchResults, timestamp: Date.now() });
+      setResults(searchResults);
+      setSelectedIndex(-1);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      setError(err instanceof Error ? err : new Error('Search failed'));
+      setResults([]);
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [enabled, minChars, filters]);
 
-  /**
-   * Remove specific history item
-   */
-  const removeFromHistory = useCallback((id: string) => {
-    setSearchHistory((prev) => {
-      const updated = prev.filter((item) => item.id !== id);
+  // Trigger search on debounced query change
+  useEffect(() => {
+    search(debouncedQuery);
+  }, [debouncedQuery, search]);
 
-      try {
-        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
-      } catch (error) {
-        console.warn('Failed to update search history:', error);
-      }
+  // Open dropdown when typing
+  useEffect(() => {
+    if (query.length >= minChars) {
+      setIsOpen(true);
+    }
+  }, [query, minChars]);
 
-      return updated;
-    });
-  }, []);
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!isOpen || !hasResults) return;
 
-  /**
-   * Clear search and results
-   */
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex(prev => Math.min(prev + 1, totalResults - 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex(prev => Math.max(prev - 1, -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0 && selectedIndex < totalResults) {
+          selectResult(results[selectedIndex]);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setIsOpen(false);
+        setSelectedIndex(-1);
+        break;
+    }
+  }, [isOpen, hasResults, selectedIndex, totalResults, results]);
+
+  const selectResult = useCallback((result: SearchResult) => {
+    onSelect?.(result);
+    setIsOpen(false);
+    setQuery('');
+    setSelectedIndex(-1);
+  }, [onSelect]);
+
   const clear = useCallback(() => {
     setQuery('');
     setResults([]);
+    setIsOpen(false);
+    setSelectedIndex(-1);
     setError(null);
   }, []);
 
@@ -365,224 +223,19 @@ export function useGlobalSearch({
     query,
     setQuery,
     results,
+    groupedResults,
     isLoading,
     error,
-    searchHistory,
-    addToHistory,
-    clearHistory,
-    removeFromHistory,
+    isOpen,
+    setIsOpen,
+    selectedIndex,
+    setSelectedIndex,
+    handleKeyDown,
+    selectResult,
     clear,
-    hasQuery: query.trim().length > 0,
-    refetch: () => performSearch(query),
+    totalResults,
+    hasResults,
   };
 }
 
-/**
- * Hook for advanced filtering with combinations
- */
-export function useAdvancedFilter({
-  enabled = true,
-  cacheTimeMs = CACHE_TIME_DEFAULT,
-}: UseAdvancedFilterOptions = {}) {
-  const [filters, setFilters] = useState<FilterOptions>({});
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
-  const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Perform filtered search
-  useEffect(() => {
-    if (!enabled || Object.keys(filters).length === 0) {
-      setResults([]);
-      return;
-    }
-
-    performFilteredSearch(filters);
-  }, [filters, enabled]);
-
-  /**
-   * Build query parameters from filters
-   */
-  const buildFilterParams = useCallback((filterOptions: FilterOptions) => {
-    const params = new URLSearchParams();
-
-    if (filterOptions.type?.length) {
-      params.append('types', filterOptions.type.join(','));
-    }
-    if (filterOptions.status?.length) {
-      params.append('status', filterOptions.status.join(','));
-    }
-    if (filterOptions.position?.length) {
-      params.append('positions', filterOptions.position.join(','));
-    }
-    if (filterOptions.league?.length) {
-      params.append('leagues', filterOptions.league.join(','));
-    }
-    if (filterOptions.club?.length) {
-      params.append('clubs', filterOptions.club.join(','));
-    }
-    if (filterOptions.minRating !== undefined) {
-      params.append('minRating', filterOptions.minRating.toString());
-    }
-    if (filterOptions.maxRating !== undefined) {
-      params.append('maxRating', filterOptions.maxRating.toString());
-    }
-    if (filterOptions.dateRange) {
-      params.append('fromDate', filterOptions.dateRange.from.toISOString());
-      params.append('toDate', filterOptions.dateRange.to.toISOString());
-    }
-
-    return params;
-  }, []);
-
-  /**
-   * Perform filtered search with caching
-   */
-  const performFilteredSearch = useCallback(
-    async (filterOptions: FilterOptions) => {
-      // Cancel previous request
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = new AbortController();
-
-      const cacheKey = `filters:${JSON.stringify(filterOptions)}`;
-      const cached = cacheRef.current.get(cacheKey);
-
-      if (cached && Date.now() - cached.timestamp < cacheTimeMs) {
-        setResults(cached.data);
-        setError(null);
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const params = buildFilterParams(filterOptions);
-        const response = await axios.get(
-          `/api/search/advanced?${params.toString()}`,
-          {
-            signal: abortControllerRef.current.signal,
-          }
-        );
-
-        const data = response.data.data || [];
-        setResults(data);
-
-        // Update cache
-        cacheRef.current.set(cacheKey, {
-          data,
-          timestamp: Date.now(),
-        });
-      } catch (err) {
-        if (err instanceof AxiosError) {
-          if (err.code !== 'CANCELED') {
-            setError(
-              err instanceof Error
-                ? err
-                : new Error('Failed to fetch filtered results')
-            );
-          }
-        } else if (err instanceof Error) {
-          if (err.name !== 'AbortError') {
-            setError(err);
-          }
-        }
-        setResults([]);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [buildFilterParams, cacheTimeMs]
-  );
-
-  /**
-   * Update a single filter
-   */
-  const updateFilter = useCallback(
-    <K extends keyof FilterOptions>(key: K, value: FilterOptions[K]) => {
-      setFilters((prev) => ({
-        ...prev,
-        [key]: value,
-      }));
-    },
-    []
-  );
-
-  /**
-   * Clear all filters
-   */
-  const clearFilters = useCallback(() => {
-    setFilters({});
-    setResults([]);
-  }, []);
-
-  /**
-   * Reset to default filters
-   */
-  const resetFilters = useCallback((defaults: FilterOptions) => {
-    setFilters(defaults);
-  }, []);
-
-  /**
-   * Refetch with current filters
-   */
-  const refetch = useCallback(() => {
-    if (Object.keys(filters).length > 0) {
-      performFilteredSearch(filters);
-    }
-  }, [filters, performFilteredSearch]);
-
-  return {
-    filters,
-    updateFilter,
-    clearFilters,
-    resetFilters,
-    results,
-    isLoading,
-    error,
-    refetch,
-    buildFilterParams,
-  };
-}
-
-/**
- * Utility function to debounce a function
- */
-export function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  delay: number
-): (...args: Parameters<T>) => void {
-  let timeoutId: NodeJS.Timeout | null = null;
-
-  return function (...args: Parameters<T>) {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-
-    timeoutId = setTimeout(() => {
-      func(...args);
-    }, delay);
-  };
-}
-
-/**
- * Utility function to throttle a function
- */
-export function throttle<T extends (...args: any[]) => any>(
-  func: T,
-  limit: number
-): (...args: Parameters<T>) => void {
-  let inThrottle = false;
-
-  return function (...args: Parameters<T>) {
-    if (!inThrottle) {
-      func(...args);
-      inThrottle = true;
-      setTimeout(() => {
-        inThrottle = false;
-      }, limit);
-    }
-  };
-}
+export default useGlobalSearch;

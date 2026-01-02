@@ -1,371 +1,235 @@
-// ============================================================================
-// src/hooks/usePagination.ts
-// Advanced Pagination Hook with State Management & Analytics
-//
-// Features:
-// - Intelligent page management with validation
-// - Configurable page sizes with presets
-// - Jump-to-page functionality
-// - Analytics tracking for pagination events
-// - Cache invalidation on size changes
-// - URL-based pagination state (optional)
-// - Keyboard navigation support
-// - Performance optimized with useMemo
-//
-// Schema: Aligns with Prisma pagination patterns
-// Used by: DataTable, Team/Player lists, Match history
-//
-// Usage:
-// const pagination = usePagination(totalItems, {
-//   initialPage: 1,
-//   initialPageSize: 25,
-//   onPageChange: (page) => console.log('Page:', page),
-//   pageSizeOptions: [10, 25, 50, 100],
-// })
-//
-// ============================================================================
+/**
+ * ============================================================================
+ * 📄 USE PAGINATION HOOK v7.10.1 - ADVANCED PAGINATION
+ * ============================================================================
+ * @version 7.10.1
+ * @path src/hooks/usePagination.ts
+ * ============================================================================
+ */
 
 'use client';
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
-
-interface UsePaginationConfig {
-  /** Initial page number (default: 1) */
+export interface PaginationConfig {
   initialPage?: number;
-  /** Initial items per page (default: 25) */
   initialPageSize?: number;
-  /** Available page size options (default: [10, 25, 50, 100]) */
   pageSizeOptions?: number[];
-  /** Callback when page changes */
-  onPageChange?: (page: number, pageSize: number) => void;
-  /** Callback when page size changes */
-  onPageSizeChange?: (pageSize: number) => void;
-  /** Enable URL-based state management (for bookmarking/sharing) */
-  useUrlState?: boolean;
-  /** URL parameter name for page (default: 'page') */
+  totalItems?: number;
+  syncWithUrl?: boolean;
   pageParamName?: string;
-  /** URL parameter name for size (default: 'size') */
-  sizeParamName?: string;
-  /** Track analytics events */
-  trackAnalytics?: boolean;
+  pageSizeParamName?: string;
 }
 
-interface PaginationState {
+export interface UsePaginationReturn {
   page: number;
   pageSize: number;
   totalItems: number;
   totalPages: number;
-  startIndex: number;
-  endIndex: number;
+  offset: number;
   hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  visiblePages: number[];
-}
-
-interface PaginationActions {
-  goToPage: (page: number) => void;
+  hasPrevPage: boolean;
+  isFirstPage: boolean;
+  isLastPage: boolean;
+  pageRange: number[];
+  pageSizeOptions: number[];
+  
+  // Actions
+  setPage: (page: number) => void;
+  setPageSize: (size: number) => void;
   nextPage: () => void;
   prevPage: () => void;
   firstPage: () => void;
   lastPage: () => void;
-  setPageSize: (size: number) => void;
+  setTotalItems: (total: number) => void;
   reset: () => void;
-  jumpToPage: (page: number) => boolean;
+  
+  // For API calls
+  getPaginationParams: () => { page: number; limit: number; offset: number };
 }
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
-const MIN_PAGE_SIZE = 5;
-const MAX_PAGE_SIZE = 500;
-const VISIBLE_PAGES_COUNT = 5;
-
-// ============================================================================
-// HOOK: usePagination
-// ============================================================================
-
-export function usePagination(
-  totalItems: number,
-  config: UsePaginationConfig = {}
-): PaginationState & PaginationActions {
-  // ============================================================================
-  // CONFIGURATION & STATE INITIALIZATION
-  // ============================================================================
-
+export function usePagination(config: PaginationConfig = {}): UsePaginationReturn {
   const {
     initialPage = 1,
-    initialPageSize = 25,
-    pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
-    onPageChange,
-    onPageSizeChange,
-    useUrlState = false,
+    initialPageSize = 10,
+    pageSizeOptions = [10, 25, 50, 100],
+    totalItems: initialTotalItems = 0,
+    syncWithUrl = false,
     pageParamName = 'page',
-    sizeParamName = 'size',
-    trackAnalytics = false,
+    pageSizeParamName = 'pageSize',
   } = config;
 
-  // Get initial values from URL if enabled
-  const getInitialState = useCallback(() => {
-    if (!useUrlState || typeof window === 'undefined') {
-      return { page: initialPage, pageSize: initialPageSize };
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Get initial values from URL if syncing
+  const getInitialPage = () => {
+    if (syncWithUrl && searchParams) {
+      const urlPage = searchParams.get(pageParamName);
+      return urlPage ? Math.max(1, parseInt(urlPage, 10)) : initialPage;
     }
+    return initialPage;
+  };
 
-    const params = new URLSearchParams(window.location.search);
-    const urlPage = parseInt(params.get(pageParamName) || '') || initialPage;
-    const urlPageSize = parseInt(params.get(sizeParamName) || '') || initialPageSize;
+  const getInitialPageSize = () => {
+    if (syncWithUrl && searchParams) {
+      const urlPageSize = searchParams.get(pageSizeParamName);
+      const parsed = urlPageSize ? parseInt(urlPageSize, 10) : initialPageSize;
+      return pageSizeOptions.includes(parsed) ? parsed : initialPageSize;
+    }
+    return initialPageSize;
+  };
 
-    return {
-      page: Math.max(1, urlPage),
-      pageSize: Math.min(
-        Math.max(urlPageSize, MIN_PAGE_SIZE),
-        MAX_PAGE_SIZE
-      ),
-    };
-  }, [useUrlState, pageParamName, sizeParamName, initialPage, initialPageSize]);
+  const [page, setPageState] = useState(getInitialPage);
+  const [pageSize, setPageSizeState] = useState(getInitialPageSize);
+  const [totalItems, setTotalItemsState] = useState(initialTotalItems);
 
-  const initialState = getInitialState();
-  const [page, setPage] = useState(initialState.page);
-  const [pageSize, setPageSizeState] = useState(initialState.pageSize);
+  // Update URL when pagination changes
+  const updateUrl = useCallback((newPage: number, newPageSize: number) => {
+    if (!syncWithUrl || typeof window === 'undefined') return;
 
-  // ============================================================================
-  // COMPUTED STATE - Memoized for performance
-  // ============================================================================
-
-  const state = useMemo<PaginationState>(() => {
-    // Validate and sanitize inputs
-    const validatedTotalItems = Math.max(0, totalItems);
-    const validatedPageSize = Math.min(
-      Math.max(pageSize, MIN_PAGE_SIZE),
-      MAX_PAGE_SIZE
-    );
-
-    // Calculate derived values
-    const totalPages = Math.ceil(validatedTotalItems / validatedPageSize) || 1;
-    const validatedPage = Math.max(1, Math.min(page, totalPages));
-
-    const startIndex = (validatedPage - 1) * validatedPageSize;
-    const endIndex = Math.min(startIndex + validatedPageSize, validatedTotalItems);
-
-    // Calculate visible page numbers for pagination controls
-    let visiblePages: number[] = [];
-    if (totalPages <= VISIBLE_PAGES_COUNT) {
-      visiblePages = Array.from({ length: totalPages }, (_, i) => i + 1);
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    
+    if (newPage !== 1) {
+      params.set(pageParamName, newPage.toString());
     } else {
-      const halfVisible = Math.floor(VISIBLE_PAGES_COUNT / 2);
-      let start = validatedPage - halfVisible;
-      let end = validatedPage + halfVisible;
-
-      if (start < 1) {
-        end += 1 - start;
-        start = 1;
-      }
-      if (end > totalPages) {
-        start -= end - totalPages;
-        end = totalPages;
-      }
-
-      visiblePages = Array.from(
-        { length: end - start + 1 },
-        (_, i) => start + i
-      );
+      params.delete(pageParamName);
     }
 
-    return {
-      page: validatedPage,
-      pageSize: validatedPageSize,
-      totalItems: validatedTotalItems,
-      totalPages,
-      startIndex,
-      endIndex,
-      hasNextPage: validatedPage < totalPages,
-      hasPreviousPage: validatedPage > 1,
-      visiblePages,
-    };
-  }, [page, pageSize, totalItems]);
+    if (newPageSize !== initialPageSize) {
+      params.set(pageSizeParamName, newPageSize.toString());
+    } else {
+      params.delete(pageSizeParamName);
+    }
 
-  // ============================================================================
-  // URL STATE MANAGEMENT
-  // ============================================================================
+    const query = params.toString();
+    router.push(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+  }, [syncWithUrl, searchParams, pageParamName, pageSizeParamName, initialPageSize, router, pathname]);
 
-  const updateUrlState = useCallback(() => {
-    if (!useUrlState || typeof window === 'undefined') return;
+  // Derived values
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(totalItems / pageSize)), [totalItems, pageSize]);
+  const offset = useMemo(() => (page - 1) * pageSize, [page, pageSize]);
+  const hasNextPage = page < totalPages;
+  const hasPrevPage = page > 1;
+  const isFirstPage = page === 1;
+  const isLastPage = page === totalPages;
 
-    const params = new URLSearchParams(window.location.search);
-    params.set(pageParamName, String(state.page));
-    params.set(sizeParamName, String(state.pageSize));
+  // Page range for pagination UI
+  const pageRange = useMemo(() => {
+    const range: number[] = [];
+    const maxVisible = 5;
+    
+    let start = Math.max(1, page - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
 
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState(null, '', newUrl);
-  }, [useUrlState, pageParamName, sizeParamName, state.page, state.pageSize]);
+    for (let i = start; i <= end; i++) {
+      range.push(i);
+    }
 
-  // Update URL when pagination state changes
-  useEffect(() => {
-    updateUrlState();
-  }, [updateUrlState]);
+    return range;
+  }, [page, totalPages]);
 
-  // ============================================================================
-  // ANALYTICS TRACKING
-  // ============================================================================
+  // Actions
+  const setPage = useCallback((newPage: number) => {
+    const validPage = Math.max(1, Math.min(newPage, totalPages));
+    setPageState(validPage);
+    updateUrl(validPage, pageSize);
+  }, [totalPages, pageSize, updateUrl]);
 
-  const trackEvent = useCallback(
-    (eventType: string, eventData: Record<string, unknown>) => {
-      if (!trackAnalytics) return;
+  const setPageSize = useCallback((newSize: number) => {
+    if (!pageSizeOptions.includes(newSize)) return;
+    
+    // Calculate new page to maintain approximate position
+    const currentFirstItem = (page - 1) * pageSize + 1;
+    const newPage = Math.max(1, Math.ceil(currentFirstItem / newSize));
+    
+    setPageSizeState(newSize);
+    setPageState(newPage);
+    updateUrl(newPage, newSize);
+  }, [page, pageSize, pageSizeOptions, updateUrl]);
 
-      // Track pagination events for analytics
-      if (typeof window !== 'undefined' && (window as any).gtag) {
-        (window as any).gtag('event', `pagination_${eventType}`, {
-          page: state.page,
-          page_size: state.pageSize,
-          total_items: state.totalItems,
-          total_pages: state.totalPages,
-          ...eventData,
-        });
-      }
-
-      // Console logging for development
-      if (process.env.NODE_ENV === 'development') {
-        console.debug(`[Pagination] ${eventType}:`, eventData);
-      }
-    },
-    [trackAnalytics, state]
-  );
-
-  // ============================================================================
-  // ACTION HANDLERS - Memoized callbacks
-  // ============================================================================
-
-  /**
-   * Navigate to specific page with validation
-   */
-  const goToPage = useCallback(
-    (newPage: number) => {
-      const validatedPage = Math.max(1, Math.min(newPage, state.totalPages));
-
-      if (validatedPage !== state.page) {
-        setPage(validatedPage);
-        onPageChange?.(validatedPage, state.pageSize);
-        trackEvent('page_change', { from_page: state.page, to_page: validatedPage });
-      }
-    },
-    [state.page, state.pageSize, state.totalPages, onPageChange, trackEvent]
-  );
-
-  /**
-   * Navigate to next page
-   */
   const nextPage = useCallback(() => {
-    if (state.hasNextPage) {
-      goToPage(state.page + 1);
-      trackEvent('next_page', { current_page: state.page });
-    }
-  }, [state.page, state.hasNextPage, goToPage, trackEvent]);
+    if (hasNextPage) setPage(page + 1);
+  }, [hasNextPage, page, setPage]);
 
-  /**
-   * Navigate to previous page
-   */
   const prevPage = useCallback(() => {
-    if (state.hasPreviousPage) {
-      goToPage(state.page - 1);
-      trackEvent('prev_page', { current_page: state.page });
+    if (hasPrevPage) setPage(page - 1);
+  }, [hasPrevPage, page, setPage]);
+
+  const firstPage = useCallback(() => setPage(1), [setPage]);
+  const lastPage = useCallback(() => setPage(totalPages), [setPage, totalPages]);
+
+  const setTotalItems = useCallback((total: number) => {
+    setTotalItemsState(total);
+    // Adjust page if current page is beyond new total
+    const newTotalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (page > newTotalPages) {
+      setPage(newTotalPages);
     }
-  }, [state.page, state.hasPreviousPage, goToPage, trackEvent]);
+  }, [page, pageSize, setPage]);
 
-  /**
-   * Jump to first page
-   */
-  const firstPage = useCallback(() => {
-    goToPage(1);
-    trackEvent('first_page', { current_page: state.page });
-  }, [state.page, goToPage, trackEvent]);
-
-  /**
-   * Jump to last page
-   */
-  const lastPage = useCallback(() => {
-    goToPage(state.totalPages);
-    trackEvent('last_page', { current_page: state.page });
-  }, [state.page, state.totalPages, goToPage, trackEvent]);
-
-  /**
-   * Change page size and reset to first page
-   * Validates against configured options
-   */
-  const setPageSize = useCallback(
-    (newSize: number) => {
-      // Validate against min/max and available options
-      const validSize = Math.min(
-        Math.max(newSize, MIN_PAGE_SIZE),
-        MAX_PAGE_SIZE
-      );
-
-      if (validSize !== state.pageSize) {
-        setPageSizeState(validSize);
-        setPage(1); // Reset to first page
-        onPageSizeChange?.(validSize);
-        trackEvent('page_size_change', {
-          from_size: state.pageSize,
-          to_size: validSize,
-        });
-      }
-    },
-    [state.pageSize, onPageSizeChange, trackEvent]
-  );
-
-  /**
-   * Reset pagination to initial state
-   */
   const reset = useCallback(() => {
-    setPage(initialState.page);
-    setPageSizeState(initialState.pageSize);
-    trackEvent('reset', { reset_to_page: initialState.page });
-  }, [initialState, trackEvent]);
+    setPageState(initialPage);
+    setPageSizeState(initialPageSize);
+    updateUrl(initialPage, initialPageSize);
+  }, [initialPage, initialPageSize, updateUrl]);
 
-  /**
-   * Jump to specific page with validation
-   * Returns boolean indicating success
-   */
-  const jumpToPage = useCallback(
-    (targetPage: number): boolean => {
-      if (targetPage < 1 || targetPage > state.totalPages) {
-        trackEvent('invalid_jump', {
-          requested_page: targetPage,
-          total_pages: state.totalPages,
-        });
-        return false;
+  const getPaginationParams = useCallback(() => ({
+    page,
+    limit: pageSize,
+    offset,
+  }), [page, pageSize, offset]);
+
+  // Sync from URL changes
+  useEffect(() => {
+    if (!syncWithUrl || !searchParams) return;
+    
+    const urlPage = searchParams.get(pageParamName);
+    const urlPageSize = searchParams.get(pageSizeParamName);
+    
+    if (urlPage) {
+      const parsed = parseInt(urlPage, 10);
+      if (!isNaN(parsed) && parsed !== page) {
+        setPageState(Math.max(1, parsed));
       }
-
-      goToPage(targetPage);
-      trackEvent('jump_to_page', { target_page: targetPage });
-      return true;
-    },
-    [state.totalPages, goToPage, trackEvent]
-  );
-
-  // ============================================================================
-  // RETURN STATE & ACTIONS
-  // ============================================================================
+    }
+    
+    if (urlPageSize) {
+      const parsed = parseInt(urlPageSize, 10);
+      if (!isNaN(parsed) && pageSizeOptions.includes(parsed) && parsed !== pageSize) {
+        setPageSizeState(parsed);
+      }
+    }
+  }, [searchParams, syncWithUrl, pageParamName, pageSizeParamName, page, pageSize, pageSizeOptions]);
 
   return {
-    ...state,
-    goToPage,
+    page,
+    pageSize,
+    totalItems,
+    totalPages,
+    offset,
+    hasNextPage,
+    hasPrevPage,
+    isFirstPage,
+    isLastPage,
+    pageRange,
+    pageSizeOptions,
+    setPage,
+    setPageSize,
     nextPage,
     prevPage,
     firstPage,
     lastPage,
-    setPageSize,
+    setTotalItems,
     reset,
-    jumpToPage,
+    getPaginationParams,
   };
 }
-
-// ============================================================================
-// EXPORT
-// ============================================================================
 
 export default usePagination;

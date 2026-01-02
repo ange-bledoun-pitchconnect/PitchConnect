@@ -1,123 +1,265 @@
 /**
- * useFormValidation Hook
- * Form validation with error tracking
+ * ============================================================================
+ * ✅ USE FORM VALIDATION HOOK v7.10.1
+ * ============================================================================
+ * @version 7.10.1
+ * @path src/hooks/useFormValidation.ts
+ * ============================================================================
  */
 
-import { useState, useCallback } from 'react';
+'use client';
 
-type ValidationRule<T> = {
-  [K in keyof T]?: {
-    required?: boolean;
-    minLength?: number;
-    maxLength?: number;
-    pattern?: RegExp;
-    custom?: (value: T[K]) => boolean;
-    message?: string;
-  }[];
+import { useState, useCallback, useMemo } from 'react';
+import { z, ZodSchema, ZodError } from 'zod';
+
+export type ValidationRule<T> = {
+  validate: (value: T, formData?: Record<string, unknown>) => boolean;
+  message: string;
 };
 
-export function useFormValidation<T extends Record<string, any>>(
-  initialValues: T,
-  rules: ValidationRule<T>
-) {
-  const [values, setValues] = useState<T>(initialValues);
+export interface FieldConfig<T = unknown> {
+  initialValue: T;
+  rules?: ValidationRule<T>[];
+  schema?: ZodSchema<T>;
+  required?: boolean;
+  requiredMessage?: string;
+}
+
+export interface FieldState<T = unknown> {
+  value: T;
+  error: string | null;
+  touched: boolean;
+  dirty: boolean;
+}
+
+export interface UseFormValidationReturn<T extends Record<string, unknown>> {
+  values: T;
+  errors: Partial<Record<keyof T, string>>;
+  touched: Partial<Record<keyof T, boolean>>;
+  isValid: boolean;
+  isDirty: boolean;
+  isSubmitting: boolean;
+  setValue: <K extends keyof T>(field: K, value: T[K]) => void;
+  setValues: (values: Partial<T>) => void;
+  setError: <K extends keyof T>(field: K, error: string | null) => void;
+  setTouched: <K extends keyof T>(field: K, touched?: boolean) => void;
+  validateField: <K extends keyof T>(field: K) => boolean;
+  validateForm: () => boolean;
+  handleSubmit: (onSubmit: (values: T) => Promise<void> | void) => (e?: React.FormEvent) => Promise<void>;
+  reset: () => void;
+  getFieldProps: <K extends keyof T>(field: K) => {
+    value: T[K];
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void;
+    onBlur: () => void;
+    error: string | undefined;
+  };
+}
+
+export function useFormValidation<T extends Record<string, unknown>>(
+  config: Record<keyof T, FieldConfig>
+): UseFormValidationReturn<T> {
+  const initialValues = useMemo(() => {
+    const values = {} as T;
+    for (const key in config) {
+      values[key] = config[key].initialValue as T[keyof T];
+    }
+    return values;
+  }, [config]);
+
+  const [values, setValuesState] = useState<T>(initialValues);
   const [errors, setErrors] = useState<Partial<Record<keyof T, string>>>({});
-  const [touched, setTouched] = useState<Partial<Record<keyof T, boolean>>>({});
+  const [touched, setTouchedState] = useState<Partial<Record<keyof T, boolean>>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const validate = useCallback(
-    (field?: keyof T): boolean => {
-      const newErrors: Partial<Record<keyof T, string>> = {};
+  const isDirty = useMemo(() => {
+    return Object.keys(values).some(
+      (key) => values[key as keyof T] !== initialValues[key as keyof T]
+    );
+  }, [values, initialValues]);
 
-      const fieldsToValidate = field ? [field] : (Object.keys(rules) as (keyof T)[]);
+  const isValid = useMemo(() => {
+    return Object.keys(errors).length === 0;
+  }, [errors]);
 
-      fieldsToValidate.forEach((key) => {
-        const value = values[key];
-        const fieldRules = rules[key];
+  const validateField = useCallback(<K extends keyof T>(field: K): boolean => {
+    const fieldConfig = config[field];
+    const value = values[field];
+    let error: string | null = null;
 
-        if (!fieldRules) return;
+    // Required check
+    if (fieldConfig.required) {
+      const isEmpty = value === undefined || value === null || value === '' || 
+        (Array.isArray(value) && value.length === 0);
+      if (isEmpty) {
+        error = fieldConfig.requiredMessage || 'This field is required';
+      }
+    }
 
-        for (const rule of fieldRules) {
-          if (rule.required && !value) {
-            newErrors[key] = rule.message || 'This field is required';
-            break;
+    // Zod schema validation
+    if (!error && fieldConfig.schema) {
+      try {
+        fieldConfig.schema.parse(value);
+      } catch (e) {
+        if (e instanceof ZodError) {
+          error = e.errors[0]?.message || 'Invalid value';
+        }
+      }
+    }
+
+    // Custom rules validation
+    if (!error && fieldConfig.rules) {
+      for (const rule of fieldConfig.rules) {
+        if (!rule.validate(value as any, values as Record<string, unknown>)) {
+          error = rule.message;
+          break;
+        }
+      }
+    }
+
+    setErrors((prev) => {
+      if (error) {
+        return { ...prev, [field]: error };
+      }
+      const { [field]: _, ...rest } = prev;
+      return rest as Partial<Record<keyof T, string>>;
+    });
+
+    return !error;
+  }, [config, values]);
+
+  const validateForm = useCallback((): boolean => {
+    let isValid = true;
+    const newErrors: Partial<Record<keyof T, string>> = {};
+
+    for (const field in config) {
+      const fieldConfig = config[field];
+      const value = values[field];
+      let error: string | null = null;
+
+      if (fieldConfig.required) {
+        const isEmpty = value === undefined || value === null || value === '' ||
+          (Array.isArray(value) && value.length === 0);
+        if (isEmpty) {
+          error = fieldConfig.requiredMessage || 'This field is required';
+        }
+      }
+
+      if (!error && fieldConfig.schema) {
+        try {
+          fieldConfig.schema.parse(value);
+        } catch (e) {
+          if (e instanceof ZodError) {
+            error = e.errors[0]?.message || 'Invalid value';
           }
+        }
+      }
 
-          if (rule.minLength && typeof value === 'string' && value.length < rule.minLength) {
-            newErrors[key] = rule.message || `Minimum ${rule.minLength} characters required`;
-            break;
-          }
-
-          if (rule.maxLength && typeof value === 'string' && value.length > rule.maxLength) {
-            newErrors[key] = rule.message || `Maximum ${rule.maxLength} characters allowed`;
-            break;
-          }
-
-          if (rule.pattern && typeof value === 'string' && !rule.pattern.test(value)) {
-            newErrors[key] = rule.message || 'Invalid format';
-            break;
-          }
-
-          if (rule.custom && !rule.custom(value)) {
-            newErrors[key] = rule.message || 'Invalid value';
+      if (!error && fieldConfig.rules) {
+        for (const rule of fieldConfig.rules) {
+          if (!rule.validate(value as any, values as Record<string, unknown>)) {
+            error = rule.message;
             break;
           }
         }
-      });
+      }
 
-      setErrors((prev) => ({ ...prev, ...newErrors }));
-      return Object.keys(newErrors).length === 0;
-    },
-    [values, rules]
-  );
+      if (error) {
+        newErrors[field] = error;
+        isValid = false;
+      }
+    }
 
-  const handleChange = useCallback((field: keyof T, value: any) => {
-    setValues((prev) => ({ ...prev, [field]: value }));
+    setErrors(newErrors);
+    return isValid;
+  }, [config, values]);
+
+  const setValue = useCallback(<K extends keyof T>(field: K, value: T[K]) => {
+    setValuesState((prev) => ({ ...prev, [field]: value }));
+    if (touched[field]) {
+      setTimeout(() => validateField(field), 0);
+    }
+  }, [touched, validateField]);
+
+  const setValues = useCallback((newValues: Partial<T>) => {
+    setValuesState((prev) => ({ ...prev, ...newValues }));
   }, []);
 
-  const handleBlur = useCallback(
-    (field: keyof T) => {
-      setTouched((prev) => ({ ...prev, [field]: true }));
-      validate(field);
-    },
-    [validate]
-  );
+  const setError = useCallback(<K extends keyof T>(field: K, error: string | null) => {
+    setErrors((prev) => {
+      if (error) {
+        return { ...prev, [field]: error };
+      }
+      const { [field]: _, ...rest } = prev;
+      return rest as Partial<Record<keyof T, string>>;
+    });
+  }, []);
+
+  const setTouched = useCallback(<K extends keyof T>(field: K, isTouched = true) => {
+    setTouchedState((prev) => ({ ...prev, [field]: isTouched }));
+    if (isTouched) {
+      validateField(field);
+    }
+  }, [validateField]);
 
   const handleSubmit = useCallback(
-    (onSubmit: (values: T) => void | Promise<void>) => {
-      return async (e?: React.FormEvent) => {
-        e?.preventDefault();
+    (onSubmit: (values: T) => Promise<void> | void) => async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      
+      // Touch all fields
+      const allTouched = Object.keys(config).reduce(
+        (acc, key) => ({ ...acc, [key]: true }),
+        {} as Record<keyof T, boolean>
+      );
+      setTouchedState(allTouched);
 
-        // Mark all fields as touched
-        const allTouched = Object.keys(values).reduce(
-          (acc, key) => ({ ...acc, [key]: true }),
-          {} as Record<keyof T, boolean>
-        );
-        setTouched(allTouched);
+      if (!validateForm()) return;
 
-        if (validate()) {
-          await onSubmit(values);
-        }
-      };
+      setIsSubmitting(true);
+      try {
+        await onSubmit(values);
+      } finally {
+        setIsSubmitting(false);
+      }
     },
-    [values, validate]
+    [config, validateForm, values]
   );
 
   const reset = useCallback(() => {
-    setValues(initialValues);
+    setValuesState(initialValues);
     setErrors({});
-    setTouched({});
+    setTouchedState({});
+    setIsSubmitting(false);
   }, [initialValues]);
+
+  const getFieldProps = useCallback(<K extends keyof T>(field: K) => ({
+    value: values[field],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      const value = e.target.type === 'checkbox' 
+        ? (e.target as HTMLInputElement).checked 
+        : e.target.value;
+      setValue(field, value as T[K]);
+    },
+    onBlur: () => setTouched(field, true),
+    error: touched[field] ? errors[field] : undefined,
+  }), [values, errors, touched, setValue, setTouched]);
 
   return {
     values,
     errors,
     touched,
-    handleChange,
-    handleBlur,
-    handleSubmit,
-    validate,
-    reset,
+    isValid,
+    isDirty,
+    isSubmitting,
+    setValue,
     setValues,
-    setErrors,
+    setError,
+    setTouched,
+    validateField,
+    validateForm,
+    handleSubmit,
+    reset,
+    getFieldProps,
   };
 }
+
+export default useFormValidation;

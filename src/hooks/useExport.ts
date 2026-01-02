@@ -1,275 +1,185 @@
+/**
+ * ============================================================================
+ * 📤 USE EXPORT HOOK v7.10.1 - MULTI-FORMAT EXPORT
+ * ============================================================================
+ * @version 7.10.1
+ * @path src/hooks/useExport.ts
+ * ============================================================================
+ */
+
 'use client';
 
-/**
- * Export Hook
- * Path: src/hooks/useExport.ts
- * 
- * Provides export functionality:
- * - PDF export
- * - CSV export
- * - Email delivery
- * - Loading states
- * - Error handling
- * - Download management
- */
-
 import { useState, useCallback } from 'react';
-import { useToast } from '@/hooks/use-toast';
+import { Sport } from './useSportConfig';
 
-type FileType = 'players' | 'teams' | 'standings' | 'matches';
-type ExportFormat = 'pdf' | 'csv';
+export type ExportFormat = 'csv' | 'pdf' | 'excel' | 'json';
+export type ExportType = 'players' | 'teams' | 'matches' | 'standings' | 'training' | 
+                         'attendance' | 'performance' | 'financial' | 'medical' | 'analytics';
 
-interface ExportOptions {
-  leagueId?: string;
-  clubId?: string;
-  playerId?: string;
-  format?: 'portrait' | 'landscape';
+export interface ExportOptions {
+  format: ExportFormat;
+  type: ExportType;
+  sport?: Sport;
+  filters?: Record<string, unknown>;
+  columns?: string[];
+  dateRange?: { start: string; end: string };
+  includeCharts?: boolean;
+  fileName?: string;
 }
 
-interface ExportState {
-  isLoading: boolean;
+export interface ExportProgress {
+  status: 'idle' | 'preparing' | 'generating' | 'downloading' | 'complete' | 'error';
   progress: number;
-  error: string | null;
+  message: string;
 }
 
-/**
- * Hook for managing export operations
- */
-export function useExport() {
-  const [state, setState] = useState<ExportState>({
-    isLoading: false,
+export interface UseExportReturn {
+  exportData: (options: ExportOptions) => Promise<void>;
+  progress: ExportProgress;
+  isExporting: boolean;
+  error: Error | null;
+  cancel: () => void;
+  downloadUrl: string | null;
+}
+
+export function useExport(): UseExportReturn {
+  const [progress, setProgress] = useState<ExportProgress>({
+    status: 'idle',
     progress: 0,
-    error: null,
+    message: '',
   });
-  const { toast } = useToast();
+  const [error, setError] = useState<Error | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
-  /**
-   * Export to PDF
-   */
-  const exportPDF = useCallback(
-    async (fileType: FileType, options?: ExportOptions) => {
-      setState({ isLoading: true, progress: 0, error: null });
+  const isExporting = progress.status !== 'idle' && progress.status !== 'complete' && progress.status !== 'error';
 
-      try {
-        setState((prev) => ({ ...prev, progress: 25 }));
+  const exportData = useCallback(async (options: ExportOptions) => {
+    const controller = new AbortController();
+    setAbortController(controller);
+    setError(null);
+    setDownloadUrl(null);
 
-        const response = await fetch('/api/export/pdf', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileType,
-            ...options,
-          }),
-        });
+    try {
+      // Preparing
+      setProgress({ status: 'preparing', progress: 10, message: 'Preparing export...' });
 
-        setState((prev) => ({ ...prev, progress: 50 }));
+      const response = await fetch('/api/exports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options),
+        signal: controller.signal,
+      });
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to export PDF');
-        }
-
-        setState((prev) => ({ ...prev, progress: 75 }));
-
-        // Get filename from content-disposition header
-        const contentDisposition = response.headers.get('content-disposition');
-        const filename = contentDisposition
-          ? contentDisposition.split('filename=')?.replace(/"/g, '')
-          : `export_${Date.now()}.pdf`;
-
-        // Download the file
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-
-        setState((prev) => ({ ...prev, progress: 100, isLoading: false }));
-        toast({
-          title: 'Success',
-          description: 'PDF exported successfully',
-          variant: 'default',
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Export failed';
-        setState({
-          isLoading: false,
-          progress: 0,
-          error: message,
-        });
-        toast({
-          title: 'Error',
-          description: message,
-          variant: 'destructive',
-        });
-        throw error;
+      if (!response.ok) {
+        throw new Error('Failed to initiate export');
       }
-    },
-    [toast]
-  );
 
-  /**
-   * Export to CSV
-   */
-  const exportCSV = useCallback(
-    async (fileType: FileType, options?: ExportOptions) => {
-      setState({ isLoading: true, progress: 0, error: null });
+      const { exportId } = await response.json();
 
-      try {
-        setState((prev) => ({ ...prev, progress: 25 }));
+      // Generating
+      setProgress({ status: 'generating', progress: 30, message: 'Generating export...' });
 
-        const response = await fetch('/api/export/csv', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileType,
-            ...options,
-          }),
+      // Poll for completion
+      let attempts = 0;
+      const maxAttempts = 60;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const statusResponse = await fetch(`/api/exports/${exportId}/status`, {
+          signal: controller.signal,
         });
+        
+        if (!statusResponse.ok) throw new Error('Failed to check export status');
+        
+        const { status, progress: exportProgress, downloadUrl: url, error: exportError } = await statusResponse.json();
 
-        setState((prev) => ({ ...prev, progress: 50 }));
+        if (status === 'COMPLETED' && url) {
+          setProgress({ status: 'downloading', progress: 90, message: 'Preparing download...' });
+          
+          // Trigger download
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = options.fileName || `export-${options.type}.${options.format}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to export CSV');
+          setDownloadUrl(url);
+          setProgress({ status: 'complete', progress: 100, message: 'Export complete!' });
+          return;
         }
 
-        setState((prev) => ({ ...prev, progress: 75 }));
+        if (status === 'FAILED') {
+          throw new Error(exportError || 'Export failed');
+        }
 
-        // Get filename from content-disposition header
-        const contentDisposition = response.headers.get('content-disposition');
-        const filename = contentDisposition
-          ? contentDisposition.split('filename=')?.replace(/"/g, '')
-          : `export_${Date.now()}.csv`;
+        setProgress({
+          status: 'generating',
+          progress: 30 + (exportProgress || 0) * 0.6,
+          message: `Generating export... ${exportProgress || 0}%`,
+        });
 
-        // Download the file
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-
-        setState((prev) => ({ ...prev, progress: 100, isLoading: false }));
-        toast({
-          title: 'Success',
-          description: 'CSV exported successfully',
-          variant: 'default',
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Export failed';
-        setState({
-          isLoading: false,
-          progress: 0,
-          error: message,
-        });
-        toast({
-          title: 'Error',
-          description: message,
-          variant: 'destructive',
-        });
-        throw error;
+        attempts++;
       }
-    },
-    [toast]
-  );
 
-  /**
-   * Export via email
-   */
-  const exportEmail = useCallback(
-    async (
-      fileType: FileType,
-      email: string,
-      format: ExportFormat = 'pdf',
-      options?: ExportOptions
-    ) => {
-      setState({ isLoading: true, progress: 0, error: null });
-
-      try {
-        setState((prev) => ({ ...prev, progress: 25 }));
-
-        // First generate the file
-        const generateResponse = await fetch(
-          format === 'pdf' ? '/api/export/pdf' : '/api/export/csv',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              fileType,
-              ...options,
-            }),
-          }
-        );
-
-        setState((prev) => ({ ...prev, progress: 50 }));
-
-        if (!generateResponse.ok) {
-          throw new Error('Failed to generate file for email');
-        }
-
-        // Then send via email
-        const emailResponse = await fetch('/api/export/email', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            fileType,
-            recipients: [email],
-            format,
-            ...options,
-          }),
-        });
-
-        setState((prev) => ({ ...prev, progress: 75 }));
-
-        if (!emailResponse.ok) {
-          const error = await emailResponse.json();
-          throw new Error(error.error || 'Failed to send email');
-        }
-
-        setState((prev) => ({ ...prev, progress: 100, isLoading: false }));
-        toast({
-          title: 'Success',
-          description: `File sent to ${email}`,
-          variant: 'default',
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Export failed';
-        setState({
-          isLoading: false,
-          progress: 0,
-          error: message,
-        });
-        toast({
-          title: 'Error',
-          description: message,
-          variant: 'destructive',
-        });
-        throw error;
+      throw new Error('Export timed out');
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setProgress({ status: 'idle', progress: 0, message: '' });
+        return;
       }
-    },
-    [toast]
-  );
+      
+      const error = err instanceof Error ? err : new Error('Export failed');
+      setError(error);
+      setProgress({ status: 'error', progress: 0, message: error.message });
+    }
+  }, []);
+
+  const cancel = useCallback(() => {
+    abortController?.abort();
+    setProgress({ status: 'idle', progress: 0, message: '' });
+  }, [abortController]);
 
   return {
-    ...state,
-    exportPDF,
-    exportCSV,
-    exportEmail,
+    exportData,
+    progress,
+    isExporting,
+    error,
+    cancel,
+    downloadUrl,
   };
 }
+
+// Quick export utilities
+export function downloadAsCSV(data: Record<string, unknown>[], filename: string): void {
+  if (!data.length) return;
+
+  const headers = Object.keys(data[0]);
+  const csvContent = [
+    headers.join(','),
+    ...data.map(row => headers.map(h => JSON.stringify(row[h] ?? '')).join(',')),
+  ].join('\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadAsJSON(data: unknown, filename: string): void {
+  const jsonContent = JSON.stringify(data, null, 2);
+  const blob = new Blob([jsonContent], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export default useExport;

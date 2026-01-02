@@ -3,10 +3,10 @@
  * Path: /src/lib/auth.ts
  *
  * ============================================================================
- * WORLD-CLASS FEATURES
+ * CONSOLIDATED FROM: auth.ts + auth-helpers.ts
  * ============================================================================
- * ✅ NextAuth.js v5 Compatible (FIXED - No v4 imports)
- * ✅ Zero bcryptjs dependency (native Node.js crypto)
+ * ✅ NextAuth.js v5 Compatible (No v4 imports)
+ * ✅ Zero bcryptjs dependency (native Node.js crypto PBKDF2)
  * ✅ JWT handling without external libraries
  * ✅ Role-based access control (RBAC) with granular permissions
  * ✅ Session management and validation
@@ -21,17 +21,27 @@
  * ✅ Prisma Integration (type-safe)
  * ✅ Timing-safe password comparisons
  * ✅ Comprehensive error handling
- * ✅ Sports-specific roles (Manager, Coach, Scout, Player, etc.)
+ * ✅ Multi-sport roles support
+ * ✅ Display utilities (names, initials, colors)
+ * ✅ Role-based routing helpers
+ * ✅ Both sync and async role checking
+ * ============================================================================
+ * 
+ * SCHEMA ALIGNMENT:
+ * - Uses `phone` (not phoneNumber)
+ * - Uses `emailVerifiedAt` (not emailVerified)
+ * - Uses `jerseyNumber` (not shirtNumber)
+ * - Uses `userRoles` relation for roles
  * ============================================================================
  */
 
 import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
+import { redirect } from 'next/navigation';
 import type { NextAuthConfig } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logging';
-import { logAuthenticationEvent, logSecurityIncident } from '@/lib/api/audit';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -40,47 +50,75 @@ import { logAuthenticationEvent, logSecurityIncident } from '@/lib/api/audit';
 export type UserRole =
   | 'SUPERADMIN'
   | 'ADMIN'
-  | 'CLUB_OWNER'
   | 'LEAGUE_ADMIN'
+  | 'CLUB_OWNER'
   | 'MANAGER'
+  | 'TREASURER'
   | 'COACH'
+  | 'ASSISTANT_COACH'
+  | 'MEDICAL_STAFF'
+  | 'PHYSIO'
   | 'ANALYST'
   | 'SCOUT'
+  | 'REFEREE'
   | 'PLAYER_PRO'
   | 'PLAYER'
-  | 'PARENT';
+  | 'PARENT'
+  | 'GUARDIAN'
+  | 'VIEWER'
+  | 'USER';
+
+export type UserStatus =
+  | 'ACTIVE'
+  | 'PENDING_EMAIL_VERIFICATION'
+  | 'PENDING_APPROVAL'
+  | 'SUSPENDED'
+  | 'BANNED'
+  | 'INACTIVE'
+  | 'ARCHIVED';
 
 export type PermissionName =
+  // System
+  | 'system:admin'
   | 'manage_users'
-  | 'manage_teams'
-  | 'manage_leagues'
-  | 'manage_clubs'
-  | 'view_analytics'
-  | 'manage_payments'
   | 'view_audit_logs'
+  // Teams & Clubs
+  | 'manage_teams'
+  | 'manage_clubs'
+  | 'manage_club'
+  | 'manage_members'
+  | 'view_team'
+  // Leagues
+  | 'manage_leagues'
   | 'manage_league'
   | 'manage_fixtures'
   | 'manage_standings'
+  // Players
   | 'manage_players'
+  | 'view_players'
+  | 'view_profile'
+  | 'manage_profile'
+  | 'view_child_profile'
+  // Training & Tactics
   | 'manage_training'
   | 'manage_tactics'
+  | 'manage_drills'
+  // Analytics & Reporting
+  | 'view_analytics'
   | 'analyze_performance'
   | 'generate_reports'
-  | 'manage_scouting'
-  | 'manage_profile'
-  | 'manage_club'
-  | 'manage_members'
-  | 'view_profile'
-  | 'view_team'
+  | 'view_reports'
   | 'view_stats'
-  | 'view_players'
-  | 'manage_drills'
-  | 'view_child_profile'
+  | 'view_match_stats'
+  // Scouting
+  | 'manage_scouting'
+  // Payments & Finance
+  | 'manage_payments'
+  // Media & Live
   | 'manage_videos'
   | 'manage_live_matches'
-  | 'view_match_stats'
-  | 'manage_injuries'
-  | 'view_reports';
+  // Medical
+  | 'manage_injuries';
 
 export interface User {
   id: string;
@@ -88,18 +126,35 @@ export interface User {
   firstName: string;
   lastName: string;
   fullName: string;
-  avatar?: string;
+  avatar?: string | null;
+  phone?: string | null;
   roles: UserRole[];
-  status: string;
+  status: UserStatus;
   isEmailVerified: boolean;
+  emailVerifiedAt?: Date | null;
   twoFactorEnabled: boolean;
   subscriptionTier: string;
   subscriptionStatus: string;
   createdAt: Date;
   updatedAt: Date;
-  isSuperAdmin: boolean;
-  emailVerifiedAt?: Date | null;
   lastLoginAt?: Date | null;
+  isSuperAdmin: boolean;
+  clubId?: string | null;
+  teamId?: string | null;
+}
+
+export interface SessionUser {
+  id: string;
+  email: string;
+  name: string;
+  image?: string | null;
+  role: UserRole;
+  roles: UserRole[];
+  permissions: PermissionName[];
+  status: UserStatus;
+  clubId?: string | null;
+  teamId?: string | null;
+  isSuperAdmin: boolean;
 }
 
 export interface Session {
@@ -110,6 +165,40 @@ export interface Session {
   user: User;
   roles: UserRole[];
   permissions: PermissionName[];
+}
+
+export interface UserWithProfiles {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone?: string | null;
+  avatar?: string | null;
+  roles: UserRole[];
+  isSuperAdmin: boolean;
+  emailVerifiedAt: Date | null;
+  status: UserStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  clubId?: string | null;
+  teamId?: string | null;
+  playerProfile?: {
+    id: string;
+    position?: string | null;
+    preferredFoot?: string | null;
+    height?: number | null;
+    weight?: number | null;
+    jerseyNumber?: number | null;
+  } | null;
+  coachProfile?: {
+    id: string;
+    coachType?: string | null;
+    yearsExperience?: number | null;
+  } | null;
+  subscription?: {
+    tier: string;
+    status: string;
+  } | null;
 }
 
 export interface PasswordValidationResult {
@@ -161,22 +250,55 @@ const SESSION_EXPIRY = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Role priority (highest to lowest privilege)
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   SUPERADMIN: 100,
-  ADMIN: 90,
-  CLUB_OWNER: 80,
-  LEAGUE_ADMIN: 75,
-  MANAGER: 70,
-  COACH: 60,
+  ADMIN: 95,
+  LEAGUE_ADMIN: 90,
+  CLUB_OWNER: 85,
+  MANAGER: 80,
+  TREASURER: 75,
+  COACH: 70,
+  ASSISTANT_COACH: 65,
+  MEDICAL_STAFF: 60,
+  PHYSIO: 58,
   ANALYST: 55,
   SCOUT: 50,
+  REFEREE: 45,
   PLAYER_PRO: 40,
-  PLAYER: 30,
-  PARENT: 20,
+  PLAYER: 35,
+  PARENT: 30,
+  GUARDIAN: 28,
+  VIEWER: 20,
+  USER: 10,
 };
+
+// Role priority array for iteration
+const ROLE_PRIORITY: UserRole[] = [
+  'SUPERADMIN',
+  'ADMIN',
+  'LEAGUE_ADMIN',
+  'CLUB_OWNER',
+  'MANAGER',
+  'TREASURER',
+  'COACH',
+  'ASSISTANT_COACH',
+  'MEDICAL_STAFF',
+  'PHYSIO',
+  'ANALYST',
+  'SCOUT',
+  'REFEREE',
+  'PLAYER_PRO',
+  'PLAYER',
+  'PARENT',
+  'GUARDIAN',
+  'VIEWER',
+  'USER',
+];
 
 export const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
   SUPERADMIN: [
+    'system:admin',
     'manage_users',
     'manage_teams',
     'manage_leagues',
@@ -219,6 +341,15 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'view_match_stats',
     'view_reports',
   ],
+  LEAGUE_ADMIN: [
+    'manage_league',
+    'manage_fixtures',
+    'manage_standings',
+    'view_analytics',
+    'manage_teams',
+    'view_match_stats',
+    'view_reports',
+  ],
   CLUB_OWNER: [
     'manage_club',
     'manage_teams',
@@ -227,15 +358,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'manage_payments',
     'manage_players',
     'manage_injuries',
-    'view_reports',
-  ],
-  LEAGUE_ADMIN: [
-    'manage_league',
-    'manage_fixtures',
-    'manage_standings',
-    'view_analytics',
-    'manage_teams',
-    'view_match_stats',
     'view_reports',
   ],
   MANAGER: [
@@ -251,6 +373,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'manage_live_matches',
     'view_match_stats',
   ],
+  TREASURER: [
+    'manage_payments',
+    'view_analytics',
+    'view_reports',
+  ],
   COACH: [
     'manage_players',
     'manage_training',
@@ -262,6 +389,23 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'manage_injuries',
     'manage_live_matches',
     'view_match_stats',
+  ],
+  ASSISTANT_COACH: [
+    'manage_training',
+    'manage_drills',
+    'view_team',
+    'view_stats',
+    'view_match_stats',
+  ],
+  MEDICAL_STAFF: [
+    'manage_injuries',
+    'view_players',
+    'view_team',
+  ],
+  PHYSIO: [
+    'manage_injuries',
+    'view_players',
+    'view_team',
   ],
   ANALYST: [
     'view_analytics',
@@ -280,6 +424,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'view_team',
     'view_reports',
   ],
+  REFEREE: [
+    'manage_live_matches',
+    'view_match_stats',
+  ],
   PLAYER_PRO: [
     'view_profile',
     'view_team',
@@ -295,11 +443,24 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionName[]> = {
     'manage_profile',
     'view_match_stats',
   ],
-  PARENT: ['view_child_profile', 'view_match_stats'],
+  PARENT: [
+    'view_child_profile',
+    'view_match_stats',
+  ],
+  GUARDIAN: [
+    'view_child_profile',
+    'view_match_stats',
+  ],
+  VIEWER: [
+    'view_team',
+    'view_match_stats',
+  ],
+  USER: [],
 };
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000; // 15 minutes
+
 const DISPOSABLE_EMAIL_DOMAINS = [
   'tempmail.com',
   'throwaway.email',
@@ -313,6 +474,15 @@ const DISPOSABLE_EMAIL_DOMAINS = [
   'mailnesia.com',
   'sharklasers.com',
 ];
+
+const ERROR_MESSAGES = {
+  unauthorized: 'Unauthorized: Authentication required',
+  forbidden: 'Forbidden: Insufficient permissions',
+  invalidInput: 'Invalid input provided',
+  hashFailed: 'Password hashing failed',
+  verifyFailed: 'Password verification failed',
+  userNotFound: 'User not found',
+} as const;
 
 // ============================================================================
 // CUSTOM ERROR CLASSES
@@ -359,7 +529,10 @@ export class TokenError extends Error {
 
 function timingSafeCompare(a: string, b: string): boolean {
   try {
-    return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return timingSafeEqual(bufA, bufB);
   } catch {
     return false;
   }
@@ -381,7 +554,6 @@ export function isValidEmail(email: string): boolean {
   if (!email || typeof email !== 'string') {
     return false;
   }
-
   const trimmedEmail = email.trim().toLowerCase();
   return EMAIL_REGEX.test(trimmedEmail) && trimmedEmail.length <= 255;
 }
@@ -390,7 +562,6 @@ export function sanitizeEmail(email: string): string {
   if (!email || typeof email !== 'string') {
     return '';
   }
-
   return email.trim().toLowerCase();
 }
 
@@ -400,7 +571,7 @@ export function isDisposableEmail(email: string): boolean {
 }
 
 // ============================================================================
-// PASSWORD MANAGEMENT
+// PASSWORD MANAGEMENT (PBKDF2 - NO BCRYPT DEPENDENCY)
 // ============================================================================
 
 export function validatePassword(password: string): PasswordValidationResult {
@@ -477,6 +648,7 @@ export function verifyPassword(password: string, storedHash: string, salt?: stri
     let hashSalt: string;
     let iterations = PASSWORD_HASH_ITERATIONS;
 
+    // Support format: hash:salt:iterations or just hash with separate salt
     if (storedHash.includes(':')) {
       const parts = storedHash.split(':');
       hash = parts[0];
@@ -530,7 +702,7 @@ export function generateSecurePassword(): string {
 // JWT TOKEN MANAGEMENT
 // ============================================================================
 
-export function createJWT(payload: Record<string, any>, expiryMs: number = JWT_EXPIRY): string {
+export function createJWT(payload: Record<string, unknown>, expiryMs: number = JWT_EXPIRY): string {
   try {
     if (!JWT_SECRET) {
       throw new TokenError('JWT_SECRET is not configured');
@@ -545,14 +717,9 @@ export function createJWT(payload: Record<string, any>, expiryMs: number = JWT_E
       exp,
     };
 
-    const header = Buffer.from(JSON.stringify({ alg: JWT_ALGORITHM, typ: 'JWT' })).toString(
-      'base64url'
-    );
-
+    const header = Buffer.from(JSON.stringify({ alg: JWT_ALGORITHM, typ: 'JWT' })).toString('base64url');
     const body = Buffer.from(JSON.stringify(tokenPayload)).toString('base64url');
-
     const message = `${header}.${body}`;
-
     const signature = createHmac('sha256', JWT_SECRET).update(message).digest('base64url');
 
     return `${message}.${signature}`;
@@ -569,17 +736,13 @@ export function verifyJWT(token: string): TokenPayload | null {
     }
 
     const parts = token.split('.');
-
     if (parts.length !== 3) {
       throw new TokenError('Invalid token format');
     }
 
     const [header, body, signature] = parts;
-
     const message = `${header}.${body}`;
-    const expectedSignature = createHmac('sha256', JWT_SECRET)
-      .update(message)
-      .digest('base64url');
+    const expectedSignature = createHmac('sha256', JWT_SECRET).update(message).digest('base64url');
 
     if (!timingSafeCompare(signature, expectedSignature)) {
       throw new TokenError('Invalid signature');
@@ -606,35 +769,19 @@ export function verifyJWT(token: string): TokenPayload | null {
 export function decodeToken(token: string): TokenPayload | null {
   try {
     const parts = token.split('.');
-
     if (parts.length !== 3) {
       return null;
     }
-
-    const decoded = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf8')
-    ) as TokenPayload;
-
-    return decoded;
-  } catch (error) {
-    logger.error('Failed to decode token', error as Error);
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as TokenPayload;
+  } catch {
     return null;
   }
 }
 
 export function isTokenExpired(token: string): boolean {
-  try {
-    const decoded = decodeToken(token);
-    if (!decoded || !decoded.exp) {
-      return true;
-    }
-
-    const now = Math.floor(Date.now() / 1000);
-    return decoded.exp < now;
-  } catch (error) {
-    logger.error('Failed to check token expiration', error as Error);
-    return true;
-  }
+  const decoded = decodeToken(token);
+  if (!decoded?.exp) return true;
+  return decoded.exp < Math.floor(Date.now() / 1000);
 }
 
 // ============================================================================
@@ -667,14 +814,11 @@ export class SessionManager {
 
   verifySession(token: string): Session | null {
     const session = this.sessions.get(token);
-
-    if (!session) {
-      return null;
-    }
+    if (!session) return null;
 
     if (new Date() > session.expiresAt) {
       this.sessions.delete(token);
-      logger.debug('Session expired and removed', { token: token.substring(0, 8) });
+      logger.debug('Session expired and removed');
       return null;
     }
 
@@ -683,37 +827,29 @@ export class SessionManager {
 
   invalidateSession(token: string): void {
     this.sessions.delete(token);
-    logger.info('Session invalidated', { token: token.substring(0, 8) });
+    logger.info('Session invalidated');
   }
 
   invalidateUserSessions(userId: string): void {
     let count = 0;
-
     for (const [token, session] of this.sessions.entries()) {
       if (session.userId === userId) {
         this.sessions.delete(token);
         count++;
       }
     }
-
     logger.info('All user sessions invalidated', { userId, count });
   }
 
   cleanup(): number {
     const now = new Date();
     let removed = 0;
-
     for (const [token, session] of this.sessions.entries()) {
       if (now > session.expiresAt) {
         this.sessions.delete(token);
         removed++;
       }
     }
-
-    if (removed > 0) {
-      logger.debug('Expired sessions cleaned up', { removed });
-    }
-
     return removed;
   }
 
@@ -730,449 +866,458 @@ export class SessionManager {
 const sessionManager = new SessionManager();
 
 // ============================================================================
-// PERMISSION MANAGEMENT
+// PERMISSION & ROLE HELPERS (SYNCHRONOUS)
 // ============================================================================
 
-export function getRolePermissions(role: UserRole): PermissionName[] {
-  return ROLE_PERMISSIONS[role] || [];
-}
-
-export function hasPermission(userRoles: UserRole[], permission: PermissionName): boolean {
-  if (userRoles.includes('SUPERADMIN')) {
-    return true;
-  }
-
-  for (const role of userRoles) {
-    const permissions = getRolePermissions(role);
-    if (permissions.includes(permission)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-export function getUserPermissionLevel(userRoles: UserRole[]): number {
-  const levels = userRoles.map((role) => ROLE_HIERARCHY[role] || 0);
-  return Math.max(...levels, 0);
-}
-
-export function getUserPermissions(userRoles: UserRole[]): PermissionName[] {
+/**
+ * Get all permissions for a set of roles
+ */
+export function getUserPermissions(roles: UserRole[]): PermissionName[] {
   const permissions = new Set<PermissionName>();
 
-  if (userRoles.includes('SUPERADMIN')) {
-    return Object.values(ROLE_PERMISSIONS)
-      .flat()
-      .filter((v, i, a) => a.indexOf(v) === i) as PermissionName[];
-  }
-
-  for (const role of userRoles) {
-    const rolePerms = getRolePermissions(role);
-    rolePerms.forEach((perm) => permissions.add(perm));
+  for (const role of roles) {
+    const rolePerms = ROLE_PERMISSIONS[role] || [];
+    for (const perm of rolePerms) {
+      permissions.add(perm);
+    }
   }
 
   return Array.from(permissions);
 }
 
-export function requirePermission(userRoles: UserRole[], permission: PermissionName): void {
-  if (!hasPermission(userRoles, permission)) {
-    throw new AuthorizationError(`Missing required permission: ${permission}`);
-  }
+/**
+ * Check if roles include a permission (sync)
+ */
+export function hasPermission(roles: UserRole[], permission: PermissionName): boolean {
+  if (roles.includes('SUPERADMIN')) return true;
+  const permissions = getUserPermissions(roles);
+  return permissions.includes(permission);
 }
 
-export function checkPermission(
-  userRoles: UserRole[],
-  permission: PermissionName
-): PermissionCheckResult {
-  const hasPermissionFlag = hasPermission(userRoles, permission);
-  return {
-    hasPermission: hasPermissionFlag,
-    requiredPermission: permission,
-    userPermissions: getUserPermissions(userRoles),
+/**
+ * Check if roles include any of the permissions (sync)
+ */
+export function hasAnyPermission(roles: UserRole[], permissions: PermissionName[]): boolean {
+  if (roles.includes('SUPERADMIN')) return true;
+  const userPerms = getUserPermissions(roles);
+  return permissions.some((p) => userPerms.includes(p));
+}
+
+/**
+ * Check if roles include all permissions (sync)
+ */
+export function hasAllPermissions(roles: UserRole[], permissions: PermissionName[]): boolean {
+  if (roles.includes('SUPERADMIN')) return true;
+  const userPerms = getUserPermissions(roles);
+  return permissions.every((p) => userPerms.includes(p));
+}
+
+/**
+ * Get primary role (highest privilege)
+ */
+export function getPrimaryRole(roles: UserRole[] | undefined): UserRole {
+  if (!roles || roles.length === 0) return 'USER';
+
+  for (const role of ROLE_PRIORITY) {
+    if (roles.includes(role)) return role;
+  }
+
+  return roles[0] || 'USER';
+}
+
+/**
+ * Check if roles include a specific role (sync)
+ */
+export function hasRoleSync(roles: UserRole[] | undefined, requiredRole: UserRole): boolean {
+  return roles?.includes(requiredRole) || false;
+}
+
+/**
+ * Check if roles include ANY of the specified roles (sync)
+ */
+export function hasAnyRoleSync(roles: UserRole[] | undefined, requiredRoles: UserRole[]): boolean {
+  if (!roles || requiredRoles.length === 0) return false;
+  return requiredRoles.some((role) => roles.includes(role));
+}
+
+/**
+ * Check if roles include ALL of the specified roles (sync)
+ */
+export function hasAllRolesSync(roles: UserRole[] | undefined, requiredRoles: UserRole[]): boolean {
+  if (!roles || requiredRoles.length === 0) return false;
+  return requiredRoles.every((role) => roles.includes(role));
+}
+
+/**
+ * Check if user is SuperAdmin
+ */
+export function isSuperAdminSync(roles: UserRole[] | undefined): boolean {
+  return roles?.includes('SUPERADMIN') || false;
+}
+
+/**
+ * Check if one role is higher than another
+ */
+export function isHigherRole(role1: UserRole, role2: UserRole): boolean {
+  return (ROLE_HIERARCHY[role1] || 0) > (ROLE_HIERARCHY[role2] || 0);
+}
+
+/**
+ * Get accessible roles for user (for role switcher UI)
+ */
+export function getAccessibleRoles(roles: UserRole[] | undefined, isSuperAdmin: boolean): UserRole[] {
+  const accessible: UserRole[] = ['USER'];
+
+  if (isSuperAdmin) accessible.push('SUPERADMIN');
+
+  roles?.forEach((role) => {
+    if (!accessible.includes(role)) accessible.push(role);
+  });
+
+  return accessible;
+}
+
+// ============================================================================
+// ROUTING HELPERS
+// ============================================================================
+
+/**
+ * Get dashboard route based on primary role
+ */
+export function getRoleDashboardRoute(role: UserRole | string): string {
+  const routeMap: Record<string, string> = {
+    SUPERADMIN: '/dashboard/admin',
+    ADMIN: '/dashboard/admin',
+    LEAGUE_ADMIN: '/dashboard/league',
+    CLUB_OWNER: '/dashboard/club',
+    MANAGER: '/dashboard/manager',
+    TREASURER: '/dashboard/finance',
+    COACH: '/dashboard/coach',
+    ASSISTANT_COACH: '/dashboard/coach',
+    MEDICAL_STAFF: '/dashboard/medical',
+    PHYSIO: '/dashboard/medical',
+    ANALYST: '/dashboard/analytics',
+    SCOUT: '/dashboard/scouting',
+    REFEREE: '/dashboard/referee',
+    PLAYER_PRO: '/dashboard/player',
+    PLAYER: '/dashboard/player',
+    PARENT: '/dashboard/family',
+    GUARDIAN: '/dashboard/family',
+    VIEWER: '/dashboard',
+    USER: '/dashboard',
   };
+
+  return routeMap[role] || '/dashboard';
 }
 
-export function isSuperAdmin(userRoles: UserRole[]): boolean {
-  return userRoles.includes('SUPERADMIN');
-}
-
-export function canManageUser(userRoles: UserRole[], targetRoles: UserRole[]): boolean {
-  const userLevel = getUserPermissionLevel(userRoles);
-  const targetLevel = getUserPermissionLevel(targetRoles);
-  return userLevel > targetLevel;
-}
-
-export function canManageRole(userRoles: UserRole[], targetRole: UserRole): boolean {
-  const userLevel = getUserPermissionLevel(userRoles);
-  const targetLevel = ROLE_HIERARCHY[targetRole] || 0;
-  return userLevel > targetLevel;
+/**
+ * Get dashboard route for user based on their roles
+ */
+export function getUserDashboardRoute(roles: UserRole[]): string {
+  const primaryRole = getPrimaryRole(roles);
+  return getRoleDashboardRoute(primaryRole);
 }
 
 // ============================================================================
-// LOGIN ATTEMPT TRACKING (Brute Force Protection)
+// DISPLAY UTILITIES
 // ============================================================================
 
-const loginAttempts = new Map<string, { count: number; firstAttempt: number }>();
-
-export function recordLoginAttempt(email: string): void {
-  const now = Date.now();
-  const existing = loginAttempts.get(email);
-
-  if (existing && now - existing.firstAttempt < LOGIN_ATTEMPT_WINDOW) {
-    existing.count++;
-  } else {
-    loginAttempts.set(email, { count: 1, firstAttempt: now });
-  }
+/**
+ * Capitalize first letter
+ */
+export function capitalize(str: string): string {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
-export function getLoginAttempts(email: string): number {
-  const attempt = loginAttempts.get(email);
-  if (!attempt) return 0;
-
-  const now = Date.now();
-  if (now - attempt.firstAttempt > LOGIN_ATTEMPT_WINDOW) {
-    loginAttempts.delete(email);
-    return 0;
-  }
-
-  return attempt.count;
+/**
+ * Get user display name
+ */
+export function getUserDisplayName(user: { firstName?: string; lastName?: string } | null): string {
+  if (!user) return 'Unknown User';
+  return [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || 'Unknown User';
 }
 
-export function resetLoginAttempts(email: string): void {
-  loginAttempts.delete(email);
+/**
+ * Get user initials (for avatars)
+ */
+export function getUserInitials(user: { firstName?: string; lastName?: string } | null): string {
+  if (!user) return 'U';
+  const first = user.firstName?.charAt(0) || '';
+  const last = user.lastName?.charAt(0) || '';
+  return (first + last).toUpperCase() || 'U';
 }
 
-export function isAccountLocked(email: string): boolean {
-  return getLoginAttempts(email) >= MAX_LOGIN_ATTEMPTS;
+/**
+ * Format role for display
+ */
+export function formatRole(role: string): string {
+  if (!role) return '';
+  return role.split('_').map(capitalize).join(' ');
+}
+
+/**
+ * Get role badge colors
+ */
+export function getRoleColor(role: string): { bg: string; text: string; icon: string } {
+  const colorMap: Record<string, { bg: string; text: string; icon: string }> = {
+    SUPERADMIN: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', icon: '⭐' },
+    ADMIN: { bg: 'bg-rose-100 dark:bg-rose-900/30', text: 'text-rose-700 dark:text-rose-400', icon: '🛡️' },
+    LEAGUE_ADMIN: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', icon: '🏛️' },
+    CLUB_OWNER: { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-400', icon: '👑' },
+    MANAGER: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', icon: '⚙️' },
+    TREASURER: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', icon: '💰' },
+    COACH: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', icon: '🎯' },
+    ASSISTANT_COACH: { bg: 'bg-lime-100 dark:bg-lime-900/30', text: 'text-lime-700 dark:text-lime-400', icon: '📋' },
+    MEDICAL_STAFF: { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400', icon: '🏥' },
+    PHYSIO: { bg: 'bg-sky-100 dark:bg-sky-900/30', text: 'text-sky-700 dark:text-sky-400', icon: '💪' },
+    ANALYST: { bg: 'bg-violet-100 dark:bg-violet-900/30', text: 'text-violet-700 dark:text-violet-400', icon: '📊' },
+    SCOUT: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400', icon: '🔍' },
+    REFEREE: { bg: 'bg-slate-100 dark:bg-slate-900/30', text: 'text-slate-700 dark:text-slate-400', icon: '🏁' },
+    PLAYER_PRO: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', icon: '🏆' },
+    PLAYER: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400', icon: '⚽' },
+    PARENT: { bg: 'bg-pink-100 dark:bg-pink-900/30', text: 'text-pink-700 dark:text-pink-400', icon: '👨‍👧' },
+    GUARDIAN: { bg: 'bg-pink-100 dark:bg-pink-900/30', text: 'text-pink-700 dark:text-pink-400', icon: '🛡️' },
+    VIEWER: { bg: 'bg-gray-100 dark:bg-gray-900/30', text: 'text-gray-700 dark:text-gray-400', icon: '👀' },
+    USER: { bg: 'bg-gray-100 dark:bg-gray-900/30', text: 'text-gray-700 dark:text-gray-400', icon: '👤' },
+  };
+
+  return colorMap[role] || { bg: 'bg-gray-100 dark:bg-gray-900/30', text: 'text-gray-700 dark:text-gray-400', icon: '❓' };
 }
 
 // ============================================================================
-// NEXTAUTH V5 CONFIGURATION
+// DATABASE HELPERS - Schema Aligned
 // ============================================================================
 
-export const authConfig: NextAuthConfig = {
-  providers: [
-    CredentialsProvider({
-      name: 'Credentials',
-      credentials: {
-        email: { label: 'Email', type: 'email', placeholder: 'your@email.com' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials, req) {
-        try {
-          if (!credentials?.email || !credentials?.password) {
-            logger.warn('Login attempt without credentials');
-            throw new AuthenticationError('Email and password required');
-          }
+/**
+ * Get user by email with full profile data
+ * NOTE: Uses correct schema field names (phone, emailVerifiedAt, jerseyNumber)
+ */
+export async function getUserByEmail(email: string): Promise<UserWithProfiles | null> {
+  if (!email) return null;
 
-          const email = sanitizeEmail(credentials.email);
-
-          // Check if account is locked
-          if (isAccountLocked(email)) {
-            logger.warn('Login attempt on locked account', { email });
-            await logSecurityIncident(email, {
-              eventType: 'RATE_LIMIT_EXCEEDED',
-              details: 'Too many failed login attempts',
-              ipAddress: req?.ip,
-              userAgent: req?.headers.get('user-agent') || undefined,
-            });
-            throw new AuthenticationError('Account temporarily locked due to too many failed attempts');
-          }
-
-          if (!isValidEmail(email)) {
-            logger.warn('Login attempt with invalid email format', { email });
-            recordLoginAttempt(email);
-            throw new AuthenticationError('Invalid email format');
-          }
-
-          if (isDisposableEmail(email)) {
-            logger.warn('Login attempt with disposable email', { email });
-            recordLoginAttempt(email);
-            throw new AuthenticationError('Disposable email addresses not allowed');
-          }
-
-          const user = await prisma.user.findUnique({
-            where: { email },
-            include: {
-              roles: {
-                select: { name: true },
-              },
-              profile: {
-                select: { avatar: true },
-              },
-            },
-          });
-
-          if (!user) {
-            logger.warn('Login attempt with non-existent email', { email });
-            recordLoginAttempt(email);
-            throw new AuthenticationError('Invalid credentials');
-          }
-
-          if (user.status !== 'ACTIVE') {
-            logger.warn('Login attempt with inactive account', {
-              userId: user.id,
-              status: user.status,
-            });
-            recordLoginAttempt(email);
-            throw new AuthenticationError('Account is inactive');
-          }
-
-          const isPasswordValid = verifyPassword(credentials.password, user.password);
-          if (!isPasswordValid) {
-            logger.warn('Login attempt with invalid password', { userId: user.id });
-            recordLoginAttempt(email);
-            throw new AuthenticationError('Invalid credentials');
-          }
-
-          // Reset login attempts on successful auth
-          resetLoginAttempts(email);
-
-          // Update last login
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { lastLoginAt: new Date() },
-          });
-
-          // Log successful authentication
-          await logAuthenticationEvent(user.id, 'LOGIN_SUCCESS', {
-            ipAddress: req?.ip,
-            userAgent: req?.headers.get('user-agent') || undefined,
-          });
-
-          logger.info('User authenticated successfully', { userId: user.id, email });
-
-          return {
-            id: user.id,
-            email: user.email,
-            name: `${user.firstName} ${user.lastName}`,
-            image: user.profile?.avatar || undefined,
-          };
-        } catch (error) {
-          if (error instanceof AuthenticationError) {
-            throw new Error(error.message);
-          }
-          logger.error('Authentication error', error as Error);
-          throw new Error('Authentication failed');
-        }
-      },
-    }),
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    }),
-  ],
-
-  pages: {
-    signIn: '/auth/login',
-    error: '/auth/error',
-    signOut: '/auth/signout',
-  },
-
-  callbacks: {
-    async jwt({ token, user, account }) {
-      if (user) {
-        token.sub = user.id;
-        token.email = user.email;
-
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          include: {
-            roles: {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,              // Schema: phone (not phoneNumber)
+        avatar: true,
+        isSuperAdmin: true,
+        emailVerifiedAt: true,    // Schema: emailVerifiedAt (not emailVerified)
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        clubId: true,
+        teamId: true,
+        userRoles: {              // Schema: userRoles relation
+          select: {
+            role: {
               select: { name: true },
             },
           },
-        });
-
-        if (dbUser) {
-          token.userId = dbUser.id;
-          token.roles = dbUser.roles.map((r) => r.name as UserRole);
-          token.isSuperAdmin = dbUser.roles.some((r) => r.name === 'SUPERADMIN');
-        }
-      }
-
-      return token;
-    },
-
-    async session({ session, token }) {
-      if (session.user && token) {
-        session.user.email = token.email as string;
-        (session as any).userId = token.sub;
-        (session as any).roles = (token.roles as UserRole[]) || [];
-        (session as any).permissions = getUserPermissions((token.roles as UserRole[]) || []);
-        (session as any).isSuperAdmin = token.isSuperAdmin;
-      }
-
-      return session;
-    },
-
-    async signIn({ user, account, profile, email, credentials }) {
-      try {
-        if (!user?.id) {
-          return false;
-        }
-
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { status: true },
-        });
-
-        if (!dbUser || dbUser.status !== 'ACTIVE') {
-          return false;
-        }
-
-        logger.info('User signed in', { userId: user.id, provider: account?.provider });
-        return true;
-      } catch (error) {
-        logger.error('Sign in callback error', error as Error);
-        return false;
-      }
-    },
-
-    async redirect({ url, baseUrl }) {
-      if (url.startsWith('/')) {
-        return `${baseUrl}${url}`;
-      } else if (new URL(url).origin === baseUrl) {
-        return url;
-      }
-      return baseUrl;
-    },
-  },
-
-  session: {
-    strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-    updateAge: 24 * 60 * 60, // 24 hours
-  },
-
-  jwt: {
-    secret: JWT_SECRET,
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-
-  events: {
-    async signIn({ user, account, isNewUser }) {
-      logger.info('Sign in event', {
-        userId: user?.id,
-        provider: account?.provider,
-        isNewUser,
-      });
-    },
-
-    async signOut({ token }) {
-      if (token?.sub) {
-        await logAuthenticationEvent(token.sub, 'LOGOUT');
-      }
-      logger.info('Sign out event', { userId: token?.sub });
-    },
-
-    async session({ session, token }) {
-      logger.debug('Session event', { userId: token?.sub });
-    },
-  },
-
-  debug: process.env.NODE_ENV === 'development',
-};
-
-// ============================================================================
-// GET CURRENT USER & SESSION
-// ============================================================================
-
-export async function getCurrentUser(userId: string): Promise<User | null> {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        roles: {
-          select: { name: true },
         },
-        profile: {
-          select: { avatar: true },
+        playerProfile: {
+          select: {
+            id: true,
+            position: true,
+            preferredFoot: true,
+            height: true,
+            weight: true,
+            jerseyNumber: true,   // Schema: jerseyNumber (not shirtNumber)
+          },
+        },
+        coachProfile: {
+          select: {
+            id: true,
+            coachType: true,
+            yearsExperience: true,
+          },
+        },
+        subscription: {
+          select: {
+            tier: true,
+            status: true,
+          },
         },
       },
     });
 
-    if (!user) {
-      return null;
-    }
+    if (!user) return null;
 
     return {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      fullName: `${user.firstName} ${user.lastName}`,
-      avatar: user.profile?.avatar,
-      roles: user.roles.map((r) => r.name as UserRole),
-      status: user.status,
-      isEmailVerified: user.emailVerifiedAt !== null,
-      emailVerifiedAt: user.emailVerifiedAt,
-      twoFactorEnabled: user.twoFactorEnabled,
-      subscriptionTier: user.subscriptionTier,
-      subscriptionStatus: user.subscriptionStatus,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      isSuperAdmin: user.roles.some((r) => r.name === 'SUPERADMIN'),
-      lastLoginAt: user.lastLoginAt,
-    };
+      ...user,
+      roles: user.userRoles.map((ur) => ur.role.name as UserRole),
+      status: user.status as UserStatus,
+    } as UserWithProfiles;
   } catch (error) {
-    logger.error('Failed to get current user', error as Error, { userId });
+    logger.error('Error fetching user by email', error as Error);
     return null;
   }
 }
 
-export async function validateUserAccess(
-  userId: string,
-  requiredPermission: PermissionName
-): Promise<boolean> {
-  try {
-    const user = await getCurrentUser(userId);
-    if (!user) {
-      return false;
-    }
+/**
+ * Get user by ID with full profile data
+ */
+export async function getUserById(userId: string): Promise<UserWithProfiles | null> {
+  if (!userId) return null;
 
-    return hasPermission(user.roles, requiredPermission);
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        avatar: true,
+        isSuperAdmin: true,
+        emailVerifiedAt: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        clubId: true,
+        teamId: true,
+        userRoles: {
+          select: {
+            role: {
+              select: { name: true },
+            },
+          },
+        },
+        playerProfile: {
+          select: {
+            id: true,
+            position: true,
+            preferredFoot: true,
+            height: true,
+            weight: true,
+            jerseyNumber: true,
+          },
+        },
+        coachProfile: {
+          select: {
+            id: true,
+            coachType: true,
+            yearsExperience: true,
+          },
+        },
+      },
+    });
+
+    if (!user) return null;
+
+    return {
+      ...user,
+      roles: user.userRoles.map((ur) => ur.role.name as UserRole),
+      status: user.status as UserStatus,
+    } as UserWithProfiles;
   } catch (error) {
-    logger.error('Failed to validate user access', error as Error, { userId });
+    logger.error('Error fetching user by ID', error as Error);
+    return null;
+  }
+}
+
+/**
+ * Check if user exists by email
+ */
+export async function userExists(email: string): Promise<boolean> {
+  if (!email) return false;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+      select: { id: true },
+    });
+    return !!user;
+  } catch {
     return false;
   }
 }
 
 // ============================================================================
-// AUTHORIZATION HELPERS (NextAuth v5 compatible)
+// ASYNC SESSION & AUTH HELPERS
 // ============================================================================
 
+/**
+ * Get current authenticated session
+ */
 export async function getSession() {
   const { auth } = await import('@/auth');
   return await auth();
 }
 
-export async function requireAuth() {
+/**
+ * Get current authenticated user from session
+ */
+export async function getCurrentUser(): Promise<SessionUser | null> {
+  try {
+    const session = await getSession();
+    return (session?.user as SessionUser) || null;
+  } catch (error) {
+    logger.error('Error getting current user', error as Error);
+    return null;
+  }
+}
+
+/**
+ * Check if user is authenticated
+ */
+export async function isAuthenticated(): Promise<boolean> {
+  const user = await getCurrentUser();
+  return !!user;
+}
+
+/**
+ * Require authentication - redirect if not authenticated
+ */
+export async function requireAuth(): Promise<SessionUser> {
   const session = await getSession();
 
   if (!session || !(session as any).userId) {
-    throw new AuthenticationError('Authentication required');
+    redirect('/auth/signin');
   }
 
-  return session;
+  return session.user as SessionUser;
 }
 
-export async function verifySuperAdmin() {
+/**
+ * Require authentication - throw if not authenticated (for Server Actions)
+ */
+export async function requireAuthThrow(): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) {
+    throw new AuthenticationError(ERROR_MESSAGES.unauthorized);
+  }
+  return user;
+}
+
+/**
+ * Verify user is SuperAdmin
+ */
+export async function verifySuperAdmin(): Promise<User> {
   const session = await requireAuth();
 
   const roles = (session as any).roles as UserRole[];
-  if (!roles || !roles.includes('SUPERADMIN')) {
+  if (!roles?.includes('SUPERADMIN')) {
     throw new AuthorizationError('Superadmin access required');
   }
 
-  const user = await getCurrentUser((session as any).userId);
+  const user = await getUserById((session as any).id);
   if (!user) {
     throw new AuthenticationError('User not found');
   }
 
-  return user;
+  return user as unknown as User;
 }
 
+/**
+ * Verify user has permission
+ */
 export async function verifyPermission(permission: PermissionName) {
   const session = await requireAuth();
 
@@ -1184,19 +1329,70 @@ export async function verifyPermission(permission: PermissionName) {
   return session;
 }
 
+/**
+ * Verify user has role
+ */
 export async function verifyRole(requiredRole: UserRole) {
   const session = await requireAuth();
 
   const roles = (session as any).roles as UserRole[];
-  if (!roles.includes(requiredRole)) {
+  if (!roles?.includes(requiredRole)) {
     throw new AuthorizationError(`Role required: ${requiredRole}`);
   }
 
   return session;
 }
 
+/**
+ * Verify user has any of the specified roles
+ */
+export async function verifyAnyRole(requiredRoles: UserRole[]) {
+  const session = await requireAuth();
+
+  const roles = (session as any).roles as UserRole[];
+  if (!hasAnyRoleSync(roles, requiredRoles)) {
+    throw new AuthorizationError(`One of these roles required: ${requiredRoles.join(', ')}`);
+  }
+
+  return session;
+}
+
+/**
+ * Check if current user has a specific role (async)
+ */
+export async function hasRole(requiredRole: UserRole): Promise<boolean> {
+  const user = await getCurrentUser();
+  return user?.roles?.includes(requiredRole) || false;
+}
+
+/**
+ * Check if current user has ANY of the specified roles (async)
+ */
+export async function hasAnyRole(requiredRoles: UserRole[]): Promise<boolean> {
+  const user = await getCurrentUser();
+  if (!user?.roles || requiredRoles.length === 0) return false;
+  return requiredRoles.some((role) => user.roles.includes(role));
+}
+
+/**
+ * Check if current user has ALL of the specified roles (async)
+ */
+export async function hasAllRoles(requiredRoles: UserRole[]): Promise<boolean> {
+  const user = await getCurrentUser();
+  if (!user?.roles || requiredRoles.length === 0) return false;
+  return requiredRoles.every((role) => user.roles.includes(role));
+}
+
+/**
+ * Check if current user has a specific permission (async)
+ */
+export async function hasPermissionAsync(permission: PermissionName): Promise<boolean> {
+  const user = await getCurrentUser();
+  return user?.permissions?.includes(permission) || false;
+}
+
 // ============================================================================
-// SESSION PUBLIC API
+// SESSION TOKEN PUBLIC API
 // ============================================================================
 
 export function createSessionToken(userId: string, user: User, roles: UserRole[]): Session {
@@ -1236,7 +1432,7 @@ export async function batchVerifyPermissions(
   permissions: PermissionName[]
 ): Promise<Record<PermissionName, boolean>> {
   try {
-    const user = await getCurrentUser(userId);
+    const user = await getUserById(userId);
     if (!user) {
       return permissions.reduce(
         (acc, perm) => {
@@ -1267,17 +1463,189 @@ export async function batchVerifyPermissions(
 }
 
 // ============================================================================
-// TYPE EXPORTS
+// NEXTAUTH CONFIGURATION
 // ============================================================================
 
-export type {
-  UserRole,
-  PermissionName,
-  User,
-  Session,
-  PasswordValidationResult,
-  TokenPayload,
-  PasswordHash,
-  AuthResult,
-  PermissionCheckResult,
+export const authConfig: NextAuthConfig = {
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    CredentialsProvider({
+      name: 'credentials',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          logger.warn('Missing credentials');
+          return null;
+        }
+
+        const email = sanitizeEmail(credentials.email as string);
+        const password = credentials.password as string;
+
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email },
+            include: {
+              userRoles: {
+                select: {
+                  role: { select: { name: true } },
+                },
+              },
+            },
+          });
+
+          if (!user || !user.passwordHash) {
+            logger.warn('User not found or no password', { email });
+            return null;
+          }
+
+          const isValid = verifyPassword(password, user.passwordHash, user.passwordSalt || undefined);
+          if (!isValid) {
+            logger.warn('Invalid password', { email });
+            return null;
+          }
+
+          if (user.status !== 'ACTIVE') {
+            logger.warn('User not active', { email, status: user.status });
+            return null;
+          }
+
+          // Update last login
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          });
+
+          logger.info('User authenticated', { userId: user.id });
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: `${user.firstName} ${user.lastName}`,
+            image: user.avatar,
+          };
+        } catch (error) {
+          logger.error('Authentication error', error as Error);
+          return null;
+        }
+      },
+    }),
+  ],
+
+  pages: {
+    signIn: '/auth/signin',
+    signOut: '/auth/signout',
+    error: '/auth/error',
+    verifyRequest: '/auth/verify',
+    newUser: '/onboarding',
+  },
+
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.sub = user.id;
+        token.email = user.email;
+
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          include: {
+            userRoles: {
+              select: { role: { select: { name: true } } },
+            },
+          },
+        });
+
+        if (dbUser) {
+          token.userId = dbUser.id;
+          token.roles = dbUser.userRoles.map((ur) => ur.role.name as UserRole);
+          token.isSuperAdmin = dbUser.isSuperAdmin;
+        }
+      }
+
+      return token;
+    },
+
+    async session({ session, token }) {
+      if (session.user && token) {
+        session.user.email = token.email as string;
+        (session as any).userId = token.sub;
+        (session as any).roles = (token.roles as UserRole[]) || [];
+        (session as any).permissions = getUserPermissions((token.roles as UserRole[]) || []);
+        (session as any).isSuperAdmin = token.isSuperAdmin;
+      }
+
+      return session;
+    },
+
+    async signIn({ user, account }) {
+      try {
+        if (!user?.id) return false;
+
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { status: true },
+        });
+
+        if (!dbUser || dbUser.status !== 'ACTIVE') {
+          return false;
+        }
+
+        logger.info('User signed in', { userId: user.id, provider: account?.provider });
+        return true;
+      } catch (error) {
+        logger.error('Sign in callback error', error as Error);
+        return false;
+      }
+    },
+
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`;
+      } else if (new URL(url).origin === baseUrl) {
+        return url;
+      }
+      return baseUrl;
+    },
+  },
+
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // 24 hours
+  },
+
+  jwt: {
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+
+  events: {
+    async signIn({ user, account, isNewUser }) {
+      logger.info('Sign in event', {
+        userId: user?.id,
+        provider: account?.provider,
+        isNewUser,
+      });
+    },
+
+    async signOut({ token }) {
+      logger.info('Sign out event', { userId: token?.sub });
+    },
+  },
+
+  debug: process.env.NODE_ENV === 'development',
+};
+
+// ============================================================================
+// EXPORTS
+// ============================================================================
+
+export {
+  sessionManager,
+  ROLE_PRIORITY,
+  ERROR_MESSAGES,
 };

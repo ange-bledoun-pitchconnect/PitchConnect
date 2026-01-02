@@ -1,606 +1,462 @@
-// ============================================================================
-// src/lib/analytics/player-comparator.ts
-// ⚖️ PitchConnect Enterprise Analytics - Player Comparison Engine
-// ============================================================================
-// VERSION: 2.0.0 (Schema v7.7.0 Aligned)
-// INTEGRATES: Existing cache system, Multi-sport metrics
-// ============================================================================
+/**
+ * ============================================================================
+ * ⚖️ PITCHCONNECT ANALYTICS - PLAYER COMPARATOR v7.10.1
+ * ============================================================================
+ * Enterprise player comparison system for all 12 sports
+ * Head-to-head statistical comparison with recommendations
+ * ============================================================================
+ */
 
-import { prisma } from '@/lib/prisma';
-import { getOrSetCache } from '@/lib/cache/redis';
-import { logger } from '@/lib/logging';
-import {
-  getSportMetricConfig,
-  getRatingWeights,
-  getPositionValueMultiplier,
-} from './sport-metrics';
 import type {
+  Sport,
   PlayerComparison,
   PlayerComparisonProfile,
   CategoryComparison,
 } from './types';
-import type { Sport, Position } from '@prisma/client';
+import { getSportMetricConfig, getKeyMetricsForSport } from './sport-metrics';
 
-// ============================================================================
+// =============================================================================
 // CONSTANTS
-// ============================================================================
+// =============================================================================
 
-const MODEL_VERSION = '2.0.0-comparison';
-const CACHE_TTL_SECONDS = 2 * 60 * 60; // 2 hours
-const CACHE_PREFIX = 'analytics:comparison';
+export const COMPARISON_MODEL_VERSION = '7.10.1-comparison';
 
-// Comparison categories with weights
-const COMPARISON_CATEGORIES = [
-  { name: 'Overall Rating', key: 'overall', weight: 0.2 },
-  { name: 'Goals', key: 'goals', weight: 0.15 },
-  { name: 'Assists', key: 'assists', weight: 0.12 },
-  { name: 'Minutes Played', key: 'minutes', weight: 0.1 },
-  { name: 'Consistency', key: 'consistency', weight: 0.12 },
-  { name: 'Form', key: 'form', weight: 0.15 },
-  { name: 'Appearances', key: 'appearances', weight: 0.08 },
-  { name: 'Age Profile', key: 'age', weight: 0.08 },
-];
+// Comparison categories by sport
+export const COMPARISON_CATEGORIES: Record<Sport, string[]> = {
+  FOOTBALL: ['Attacking', 'Playmaking', 'Defensive', 'Physical', 'Technical'],
+  RUGBY: ['Attack', 'Defense', 'Set Pieces', 'Physical', 'Game Management'],
+  CRICKET: ['Batting', 'Bowling', 'Fielding', 'Match Winning', 'Consistency'],
+  BASKETBALL: ['Scoring', 'Playmaking', 'Rebounding', 'Defense', 'Efficiency'],
+  AMERICAN_FOOTBALL: ['Offense', 'Defense', 'Special Teams', 'Athleticism', 'Leadership'],
+  NETBALL: ['Shooting', 'Feeding', 'Defending', 'Movement', 'Decision Making'],
+  HOCKEY: ['Attack', 'Defense', 'Set Pieces', 'Fitness', 'Stick Skills'],
+  LACROSSE: ['Offense', 'Defense', 'Ground Balls', 'Face-offs', 'Athleticism'],
+  AUSTRALIAN_RULES: ['Disposal', 'Marking', 'Tackling', 'Clearances', 'Goal Kicking'],
+  GAELIC_FOOTBALL: ['Scoring', 'Tackling', 'Kickouts', 'Work Rate', 'Skill'],
+  FUTSAL: ['Goals', 'Assists', 'Defense', 'Technical', 'Positioning'],
+  BEACH_FOOTBALL: ['Goals', 'Assists', 'Saves', 'Technical', 'Acrobatics'],
+};
 
-// ============================================================================
+// Category metrics mapping
+const CATEGORY_METRICS: Record<string, string[]> = {
+  // Football
+  Attacking: ['goals', 'shots', 'shotAccuracy', 'xG'],
+  Playmaking: ['assists', 'keyPasses', 'throughBalls', 'xA'],
+  Defensive: ['tackles', 'interceptions', 'clearances', 'blocks'],
+  Physical: ['aerialDuelsWon', 'duelsWon', 'distance', 'sprints'],
+  Technical: ['passAccuracy', 'dribbleSuccess', 'touches', 'ballControl'],
+  
+  // Rugby
+  Attack: ['tries', 'metersGained', 'lineBreaks', 'offloads'],
+  Defense: ['tackles', 'tackleSuccess', 'turnoversWon', 'missedTackles'],
+  'Set Pieces': ['lineoutWins', 'scrumWins', 'kickingSuccess'],
+  'Game Management': ['penalties', 'discipline', 'decisionMaking'],
+  
+  // Basketball
+  Scoring: ['points', 'fieldGoalPct', 'threePointPct', 'freeThrowPct'],
+  Rebounding: ['rebounds', 'offensiveRebounds', 'defensiveRebounds'],
+  
+  // Cricket
+  Batting: ['runs', 'battingAverage', 'strikeRate', 'boundaries'],
+  Bowling: ['wickets', 'bowlingAverage', 'economyRate', 'strikeRate'],
+  Fielding: ['catches', 'runOuts', 'stumpings'],
+  'Match Winning': ['centuries', 'fifties', 'highScores', 'clutchPerformances'],
+  Consistency: ['averageScore', 'variance', 'notOuts'],
+  
+  // Generic
+  Movement: ['positioning', 'offTheBall', 'spaceCreation'],
+  'Decision Making': ['passSelection', 'shotSelection', 'timing'],
+  Leadership: ['captaincy', 'communication', 'experience'],
+};
+
+// =============================================================================
+// CACHE
+// =============================================================================
+
+interface ComparisonCache {
+  comparisons: Map<string, { data: PlayerComparison; expiresAt: Date }>;
+}
+
+const comparisonCache: ComparisonCache = {
+  comparisons: new Map(),
+};
+
+const CACHE_TTL = 60 * 60 * 6 * 1000; // 6 hours
+
+// =============================================================================
 // MAIN COMPARISON FUNCTION
-// ============================================================================
+// =============================================================================
 
 /**
- * Compare two players in detail
+ * Compare two players' statistics
  */
 export async function comparePlayerStats(
   player1Id: string,
   player2Id: string,
+  player1Data: {
+    name: string;
+    sport: Sport;
+    position: string;
+    age: number;
+    matchesPlayed: number;
+    averageRating: number;
+    marketValue?: number;
+    
+    // Stats (generic - works for all sports)
+    stats: Record<string, number>;
+  },
+  player2Data: {
+    name: string;
+    sport: Sport;
+    position: string;
+    age: number;
+    matchesPlayed: number;
+    averageRating: number;
+    marketValue?: number;
+    stats: Record<string, number>;
+  },
   forceRefresh: boolean = false
 ): Promise<PlayerComparison> {
-  // Sort IDs to ensure consistent cache key
-  const sortedIds = [player1Id, player2Id].sort();
-  const cacheKey = `${CACHE_PREFIX}:${sortedIds[0]}:${sortedIds[1]}`;
-
+  // Validate same sport
+  if (player1Data.sport !== player2Data.sport) {
+    throw new Error('Cannot compare players from different sports');
+  }
+  
+  const sport = player1Data.sport;
+  
+  // Check cache
+  const cacheKey = `compare:${[player1Id, player2Id].sort().join(':')}`;
   if (!forceRefresh) {
-    try {
-      const cached = await getOrSetCache<PlayerComparison>(
-        cacheKey,
-        async () => generateComparison(player1Id, player2Id),
-        CACHE_TTL_SECONDS
-      );
-      return cached;
-    } catch (error) {
-      logger.warn({ player1Id, player2Id, error }, 'Cache miss, generating fresh comparison');
+    const cached = comparisonCache.comparisons.get(cacheKey);
+    if (cached && cached.expiresAt > new Date()) {
+      return cached.data;
     }
   }
-
-  return generateComparison(player1Id, player2Id);
-}
-
-/**
- * Generate player comparison (internal)
- */
-async function generateComparison(
-  player1Id: string,
-  player2Id: string
-): Promise<PlayerComparison> {
-  // Fetch both players with all related data
-  const [player1Data, player2Data] = await Promise.all([
-    fetchPlayerData(player1Id),
-    fetchPlayerData(player2Id),
-  ]);
-
-  if (!player1Data) {
-    throw new Error(`Player 1 not found: ${player1Id}`);
+  
+  // Build player profiles
+  const player1: PlayerComparisonProfile = {
+    playerId: player1Id,
+    name: player1Data.name,
+    position: player1Data.position,
+    age: player1Data.age,
+    matchesPlayed: player1Data.matchesPlayed,
+    averageRating: player1Data.averageRating,
+    marketValue: player1Data.marketValue,
+  };
+  
+  const player2: PlayerComparisonProfile = {
+    playerId: player2Id,
+    name: player2Data.name,
+    position: player2Data.position,
+    age: player2Data.age,
+    matchesPlayed: player2Data.matchesPlayed,
+    averageRating: player2Data.averageRating,
+    marketValue: player2Data.marketValue,
+  };
+  
+  // Get comparison categories for sport
+  const categories = COMPARISON_CATEGORIES[sport];
+  const categoryComparisons: CategoryComparison[] = [];
+  
+  let totalPlayer1Score = 0;
+  let totalPlayer2Score = 0;
+  
+  for (const category of categories) {
+    const categoryResult = compareCategory(
+      category,
+      player1Data.stats,
+      player2Data.stats,
+      sport
+    );
+    
+    categoryComparisons.push(categoryResult);
+    totalPlayer1Score += categoryResult.player1Score;
+    totalPlayer2Score += categoryResult.player2Score;
   }
-  if (!player2Data) {
-    throw new Error(`Player 2 not found: ${player2Id}`);
+  
+  // Determine overall winner
+  let overallWinner: PlayerComparison['overallWinner'];
+  const scoreDiff = totalPlayer1Score - totalPlayer2Score;
+  if (scoreDiff > 5) {
+    overallWinner = 'PLAYER1';
+  } else if (scoreDiff < -5) {
+    overallWinner = 'PLAYER2';
+  } else {
+    overallWinner = 'DRAW';
   }
-
-  // Determine sport (use first player's sport or default)
-  const sport = player1Data.sport || player2Data.sport || 'FOOTBALL';
-
-  // Build comparison profiles
-  const player1 = buildProfile(player1Data, sport);
-  const player2 = buildProfile(player2Data, sport);
-
-  // Calculate category comparisons
-  const categoryComparison = calculateCategoryComparisons(player1, player2, player1Data, player2Data, sport);
-
-  // Calculate overall similarity
-  const overallSimilarity = calculateSimilarity(player1, player2, categoryComparison);
-
-  // Determine head-to-head winner
-  const headToHead = determineWinner(categoryComparison);
-
-  // Analyze strengths
-  const strengthsComparison = analyzeStrengths(categoryComparison, player1Data, player2Data);
-
-  // Value comparison
-  const valueComparison = compareValues(player1, player2, sport);
-
-  // Generate recommendation
-  const recommendation = generateRecommendation(
-    player1,
-    player2,
-    headToHead,
-    categoryComparison,
-    sport
+  
+  const winnerAdvantage = Math.abs(scoreDiff / (totalPlayer1Score + totalPlayer2Score)) * 100;
+  
+  // Find key differences
+  const keyDifferences = findKeyDifferences(player1Data.stats, player2Data.stats, sport);
+  
+  // Generate recommendations
+  const recommendations = generateComparisonRecommendations(
+    player1Data,
+    player2Data,
+    categoryComparisons
   );
-
+  
+  // Build comparison
   const comparison: PlayerComparison = {
     player1,
     player2,
-    overallSimilarity,
-    headToHead,
-    categoryComparison,
-    strengthsComparison,
-    valueComparison,
-    recommendation,
-    metadata: {
-      modelVersion: MODEL_VERSION,
-      generatedAt: new Date(),
-      sport,
-      positionsCompared: `${player1.position || 'N/A'} vs ${player2.position || 'N/A'}`,
-    },
+    sport,
+    categories: categoryComparisons,
+    overallWinner,
+    winnerAdvantage: Math.round(winnerAdvantage * 10) / 10,
+    keyDifferences,
+    recommendations,
+    generatedAt: new Date(),
+    modelVersion: COMPARISON_MODEL_VERSION,
   };
-
-  logger.info({
-    player1Id,
-    player2Id,
-    similarity: overallSimilarity,
-    winner: headToHead.winner,
-  }, 'Player comparison generated');
-
+  
+  // Cache result
+  comparisonCache.comparisons.set(cacheKey, {
+    data: comparison,
+    expiresAt: new Date(Date.now() + CACHE_TTL),
+  });
+  
   return comparison;
 }
 
-// ============================================================================
-// DATA FETCHING
-// ============================================================================
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
 
-/**
- * Fetch player data for comparison
- */
-async function fetchPlayerData(playerId: string) {
-  const player = await prisma.player.findUnique({
-    where: { id: playerId },
-    include: {
-      user: {
-        select: {
-          firstName: true,
-          lastName: true,
-          dateOfBirth: true,
-        },
-      },
-      teamPlayers: {
-        where: { isActive: true },
-        include: {
-          team: {
-            include: {
-              club: {
-                select: {
-                  id: true,
-                  name: true,
-                  sport: true,
-                },
-              },
-            },
-          },
-        },
-        take: 1,
-      },
-      matchPerformances: {
-        orderBy: { createdAt: 'desc' },
-        take: 20,
-        select: {
-          rating: true,
-          goals: true,
-          assists: true,
-          minutesPlayed: true,
-          createdAt: true,
-        },
-      },
-      statistics: {
-        orderBy: { season: 'desc' },
-        take: 1,
-      },
-    },
-  });
-
-  if (!player) return null;
-
-  const sport = player.teamPlayers[0]?.team.club.sport || 'FOOTBALL';
-  const teamName = player.teamPlayers[0]?.team.club.name || 'Unknown';
-
-  // Calculate age
-  let age: number | null = null;
-  if (player.user.dateOfBirth) {
-    age = Math.floor(
-      (Date.now() - new Date(player.user.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365)
-    );
-  }
-
-  // Calculate stats
-  const performances = player.matchPerformances || [];
-  const stats = player.statistics[0];
-
-  const ratings = performances.map(p => p.rating).filter(r => r != null);
-  const avgRating = ratings.length > 0
-    ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-    : 6.0;
-
-  // Calculate consistency
-  let consistency = 50;
-  if (ratings.length > 1) {
-    const variance = ratings.reduce((sum, r) => sum + Math.pow(r - avgRating, 2), 0) / ratings.length;
-    consistency = Math.max(0, Math.min(100, 100 - Math.sqrt(variance) * 20));
-  }
-
-  // Calculate form rating (last 5 matches)
-  const recentRatings = ratings.slice(0, 5);
-  const formRating = recentRatings.length > 0
-    ? recentRatings.reduce((a, b) => a + b, 0) / recentRatings.length
-    : avgRating;
-
-  return {
-    id: player.id,
-    name: `${player.user.firstName} ${player.user.lastName}`,
-    position: player.primaryPosition,
-    age,
-    sport,
-    teamName,
-    overallRating: player.overallRating || avgRating,
-    formRating: player.formRating || formRating,
-    marketValue: player.marketValue || 100000,
-    performances,
-    stats: {
-      appearances: stats?.appearances || performances.length,
-      goals: stats?.goals || performances.reduce((sum, p) => sum + (p.goals || 0), 0),
-      assists: stats?.assists || performances.reduce((sum, p) => sum + (p.assists || 0), 0),
-      minutesPlayed: stats?.minutesPlayed || performances.reduce((sum, p) => sum + (p.minutesPlayed || 0), 0),
-      avgRating,
-    },
-    consistency,
-  };
-}
-
-// ============================================================================
-// PROFILE BUILDING
-// ============================================================================
-
-/**
- * Build comparison profile from player data
- */
-function buildProfile(data: any, sport: Sport): PlayerComparisonProfile {
-  return {
-    id: data.id,
-    name: data.name,
-    position: data.position,
-    age: data.age,
-    overallRating: Math.round(data.overallRating * 10) / 10,
-    formRating: Math.round(data.formRating * 10) / 10,
-    marketValue: data.marketValue,
-    stats: {
-      appearances: data.stats.appearances,
-      goals: data.stats.goals,
-      assists: data.stats.assists,
-      minutesPlayed: data.stats.minutesPlayed,
-      avgRating: Math.round(data.stats.avgRating * 10) / 10,
-    },
-    attributes: {
-      consistency: Math.round(data.consistency),
-      form: Math.round(data.formRating * 10),
-      experience: Math.min(100, data.stats.appearances * 2),
-      productivity: calculateProductivity(data.stats),
-    },
-  };
-}
-
-/**
- * Calculate productivity score
- */
-function calculateProductivity(stats: any): number {
-  if (stats.appearances === 0) return 0;
-  
-  const goalsPerGame = stats.goals / stats.appearances;
-  const assistsPerGame = stats.assists / stats.appearances;
-  
-  // Productivity = weighted combination of goals + assists per game
-  const productivity = (goalsPerGame * 0.6 + assistsPerGame * 0.4) * 100;
-  
-  return Math.min(100, Math.round(productivity));
-}
-
-// ============================================================================
-// COMPARISON CALCULATIONS
-// ============================================================================
-
-/**
- * Calculate category-by-category comparisons
- */
-function calculateCategoryComparisons(
-  profile1: PlayerComparisonProfile,
-  profile2: PlayerComparisonProfile,
-  data1: any,
-  data2: any,
+function compareCategory(
+  category: string,
+  player1Stats: Record<string, number>,
+  player2Stats: Record<string, number>,
   sport: Sport
-): CategoryComparison[] {
-  const comparisons: CategoryComparison[] = [];
-
-  for (const category of COMPARISON_CATEGORIES) {
-    let score1 = 0;
-    let score2 = 0;
-
-    switch (category.key) {
-      case 'overall':
-        score1 = profile1.overallRating * 10;
-        score2 = profile2.overallRating * 10;
-        break;
-      case 'goals':
-        score1 = normalizeToScale(data1.stats.goals, 0, 30);
-        score2 = normalizeToScale(data2.stats.goals, 0, 30);
-        break;
-      case 'assists':
-        score1 = normalizeToScale(data1.stats.assists, 0, 20);
-        score2 = normalizeToScale(data2.stats.assists, 0, 20);
-        break;
-      case 'minutes':
-        score1 = normalizeToScale(data1.stats.minutesPlayed, 0, 3000);
-        score2 = normalizeToScale(data2.stats.minutesPlayed, 0, 3000);
-        break;
-      case 'consistency':
-        score1 = data1.consistency;
-        score2 = data2.consistency;
-        break;
-      case 'form':
-        score1 = profile1.formRating * 10;
-        score2 = profile2.formRating * 10;
-        break;
-      case 'appearances':
-        score1 = normalizeToScale(data1.stats.appearances, 0, 40);
-        score2 = normalizeToScale(data2.stats.appearances, 0, 40);
-        break;
-      case 'age':
-        // Younger is better (within prime years)
-        score1 = getAgeScore(data1.age);
-        score2 = getAgeScore(data2.age);
-        break;
+): CategoryComparison {
+  const metricNames = CATEGORY_METRICS[category] || getKeyMetricsForSport(sport).map(m => m.name);
+  
+  const metrics: CategoryComparison['metrics'] = [];
+  let player1Total = 0;
+  let player2Total = 0;
+  let validMetrics = 0;
+  
+  for (const metricName of metricNames) {
+    const player1Value = player1Stats[metricName];
+    const player2Value = player2Stats[metricName];
+    
+    if (player1Value !== undefined && player2Value !== undefined) {
+      metrics.push({
+        name: formatMetricName(metricName),
+        player1: player1Value,
+        player2: player2Value,
+      });
+      
+      // Normalize and score (higher is better for most metrics)
+      const max = Math.max(player1Value, player2Value, 0.01);
+      player1Total += (player1Value / max) * 100;
+      player2Total += (player2Value / max) * 100;
+      validMetrics++;
     }
+  }
+  
+  // Average scores
+  const player1Score = validMetrics > 0 ? Math.round(player1Total / validMetrics) : 50;
+  const player2Score = validMetrics > 0 ? Math.round(player2Total / validMetrics) : 50;
+  
+  // Determine winner
+  let winner: CategoryComparison['winner'] = 'DRAW';
+  if (player1Score > player2Score + 5) winner = 'PLAYER1';
+  else if (player2Score > player1Score + 5) winner = 'PLAYER2';
+  
+  return {
+    category,
+    player1Score,
+    player2Score,
+    winner,
+    metrics,
+  };
+}
 
-    const winner: 'PLAYER1' | 'PLAYER2' | 'DRAW' =
-      score1 > score2 + 2 ? 'PLAYER1' :
-      score2 > score1 + 2 ? 'PLAYER2' : 'DRAW';
+function formatMetricName(name: string): string {
+  // Convert camelCase to Title Case
+  return name
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
+    .trim();
+}
 
-    comparisons.push({
-      category: category.name,
-      player1Score: Math.round(score1),
-      player2Score: Math.round(score2),
-      winner,
-      difference: Math.round(Math.abs(score1 - score2)),
-      weight: category.weight,
+function findKeyDifferences(
+  player1Stats: Record<string, number>,
+  player2Stats: Record<string, number>,
+  sport: Sport
+): PlayerComparison['keyDifferences'] {
+  const differences: PlayerComparison['keyDifferences'] = [];
+  
+  const allMetrics = new Set([...Object.keys(player1Stats), ...Object.keys(player2Stats)]);
+  
+  for (const metric of allMetrics) {
+    const p1 = player1Stats[metric] ?? 0;
+    const p2 = player2Stats[metric] ?? 0;
+    
+    if (p1 === 0 && p2 === 0) continue;
+    
+    const max = Math.max(p1, p2);
+    const diff = Math.abs(p1 - p2);
+    const diffPct = (diff / max) * 100;
+    
+    if (diffPct > 20) {
+      differences.push({
+        metric: formatMetricName(metric),
+        player1Value: p1,
+        player2Value: p2,
+        advantage: p1 > p2 ? 'PLAYER1' : 'PLAYER2',
+        significance: diffPct > 50 ? 'HIGH' : diffPct > 30 ? 'MEDIUM' : 'LOW',
+      });
+    }
+  }
+  
+  return differences
+    .sort((a, b) => {
+      const sigOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+      return sigOrder[a.significance] - sigOrder[b.significance];
+    })
+    .slice(0, 6);
+}
+
+function generateComparisonRecommendations(
+  player1Data: { name: string; stats: Record<string, number> },
+  player2Data: { name: string; stats: Record<string, number> },
+  categories: CategoryComparison[]
+): PlayerComparison['recommendations'] {
+  const forPlayer1: string[] = [];
+  const forPlayer2: string[] = [];
+  
+  for (const cat of categories) {
+    if (cat.winner === 'PLAYER2') {
+      forPlayer1.push(`Improve ${cat.category.toLowerCase()} to match ${player2Data.name}'s level`);
+    } else if (cat.winner === 'PLAYER1') {
+      forPlayer2.push(`Improve ${cat.category.toLowerCase()} to match ${player1Data.name}'s level`);
+    }
+  }
+  
+  // Add generic recommendations
+  if (forPlayer1.length < 2) {
+    forPlayer1.push('Maintain current performance levels');
+    forPlayer1.push('Focus on consistency across all categories');
+  }
+  if (forPlayer2.length < 2) {
+    forPlayer2.push('Maintain current performance levels');
+    forPlayer2.push('Focus on consistency across all categories');
+  }
+  
+  return {
+    forPlayer1: forPlayer1.slice(0, 4),
+    forPlayer2: forPlayer2.slice(0, 4),
+  };
+}
+
+// =============================================================================
+// MULTI-PLAYER COMPARISON
+// =============================================================================
+
+/**
+ * Compare multiple players and rank them
+ */
+export async function rankPlayers(
+  sport: Sport,
+  players: {
+    playerId: string;
+    name: string;
+    position: string;
+    stats: Record<string, number>;
+    averageRating: number;
+  }[]
+): Promise<{
+  rankings: {
+    rank: number;
+    playerId: string;
+    name: string;
+    score: number;
+    strengths: string[];
+  }[];
+  categoryLeaders: {
+    category: string;
+    leader: string;
+    score: number;
+  }[];
+}> {
+  const categories = COMPARISON_CATEGORIES[sport];
+  const playerScores: { playerId: string; name: string; totalScore: number; categoryScores: Record<string, number> }[] = [];
+  
+  // Calculate scores for each player
+  for (const player of players) {
+    const categoryScores: Record<string, number> = {};
+    let totalScore = 0;
+    
+    for (const category of categories) {
+      const metrics = CATEGORY_METRICS[category] || [];
+      let categoryTotal = 0;
+      let metricCount = 0;
+      
+      for (const metric of metrics) {
+        if (player.stats[metric] !== undefined) {
+          // Find max value across all players for normalization
+          const maxValue = Math.max(...players.map(p => p.stats[metric] ?? 0), 0.01);
+          categoryTotal += (player.stats[metric] / maxValue) * 100;
+          metricCount++;
+        }
+      }
+      
+      const categoryScore = metricCount > 0 ? categoryTotal / metricCount : 50;
+      categoryScores[category] = Math.round(categoryScore);
+      totalScore += categoryScore;
+    }
+    
+    playerScores.push({
+      playerId: player.playerId,
+      name: player.name,
+      totalScore: totalScore / categories.length,
+      categoryScores,
     });
   }
-
-  return comparisons;
+  
+  // Sort by total score
+  playerScores.sort((a, b) => b.totalScore - a.totalScore);
+  
+  // Build rankings
+  const rankings = playerScores.map((p, index) => {
+    const strengths = Object.entries(p.categoryScores)
+      .filter(([_, score]) => score >= 70)
+      .map(([category]) => category);
+    
+    return {
+      rank: index + 1,
+      playerId: p.playerId,
+      name: p.name,
+      score: Math.round(p.totalScore),
+      strengths,
+    };
+  });
+  
+  // Find category leaders
+  const categoryLeaders = categories.map(category => {
+    const leader = playerScores.reduce((best, current) => 
+      (current.categoryScores[category] ?? 0) > (best.categoryScores[category] ?? 0) ? current : best
+    );
+    return {
+      category,
+      leader: leader.name,
+      score: leader.categoryScores[category] ?? 0,
+    };
+  });
+  
+  return { rankings, categoryLeaders };
 }
 
-/**
- * Normalize value to 0-100 scale
- */
-function normalizeToScale(value: number, min: number, max: number): number {
-  if (max === min) return 50;
-  const normalized = ((value - min) / (max - min)) * 100;
-  return Math.max(0, Math.min(100, normalized));
-}
-
-/**
- * Get age score (prime years = highest)
- */
-function getAgeScore(age: number | null): number {
-  if (age === null) return 50;
-  
-  if (age < 21) return 60 + (age - 18) * 5; // Young potential
-  if (age >= 21 && age <= 24) return 80 + (age - 21) * 5; // Rising
-  if (age >= 25 && age <= 29) return 95; // Prime
-  if (age >= 30 && age <= 32) return 85 - (age - 30) * 5; // Experienced
-  if (age > 32) return Math.max(50, 70 - (age - 32) * 5); // Declining
-  
-  return 50;
-}
-
-/**
- * Calculate overall similarity percentage
- */
-function calculateSimilarity(
-  profile1: PlayerComparisonProfile,
-  profile2: PlayerComparisonProfile,
-  categoryComparisons: CategoryComparison[]
-): number {
-  // Position similarity
-  const samePosition = profile1.position === profile2.position;
-  let similarity = samePosition ? 30 : 10;
-
-  // Rating similarity
-  const ratingDiff = Math.abs(profile1.overallRating - profile2.overallRating);
-  similarity += Math.max(0, 20 - ratingDiff * 5);
-
-  // Stats similarity
-  const statsDiff = categoryComparisons.reduce((sum, c) => sum + c.difference, 0) / categoryComparisons.length;
-  similarity += Math.max(0, 30 - statsDiff * 0.3);
-
-  // Age similarity
-  if (profile1.age && profile2.age) {
-    const ageDiff = Math.abs(profile1.age - profile2.age);
-    similarity += Math.max(0, 20 - ageDiff * 3);
-  }
-
-  return Math.round(Math.min(100, similarity));
-}
-
-/**
- * Determine overall winner
- */
-function determineWinner(categoryComparisons: CategoryComparison[]): PlayerComparison['headToHead'] {
-  let player1Wins = 0;
-  let player2Wins = 0;
-  let ties = 0;
-  let weightedScore1 = 0;
-  let weightedScore2 = 0;
-
-  const player1Categories: string[] = [];
-  const player2Categories: string[] = [];
-  const tiedCategories: string[] = [];
-
-  for (const c of categoryComparisons) {
-    weightedScore1 += c.player1Score * c.weight;
-    weightedScore2 += c.player2Score * c.weight;
-
-    if (c.winner === 'PLAYER1') {
-      player1Wins++;
-      player1Categories.push(c.category);
-    } else if (c.winner === 'PLAYER2') {
-      player2Wins++;
-      player2Categories.push(c.category);
-    } else {
-      ties++;
-      tiedCategories.push(c.category);
-    }
-  }
-
-  const winner: 'PLAYER1' | 'PLAYER2' | 'DRAW' =
-    weightedScore1 > weightedScore2 + 5 ? 'PLAYER1' :
-    weightedScore2 > weightedScore1 + 5 ? 'PLAYER2' : 'DRAW';
-
-  const margin = Math.abs(weightedScore1 - weightedScore2);
-
-  return {
-    winner,
-    winningCategories: {
-      player1: player1Categories,
-      player2: player2Categories,
-      tied: tiedCategories,
-    },
-    margin: Math.round(margin),
-  };
-}
-
-/**
- * Analyze strengths and weaknesses
- */
-function analyzeStrengths(
-  categoryComparisons: CategoryComparison[],
-  data1: any,
-  data2: any
-): PlayerComparison['strengthsComparison'] {
-  const player1Advantages: string[] = [];
-  const player2Advantages: string[] = [];
-  const sharedStrengths: string[] = [];
-
-  for (const c of categoryComparisons) {
-    if (c.difference >= 15) {
-      if (c.winner === 'PLAYER1') {
-        player1Advantages.push(c.category);
-      } else if (c.winner === 'PLAYER2') {
-        player2Advantages.push(c.category);
-      }
-    } else if (c.player1Score >= 70 && c.player2Score >= 70) {
-      sharedStrengths.push(c.category);
-    }
-  }
-
-  // Add context-specific strengths
-  if (data1.consistency >= 75) player1Advantages.push('High Consistency');
-  if (data2.consistency >= 75) player2Advantages.push('High Consistency');
-
-  return {
-    player1Advantages,
-    player2Advantages,
-    sharedStrengths,
-  };
-}
-
-/**
- * Compare market values
- */
-function compareValues(
-  profile1: PlayerComparisonProfile,
-  profile2: PlayerComparisonProfile,
-  sport: Sport
-): PlayerComparison['valueComparison'] {
-  const valueDiff = profile1.marketValue - profile2.marketValue;
-  
-  let betterValue: 'PLAYER1' | 'PLAYER2' | 'EQUAL' = 'EQUAL';
-  
-  // Compare value relative to rating
-  const valuePerRating1 = profile1.marketValue / Math.max(profile1.overallRating, 1);
-  const valuePerRating2 = profile2.marketValue / Math.max(profile2.overallRating, 1);
-  
-  if (valuePerRating1 < valuePerRating2 * 0.9) {
-    betterValue = 'PLAYER1'; // Player 1 is better value
-  } else if (valuePerRating2 < valuePerRating1 * 0.9) {
-    betterValue = 'PLAYER2';
-  }
-
-  return {
-    player1Value: profile1.marketValue,
-    player2Value: profile2.marketValue,
-    valueDifference: Math.abs(valueDiff),
-    betterValue,
-  };
-}
-
-/**
- * Generate comparison recommendation
- */
-function generateRecommendation(
-  profile1: PlayerComparisonProfile,
-  profile2: PlayerComparisonProfile,
-  headToHead: PlayerComparison['headToHead'],
-  categoryComparisons: CategoryComparison[],
-  sport: Sport
-): PlayerComparison['recommendation'] {
-  const winnerName = headToHead.winner === 'PLAYER1' ? profile1.name :
-                     headToHead.winner === 'PLAYER2' ? profile2.name : 'Neither';
-
-  let summary = '';
-  if (headToHead.winner === 'DRAW') {
-    summary = `${profile1.name} and ${profile2.name} are closely matched overall`;
-  } else {
-    const margin = headToHead.margin >= 20 ? 'significantly' : 'marginally';
-    summary = `${winnerName} is ${margin} better overall`;
-  }
-
-  // Determine best use cases
-  const bestFor: Record<string, 'PLAYER1' | 'PLAYER2'> = {};
-  
-  const goalsComparison = categoryComparisons.find(c => c.category === 'Goals');
-  if (goalsComparison && goalsComparison.winner !== 'DRAW') {
-    bestFor['Goal Scoring'] = goalsComparison.winner;
-  }
-  
-  const formComparison = categoryComparisons.find(c => c.category === 'Form');
-  if (formComparison && formComparison.winner !== 'DRAW') {
-    bestFor['Immediate Impact'] = formComparison.winner;
-  }
-  
-  const ageComparison = categoryComparisons.find(c => c.category === 'Age Profile');
-  if (ageComparison && ageComparison.winner !== 'DRAW') {
-    bestFor['Long-term Investment'] = ageComparison.winner;
-  }
-
-  const context = profile1.position === profile2.position
-    ? `Both players play ${profile1.position}, making this a direct positional comparison.`
-    : `Players play different positions (${profile1.position || 'N/A'} vs ${profile2.position || 'N/A'}), which affects direct comparison.`;
-
-  return {
-    summary,
-    bestFor,
-    context,
-  };
-}
-
-// ============================================================================
+// =============================================================================
 // EXPORTS
-// ============================================================================
+// =============================================================================
 
 export {
+  comparePlayerStats,
+  rankPlayers,
   COMPARISON_CATEGORIES,
-  MODEL_VERSION as COMPARISON_MODEL_VERSION,
+  COMPARISON_MODEL_VERSION,
 };

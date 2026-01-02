@@ -4,6 +4,7 @@
 // Enhanced for PitchConnect Multi-Sport Management Platform
 // ============================================================================
 // Complete validation for all 13 Prisma models with comprehensive coverage
+// Supports ALL 12 SPORTS with sport-specific validation rules
 // Used in API routes, forms, server actions, and middleware
 // Full TypeScript type safety with strict schema validation
 // ============================================================================
@@ -18,7 +19,337 @@ import {
   PlayerStatus,
   TrainingIntensity,
   AchievementCategory,
+  SubscriptionTier,
 } from '@prisma/client';
+
+// ============================================================================
+// ALL 12 SPORTS - Complete Position Definitions
+// ============================================================================
+
+/**
+ * Complete position definitions for all 12 supported sports
+ * Aligned with Prisma schema Sport enum
+ */
+export const SPORT_POSITIONS = {
+  // Traditional Football (Soccer)
+  FOOTBALL: [
+    'GOALKEEPER',
+    'RIGHT_BACK',
+    'LEFT_BACK',
+    'CENTER_BACK',
+    'DEFENSIVE_MIDFIELDER',
+    'CENTRAL_MIDFIELDER',
+    'ATTACKING_MIDFIELDER',
+    'RIGHT_WING',
+    'LEFT_WING',
+    'STRIKER',
+    'CENTER_FORWARD',
+  ],
+  
+  // Futsal (5-a-side)
+  FUTSAL: [
+    'GOALKEEPER',
+    'FIXO',           // Defender
+    'ALA_LEFT',       // Left winger
+    'ALA_RIGHT',      // Right winger
+    'PIVOT',          // Target player/forward
+    'UNIVERSAL',      // Utility player
+  ],
+  
+  // Beach Football
+  BEACH_FOOTBALL: [
+    'GOALKEEPER',
+    'DEFENDER',
+    'WINGER',
+    'PIVOT',          // Central forward
+  ],
+  
+  // Rugby Union/League
+  RUGBY: [
+    'LOOSEHEAD_PROP',
+    'HOOKER',
+    'TIGHTHEAD_PROP',
+    'LOCK_4',
+    'LOCK_5',
+    'BLINDSIDE_FLANKER',
+    'OPENSIDE_FLANKER',
+    'NUMBER_8',
+    'SCRUM_HALF',
+    'FLY_HALF',
+    'LEFT_WING',
+    'INSIDE_CENTER',
+    'OUTSIDE_CENTER',
+    'RIGHT_WING',
+    'FULLBACK',
+  ],
+  
+  // American Football
+  AMERICAN_FOOTBALL: [
+    // Offense
+    'QUARTERBACK',
+    'RUNNING_BACK',
+    'FULLBACK',
+    'WIDE_RECEIVER',
+    'TIGHT_END',
+    'LEFT_TACKLE',
+    'LEFT_GUARD',
+    'CENTER',
+    'RIGHT_GUARD',
+    'RIGHT_TACKLE',
+    // Defense
+    'DEFENSIVE_END',
+    'DEFENSIVE_TACKLE',
+    'NOSE_TACKLE',
+    'MIDDLE_LINEBACKER',
+    'OUTSIDE_LINEBACKER',
+    'CORNERBACK',
+    'FREE_SAFETY',
+    'STRONG_SAFETY',
+    // Special Teams
+    'KICKER',
+    'PUNTER',
+    'LONG_SNAPPER',
+    'KICK_RETURNER',
+    'PUNT_RETURNER',
+  ],
+  
+  // Basketball
+  BASKETBALL: [
+    'POINT_GUARD',
+    'SHOOTING_GUARD',
+    'SMALL_FORWARD',
+    'POWER_FORWARD',
+    'CENTER',
+    'GUARD',          // Combo guard
+    'FORWARD',        // Combo forward
+    'SWINGMAN',       // Guard-forward
+  ],
+  
+  // Cricket
+  CRICKET: [
+    'OPENING_BATSMAN',
+    'TOP_ORDER_BATSMAN',
+    'MIDDLE_ORDER_BATSMAN',
+    'LOWER_ORDER_BATSMAN',
+    'WICKET_KEEPER',
+    'FAST_BOWLER',
+    'MEDIUM_PACE_BOWLER',
+    'SPIN_BOWLER',
+    'ALL_ROUNDER',
+  ],
+  
+  // Netball
+  NETBALL: [
+    'GOAL_SHOOTER',
+    'GOAL_ATTACK',
+    'WING_ATTACK',
+    'CENTER',
+    'WING_DEFENSE',
+    'GOAL_DEFENSE',
+    'GOAL_KEEPER',
+  ],
+  
+  // Hockey (Field Hockey)
+  HOCKEY: [
+    'GOALKEEPER',
+    'RIGHT_BACK',
+    'LEFT_BACK',
+    'CENTER_BACK',
+    'SWEEPER',
+    'RIGHT_HALF',
+    'CENTER_HALF',
+    'LEFT_HALF',
+    'RIGHT_WING',
+    'CENTER_FORWARD',
+    'LEFT_WING',
+    'INSIDE_RIGHT',
+    'INSIDE_LEFT',
+  ],
+  
+  // Lacrosse
+  LACROSSE: [
+    'GOALKEEPER',
+    'CLOSE_DEFENDER',
+    'POINT_DEFENDER',
+    'COVER_POINT',
+    'DEFENSIVE_MIDFIELDER',
+    'CENTER',
+    'OFFENSIVE_MIDFIELDER',
+    'FIRST_HOME',      // Attack
+    'SECOND_HOME',     // Attack
+    'THIRD_HOME',      // Attack
+    'WING',
+  ],
+  
+  // Australian Rules Football (AFL)
+  AUSTRALIAN_RULES: [
+    'FULL_BACK',
+    'BACK_POCKET_LEFT',
+    'BACK_POCKET_RIGHT',
+    'CENTER_HALF_BACK',
+    'HALF_BACK_LEFT',
+    'HALF_BACK_RIGHT',
+    'CENTER',
+    'WING_LEFT',
+    'WING_RIGHT',
+    'CENTER_HALF_FORWARD',
+    'HALF_FORWARD_LEFT',
+    'HALF_FORWARD_RIGHT',
+    'FULL_FORWARD',
+    'FORWARD_POCKET_LEFT',
+    'FORWARD_POCKET_RIGHT',
+    'RUCK',
+    'RUCK_ROVER',
+    'ROVER',
+    'INTERCHANGE',
+  ],
+  
+  // Gaelic Football
+  GAELIC_FOOTBALL: [
+    'GOALKEEPER',
+    'RIGHT_CORNER_BACK',
+    'FULL_BACK',
+    'LEFT_CORNER_BACK',
+    'RIGHT_HALF_BACK',
+    'CENTER_HALF_BACK',
+    'LEFT_HALF_BACK',
+    'MIDFIELDER_RIGHT',
+    'MIDFIELDER_LEFT',
+    'RIGHT_HALF_FORWARD',
+    'CENTER_HALF_FORWARD',
+    'LEFT_HALF_FORWARD',
+    'RIGHT_CORNER_FORWARD',
+    'FULL_FORWARD',
+    'LEFT_CORNER_FORWARD',
+  ],
+} as const;
+
+export type SportPosition<S extends Sport> = typeof SPORT_POSITIONS[S][number];
+
+// ============================================================================
+// SPORT-SPECIFIC VALIDATION RULES
+// ============================================================================
+
+/**
+ * Sport-specific configuration for validation
+ */
+export const SPORT_VALIDATION_CONFIG = {
+  FOOTBALL: {
+    minPlayers: 7,
+    maxPlayers: 11,
+    matchDuration: 90,
+    halfDuration: 45,
+    extraTimeDuration: 30,
+    maxSubstitutions: 5,
+    maxSquadSize: 25,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  FUTSAL: {
+    minPlayers: 5,
+    maxPlayers: 5,
+    matchDuration: 40,
+    halfDuration: 20,
+    extraTimeDuration: 10,
+    maxSubstitutions: Infinity, // Unlimited
+    maxSquadSize: 14,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  BEACH_FOOTBALL: {
+    minPlayers: 5,
+    maxPlayers: 5,
+    matchDuration: 36,
+    periodDuration: 12,
+    periods: 3,
+    maxSubstitutions: Infinity,
+    maxSquadSize: 12,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  RUGBY: {
+    minPlayers: 13,
+    maxPlayers: 15,
+    matchDuration: 80,
+    halfDuration: 40,
+    extraTimeDuration: 20,
+    maxSubstitutions: 8,
+    maxSquadSize: 23,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  AMERICAN_FOOTBALL: {
+    minPlayers: 11,
+    maxPlayers: 11,
+    matchDuration: 60,
+    quarterDuration: 15,
+    quarters: 4,
+    maxSubstitutions: Infinity,
+    maxSquadSize: 53,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  BASKETBALL: {
+    minPlayers: 5,
+    maxPlayers: 5,
+    matchDuration: 48,
+    quarterDuration: 12,
+    quarters: 4,
+    maxSubstitutions: Infinity,
+    maxSquadSize: 15,
+    shirtNumberRange: { min: 0, max: 99 },
+  },
+  CRICKET: {
+    minPlayers: 11,
+    maxPlayers: 11,
+    matchFormats: ['TEST', 'ODI', 'T20', 'T10'],
+    maxSquadSize: 16,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  NETBALL: {
+    minPlayers: 7,
+    maxPlayers: 7,
+    matchDuration: 60,
+    quarterDuration: 15,
+    quarters: 4,
+    maxSubstitutions: Infinity,
+    maxSquadSize: 12,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  HOCKEY: {
+    minPlayers: 11,
+    maxPlayers: 11,
+    matchDuration: 70,
+    halfDuration: 35,
+    maxSubstitutions: Infinity,
+    maxSquadSize: 18,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  LACROSSE: {
+    minPlayers: 10,
+    maxPlayers: 10,
+    matchDuration: 60,
+    quarterDuration: 15,
+    quarters: 4,
+    maxSubstitutions: Infinity,
+    maxSquadSize: 23,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  AUSTRALIAN_RULES: {
+    minPlayers: 18,
+    maxPlayers: 18,
+    matchDuration: 80,
+    quarterDuration: 20,
+    quarters: 4,
+    interchange: 4,
+    maxSquadSize: 22,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+  GAELIC_FOOTBALL: {
+    minPlayers: 15,
+    maxPlayers: 15,
+    matchDuration: 70,
+    halfDuration: 35,
+    maxSubstitutions: 6,
+    maxSquadSize: 30,
+    shirtNumberRange: { min: 1, max: 99 },
+  },
+} as const;
 
 // ============================================================================
 // UTILITY SCHEMAS & SHARED VALIDATORS
@@ -55,11 +386,11 @@ const passwordSchema = z
   );
 
 /**
- * Phone number validation (international)
+ * Phone number validation (international E.164 format)
  */
 const phoneSchema = z
   .string()
-  .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number')
+  .regex(/^\+?[1-9]\d{1,14}$/, 'Invalid phone number format (use E.164)')
   .optional()
   .or(z.literal(''));
 
@@ -81,14 +412,20 @@ const dobSchema = z
   }, 'Player must be at least 13 years old');
 
 /**
- * Shirt number validation (1-99)
+ * Jersey number validation (sport-specific)
  */
-const shirtNumberSchema = z
-  .number()
-  .int('Shirt number must be whole number')
-  .min(1, 'Shirt number must be at least 1')
-  .max(99, 'Shirt number must be less than 100')
-  .optional();
+const jerseyNumberSchema = (sport?: Sport) => {
+  const config = sport ? SPORT_VALIDATION_CONFIG[sport] : null;
+  const min = config?.shirtNumberRange?.min ?? 1;
+  const max = config?.shirtNumberRange?.max ?? 99;
+  
+  return z
+    .number()
+    .int('Jersey number must be whole number')
+    .min(min, `Jersey number must be at least ${min}`)
+    .max(max, `Jersey number must be ${max} or less`)
+    .optional();
+};
 
 /**
  * Height in cm validation (100-250cm)
@@ -120,7 +457,7 @@ const performanceRatingSchema = z
 /**
  * Pagination parameters
  */
-const paginationSchema = z.object({
+export const paginationSchema = z.object({
   page: z
     .string()
     .default('1')
@@ -148,6 +485,7 @@ export type PaginationInput = z.infer<typeof paginationSchema>;
 
 export const sportEnumSchema = z.nativeEnum(Sport);
 export const roleEnumSchema = z.nativeEnum(Role);
+export const subscriptionTierEnumSchema = z.nativeEnum(SubscriptionTier);
 export const matchStatusEnumSchema = z.nativeEnum(MatchStatus);
 export const matchEventTypeEnumSchema = z.nativeEnum(MatchEventType);
 export const injurySeverityEnumSchema = z.nativeEnum(InjurySeverity);
@@ -164,10 +502,7 @@ export const achievementCategoryEnumSchema = z.nativeEnum(AchievementCategory);
  */
 export const loginSchema = z.object({
   email: emailSchema,
-  password: z
-    .string()
-    .min(1, 'Password is required')
-    .max(100),
+  password: z.string().min(1, 'Password is required').max(100),
   rememberMe: z.boolean().optional().default(false),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -180,22 +515,10 @@ export const registerSchema = z
     email: emailSchema,
     password: passwordSchema,
     confirmPassword: z.string(),
-    firstName: z
-      .string()
-      .min(1, 'First name is required')
-      .max(100, 'First name too long')
-      .trim(),
-    lastName: z
-      .string()
-      .min(1, 'Last name is required')
-      .max(100, 'Last name too long')
-      .trim(),
-    acceptTerms: z
-      .boolean()
-      .refine(
-        (val) => val === true,
-        'You must accept the terms and conditions'
-      ),
+    firstName: z.string().min(1, 'First name is required').max(100).trim(),
+    lastName: z.string().min(1, 'Last name is required').max(100).trim(),
+    acceptTerms: z.boolean().refine((val) => val === true, 'You must accept the terms'),
+    selectedTier: subscriptionTierEnumSchema.optional().default('PLAYER_FREE'),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: 'Passwords do not match',
@@ -252,10 +575,7 @@ export type SetupTwoFactorInput = z.infer<typeof setupTwoFactorSchema>;
  * Two-factor authentication verification
  */
 export const verifyTwoFactorSchema = z.object({
-  code: z
-    .string()
-    .length(6, 'Code must be 6 digits')
-    .regex(/^\d+$/, 'Code must contain only numbers'),
+  code: z.string().length(6, 'Code must be 6 digits').regex(/^\d+$/, 'Code must contain only numbers'),
   rememberDevice: z.boolean().optional().default(false),
 });
 export type VerifyTwoFactorInput = z.infer<typeof verifyTwoFactorSchema>;
@@ -265,21 +585,21 @@ export type VerifyTwoFactorInput = z.infer<typeof verifyTwoFactorSchema>;
 // ============================================================================
 
 /**
- * Create user validation
+ * Create user validation - aligned with Prisma schema
  */
 export const createUserSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   firstName: z.string().min(1).max(100).trim(),
   lastName: z.string().min(1).max(100).trim(),
-  role: roleEnumSchema.default('USER'),
-  phoneNumber: phoneSchema,
+  phone: phoneSchema,                              // Schema field name
   dateOfBirth: dobSchema.optional(),
   nationality: z.string().max(100).optional(),
   avatar: urlSchema,
   bio: z.string().max(1000).optional(),
-  emailVerified: z.date().optional(),
+  emailVerifiedAt: z.date().optional(),            // Schema field name
   twoFactorEnabled: z.boolean().optional().default(false),
+  subscriptionTier: subscriptionTierEnumSchema.optional().default('PLAYER_FREE'),
   preferences: z.record(z.unknown()).optional(),
 });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -290,7 +610,7 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export const updateUserSchema = z.object({
   firstName: z.string().min(1).max(100).trim().optional(),
   lastName: z.string().min(1).max(100).trim().optional(),
-  phoneNumber: phoneSchema,
+  phone: phoneSchema,                              // Schema field name
   dateOfBirth: dobSchema.optional(),
   nationality: z.string().max(100).optional(),
   avatar: urlSchema,
@@ -304,206 +624,106 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
  * Update user role validation (admin only)
  */
 export const updateUserRoleSchema = z.object({
+  userId: uuidSchema,
   role: roleEnumSchema,
+  teamId: uuidSchema.optional(),
 });
 export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>;
 
 /**
- * User preferences validation
+ * Update user preferences validation
  */
 export const updateUserPreferencesSchema = z.object({
-  emailNotifications: z.boolean().optional(),
-  smsNotifications: z.boolean().optional(),
-  pushNotifications: z.boolean().optional(),
-  marketingEmails: z.boolean().optional(),
-  newsletter: z.boolean().optional(),
-  theme: z.enum(['light', 'dark', 'auto']).optional(),
-  language: z.string().optional(),
-  timezone: z.string().optional(),
+  preferences: z.record(z.unknown()),
 });
-export type UpdateUserPreferencesInput = z.infer<
-  typeof updateUserPreferencesSchema
->;
+export type UpdateUserPreferencesInput = z.infer<typeof updateUserPreferencesSchema>;
 
 // ============================================================================
-// LEAGUE SCHEMAS (League model)
+// LEAGUE SCHEMAS
 // ============================================================================
 
 /**
  * Create league validation
  */
 export const createLeagueSchema = z.object({
-  name: z
-    .string()
-    .min(2, 'League name must be at least 2 characters')
-    .max(255)
-    .trim(),
-  code: z
-    .string()
-    .min(2, 'League code must be at least 2 characters')
-    .max(10)
-    .toUpperCase()
-    .trim(),
-  sport: sportEnumSchema,
-  season: z.string().regex(/^\d{4}-\d{4}$/, 'Season format must be YYYY-YYYY'),
+  name: z.string().min(2, 'Name must be at least 2 characters').max(200).trim(),
   description: z.string().max(2000).optional(),
-  logoUrl: urlSchema,
+  sport: sportEnumSchema,
   country: z.string().max(100).optional(),
-  region: z.string().max(100).optional(),
-  ageGroup: z.string().max(100).optional(),
-  division: z.string().max(100).optional(),
+  logo: urlSchema,
+  seasonStart: z.string().datetime().optional(),
+  seasonEnd: z.string().datetime().optional(),
+  rules: z.record(z.unknown()).optional(),
 });
 export type CreateLeagueInput = z.infer<typeof createLeagueSchema>;
 
 /**
  * Update league validation
  */
-export const updateLeagueSchema = z.object({
-  name: z.string().min(2).max(255).trim().optional(),
-  description: z.string().max(2000).optional(),
-  logoUrl: urlSchema,
-  season: z
-    .string()
-    .regex(/^\d{4}-\d{4}$/, 'Season format must be YYYY-YYYY')
-    .optional(),
-});
+export const updateLeagueSchema = createLeagueSchema.partial();
 export type UpdateLeagueInput = z.infer<typeof updateLeagueSchema>;
 
 // ============================================================================
-// TEAM SCHEMAS (Team model)
+// TEAM SCHEMAS
 // ============================================================================
 
 /**
- * Create team validation
+ * Create team validation - multi-sport support
  */
 export const createTeamSchema = z.object({
-  leagueId: uuidSchema,
-  name: z
-    .string()
-    .min(2, 'Team name must be at least 2 characters')
-    .max(255)
-    .trim(),
-  code: z
-    .string()
-    .min(2, 'Team code must be at least 2 characters')
-    .max(10)
-    .toUpperCase()
-    .trim(),
+  name: z.string().min(2, 'Team name must be at least 2 characters').max(200).trim(),
+  shortName: z.string().max(10).optional(),
+  sport: sportEnumSchema,
   description: z.string().max(2000).optional(),
-  logoUrl: urlSchema,
-  color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid color code').optional(),
-  homeStadium: z.string().max(255).optional(),
+  logo: urlSchema,
+  coverImage: urlSchema,
+  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color').optional(),
+  secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color').optional(),
+  homeVenue: z.string().max(200).optional(),
   foundedYear: z.number().int().min(1800).max(new Date().getFullYear()).optional(),
   website: urlSchema,
-  socialMedia: z
-    .object({
-      twitter: z.string().optional(),
-      facebook: z.string().optional(),
-      instagram: z.string().optional(),
-      youtube: z.string().optional(),
-    })
-    .optional(),
+  socialLinks: z.record(z.string().url()).optional(),
+  leagueId: uuidSchema.optional(),
 });
 export type CreateTeamInput = z.infer<typeof createTeamSchema>;
 
 /**
  * Update team validation
  */
-export const updateTeamSchema = z.object({
-  name: z.string().min(2).max(255).trim().optional(),
-  description: z.string().max(2000).optional(),
-  logoUrl: urlSchema,
-  color: z.string().regex(/^#[0-9A-F]{6}$/i, 'Invalid color code').optional(),
-  homeStadium: z.string().max(255).optional(),
-  website: urlSchema,
-});
+export const updateTeamSchema = createTeamSchema.partial();
 export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;
 
 // ============================================================================
-// PLAYER SCHEMAS (Player model)
+// PLAYER SCHEMAS - Multi-Sport Support
 // ============================================================================
 
 /**
- * Position enum for football (can be extended per sport)
- */
-const positionEnumSchema = z.enum([
-  // Football positions
-  'GOALKEEPER',
-  'DEFENDER',
-  'MIDFIELDER',
-  'FORWARD',
-  // Netball positions
-  'GOAL_SHOOTER',
-  'GOAL_ATTACK',
-  'WING_ATTACK',
-  'CENTER',
-  'WING_DEFENSE',
-  'GOAL_DEFENSE',
-  'GOALKEEPER_NETBALL',
-  // Additional positions for other sports
-  'PITCHER',
-  'CATCHER',
-  'BATTER',
-  'FIELDER',
-  'BATSMAN',
-  'BOWLER',
-  'WICKET_KEEPER',
-  'FIELDER_CRICKET',
-  'QUARTERBACK',
-  'RUNNING_BACK',
-  'WIDE_RECEIVER',
-  'TIGHT_END',
-  'OFFENSIVE_LINEMAN',
-  'DEFENSIVE_LINEMAN',
-  'LINEBACKER',
-  'CORNERBACK',
-  'SAFETY',
-  'KICKER',
-  'POINT_GUARD',
-  'SHOOTING_GUARD',
-  'SMALL_FORWARD',
-  'POWER_FORWARD',
-  'CENTER_BASKETBALL',
-]);
-
-const preferredFootEnumSchema = z.enum(['LEFT', 'RIGHT', 'BOTH']);
-
-/**
- * Create player validation
+ * Create player validation with sport-specific position validation
  */
 export const createPlayerSchema = z.object({
+  userId: uuidSchema,
   teamId: uuidSchema,
-  userId: uuidSchema.optional(),
-  firstName: z
-    .string()
-    .min(1, 'First name is required')
-    .max(100)
-    .trim(),
-  lastName: z
-    .string()
-    .min(1, 'Last name is required')
-    .max(100)
-    .trim(),
-  email: emailSchema.optional(),
-  dateOfBirth: dobSchema,
-  nationality: z.string().max(100).optional(),
-  position: positionEnumSchema,
-  secondaryPosition: positionEnumSchema.optional(),
-  preferredFoot: preferredFootEnumSchema.optional(),
+  sport: sportEnumSchema,
+  position: z.string().min(1, 'Position is required'),
+  secondaryPositions: z.array(z.string()).optional(),
+  jerseyNumber: z.number().int().min(0).max(99).optional(),  // Schema field name
+  status: playerStatusEnumSchema.optional().default('ACTIVE'),
   height: heightSchema,
   weight: weightSchema,
-  shirtNumber: shirtNumberSchema,
-  photo: urlSchema,
-  passportUrl: urlSchema,
-  status: playerStatusEnumSchema.default('ACTIVE'),
-  bio: z.string().max(1000).optional(),
-  socialMedia: z
-    .object({
-      twitter: z.string().optional(),
-      instagram: z.string().optional(),
-      facebook: z.string().optional(),
-    })
-    .optional(),
+  preferredFoot: z.enum(['LEFT', 'RIGHT', 'BOTH']).optional(),
+  dateOfBirth: dobSchema.optional(),
+  nationality: z.string().max(100).optional(),
+  contractEndDate: z.string().datetime().optional(),
+  marketValue: z.number().min(0).optional(),
+  attributes: z.record(z.number()).optional(),
+}).refine((data) => {
+  // Validate position against sport
+  const validPositions = SPORT_POSITIONS[data.sport];
+  if (!validPositions) return true;
+  return validPositions.includes(data.position as any);
+}, {
+  message: 'Invalid position for selected sport',
+  path: ['position'],
 });
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>;
 
@@ -511,17 +731,16 @@ export type CreatePlayerInput = z.infer<typeof createPlayerSchema>;
  * Update player validation
  */
 export const updatePlayerSchema = z.object({
-  firstName: z.string().min(1).max(100).trim().optional(),
-  lastName: z.string().min(1).max(100).trim().optional(),
-  position: positionEnumSchema.optional(),
-  secondaryPosition: positionEnumSchema.optional(),
-  preferredFoot: preferredFootEnumSchema.optional(),
+  position: z.string().optional(),
+  secondaryPositions: z.array(z.string()).optional(),
+  jerseyNumber: z.number().int().min(0).max(99).optional(),  // Schema field name
+  status: playerStatusEnumSchema.optional(),
   height: heightSchema,
   weight: weightSchema,
-  shirtNumber: shirtNumberSchema,
-  photo: urlSchema,
-  status: playerStatusEnumSchema.optional(),
-  bio: z.string().max(1000).optional(),
+  preferredFoot: z.enum(['LEFT', 'RIGHT', 'BOTH']).optional(),
+  contractEndDate: z.string().datetime().optional(),
+  marketValue: z.number().min(0).optional(),
+  attributes: z.record(z.number()).optional(),
 });
 export type UpdatePlayerInput = z.infer<typeof updatePlayerSchema>;
 
@@ -529,34 +748,41 @@ export type UpdatePlayerInput = z.infer<typeof updatePlayerSchema>;
  * Player filter validation
  */
 export const playerFilterSchema = z.object({
+  teamId: uuidSchema.optional(),
+  sport: sportEnumSchema.optional(),
+  position: z.string().optional(),
   status: playerStatusEnumSchema.optional(),
-  position: positionEnumSchema.optional(),
-  minAge: z.number().min(13).optional(),
-  maxAge: z.number().max(50).optional(),
-  search: z.string().trim().optional(),
-  sortBy: z
-    .enum(['name', 'shirtNumber', 'age', 'position'])
-    .optional(),
+  minAge: z.number().int().min(0).optional(),
+  maxAge: z.number().int().max(100).optional(),
+  nationality: z.string().optional(),
+  search: z.string().optional(),
 });
 export type PlayerFilterInput = z.infer<typeof playerFilterSchema>;
 
 // ============================================================================
-// MATCH SCHEMAS (Match model)
+// MATCH SCHEMAS - Multi-Sport Support
 // ============================================================================
 
 /**
- * Create match validation
+ * Create match validation with sport-specific rules
  */
 export const createMatchSchema = z.object({
-  leagueId: uuidSchema,
   homeTeamId: uuidSchema,
   awayTeamId: uuidSchema,
-  scheduledDate: z.string().datetime('Invalid date format'),
-  venue: z.string().max(255).optional(),
-  venueCity: z.string().max(100).optional(),
-  venueCountry: z.string().max(100).optional(),
-  referee: z.string().max(100).optional(),
-  notes: z.string().max(2000).optional(),
+  leagueId: uuidSchema.optional(),
+  sport: sportEnumSchema,
+  matchDate: z.string().datetime('Invalid date format'),
+  venue: z.string().max(200).optional(),
+  status: matchStatusEnumSchema.optional().default('SCHEDULED'),
+  competition: z.string().max(200).optional(),
+  round: z.string().max(100).optional(),
+  matchday: z.number().int().positive().optional(),
+  referee: z.string().max(200).optional(),
+  weather: z.string().max(100).optional(),
+  attendance: z.number().int().min(0).optional(),
+}).refine((data) => data.homeTeamId !== data.awayTeamId, {
+  message: 'Home and away teams must be different',
+  path: ['awayTeamId'],
 });
 export type CreateMatchInput = z.infer<typeof createMatchSchema>;
 
@@ -564,57 +790,58 @@ export type CreateMatchInput = z.infer<typeof createMatchSchema>;
  * Update match validation
  */
 export const updateMatchSchema = z.object({
-  scheduledDate: z.string().datetime().optional(),
-  venue: z.string().max(255).optional(),
-  venueCity: z.string().max(100).optional(),
+  matchDate: z.string().datetime().optional(),
+  venue: z.string().max(200).optional(),
   status: matchStatusEnumSchema.optional(),
-  homeGoals: z.number().min(0).max(999).optional(),
-  awayGoals: z.number().min(0).max(999).optional(),
-  homeGoalsET: z.number().min(0).max(999).optional(),
-  awayGoalsET: z.number().min(0).max(999).optional(),
-  homePenalties: z.number().min(0).max(999).optional(),
-  awayPenalties: z.number().min(0).max(999).optional(),
-  attendance: z.number().min(0).optional(),
-  notes: z.string().max(2000).optional(),
+  competition: z.string().max(200).optional(),
+  round: z.string().max(100).optional(),
+  referee: z.string().max(200).optional(),
+  weather: z.string().max(100).optional(),
+  attendance: z.number().int().min(0).optional(),
 });
 export type UpdateMatchInput = z.infer<typeof updateMatchSchema>;
 
 /**
- * Record match result validation
+ * Record match result validation - Multi-sport support
  */
-export const recordMatchResultSchema = z
-  .object({
-    homeGoals: z.number().min(0, 'Goals cannot be negative').max(999),
-    awayGoals: z.number().min(0, 'Goals cannot be negative').max(999),
-    homeGoalsET: z.number().min(0).max(999).optional(),
-    awayGoalsET: z.number().min(0).max(999).optional(),
-    homePenalties: z.number().min(0).max(999).optional(),
-    awayPenalties: z.number().min(0).max(999).optional(),
-    attendance: z.number().min(0).optional(),
-    notes: z.string().max(2000).optional(),
-  })
-  .refine(
-    (data) => {
-      // If penalties are recorded, match must be tied after ET
-      if (
-        (data.homePenalties || 0) > 0 ||
-        (data.awayPenalties || 0) > 0
-      ) {
-        const homeET = (data.homeGoals || 0) + (data.homeGoalsET || 0);
-        const awayET = (data.awayGoals || 0) + (data.awayGoalsET || 0);
-        return homeET === awayET;
-      }
-      return true;
-    },
-    {
-      message: 'Penalties can only be used in tied matches',
-      path: ['homePenalties'],
-    }
-  );
+export const recordMatchResultSchema = z.object({
+  matchId: uuidSchema,
+  homeScore: z.number().int().min(0),
+  awayScore: z.number().int().min(0),
+  // Football/Soccer specific
+  homeScoreET: z.number().int().min(0).optional(),
+  awayScoreET: z.number().int().min(0).optional(),
+  homePenalties: z.number().int().min(0).optional(),
+  awayPenalties: z.number().int().min(0).optional(),
+  // Rugby specific
+  homeTries: z.number().int().min(0).optional(),
+  awayTries: z.number().int().min(0).optional(),
+  homeConversions: z.number().int().min(0).optional(),
+  awayConversions: z.number().int().min(0).optional(),
+  homePenaltyKicks: z.number().int().min(0).optional(),
+  awayPenaltyKicks: z.number().int().min(0).optional(),
+  homeDropGoals: z.number().int().min(0).optional(),
+  awayDropGoals: z.number().int().min(0).optional(),
+  // Cricket specific
+  homeRuns: z.number().int().min(0).optional(),
+  awayRuns: z.number().int().min(0).optional(),
+  homeWickets: z.number().int().min(0).max(10).optional(),
+  awayWickets: z.number().int().min(0).max(10).optional(),
+  homeOvers: z.number().min(0).optional(),
+  awayOvers: z.number().min(0).optional(),
+  // AFL specific
+  homeGoalsAFL: z.number().int().min(0).optional(),
+  awayGoalsAFL: z.number().int().min(0).optional(),
+  homeBehinds: z.number().int().min(0).optional(),
+  awayBehinds: z.number().int().min(0).optional(),
+  // General
+  notes: z.string().max(2000).optional(),
+  highlights: z.array(z.string().url()).optional(),
+});
 export type RecordMatchResultInput = z.infer<typeof recordMatchResultSchema>;
 
 // ============================================================================
-// MATCH EVENT SCHEMAS (MatchEvent model)
+// MATCH EVENT SCHEMAS - Multi-Sport Support
 // ============================================================================
 
 /**
@@ -622,14 +849,15 @@ export type RecordMatchResultInput = z.infer<typeof recordMatchResultSchema>;
  */
 export const createMatchEventSchema = z.object({
   matchId: uuidSchema,
-  playerId: uuidSchema,
+  playerId: uuidSchema.optional(),
+  teamId: uuidSchema,
   eventType: matchEventTypeEnumSchema,
-  minute: z.number().min(0).max(200, 'Invalid match minute'),
-  extraTime: z.boolean().optional().default(false),
-  isPenalty: z.boolean().optional().default(false),
-  isOwnGoal: z.boolean().optional().default(false),
+  minute: z.number().int().min(0),
+  addedTime: z.number().int().min(0).optional(),
+  period: z.number().int().min(1).optional(),
   description: z.string().max(500).optional(),
-  relatedPlayerId: uuidSchema.optional(), // For assists, etc.
+  assistPlayerId: uuidSchema.optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 export type CreateMatchEventInput = z.infer<typeof createMatchEventSchema>;
 
@@ -637,41 +865,15 @@ export type CreateMatchEventInput = z.infer<typeof createMatchEventSchema>;
  * Update match event validation
  */
 export const updateMatchEventSchema = z.object({
-  minute: z.number().min(0).max(200).optional(),
-  extraTime: z.boolean().optional(),
-  isPenalty: z.boolean().optional(),
-  isOwnGoal: z.boolean().optional(),
+  minute: z.number().int().min(0).optional(),
+  addedTime: z.number().int().min(0).optional(),
   description: z.string().max(500).optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 export type UpdateMatchEventInput = z.infer<typeof updateMatchEventSchema>;
 
 // ============================================================================
-// PLAYER STAT SCHEMAS (PlayerStat model)
-// ============================================================================
-
-/**
- * Create/update player stat validation
- */
-export const playerStatSchema = z.object({
-  playerId: uuidSchema,
-  matchId: uuidSchema.optional(),
-  goals: z.number().min(0).max(99).optional().default(0),
-  assists: z.number().min(0).max(99).optional().default(0),
-  minutes: z.number().min(0).max(999).optional().default(0),
-  possession: z.number().min(0).max(100).optional(),
-  passAccuracy: z.number().min(0).max(100).optional(),
-  tackles: z.number().min(0).max(99).optional().default(0),
-  interceptions: z.number().min(0).max(99).optional().default(0),
-  fouls: z.number().min(0).max(99).optional().default(0),
-  yellowCards: z.number().min(0).max(2).optional().default(0),
-  redCards: z.boolean().optional().default(false),
-  rating: performanceRatingSchema,
-  notes: z.string().max(500).optional(),
-});
-export type PlayerStatInput = z.infer<typeof playerStatSchema>;
-
-// ============================================================================
-// TRAINING SESSION SCHEMAS (TrainingSession model)
+// TRAINING SCHEMAS
 // ============================================================================
 
 /**
@@ -679,50 +881,47 @@ export type PlayerStatInput = z.infer<typeof playerStatSchema>;
  */
 export const createTrainingSessionSchema = z.object({
   teamId: uuidSchema,
-  date: z.string().datetime('Invalid date format'),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/, 'Invalid time format (HH:MM)'),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/, 'Invalid time format (HH:MM)'),
-  location: z.string().max(255).optional(),
-  focus: z.string().max(500),
-  intensity: trainingIntensityEnumSchema.optional(),
+  title: z.string().min(1, 'Title is required').max(200).trim(),
+  description: z.string().max(2000).optional(),
+  startTime: z.string().datetime(),
+  endTime: z.string().datetime(),
+  location: z.string().max(200).optional(),
+  intensity: trainingIntensityEnumSchema.optional().default('MEDIUM'),
+  focus: z.array(z.string()).optional(),
+  drills: z.array(z.object({
+    name: z.string(),
+    duration: z.number().int().positive(),
+    description: z.string().optional(),
+  })).optional(),
   notes: z.string().max(2000).optional(),
+}).refine((data) => new Date(data.endTime) > new Date(data.startTime), {
+  message: 'End time must be after start time',
+  path: ['endTime'],
 });
-export type CreateTrainingSessionInput = z.infer<
-  typeof createTrainingSessionSchema
->;
+export type CreateTrainingSessionInput = z.infer<typeof createTrainingSessionSchema>;
 
 /**
  * Update training session validation
  */
-export const updateTrainingSessionSchema = z.object({
-  date: z.string().datetime().optional(),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  location: z.string().max(255).optional(),
-  focus: z.string().max(500).optional(),
-  intensity: trainingIntensityEnumSchema.optional(),
-  notes: z.string().max(2000).optional(),
-});
-export type UpdateTrainingSessionInput = z.infer<
-  typeof updateTrainingSessionSchema
->;
+export const updateTrainingSessionSchema = createTrainingSessionSchema.partial().omit({ teamId: true });
+export type UpdateTrainingSessionInput = z.infer<typeof updateTrainingSessionSchema>;
 
 /**
  * Record training attendance validation
  */
 export const recordTrainingAttendanceSchema = z.object({
-  playerId: uuidSchema,
-  trainingSessionId: uuidSchema,
-  status: z.enum(['PRESENT', 'ABSENT', 'EXCUSED', 'LATE', 'LEFT_EARLY']),
-  performanceRating: performanceRatingSchema,
-  notes: z.string().max(500).optional(),
+  sessionId: uuidSchema,
+  attendance: z.array(z.object({
+    playerId: uuidSchema,
+    status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'INJURED']),
+    notes: z.string().max(500).optional(),
+    rating: z.number().min(1).max(10).optional(),
+  })),
 });
-export type RecordTrainingAttendanceInput = z.infer<
-  typeof recordTrainingAttendanceSchema
->;
+export type RecordTrainingAttendanceInput = z.infer<typeof recordTrainingAttendanceSchema>;
 
 // ============================================================================
-// INJURY RECORD SCHEMAS (InjuryRecord model)
+// INJURY SCHEMAS
 // ============================================================================
 
 /**
@@ -730,15 +929,15 @@ export type RecordTrainingAttendanceInput = z.infer<
  */
 export const createInjuryRecordSchema = z.object({
   playerId: uuidSchema,
-  injuryType: z.string().max(100),
-  bodyPart: z.string().max(100),
+  injuryType: z.string().min(1, 'Injury type is required').max(200),
+  bodyPart: z.string().min(1, 'Body part is required').max(100),
   severity: injurySeverityEnumSchema,
-  dateOccurred: z.string().datetime('Invalid date format'),
-  description: z.string().max(2000).optional(),
-  medicalNotes: z.string().max(2000).optional(),
-  recoveryStatus: z.enum(['ACTIVE', 'RECOVERING', 'RECOVERED']).default('ACTIVE'),
-  estimatedReturnDate: z.string().datetime().optional(),
-  actuallReturnDate: z.string().datetime().optional(),
+  injuryDate: z.string().datetime(),
+  expectedReturn: z.string().datetime().optional(),
+  diagnosis: z.string().max(2000).optional(),
+  treatment: z.string().max(2000).optional(),
+  notes: z.string().max(2000).optional(),
+  isConfidential: z.boolean().optional().default(true),
 });
 export type CreateInjuryRecordInput = z.infer<typeof createInjuryRecordSchema>;
 
@@ -746,48 +945,37 @@ export type CreateInjuryRecordInput = z.infer<typeof createInjuryRecordSchema>;
  * Update injury record validation
  */
 export const updateInjuryRecordSchema = z.object({
-  injuryType: z.string().max(100).optional(),
-  bodyPart: z.string().max(100).optional(),
   severity: injurySeverityEnumSchema.optional(),
-  description: z.string().max(2000).optional(),
-  medicalNotes: z.string().max(2000).optional(),
-  recoveryStatus: z.enum(['ACTIVE', 'RECOVERING', 'RECOVERED']).optional(),
-  estimatedReturnDate: z.string().datetime().optional(),
-  actualReturnDate: z.string().datetime().optional(),
+  expectedReturn: z.string().datetime().optional(),
+  actualReturn: z.string().datetime().optional(),
+  diagnosis: z.string().max(2000).optional(),
+  treatment: z.string().max(2000).optional(),
+  notes: z.string().max(2000).optional(),
+  isConfidential: z.boolean().optional(),
 });
 export type UpdateInjuryRecordInput = z.infer<typeof updateInjuryRecordSchema>;
 
 // ============================================================================
-// TACTIC SCHEMAS (Tactic model)
+// TACTIC SCHEMAS
 // ============================================================================
-
-const formationEnumSchema = z.enum([
-  'FOUR_FOUR_TWO',
-  'FOUR_THREE_THREE',
-  'THREE_FIVE_TWO',
-  'FIVE_THREE_TWO',
-  'FIVE_FOUR_ONE',
-  'THREE_FOUR_THREE',
-  'FOUR_TWO_THREE_ONE',
-  'FOUR_ONE_FOUR_ONE',
-  'THREE_THREE_FOUR',
-  'FIVE_TWO_THREE',
-  'FOUR_FOUR_TWO_DIAMOND',
-  'FIVE_ONE_TWO_TWO',
-]);
 
 /**
  * Create tactic validation
  */
 export const createTacticSchema = z.object({
   teamId: uuidSchema,
-  name: z.string().min(2).max(100).trim(),
-  formation: formationEnumSchema,
-  playStyle: z.enum(['POSSESSION', 'COUNTER', 'BALANCED']).optional(),
-  defensiveShape: z.enum(['COMPACT', 'BALANCED', 'AGGRESSIVE']).optional(),
-  pressType: z.enum(['HIGH_PRESS', 'MID_BLOCK', 'LOW_BLOCK']).optional(),
+  name: z.string().min(1, 'Name is required').max(200).trim(),
+  sport: sportEnumSchema,
+  formation: z.string().max(50).optional(),
   description: z.string().max(2000).optional(),
-  notes: z.string().max(2000).optional(),
+  positions: z.record(z.object({
+    playerId: uuidSchema.optional(),
+    position: z.string(),
+    x: z.number().min(0).max(100),
+    y: z.number().min(0).max(100),
+    instructions: z.string().max(500).optional(),
+  })).optional(),
+  instructions: z.array(z.string()).optional(),
   isDefault: z.boolean().optional().default(false),
 });
 export type CreateTacticInput = z.infer<typeof createTacticSchema>;
@@ -795,20 +983,11 @@ export type CreateTacticInput = z.infer<typeof createTacticSchema>;
 /**
  * Update tactic validation
  */
-export const updateTacticSchema = z.object({
-  name: z.string().min(2).max(100).trim().optional(),
-  formation: formationEnumSchema.optional(),
-  playStyle: z.enum(['POSSESSION', 'COUNTER', 'BALANCED']).optional(),
-  defensiveShape: z.enum(['COMPACT', 'BALANCED', 'AGGRESSIVE']).optional(),
-  pressType: z.enum(['HIGH_PRESS', 'MID_BLOCK', 'LOW_BLOCK']).optional(),
-  description: z.string().max(2000).optional(),
-  notes: z.string().max(2000).optional(),
-  isDefault: z.boolean().optional(),
-});
+export const updateTacticSchema = createTacticSchema.partial().omit({ teamId: true });
 export type UpdateTacticInput = z.infer<typeof updateTacticSchema>;
 
 // ============================================================================
-// PERFORMANCE METRIC SCHEMAS (PerformanceMetric model)
+// PERFORMANCE METRIC SCHEMAS
 // ============================================================================
 
 /**
@@ -816,43 +995,46 @@ export type UpdateTacticInput = z.infer<typeof updateTacticSchema>;
  */
 export const createPerformanceMetricSchema = z.object({
   playerId: uuidSchema,
-  metricType: z.string().max(100),
+  matchId: uuidSchema.optional(),
+  sessionId: uuidSchema.optional(),
+  metricType: z.string().min(1).max(100),
   value: z.number(),
   unit: z.string().max(50).optional(),
-  recordedDate: z.string().datetime('Invalid date format').optional(),
-  notes: z.string().max(500).optional(),
+  recordedAt: z.string().datetime(),
+  notes: z.string().max(1000).optional(),
 });
-export type CreatePerformanceMetricInput = z.infer<
-  typeof createPerformanceMetricSchema
->;
+export type CreatePerformanceMetricInput = z.infer<typeof createPerformanceMetricSchema>;
 
 /**
  * Update performance metric validation
  */
 export const updatePerformanceMetricSchema = z.object({
   value: z.number().optional(),
-  unit: z.string().max(50).optional(),
-  notes: z.string().max(500).optional(),
+  notes: z.string().max(1000).optional(),
 });
-export type UpdatePerformanceMetricInput = z.infer<
-  typeof updatePerformanceMetricSchema
->;
+export type UpdatePerformanceMetricInput = z.infer<typeof updatePerformanceMetricSchema>;
 
 // ============================================================================
-// ACHIEVEMENT SCHEMAS (Achievement model)
+// ACHIEVEMENT SCHEMAS
 // ============================================================================
 
 /**
  * Create achievement validation
  */
 export const createAchievementSchema = z.object({
-  playerId: uuidSchema,
-  title: z.string().min(2).max(255).trim(),
-  description: z.string().max(2000).optional(),
+  playerId: uuidSchema.optional(),
+  teamId: uuidSchema.optional(),
+  title: z.string().min(1, 'Title is required').max(200).trim(),
+  description: z.string().max(1000).optional(),
   category: achievementCategoryEnumSchema,
-  awardedDate: z.string().datetime('Invalid date format'),
-  icon: urlSchema,
-  points: z.number().min(0).max(1000).optional().default(0),
+  sport: sportEnumSchema,
+  achievedAt: z.string().datetime(),
+  season: z.string().max(20).optional(),
+  competition: z.string().max(200).optional(),
+  image: urlSchema,
+}).refine((data) => data.playerId || data.teamId, {
+  message: 'Either playerId or teamId is required',
+  path: ['playerId'],
 });
 export type CreateAchievementInput = z.infer<typeof createAchievementSchema>;
 
@@ -860,40 +1042,34 @@ export type CreateAchievementInput = z.infer<typeof createAchievementSchema>;
  * Update achievement validation
  */
 export const updateAchievementSchema = z.object({
-  title: z.string().min(2).max(255).trim().optional(),
-  description: z.string().max(2000).optional(),
-  category: achievementCategoryEnumSchema.optional(),
-  icon: urlSchema,
-  points: z.number().min(0).max(1000).optional(),
+  title: z.string().min(1).max(200).trim().optional(),
+  description: z.string().max(1000).optional(),
+  image: urlSchema,
 });
 export type UpdateAchievementInput = z.infer<typeof updateAchievementSchema>;
 
 // ============================================================================
-// CONTRACT SCHEMAS (PlayerContract model)
+// CONTRACT SCHEMAS
 // ============================================================================
 
 /**
  * Create contract validation
  */
-export const createContractSchema = z
-  .object({
-    playerId: uuidSchema,
-    teamId: uuidSchema,
-    startDate: z.string().datetime('Invalid date format'),
-    endDate: z.string().datetime('Invalid date format'),
-    salary: z.number().min(0).max(999999999).optional(),
-    position: positionEnumSchema.optional(),
-    contractType: z
-      .enum(['PERMANENT', 'TEMPORARY', 'LOAN', 'YOUTH', 'AMATEUR'])
-      .optional(),
-    joinDate: z.string().datetime().optional(),
-    releaseClause: z.number().min(0).optional(),
-    notes: z.string().max(2000).optional(),
-  })
-  .refine((data) => new Date(data.startDate) < new Date(data.endDate), {
-    message: 'End date must be after start date',
-    path: ['endDate'],
-  });
+export const createContractSchema = z.object({
+  playerId: uuidSchema,
+  teamId: uuidSchema,
+  startDate: z.string().datetime(),
+  endDate: z.string().datetime(),
+  salary: z.number().min(0).optional(),
+  currency: z.string().length(3).optional().default('GBP'),
+  bonuses: z.record(z.number()).optional(),
+  releaseClause: z.number().min(0).optional(),
+  terms: z.string().max(5000).optional(),
+  status: z.enum(['ACTIVE', 'PENDING', 'EXPIRED', 'TERMINATED']).default('ACTIVE'),
+}).refine((data) => new Date(data.endDate) > new Date(data.startDate), {
+  message: 'End date must be after start date',
+  path: ['endDate'],
+});
 export type CreateContractInput = z.infer<typeof createContractSchema>;
 
 /**
@@ -901,12 +1077,35 @@ export type CreateContractInput = z.infer<typeof createContractSchema>;
  */
 export const updateContractSchema = z.object({
   endDate: z.string().datetime().optional(),
-  salary: z.number().min(0).max(999999999).optional(),
-  position: positionEnumSchema.optional(),
+  salary: z.number().min(0).optional(),
+  bonuses: z.record(z.number()).optional(),
   releaseClause: z.number().min(0).optional(),
-  notes: z.string().max(2000).optional(),
+  terms: z.string().max(5000).optional(),
+  status: z.enum(['ACTIVE', 'PENDING', 'EXPIRED', 'TERMINATED']).optional(),
 });
 export type UpdateContractInput = z.infer<typeof updateContractSchema>;
+
+// ============================================================================
+// PLAYER STAT SCHEMAS
+// ============================================================================
+
+/**
+ * Player stat validation (match-specific statistics)
+ */
+export const playerStatSchema = z.object({
+  playerId: uuidSchema,
+  matchId: uuidSchema,
+  teamId: uuidSchema,
+  sport: sportEnumSchema,
+  minutesPlayed: z.number().int().min(0).optional(),
+  // Common stats
+  goals: z.number().int().min(0).optional(),
+  assists: z.number().int().min(0).optional(),
+  // Sport-specific stats (stored as JSON)
+  stats: z.record(z.union([z.number(), z.string(), z.boolean()])).optional(),
+  rating: z.number().min(0).max(10).optional(),
+});
+export type PlayerStatInput = z.infer<typeof playerStatSchema>;
 
 // ============================================================================
 // HELPER VALIDATION FUNCTIONS
@@ -994,91 +1193,40 @@ export function isValidDateOfBirth(dob: string): {
     }
 
     if (age < 13) {
-      return {
-        isValid: false,
-        error: 'Player must be at least 13 years old',
-      };
+      return { isValid: false, error: 'Player must be at least 13 years old' };
     }
 
     if (age > 100) {
-      return {
-        isValid: false,
-        error: 'Age seems invalid',
-      };
+      return { isValid: false, error: 'Age seems invalid' };
     }
 
     return { isValid: true, age };
   } catch {
-    return {
-      isValid: false,
-      error: 'Invalid date format',
-    };
+    return { isValid: false, error: 'Invalid date format' };
   }
+}
+
+/**
+ * Get valid positions for a specific sport
+ */
+export function getValidPositionsForSport(sport: Sport): readonly string[] {
+  return SPORT_POSITIONS[sport] || [];
 }
 
 /**
  * Validate player position for a specific sport
  */
-export function getValidPositionsForSport(sport: Sport): string[] {
-  const positionMap: Record<Sport, string[]> = {
-    FOOTBALL: [
-      'GOALKEEPER',
-      'DEFENDER',
-      'MIDFIELDER',
-      'FORWARD',
-    ],
-    NETBALL: [
-      'GOAL_SHOOTER',
-      'GOAL_ATTACK',
-      'WING_ATTACK',
-      'CENTER',
-      'WING_DEFENSE',
-      'GOAL_DEFENSE',
-      'GOALKEEPER_NETBALL',
-    ],
-    RUGBY: [
-      'HOOKER',
-      'LOOSEHEAD_PROP',
-      'TIGHTHEAD_PROP',
-      'LOCK',
-      'FLANKER',
-      'NUMBER_8',
-      'SCRUM_HALF',
-      'FLY_HALF',
-      'INSIDE_CENTER',
-      'OUTSIDE_CENTER',
-      'WING',
-      'FULLBACK',
-    ],
-    CRICKET: [
-      'BATSMAN',
-      'BOWLER',
-      'ALL_ROUNDER',
-      'WICKET_KEEPER',
-      'FIELDER_CRICKET',
-    ],
-    AMERICAN_FOOTBALL: [
-      'QUARTERBACK',
-      'RUNNING_BACK',
-      'WIDE_RECEIVER',
-      'TIGHT_END',
-      'OFFENSIVE_LINEMAN',
-      'DEFENSIVE_LINEMAN',
-      'LINEBACKER',
-      'CORNERBACK',
-      'SAFETY',
-      'KICKER',
-    ],
-    BASKETBALL: [
-      'POINT_GUARD',
-      'SHOOTING_GUARD',
-      'SMALL_FORWARD',
-      'POWER_FORWARD',
-      'CENTER_BASKETBALL',
-    ],
-  };
+export function isValidPositionForSport(position: string, sport: Sport): boolean {
+  const validPositions = SPORT_POSITIONS[sport];
+  if (!validPositions) return false;
+  return validPositions.includes(position as any);
+}
 
-  return positionMap[sport] || [];
+/**
+ * Get sport validation configuration
+ */
+export function getSportConfig(sport: Sport) {
+  return SPORT_VALIDATION_CONFIG[sport];
 }
 
 /**
@@ -1098,32 +1246,79 @@ export function calculateAge(dateOfBirth: string): number {
 }
 
 /**
- * Validate match result scores
+ * Validate match result scores based on sport
  */
-export function validateMatchResult(result: {
-  homeGoals: number;
-  awayGoals: number;
-  homeGoalsET?: number;
-  awayGoalsET?: number;
-  homePenalties?: number;
-  awayPenalties?: number;
-}): { isValid: boolean; error?: string } {
-  if (result.homeGoals < 0 || result.awayGoals < 0) {
-    return { isValid: false, error: 'Goals cannot be negative' };
+export function validateMatchResult(
+  sport: Sport,
+  result: {
+    homeScore: number;
+    awayScore: number;
+    homeScoreET?: number;
+    awayScoreET?: number;
+    homePenalties?: number;
+    awayPenalties?: number;
+  }
+): { isValid: boolean; error?: string } {
+  if (result.homeScore < 0 || result.awayScore < 0) {
+    return { isValid: false, error: 'Scores cannot be negative' };
   }
 
-  const homeET = (result.homeGoalsET || 0) + result.homeGoals;
-  const awayET = (result.awayGoalsET || 0) + result.awayGoals;
+  // Sport-specific validation
+  if (sport === 'FOOTBALL' || sport === 'FUTSAL' || sport === 'BEACH_FOOTBALL') {
+    const homeET = (result.homeScoreET || 0) + result.homeScore;
+    const awayET = (result.awayScoreET || 0) + result.awayScore;
 
-  if (result.homePenalties || result.awayPenalties) {
-    if (homeET !== awayET) {
-      return {
-        isValid: false,
-        error: 'Penalties can only be used when match is tied after extra time',
-      };
+    if (result.homePenalties !== undefined || result.awayPenalties !== undefined) {
+      if (homeET !== awayET) {
+        return {
+          isValid: false,
+          error: 'Penalties can only be used when match is tied after extra time',
+        };
+      }
     }
   }
 
+  return { isValid: true };
+}
+
+/**
+ * Validate squad size for a sport
+ */
+export function validateSquadSize(sport: Sport, playerCount: number): { isValid: boolean; error?: string } {
+  const config = SPORT_VALIDATION_CONFIG[sport];
+  if (!config) return { isValid: true };
+  
+  if (playerCount > config.maxSquadSize) {
+    return {
+      isValid: false,
+      error: `Squad size exceeds maximum of ${config.maxSquadSize} for ${sport}`,
+    };
+  }
+  
+  return { isValid: true };
+}
+
+/**
+ * Validate lineup for a sport
+ */
+export function validateLineup(sport: Sport, playerCount: number): { isValid: boolean; error?: string } {
+  const config = SPORT_VALIDATION_CONFIG[sport];
+  if (!config) return { isValid: true };
+  
+  if (playerCount < config.minPlayers) {
+    return {
+      isValid: false,
+      error: `Lineup requires at least ${config.minPlayers} players for ${sport}`,
+    };
+  }
+  
+  if (playerCount > config.maxPlayers) {
+    return {
+      isValid: false,
+      error: `Lineup cannot exceed ${config.maxPlayers} players for ${sport}`,
+    };
+  }
+  
   return { isValid: true };
 }
 
@@ -1132,6 +1327,10 @@ export function validateMatchResult(result: {
 // ============================================================================
 
 export default {
+  // Constants
+  SPORT_POSITIONS,
+  SPORT_VALIDATION_CONFIG,
+  
   // Pagination
   paginationSchema,
   parsePaginationParams,
@@ -1206,6 +1405,10 @@ export default {
   isStrongPassword,
   isValidDateOfBirth,
   getValidPositionsForSport,
+  isValidPositionForSport,
+  getSportConfig,
   calculateAge,
   validateMatchResult,
+  validateSquadSize,
+  validateLineup,
 };

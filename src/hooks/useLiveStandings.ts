@@ -1,129 +1,221 @@
+/**
+ * ============================================================================
+ * 🏆 USE LIVE STANDINGS HOOK v7.10.1 - MULTI-SPORT STANDINGS
+ * ============================================================================
+ * @version 7.10.1
+ * @path src/hooks/useLiveStandings.ts
+ * ============================================================================
+ */
+
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
-import type { Standing } from '@/types';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Sport, getSportConfig } from './useSportConfig';
 
-interface LiveStandingsOptions {
-  leagueId: string;
-  refreshInterval?: number; // milliseconds, default 10000
-  enabled?: boolean;
-}
-
-interface LiveStandingsData {
-  standings: Standing[];
-  lastUpdated: string;
-  isLive: boolean;
-}
-
-/**
- * Hook for real-time league standings with Socket.IO integration
- * Auto-updates every 10 seconds when live matches are ongoing
- */
-export function useLiveStandings({
-  leagueId,
-  refreshInterval = 10000,
-  enabled = true,
-}: LiveStandingsOptions) {
-  const [isLive, setIsLive] = useState(false);
-  const socketRef = useRef<any>(null);
-  const updateIntervalRef = useRef<NodeJS.Timeout>();
-
-  // Fetch initial standings
-  const {
-    data,
-    isLoading,
-    error,
-    refetch,
-    isFetching,
-  } = useQuery<LiveStandingsData>({
-    queryKey: ['standings', leagueId, 'live'],
-    queryFn: async () => {
-      const response = await axios.get(
-        `/api/leagues/${leagueId}/standings/live`,
-      );
-      return response.data.data;
-    },
-    enabled: enabled && !!leagueId,
-    refetchInterval: isLive ? refreshInterval : false,
-    staleTime: isLive ? refreshInterval / 2 : 30000,
-  });
-
-  // Initialize Socket.IO for real-time updates
-  useEffect(() => {
-    if (typeof window === 'undefined' || !enabled || !leagueId) return;
-
-    socketRef.current = (window as any).socket;
-
-    if (!socketRef.current) {
-      console.warn('Socket.IO not initialized');
-      return;
-    }
-
-    // Listen for league updates
-    const handleLeagueUpdate = (updateData: any) => {
-      if (updateData.leagueId === leagueId) {
-        setIsLive(true);
-        // Refetch standings immediately on update
-        refetch();
-
-        // Re-set auto-refetch interval
-        if (updateIntervalRef.current) {
-          clearInterval(updateIntervalRef.current);
-        }
-        updateIntervalRef.current = setInterval(() => {
-          refetch();
-        }, refreshInterval);
-      }
-    };
-
-    const handleMatchStart = (matchData: any) => {
-      // Check if match is in this league
-      if (matchData.leagueId === leagueId) {
-        setIsLive(true);
-      }
-    };
-
-    const handleMatchEnd = (matchData: any) => {
-      if (matchData.leagueId === leagueId) {
-        // Check if any live matches remain
-        const hasLiveMatches = (window as any).liveMatches?.some(
-          (m: any) => m.leagueId === leagueId && m.status === 'LIVE',
-        );
-        if (!hasLiveMatches) {
-          setIsLive(false);
-        }
-        refetch();
-      }
-    };
-
-    socketRef.current.on(`league:${leagueId}:update`, handleLeagueUpdate);
-    socketRef.current.on(`league:${leagueId}:match-start`, handleMatchStart);
-    socketRef.current.on(`league:${leagueId}:match-end`, handleMatchEnd);
-
-    // Clean up on unmount
-    return () => {
-      socketRef.current?.off(`league:${leagueId}:update`, handleLeagueUpdate);
-      socketRef.current?.off(
-        `league:${leagueId}:match-start`,
-        handleMatchStart,
-      );
-      socketRef.current?.off(`league:${leagueId}:match-end`, handleMatchEnd);
-
-      if (updateIntervalRef.current) {
-        clearInterval(updateIntervalRef.current);
-      }
-    };
-  }, [leagueId, enabled, refetch, refreshInterval]);
-
-  return {
-    standings: data?.standings || [],
-    lastUpdated: data?.lastUpdated,
-    isLoading: isLoading || isFetching,
-    error: error as Error | null,
-    isLive,
-    refetch,
-    isFetching,
+export interface TeamStanding {
+  teamId: string;
+  teamName: string;
+  clubId: string;
+  clubName: string;
+  logoUrl?: string;
+  position: number;
+  previousPosition?: number;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;      // Generic scoring
+  goalsAgainst: number;  // Generic conceding
+  goalDifference: number;
+  points: number;
+  form: ('W' | 'D' | 'L')[];
+  homeRecord: { won: number; drawn: number; lost: number };
+  awayRecord: { won: number; drawn: number; lost: number };
+  lastMatch?: {
+    matchId: string;
+    opponent: string;
+    result: 'W' | 'D' | 'L';
+    score: string;
+  };
+  nextMatch?: {
+    matchId: string;
+    opponent: string;
+    date: string;
   };
 }
+
+export interface StandingsGroup {
+  groupName: string;
+  groupId: string;
+  teams: TeamStanding[];
+}
+
+export interface UseLiveStandingsOptions {
+  leagueId: string;
+  seasonId?: string;
+  sport?: Sport;
+  groupId?: string;
+  enabled?: boolean;
+  pollingInterval?: number;
+  enableWebSocket?: boolean;
+}
+
+export interface UseLiveStandingsReturn {
+  standings: TeamStanding[];
+  groups: StandingsGroup[];
+  isLoading: boolean;
+  error: Error | null;
+  lastUpdated: Date | null;
+  refresh: () => Promise<void>;
+  sport: Sport;
+  sportConfig: ReturnType<typeof getSportConfig>;
+  
+  // Helpers
+  getTeamStanding: (teamId: string) => TeamStanding | undefined;
+  getPositionChange: (teamId: string) => number;
+  isPromotionZone: (position: number) => boolean;
+  isRelegationZone: (position: number) => boolean;
+  isPlayoffZone: (position: number) => boolean;
+}
+
+export function useLiveStandings(options: UseLiveStandingsOptions): UseLiveStandingsReturn {
+  const {
+    leagueId,
+    seasonId,
+    sport = 'FOOTBALL',
+    groupId,
+    enabled = true,
+    pollingInterval = 60000,
+    enableWebSocket = true,
+  } = options;
+
+  const [standings, setStandings] = useState<TeamStanding[]>([]);
+  const [groups, setGroups] = useState<StandingsGroup[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const socketRef = useRef<any>(null);
+  const pollingRef = useRef<NodeJS.Timeout>();
+
+  const sportConfig = useMemo(() => getSportConfig(sport), [sport]);
+
+  // Fetch standings
+  const fetchStandings = useCallback(async () => {
+    if (!leagueId) return;
+
+    try {
+      setIsLoading(true);
+      
+      const params = new URLSearchParams({ leagueId });
+      if (seasonId) params.append('seasonId', seasonId);
+      if (groupId) params.append('groupId', groupId);
+
+      const response = await fetch(`/api/standings?${params}`);
+      if (!response.ok) throw new Error('Failed to fetch standings');
+
+      const data = await response.json();
+      
+      if (data.groups?.length) {
+        setGroups(data.groups);
+        setStandings(data.groups.flatMap((g: StandingsGroup) => g.teams));
+      } else {
+        setStandings(data.standings || []);
+        setGroups([]);
+      }
+
+      setLastUpdated(new Date());
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Unknown error'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [leagueId, seasonId, groupId]);
+
+  // WebSocket connection
+  useEffect(() => {
+    if (!enabled || !enableWebSocket || typeof window === 'undefined') return;
+
+    socketRef.current = (window as any).socket;
+    
+    if (socketRef.current) {
+      const handleStandingsUpdate = (data: { leagueId: string; standings: TeamStanding[] }) => {
+        if (data.leagueId === leagueId) {
+          setStandings(data.standings);
+          setLastUpdated(new Date());
+        }
+      };
+
+      socketRef.current.on(`standings:${leagueId}`, handleStandingsUpdate);
+      socketRef.current.emit('subscribe:standings', { leagueId });
+
+      return () => {
+        socketRef.current?.off(`standings:${leagueId}`, handleStandingsUpdate);
+        socketRef.current?.emit('unsubscribe:standings', { leagueId });
+      };
+    }
+  }, [enabled, enableWebSocket, leagueId]);
+
+  // Polling fallback
+  useEffect(() => {
+    if (!enabled) return;
+
+    fetchStandings();
+
+    if (!enableWebSocket || !socketRef.current) {
+      pollingRef.current = setInterval(fetchStandings, pollingInterval);
+    }
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, [enabled, enableWebSocket, fetchStandings, pollingInterval]);
+
+  // Helpers
+  const getTeamStanding = useCallback((teamId: string): TeamStanding | undefined => {
+    return standings.find(s => s.teamId === teamId);
+  }, [standings]);
+
+  const getPositionChange = useCallback((teamId: string): number => {
+    const standing = standings.find(s => s.teamId === teamId);
+    if (!standing || standing.previousPosition === undefined) return 0;
+    return standing.previousPosition - standing.position;
+  }, [standings]);
+
+  const isPromotionZone = useCallback((position: number): boolean => {
+    // Typically top 2-4 positions
+    return position <= 4;
+  }, []);
+
+  const isRelegationZone = useCallback((position: number): boolean => {
+    // Typically bottom 3 positions
+    const totalTeams = standings.length;
+    return position > totalTeams - 3;
+  }, [standings.length]);
+
+  const isPlayoffZone = useCallback((position: number): boolean => {
+    // Typically positions 3-6
+    return position >= 3 && position <= 6;
+  }, []);
+
+  return {
+    standings,
+    groups,
+    isLoading,
+    error,
+    lastUpdated,
+    refresh: fetchStandings,
+    sport,
+    sportConfig,
+    getTeamStanding,
+    getPositionChange,
+    isPromotionZone,
+    isRelegationZone,
+    isPlayoffZone,
+  };
+}
+
+export default useLiveStandings;
