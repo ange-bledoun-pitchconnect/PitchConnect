@@ -1,142 +1,106 @@
 /**
  * ============================================================================
- * Sport Configuration for Dashboard Components
+ * SPORT DASHBOARD CONFIGURATION - PitchConnect v7.10.1
  * ============================================================================
  * 
- * Centralized configuration for multi-sport support across all dashboard
- * components including events, stats, formations, and scoring.
+ * Enterprise-grade dashboard configuration for multi-sport support including:
+ * - Match event types with icons and colors
+ * - Scoring systems and terminology
+ * - Period/quarter configurations
+ * - Formation support indicators
+ * - Dashboard widget configurations
  * 
- * @version 2.0.0
- * @since v7.10.1
+ * All 12 sports fully configured with authentic rules and terminology.
  * 
- * SUPPORTED SPORTS (from Schema v7.10.1):
- * - FOOTBALL, NETBALL, RUGBY, CRICKET, AMERICAN_FOOTBALL
- * - BASKETBALL, HOCKEY, LACROSSE, AUSTRALIAN_RULES
- * - GAELIC_FOOTBALL, FUTSAL, BEACH_FOOTBALL
+ * @version 3.0.0
+ * @path src/config/sport-dashboard-config.ts
  * 
  * ============================================================================
  */
 
-import {
-  Goal,
-  AlertCircle,
-  Repeat2,
-  Users,
-  CornerDownRight,
-  Activity,
-  Target,
-  Shield,
-  Zap,
-  Clock,
-  Flag,
-  AlertTriangle,
-  Hand,
-  Circle,
-  Square,
-  Timer,
-  type LucideIcon,
-} from 'lucide-react';
+import { z } from 'zod';
 
 // =============================================================================
-// TYPE DEFINITIONS
+// ENUMS & TYPES
 // =============================================================================
 
-/**
- * Sport enum from schema
- */
-export type Sport =
-  | 'FOOTBALL'
-  | 'NETBALL'
-  | 'RUGBY'
-  | 'CRICKET'
-  | 'AMERICAN_FOOTBALL'
-  | 'BASKETBALL'
-  | 'HOCKEY'
-  | 'LACROSSE'
-  | 'AUSTRALIAN_RULES'
-  | 'GAELIC_FOOTBALL'
-  | 'FUTSAL'
-  | 'BEACH_FOOTBALL';
+export const SportEnum = z.enum([
+  'FOOTBALL',
+  'NETBALL',
+  'RUGBY',
+  'CRICKET',
+  'AMERICAN_FOOTBALL',
+  'BASKETBALL',
+  'HOCKEY',
+  'LACROSSE',
+  'AUSTRALIAN_RULES',
+  'GAELIC_FOOTBALL',
+  'FUTSAL',
+  'BEACH_FOOTBALL',
+]);
 
-/**
- * Match event category
- */
-export type EventCategory = 
-  | 'scoring' 
-  | 'disciplinary' 
-  | 'substitution' 
-  | 'set_piece' 
-  | 'time' 
-  | 'other';
+export type Sport = z.infer<typeof SportEnum>;
 
-/**
- * Match event type definition
- */
-export interface MatchEventType {
-  key: string;
-  label: string;
-  category: EventCategory;
-  icon: string;
-  color: string;
-  bgColor: string;
-  points?: number;
-  requiresPlayer: boolean;
-  requiresSecondPlayer?: boolean;
-  hasModifiers?: string[];
-}
+export const EventCategoryEnum = z.enum([
+  'scoring',
+  'disciplinary',
+  'substitution',
+  'set_piece',
+  'time',
+  'defensive',
+  'other',
+]);
 
-/**
- * Sport statistic definition
- */
-export interface SportStatistic {
-  key: string;
-  label: string;
-  shortLabel: string;
-  type: 'count' | 'percentage' | 'duration' | 'distance' | 'ratio';
-  category: 'offensive' | 'defensive' | 'general' | 'goalkeeper' | 'specialist';
-  higherIsBetter: boolean;
-  maxValue?: number;
-  unit?: string;
-}
-
-/**
- * Formation/lineup configuration
- */
-export interface FormationConfig {
-  key: string;
-  label: string;
-  playerCount: number;
-  rows: number[];
-  positions: string[];
-}
-
-/**
- * Sport configuration
- */
-export interface SportDashboardConfig {
-  sport: Sport;
-  name: string;
-  icon: string;
-  primaryColor: string;
-  secondaryColor: string;
-  scoringTerms: {
-    primary: string;
-    secondary?: string;
-    unit: string;
-  };
-  hasDraws: boolean;
-  hasPeriods: boolean;
-  periodName: string;
-  periodCount: number;
-  matchDuration: number;
-  eventTypes: MatchEventType[];
-  statistics: SportStatistic[];
-  formations: FormationConfig[];
-  positionCategories: string[];
-}
+export type EventCategory = z.infer<typeof EventCategoryEnum>;
 
 // =============================================================================
-// SHARED EVENT TYPES
+// SCHEMAS
+// =============================================================================
+
+export const MatchEventTypeSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  category: EventCategoryEnum,
+  icon: z.string(),
+  color: z.string(),
+  bgColor: z.string(),
+  points: z.number().optional(),
+  requiresPlayer: z.boolean(),
+  requiresSecondPlayer: z.boolean().optional(),
+  hasModifiers: z.array(z.string()).optional(),
+  description: z.string().optional(),
+});
+
+export type MatchEventType = z.infer<typeof MatchEventTypeSchema>;
+
+export const SportDashboardConfigSchema = z.object({
+  sport: SportEnum,
+  name: z.string(),
+  shortName: z.string(),
+  icon: z.string(),
+  primaryColor: z.string(),
+  secondaryColor: z.string(),
+  scoringTerms: z.object({
+    primary: z.string(),
+    secondary: z.string().optional(),
+    unit: z.string(),
+  }),
+  hasDraws: z.boolean(),
+  hasPeriods: z.boolean(),
+  periodName: z.string(),
+  periodCount: z.number(),
+  matchDuration: z.number(),
+  hasOvertime: z.boolean(),
+  hasFormations: z.boolean(),
+  eventTypes: z.array(MatchEventTypeSchema),
+  positionCategories: z.array(z.string()),
+  dashboardWidgets: z.array(z.string()),
+});
+
+export type SportDashboardConfig = z.infer<typeof SportDashboardConfigSchema>;
+
+// =============================================================================
+// COMMON EVENT TYPES (Shared across sports)
 // =============================================================================
 
 const COMMON_EVENTS = {
@@ -145,583 +109,562 @@ const COMMON_EVENTS = {
     label: 'Substitution',
     category: 'substitution' as EventCategory,
     icon: '🔄',
-    color: 'text-blue-600',
+    color: 'text-blue-600 dark:text-blue-400',
     bgColor: 'bg-blue-100 dark:bg-blue-900/30',
     requiresPlayer: true,
     requiresSecondPlayer: true,
+    description: 'Player substitution',
   },
   INJURY: {
     key: 'INJURY',
     label: 'Injury',
     category: 'other' as EventCategory,
     icon: '🏥',
-    color: 'text-red-600',
+    color: 'text-red-600 dark:text-red-400',
     bgColor: 'bg-red-100 dark:bg-red-900/30',
     requiresPlayer: true,
+    description: 'Player injury',
   },
   TIMEOUT: {
     key: 'TIMEOUT',
     label: 'Timeout',
     category: 'time' as EventCategory,
     icon: '⏸️',
-    color: 'text-gray-600',
-    bgColor: 'bg-gray-100 dark:bg-gray-800',
+    color: 'text-neutral-600 dark:text-neutral-400',
+    bgColor: 'bg-neutral-100 dark:bg-neutral-800',
     requiresPlayer: false,
+    description: 'Team timeout',
   },
   PERIOD_START: {
     key: 'PERIOD_START',
     label: 'Period Start',
     category: 'time' as EventCategory,
     icon: '▶️',
-    color: 'text-green-600',
+    color: 'text-green-600 dark:text-green-400',
     bgColor: 'bg-green-100 dark:bg-green-900/30',
     requiresPlayer: false,
+    description: 'Period/half begins',
   },
   PERIOD_END: {
     key: 'PERIOD_END',
     label: 'Period End',
     category: 'time' as EventCategory,
     icon: '⏹️',
-    color: 'text-gray-600',
-    bgColor: 'bg-gray-100 dark:bg-gray-800',
+    color: 'text-neutral-600 dark:text-neutral-400',
+    bgColor: 'bg-neutral-100 dark:bg-neutral-800',
     requiresPlayer: false,
+    description: 'Period/half ends',
+  },
+  VAR_REVIEW: {
+    key: 'VAR_REVIEW',
+    label: 'VAR Review',
+    category: 'other' as EventCategory,
+    icon: '📺',
+    color: 'text-purple-600 dark:text-purple-400',
+    bgColor: 'bg-purple-100 dark:bg-purple-900/30',
+    requiresPlayer: false,
+    description: 'Video review',
   },
 };
 
 // =============================================================================
-// SPORT CONFIGURATIONS
+// FOOTBALL (SOCCER) DASHBOARD CONFIG
+// =============================================================================
+
+const FOOTBALL_CONFIG: SportDashboardConfig = {
+  sport: 'FOOTBALL',
+  name: 'Football',
+  shortName: 'Football',
+  icon: '⚽',
+  primaryColor: '#22C55E',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Goal', unit: 'goals' },
+  hasDraws: true,
+  hasPeriods: true,
+  periodName: 'Half',
+  periodCount: 2,
+  matchDuration: 90,
+  hasOvertime: true,
+  hasFormations: true,
+  eventTypes: [
+    { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '⚽', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true, hasModifiers: ['penalty', 'own_goal', 'header', 'free_kick'] },
+    { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
+    { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'SECOND_YELLOW', label: 'Second Yellow', category: 'disciplinary', icon: '🟨🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'PENALTY_AWARDED', label: 'Penalty Awarded', category: 'set_piece', icon: '⚠️', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: false },
+    { key: 'PENALTY_MISSED', label: 'Penalty Missed', category: 'set_piece', icon: '❌', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'PENALTY_SAVED', label: 'Penalty Saved', category: 'set_piece', icon: '🧤', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: true },
+    { key: 'CORNER', label: 'Corner', category: 'set_piece', icon: '🚩', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: false },
+    { key: 'OFFSIDE', label: 'Offside', category: 'other', icon: '🚫', color: 'text-neutral-600 dark:text-neutral-400', bgColor: 'bg-neutral-100 dark:bg-neutral-800', requiresPlayer: true },
+    { key: 'SAVE', label: 'Save', category: 'defensive', icon: '🧤', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.VAR_REVIEW,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Goalkeeper', 'Defense', 'Midfield', 'Attack'],
+  dashboardWidgets: ['live_score', 'timeline', 'formations', 'stats', 'player_ratings', 'possession', 'shots', 'cards'],
+};
+
+// =============================================================================
+// RUGBY UNION DASHBOARD CONFIG
+// =============================================================================
+
+const RUGBY_CONFIG: SportDashboardConfig = {
+  sport: 'RUGBY',
+  name: 'Rugby Union',
+  shortName: 'Rugby',
+  icon: '🏉',
+  primaryColor: '#8B5CF6',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Try', secondary: 'Conversion', unit: 'points' },
+  hasDraws: true,
+  hasPeriods: true,
+  periodName: 'Half',
+  periodCount: 2,
+  matchDuration: 80,
+  hasOvertime: true,
+  hasFormations: false,
+  eventTypes: [
+    { key: 'TRY', label: 'Try', category: 'scoring', icon: '🏉', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 5, requiresPlayer: true },
+    { key: 'CONVERSION', label: 'Conversion', category: 'scoring', icon: '🥅', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 2, requiresPlayer: true },
+    { key: 'PENALTY_GOAL', label: 'Penalty Goal', category: 'scoring', icon: '🎯', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', points: 3, requiresPlayer: true },
+    { key: 'DROP_GOAL', label: 'Drop Goal', category: 'scoring', icon: '🦶', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 3, requiresPlayer: true },
+    { key: 'PENALTY_TRY', label: 'Penalty Try', category: 'scoring', icon: '⚠️', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 7, requiresPlayer: false },
+    { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'PENALTY', label: 'Penalty Conceded', category: 'disciplinary', icon: '⚠️', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
+    { key: 'SCRUM', label: 'Scrum', category: 'set_piece', icon: '🤼', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: false },
+    { key: 'LINEOUT', label: 'Lineout', category: 'set_piece', icon: '📏', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: false },
+    { key: 'TURNOVER', label: 'Turnover', category: 'defensive', icon: '🔄', color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30', requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Front Row', 'Locks', 'Back Row', 'Half Backs', 'Centres', 'Outside Backs'],
+  dashboardWidgets: ['live_score', 'timeline', 'stats', 'possession', 'territory', 'scrums', 'lineouts', 'tackles'],
+};
+
+// =============================================================================
+// CRICKET DASHBOARD CONFIG
+// =============================================================================
+
+const CRICKET_CONFIG: SportDashboardConfig = {
+  sport: 'CRICKET',
+  name: 'Cricket',
+  shortName: 'Cricket',
+  icon: '🏏',
+  primaryColor: '#F59E0B',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Run', secondary: 'Wicket', unit: 'runs' },
+  hasDraws: true,
+  hasPeriods: true,
+  periodName: 'Innings',
+  periodCount: 2,
+  matchDuration: 420,
+  hasOvertime: false,
+  hasFormations: false,
+  eventTypes: [
+    { key: 'RUN', label: 'Run', category: 'scoring', icon: '🏃', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
+    { key: 'BOUNDARY_FOUR', label: 'Four', category: 'scoring', icon: '4️⃣', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 4, requiresPlayer: true },
+    { key: 'BOUNDARY_SIX', label: 'Six', category: 'scoring', icon: '6️⃣', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 6, requiresPlayer: true },
+    { key: 'WICKET', label: 'Wicket', category: 'scoring', icon: '🎯', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true, requiresSecondPlayer: true, hasModifiers: ['bowled', 'caught', 'lbw', 'run_out', 'stumped', 'hit_wicket'] },
+    { key: 'WIDE', label: 'Wide', category: 'other', icon: '↔️', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', points: 1, requiresPlayer: true },
+    { key: 'NO_BALL', label: 'No Ball', category: 'other', icon: '🚫', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', points: 1, requiresPlayer: true },
+    { key: 'BYE', label: 'Bye', category: 'other', icon: '👋', color: 'text-neutral-600 dark:text-neutral-400', bgColor: 'bg-neutral-100 dark:bg-neutral-800', requiresPlayer: false },
+    { key: 'LEG_BYE', label: 'Leg Bye', category: 'other', icon: '🦵', color: 'text-neutral-600 dark:text-neutral-400', bgColor: 'bg-neutral-100 dark:bg-neutral-800', requiresPlayer: false },
+    { key: 'CATCH', label: 'Catch', category: 'defensive', icon: '🧤', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    { key: 'DROP', label: 'Dropped Catch', category: 'other', icon: '❌', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'REVIEW', label: 'DRS Review', category: 'other', icon: '📺', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: false },
+    { key: 'DRINKS', label: 'Drinks Break', category: 'time', icon: '🥤', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: false },
+    { key: 'INNINGS_END', label: 'Innings End', category: 'time', icon: '🔚', color: 'text-neutral-600 dark:text-neutral-400', bgColor: 'bg-neutral-100 dark:bg-neutral-800', requiresPlayer: false },
+  ],
+  positionCategories: ['Wicket-Keeper', 'Batsman', 'Bowler', 'All-Rounder'],
+  dashboardWidgets: ['scorecard', 'wagon_wheel', 'manhattan', 'partnerships', 'bowling_analysis', 'over_by_over'],
+};
+
+// =============================================================================
+// BASKETBALL DASHBOARD CONFIG
+// =============================================================================
+
+const BASKETBALL_CONFIG: SportDashboardConfig = {
+  sport: 'BASKETBALL',
+  name: 'Basketball',
+  shortName: 'Basketball',
+  icon: '🏀',
+  primaryColor: '#EF4444',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Point', secondary: 'Three-Pointer', unit: 'points' },
+  hasDraws: false,
+  hasPeriods: true,
+  periodName: 'Quarter',
+  periodCount: 4,
+  matchDuration: 48,
+  hasOvertime: true,
+  hasFormations: false,
+  eventTypes: [
+    { key: 'TWO_POINTER', label: '2-Point FG', category: 'scoring', icon: '🏀', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 2, requiresPlayer: true },
+    { key: 'THREE_POINTER', label: '3-Point FG', category: 'scoring', icon: '3️⃣', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 3, requiresPlayer: true },
+    { key: 'FREE_THROW', label: 'Free Throw', category: 'scoring', icon: '🎯', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 1, requiresPlayer: true },
+    { key: 'FREE_THROW_MISS', label: 'FT Miss', category: 'other', icon: '❌', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🤝', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
+    { key: 'REBOUND', label: 'Rebound', category: 'defensive', icon: '🔄', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true, hasModifiers: ['offensive', 'defensive'] },
+    { key: 'STEAL', label: 'Steal', category: 'defensive', icon: '🏃', color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30', requiresPlayer: true },
+    { key: 'BLOCK', label: 'Block', category: 'defensive', icon: '✋', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    { key: 'TURNOVER', label: 'Turnover', category: 'other', icon: '↩️', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'FOUL', label: 'Personal Foul', category: 'disciplinary', icon: '⚠️', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'TECH_FOUL', label: 'Technical Foul', category: 'disciplinary', icon: '🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'FLAGRANT_FOUL', label: 'Flagrant Foul', category: 'disciplinary', icon: '🚨', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.TIMEOUT,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Guards', 'Forwards', 'Center'],
+  dashboardWidgets: ['live_score', 'shot_chart', 'box_score', 'play_by_play', 'team_stats', 'quarter_breakdown'],
+};
+
+// =============================================================================
+// AMERICAN FOOTBALL DASHBOARD CONFIG
+// =============================================================================
+
+const AMERICAN_FOOTBALL_CONFIG: SportDashboardConfig = {
+  sport: 'AMERICAN_FOOTBALL',
+  name: 'American Football',
+  shortName: 'Am. Football',
+  icon: '🏈',
+  primaryColor: '#6366F1',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Touchdown', secondary: 'Field Goal', unit: 'points' },
+  hasDraws: false,
+  hasPeriods: true,
+  periodName: 'Quarter',
+  periodCount: 4,
+  matchDuration: 60,
+  hasOvertime: true,
+  hasFormations: true,
+  eventTypes: [
+    { key: 'TOUCHDOWN', label: 'Touchdown', category: 'scoring', icon: '🏈', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 6, requiresPlayer: true },
+    { key: 'EXTRA_POINT', label: 'Extra Point', category: 'scoring', icon: '➕', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 1, requiresPlayer: true },
+    { key: 'TWO_POINT_CONV', label: '2-Point Conversion', category: 'scoring', icon: '2️⃣', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 2, requiresPlayer: true },
+    { key: 'FIELD_GOAL', label: 'Field Goal', category: 'scoring', icon: '🥅', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', points: 3, requiresPlayer: true },
+    { key: 'SAFETY', label: 'Safety', category: 'scoring', icon: '⚠️', color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30', points: 2, requiresPlayer: false },
+    { key: 'INTERCEPTION', label: 'Interception', category: 'defensive', icon: '🤚', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'FUMBLE', label: 'Fumble', category: 'other', icon: '🔄', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'FUMBLE_RECOVERY', label: 'Fumble Recovery', category: 'defensive', icon: '✊', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', requiresPlayer: true },
+    { key: 'SACK', label: 'Sack', category: 'defensive', icon: '💥', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    { key: 'FIRST_DOWN', label: 'First Down', category: 'other', icon: '1️⃣', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: false },
+    { key: 'PENALTY', label: 'Penalty', category: 'disciplinary', icon: '🚩', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: false, hasModifiers: ['holding', 'false_start', 'offside', 'pass_interference'] },
+    { key: 'PUNT', label: 'Punt', category: 'other', icon: '🦶', color: 'text-neutral-600 dark:text-neutral-400', bgColor: 'bg-neutral-100 dark:bg-neutral-800', requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.TIMEOUT,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Offense', 'Defense', 'Special Teams'],
+  dashboardWidgets: ['live_score', 'drive_chart', 'box_score', 'play_by_play', 'passing_chart', 'rushing_stats'],
+};
+
+// =============================================================================
+// NETBALL DASHBOARD CONFIG
+// =============================================================================
+
+const NETBALL_CONFIG: SportDashboardConfig = {
+  sport: 'NETBALL',
+  name: 'Netball',
+  shortName: 'Netball',
+  icon: '🏐',
+  primaryColor: '#EC4899',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Goal', unit: 'goals' },
+  hasDraws: true,
+  hasPeriods: true,
+  periodName: 'Quarter',
+  periodCount: 4,
+  matchDuration: 60,
+  hasOvertime: true,
+  hasFormations: false,
+  eventTypes: [
+    { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '🥅', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
+    { key: 'SUPER_SHOT', label: 'Super Shot (2pts)', category: 'scoring', icon: '⭐', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 2, requiresPlayer: true },
+    { key: 'GOAL_MISS', label: 'Goal Miss', category: 'other', icon: '❌', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'INTERCEPT', label: 'Intercept', category: 'defensive', icon: '🤚', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
+    { key: 'DEFLECTION', label: 'Deflection', category: 'defensive', icon: '👆', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
+    { key: 'GAIN', label: 'Gain', category: 'defensive', icon: '✊', color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30', requiresPlayer: true },
+    { key: 'REBOUND', label: 'Rebound', category: 'defensive', icon: '🔄', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
+    { key: 'TURNOVER', label: 'Turnover', category: 'other', icon: '↩️', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'CONTACT', label: 'Contact Penalty', category: 'disciplinary', icon: '⚠️', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'OBSTRUCTION', label: 'Obstruction', category: 'disciplinary', icon: '🚫', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'OFFSIDE', label: 'Offside', category: 'disciplinary', icon: '🚩', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.TIMEOUT,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Shooters', 'Centre Court', 'Defenders'],
+  dashboardWidgets: ['live_score', 'shooting_stats', 'quarter_breakdown', 'player_stats', 'turnovers', 'gains'],
+};
+
+// =============================================================================
+// HOCKEY (FIELD HOCKEY) DASHBOARD CONFIG
+// =============================================================================
+
+const HOCKEY_CONFIG: SportDashboardConfig = {
+  sport: 'HOCKEY',
+  name: 'Field Hockey',
+  shortName: 'Hockey',
+  icon: '🏑',
+  primaryColor: '#06B6D4',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Goal', unit: 'goals' },
+  hasDraws: true,
+  hasPeriods: true,
+  periodName: 'Quarter',
+  periodCount: 4,
+  matchDuration: 60,
+  hasOvertime: true,
+  hasFormations: true,
+  eventTypes: [
+    { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '🥅', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true, hasModifiers: ['field_goal', 'penalty_corner', 'penalty_stroke'] },
+    { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
+    { key: 'PENALTY_CORNER', label: 'Penalty Corner', category: 'set_piece', icon: '🚩', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: false },
+    { key: 'PENALTY_STROKE', label: 'Penalty Stroke', category: 'set_piece', icon: '⚠️', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'SAVE', label: 'Save', category: 'defensive', icon: '🧤', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: true },
+    { key: 'GREEN_CARD', label: 'Green Card', category: 'disciplinary', icon: '🟩', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', requiresPlayer: true },
+    { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'FREE_HIT', label: 'Free Hit', category: 'set_piece', icon: '🏑', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: false },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.VAR_REVIEW,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Goalkeeper', 'Defense', 'Midfield', 'Attack'],
+  dashboardWidgets: ['live_score', 'timeline', 'formations', 'penalty_corners', 'circle_entries', 'player_stats'],
+};
+
+// =============================================================================
+// LACROSSE DASHBOARD CONFIG
+// =============================================================================
+
+const LACROSSE_CONFIG: SportDashboardConfig = {
+  sport: 'LACROSSE',
+  name: 'Lacrosse',
+  shortName: 'Lacrosse',
+  icon: '🥍',
+  primaryColor: '#14B8A6',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Goal', unit: 'goals' },
+  hasDraws: false,
+  hasPeriods: true,
+  periodName: 'Quarter',
+  periodCount: 4,
+  matchDuration: 60,
+  hasOvertime: true,
+  hasFormations: false,
+  eventTypes: [
+    { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '🥍', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
+    { key: 'TWO_POINT_GOAL', label: '2-Point Goal', category: 'scoring', icon: '2️⃣', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 2, requiresPlayer: true },
+    { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
+    { key: 'SAVE', label: 'Save', category: 'defensive', icon: '🧤', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    { key: 'GROUND_BALL', label: 'Ground Ball', category: 'other', icon: '⚫', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
+    { key: 'FACE_OFF_WIN', label: 'Face-Off Win', category: 'other', icon: '🤼', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
+    { key: 'CAUSED_TURNOVER', label: 'Caused Turnover', category: 'defensive', icon: '🔄', color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30', requiresPlayer: true },
+    { key: 'TURNOVER', label: 'Turnover', category: 'other', icon: '↩️', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'PENALTY', label: 'Penalty', category: 'disciplinary', icon: '⚠️', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true, hasModifiers: ['slashing', 'holding', 'illegal_body_check', 'cross_check'] },
+    { key: 'MAN_UP_GOAL', label: 'Man-Up Goal', category: 'scoring', icon: '⬆️', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.TIMEOUT,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Goalkeeper', 'Defense', 'Midfield', 'Attack'],
+  dashboardWidgets: ['live_score', 'face_offs', 'ground_balls', 'shot_chart', 'player_stats', 'penalties'],
+};
+
+// =============================================================================
+// AUSTRALIAN RULES (AFL) DASHBOARD CONFIG
+// =============================================================================
+
+const AFL_CONFIG: SportDashboardConfig = {
+  sport: 'AUSTRALIAN_RULES',
+  name: 'Australian Rules Football',
+  shortName: 'AFL',
+  icon: '🏉',
+  primaryColor: '#F97316',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Goal', secondary: 'Behind', unit: 'points' },
+  hasDraws: true,
+  hasPeriods: true,
+  periodName: 'Quarter',
+  periodCount: 4,
+  matchDuration: 80,
+  hasOvertime: true,
+  hasFormations: false,
+  eventTypes: [
+    { key: 'GOAL', label: 'Goal (6 pts)', category: 'scoring', icon: '🥅', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 6, requiresPlayer: true },
+    { key: 'BEHIND', label: 'Behind (1 pt)', category: 'scoring', icon: '🎯', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 1, requiresPlayer: true },
+    { key: 'RUSHED_BEHIND', label: 'Rushed Behind', category: 'scoring', icon: '↩️', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', points: 1, requiresPlayer: false },
+    { key: 'MARK', label: 'Mark', category: 'other', icon: '🙌', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: true, hasModifiers: ['contested', 'uncontested'] },
+    { key: 'TACKLE', label: 'Tackle', category: 'defensive', icon: '💪', color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30', requiresPlayer: true },
+    { key: 'HITOUT', label: 'Hitout', category: 'other', icon: '👆', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
+    { key: 'CLEARANCE', label: 'Clearance', category: 'other', icon: '🔄', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    { key: 'FREE_KICK', label: 'Free Kick', category: 'other', icon: '🦶', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
+    { key: 'REPORT', label: 'Report', category: 'disciplinary', icon: '🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'FIFTY_METRE', label: '50m Penalty', category: 'disciplinary', icon: '⚠️', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Key Position', 'General', 'Ruck', 'On-Field'],
+  dashboardWidgets: ['live_score', 'disposals', 'clearances', 'inside_50s', 'marks', 'player_stats'],
+};
+
+// =============================================================================
+// GAELIC FOOTBALL DASHBOARD CONFIG
+// =============================================================================
+
+const GAELIC_CONFIG: SportDashboardConfig = {
+  sport: 'GAELIC_FOOTBALL',
+  name: 'Gaelic Football',
+  shortName: 'GAA Football',
+  icon: '🏐',
+  primaryColor: '#84CC16',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Goal', secondary: 'Point', unit: 'points' },
+  hasDraws: true,
+  hasPeriods: true,
+  periodName: 'Half',
+  periodCount: 2,
+  matchDuration: 70,
+  hasOvertime: true,
+  hasFormations: false,
+  eventTypes: [
+    { key: 'GOAL', label: 'Goal (3 pts)', category: 'scoring', icon: '🥅', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 3, requiresPlayer: true },
+    { key: 'POINT', label: 'Point (1 pt)', category: 'scoring', icon: '🎯', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 1, requiresPlayer: true, hasModifiers: ['play', 'free', '45', 'mark'] },
+    { key: 'WIDE', label: 'Wide', category: 'other', icon: '↔️', color: 'text-neutral-600 dark:text-neutral-400', bgColor: 'bg-neutral-100 dark:bg-neutral-800', requiresPlayer: true },
+    { key: 'FREE_KICK', label: 'Free Kick', category: 'set_piece', icon: '🦶', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: true },
+    { key: 'FORTY_FIVE', label: '45 Metre Kick', category: 'set_piece', icon: '4️⃣5️⃣', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
+    { key: 'MARK', label: 'Mark', category: 'other', icon: '🙌', color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30', requiresPlayer: true },
+    { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'BLACK_CARD', label: 'Black Card', category: 'disciplinary', icon: '⬛', color: 'text-neutral-600 dark:text-neutral-400', bgColor: 'bg-neutral-100 dark:bg-neutral-800', requiresPlayer: true },
+    { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'KICKOUT', label: 'Kickout', category: 'other', icon: '🥅', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Goalkeeper', 'Backs', 'Midfield', 'Forwards'],
+  dashboardWidgets: ['live_score', 'scoring_breakdown', 'kickouts', 'possessions', 'player_stats', 'wides'],
+};
+
+// =============================================================================
+// FUTSAL DASHBOARD CONFIG
+// =============================================================================
+
+const FUTSAL_CONFIG: SportDashboardConfig = {
+  sport: 'FUTSAL',
+  name: 'Futsal',
+  shortName: 'Futsal',
+  icon: '⚽',
+  primaryColor: '#10B981',
+  secondaryColor: '#FFFFFF',
+  scoringTerms: { primary: 'Goal', unit: 'goals' },
+  hasDraws: true,
+  hasPeriods: true,
+  periodName: 'Half',
+  periodCount: 2,
+  matchDuration: 40,
+  hasOvertime: true,
+  hasFormations: true,
+  eventTypes: [
+    { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '⚽', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
+    { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
+    { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'FOUL', label: 'Foul', category: 'disciplinary', icon: '⚠️', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
+    { key: 'ACCUMULATED_FOUL', label: 'Accumulated Foul (6th+)', category: 'set_piece', icon: '🔴', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: false, description: 'Free kick from 10m without wall' },
+    { key: 'PENALTY', label: 'Penalty (6m)', category: 'set_piece', icon: '⚠️', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: true },
+    { key: 'DOUBLE_PENALTY', label: 'Double Penalty (10m)', category: 'set_piece', icon: '⚠️', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'SAVE', label: 'Save', category: 'defensive', icon: '🧤', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    { key: 'POWER_PLAY', label: 'Power Play (5v4)', category: 'other', icon: '⬆️', color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: false },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.TIMEOUT,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Goleiro', 'Fixo/Beque', 'Ala', 'Pivô'],
+  dashboardWidgets: ['live_score', 'timeline', 'formations', 'accumulated_fouls', 'shots', 'player_stats'],
+};
+
+// =============================================================================
+// BEACH FOOTBALL (Beach Soccer) DASHBOARD CONFIG
+// =============================================================================
+
+const BEACH_FOOTBALL_CONFIG: SportDashboardConfig = {
+  sport: 'BEACH_FOOTBALL',
+  name: 'Beach Soccer',
+  shortName: 'Beach Soccer',
+  icon: '🏖️',
+  primaryColor: '#FBBF24',
+  secondaryColor: '#06B6D4',
+  scoringTerms: { primary: 'Goal', unit: 'goals' },
+  hasDraws: false,
+  hasPeriods: true,
+  periodName: 'Period',
+  periodCount: 3,
+  matchDuration: 36,
+  hasOvertime: true,
+  hasFormations: true,
+  eventTypes: [
+    { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '⚽', color: 'text-green-600 dark:text-green-400', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true, hasModifiers: ['bicycle_kick', 'scissor_kick', 'header', 'volley', 'free_kick'] },
+    { key: 'BICYCLE_KICK_GOAL', label: 'Bicycle Kick Goal', category: 'scoring', icon: '🚴', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 1, requiresPlayer: true },
+    { key: 'SCISSOR_KICK_GOAL', label: 'Scissor Kick Goal', category: 'scoring', icon: '✂️', color: 'text-pink-600 dark:text-pink-400', bgColor: 'bg-pink-100 dark:bg-pink-900/30', points: 1, requiresPlayer: true },
+    { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
+    { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600 dark:text-yellow-400', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
+    { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'BLUE_CARD', label: 'Blue Card (2min)', category: 'disciplinary', icon: '🟦', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
+    { key: 'FOUL', label: 'Foul', category: 'disciplinary', icon: '⚠️', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
+    { key: 'PENALTY', label: 'Penalty', category: 'set_piece', icon: '⚠️', color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
+    { key: 'SAVE', label: 'Save', category: 'defensive', icon: '🧤', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
+    { key: 'GOALKEEPER_GOAL', label: 'Goalkeeper Goal', category: 'scoring', icon: '🧤⚽', color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30', points: 1, requiresPlayer: true },
+    COMMON_EVENTS.SUBSTITUTION,
+    COMMON_EVENTS.TIMEOUT,
+    COMMON_EVENTS.INJURY,
+    COMMON_EVENTS.PERIOD_START,
+    COMMON_EVENTS.PERIOD_END,
+  ],
+  positionCategories: ['Goalkeeper', 'Defense', 'Attack'],
+  dashboardWidgets: ['live_score', 'timeline', 'formations', 'spectacular_goals', 'shots', 'player_stats'],
+};
+
+// =============================================================================
+// SPORT DASHBOARD CONFIGURATION MAPPING
 // =============================================================================
 
 export const SPORT_DASHBOARD_CONFIGS: Record<Sport, SportDashboardConfig> = {
-  // =========================================================================
-  // FOOTBALL (Soccer)
-  // =========================================================================
-  FOOTBALL: {
-    sport: 'FOOTBALL',
-    name: 'Football',
-    icon: '⚽',
-    primaryColor: 'green',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Goal', unit: 'goals' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Half',
-    periodCount: 2,
-    matchDuration: 90,
-    eventTypes: [
-      { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '⚽', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true, hasModifiers: ['penalty', 'own_goal', 'header', 'free_kick'] },
-      { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
-      { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'CORNER', label: 'Corner Kick', category: 'set_piece', icon: '🚩', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: false },
-      { key: 'FREE_KICK', label: 'Free Kick', category: 'set_piece', icon: '🦶', color: 'text-indigo-600', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
-      { key: 'PENALTY_AWARDED', label: 'Penalty Awarded', category: 'set_piece', icon: '🎯', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', requiresPlayer: true },
-      { key: 'OFFSIDE', label: 'Offside', category: 'other', icon: '🚫', color: 'text-gray-600', bgColor: 'bg-gray-100 dark:bg-gray-800', requiresPlayer: true },
-      { key: 'FOUL', label: 'Foul', category: 'other', icon: '⚠️', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
-      { key: 'SAVE', label: 'Save', category: 'other', icon: '🧤', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-      COMMON_EVENTS.INJURY,
-    ],
-    statistics: [
-      { key: 'possession', label: 'Possession', shortLabel: 'Poss', type: 'percentage', category: 'general', higherIsBetter: true, maxValue: 100, unit: '%' },
-      { key: 'shots', label: 'Total Shots', shortLabel: 'Shots', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'shotsOnTarget', label: 'Shots on Target', shortLabel: 'SOT', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'passes', label: 'Passes', shortLabel: 'Pass', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'passAccuracy', label: 'Pass Accuracy', shortLabel: 'Pass%', type: 'percentage', category: 'general', higherIsBetter: true, maxValue: 100, unit: '%' },
-      { key: 'corners', label: 'Corners', shortLabel: 'Corn', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'fouls', label: 'Fouls', shortLabel: 'Fouls', type: 'count', category: 'defensive', higherIsBetter: false },
-      { key: 'offsides', label: 'Offsides', shortLabel: 'Off', type: 'count', category: 'offensive', higherIsBetter: false },
-      { key: 'yellowCards', label: 'Yellow Cards', shortLabel: 'YC', type: 'count', category: 'defensive', higherIsBetter: false },
-      { key: 'redCards', label: 'Red Cards', shortLabel: 'RC', type: 'count', category: 'defensive', higherIsBetter: false },
-      { key: 'saves', label: 'Saves', shortLabel: 'Saves', type: 'count', category: 'goalkeeper', higherIsBetter: true },
-    ],
-    formations: [
-      { key: '4-3-3', label: '4-3-3', playerCount: 11, rows: [1, 4, 3, 3], positions: ['GK', 'LB', 'CB', 'CB', 'RB', 'CM', 'CM', 'CM', 'LW', 'ST', 'RW'] },
-      { key: '4-4-2', label: '4-4-2', playerCount: 11, rows: [1, 4, 4, 2], positions: ['GK', 'LB', 'CB', 'CB', 'RB', 'LM', 'CM', 'CM', 'RM', 'ST', 'ST'] },
-      { key: '4-2-3-1', label: '4-2-3-1', playerCount: 11, rows: [1, 4, 2, 3, 1], positions: ['GK', 'LB', 'CB', 'CB', 'RB', 'CDM', 'CDM', 'LW', 'CAM', 'RW', 'ST'] },
-      { key: '3-5-2', label: '3-5-2', playerCount: 11, rows: [1, 3, 5, 2], positions: ['GK', 'CB', 'CB', 'CB', 'LWB', 'CM', 'CM', 'CM', 'RWB', 'ST', 'ST'] },
-      { key: '5-3-2', label: '5-3-2', playerCount: 11, rows: [1, 5, 3, 2], positions: ['GK', 'LWB', 'CB', 'CB', 'CB', 'RWB', 'CM', 'CM', 'CM', 'ST', 'ST'] },
-    ],
-    positionCategories: ['Goalkeeper', 'Defense', 'Midfield', 'Attack'],
-  },
-
-  // =========================================================================
-  // BASKETBALL
-  // =========================================================================
-  BASKETBALL: {
-    sport: 'BASKETBALL',
-    name: 'Basketball',
-    icon: '🏀',
-    primaryColor: 'orange',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Point', unit: 'points' },
-    hasDraws: false,
-    hasPeriods: true,
-    periodName: 'Quarter',
-    periodCount: 4,
-    matchDuration: 48,
-    eventTypes: [
-      { key: 'TWO_POINTER', label: '2-Point Field Goal', category: 'scoring', icon: '🏀', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', points: 2, requiresPlayer: true },
-      { key: 'THREE_POINTER', label: '3-Point Field Goal', category: 'scoring', icon: '🎯', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 3, requiresPlayer: true },
-      { key: 'FREE_THROW', label: 'Free Throw', category: 'scoring', icon: '🎪', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 1, requiresPlayer: true },
-      { key: 'FREE_THROW_MISS', label: 'Free Throw Miss', category: 'other', icon: '❌', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'REBOUND_OFF', label: 'Offensive Rebound', category: 'other', icon: '📥', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', requiresPlayer: true },
-      { key: 'REBOUND_DEF', label: 'Defensive Rebound', category: 'other', icon: '📤', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
-      { key: 'ASSIST', label: 'Assist', category: 'other', icon: '🎯', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
-      { key: 'STEAL', label: 'Steal', category: 'other', icon: '🔥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'BLOCK', label: 'Block', category: 'other', icon: '🛡️', color: 'text-indigo-600', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
-      { key: 'TURNOVER', label: 'Turnover', category: 'other', icon: '🔄', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
-      { key: 'PERSONAL_FOUL', label: 'Personal Foul', category: 'disciplinary', icon: '⚠️', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      { key: 'TECHNICAL_FOUL', label: 'Technical Foul', category: 'disciplinary', icon: '🟨', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', requiresPlayer: true },
-      { key: 'FLAGRANT_FOUL', label: 'Flagrant Foul', category: 'disciplinary', icon: '🟥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-      COMMON_EVENTS.TIMEOUT,
-    ],
-    statistics: [
-      { key: 'points', label: 'Points', shortLabel: 'PTS', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'fieldGoalsMade', label: 'Field Goals Made', shortLabel: 'FGM', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'fieldGoalPct', label: 'Field Goal %', shortLabel: 'FG%', type: 'percentage', category: 'offensive', higherIsBetter: true, maxValue: 100, unit: '%' },
-      { key: 'threePointersMade', label: '3-Pointers Made', shortLabel: '3PM', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'threePointPct', label: '3-Point %', shortLabel: '3P%', type: 'percentage', category: 'offensive', higherIsBetter: true, maxValue: 100, unit: '%' },
-      { key: 'freeThrowsMade', label: 'Free Throws Made', shortLabel: 'FTM', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'freeThrowPct', label: 'Free Throw %', shortLabel: 'FT%', type: 'percentage', category: 'offensive', higherIsBetter: true, maxValue: 100, unit: '%' },
-      { key: 'rebounds', label: 'Total Rebounds', shortLabel: 'REB', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'assists', label: 'Assists', shortLabel: 'AST', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'steals', label: 'Steals', shortLabel: 'STL', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'blocks', label: 'Blocks', shortLabel: 'BLK', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'turnovers', label: 'Turnovers', shortLabel: 'TO', type: 'count', category: 'general', higherIsBetter: false },
-      { key: 'fouls', label: 'Personal Fouls', shortLabel: 'PF', type: 'count', category: 'defensive', higherIsBetter: false },
-    ],
-    formations: [
-      { key: 'standard', label: 'Standard', playerCount: 5, rows: [2, 2, 1], positions: ['PG', 'SG', 'SF', 'PF', 'C'] },
-      { key: 'small-ball', label: 'Small Ball', playerCount: 5, rows: [2, 2, 1], positions: ['PG', 'SG', 'SF', 'SF', 'PF'] },
-      { key: 'big-lineup', label: 'Big Lineup', playerCount: 5, rows: [1, 2, 2], positions: ['PG', 'SF', 'PF', 'C', 'C'] },
-    ],
-    positionCategories: ['Guard', 'Forward', 'Center'],
-  },
-
-  // =========================================================================
-  // RUGBY
-  // =========================================================================
-  RUGBY: {
-    sport: 'RUGBY',
-    name: 'Rugby',
-    icon: '🏉',
-    primaryColor: 'red',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Try', secondary: 'Point', unit: 'points' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Half',
-    periodCount: 2,
-    matchDuration: 80,
-    eventTypes: [
-      { key: 'TRY', label: 'Try', category: 'scoring', icon: '🏉', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 5, requiresPlayer: true },
-      { key: 'CONVERSION', label: 'Conversion', category: 'scoring', icon: '🥅', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 2, requiresPlayer: true },
-      { key: 'PENALTY_KICK', label: 'Penalty Kick', category: 'scoring', icon: '🎯', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', points: 3, requiresPlayer: true },
-      { key: 'DROP_GOAL', label: 'Drop Goal', category: 'scoring', icon: '🦶', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 3, requiresPlayer: true },
-      { key: 'YELLOW_CARD', label: 'Yellow Card (Sin Bin)', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'SCRUM', label: 'Scrum', category: 'set_piece', icon: '🤼', color: 'text-indigo-600', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: false },
-      { key: 'LINEOUT', label: 'Lineout', category: 'set_piece', icon: '📏', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: false },
-      { key: 'PENALTY', label: 'Penalty Awarded', category: 'other', icon: '⚠️', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', requiresPlayer: true },
-      { key: 'KNOCK_ON', label: 'Knock On', category: 'other', icon: '🤚', color: 'text-gray-600', bgColor: 'bg-gray-100 dark:bg-gray-800', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-      COMMON_EVENTS.INJURY,
-    ],
-    statistics: [
-      { key: 'tries', label: 'Tries', shortLabel: 'Tries', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'conversions', label: 'Conversions', shortLabel: 'Conv', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'penaltyKicks', label: 'Penalty Kicks', shortLabel: 'PK', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'tackles', label: 'Tackles', shortLabel: 'Tack', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'missedTackles', label: 'Missed Tackles', shortLabel: 'MTack', type: 'count', category: 'defensive', higherIsBetter: false },
-      { key: 'metersCarried', label: 'Meters Carried', shortLabel: 'Mtrs', type: 'distance', category: 'offensive', higherIsBetter: true, unit: 'm' },
-      { key: 'linebreaks', label: 'Line Breaks', shortLabel: 'LB', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'turnoversWon', label: 'Turnovers Won', shortLabel: 'TOW', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'turnoversLost', label: 'Turnovers Lost', shortLabel: 'TOL', type: 'count', category: 'general', higherIsBetter: false },
-      { key: 'scrums', label: 'Scrums Won', shortLabel: 'Scrm', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'lineouts', label: 'Lineouts Won', shortLabel: 'LO', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'penalties', label: 'Penalties Conceded', shortLabel: 'Pen', type: 'count', category: 'defensive', higherIsBetter: false },
-    ],
-    formations: [
-      { key: 'standard-15', label: 'Standard 15', playerCount: 15, rows: [1, 4, 2, 3, 3, 2], positions: ['FB', 'RW', 'OC', 'IC', 'LW', 'FH', 'SH', 'N8', 'FL', 'FL', 'LK', 'LK', 'THP', 'HK', 'LHP'] },
-    ],
-    positionCategories: ['Backs', 'Forwards'],
-  },
-
-  // =========================================================================
-  // CRICKET
-  // =========================================================================
-  CRICKET: {
-    sport: 'CRICKET',
-    name: 'Cricket',
-    icon: '🏏',
-    primaryColor: 'amber',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Run', unit: 'runs' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Innings',
-    periodCount: 2,
-    matchDuration: 360,
-    eventTypes: [
-      { key: 'RUN', label: 'Run', category: 'scoring', icon: '🏃', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
-      { key: 'BOUNDARY_4', label: 'Boundary (4)', category: 'scoring', icon: '4️⃣', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 4, requiresPlayer: true },
-      { key: 'SIX', label: 'Six', category: 'scoring', icon: '6️⃣', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 6, requiresPlayer: true },
-      { key: 'WICKET', label: 'Wicket', category: 'other', icon: '🎯', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true, hasModifiers: ['bowled', 'caught', 'lbw', 'run_out', 'stumped'] },
-      { key: 'WIDE', label: 'Wide', category: 'other', icon: '↔️', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', points: 1, requiresPlayer: true },
-      { key: 'NO_BALL', label: 'No Ball', category: 'other', icon: '🚫', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', points: 1, requiresPlayer: true },
-      { key: 'DOT_BALL', label: 'Dot Ball', category: 'other', icon: '⚫', color: 'text-gray-600', bgColor: 'bg-gray-100 dark:bg-gray-800', requiresPlayer: false },
-      { key: 'OVER_COMPLETE', label: 'Over Complete', category: 'time', icon: '✅', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', requiresPlayer: true },
-      COMMON_EVENTS.INJURY,
-    ],
-    statistics: [
-      { key: 'runs', label: 'Runs', shortLabel: 'Runs', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'wickets', label: 'Wickets', shortLabel: 'Wkts', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'overs', label: 'Overs Bowled', shortLabel: 'Ovrs', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'runRate', label: 'Run Rate', shortLabel: 'RR', type: 'ratio', category: 'offensive', higherIsBetter: true },
-      { key: 'boundaries', label: 'Boundaries', shortLabel: '4s', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'sixes', label: 'Sixes', shortLabel: '6s', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'extras', label: 'Extras', shortLabel: 'Ext', type: 'count', category: 'general', higherIsBetter: false },
-      { key: 'dotBalls', label: 'Dot Balls', shortLabel: 'Dots', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'economy', label: 'Economy Rate', shortLabel: 'Econ', type: 'ratio', category: 'defensive', higherIsBetter: false },
-      { key: 'strikeRate', label: 'Strike Rate', shortLabel: 'SR', type: 'ratio', category: 'offensive', higherIsBetter: true },
-    ],
-    formations: [
-      { key: 'batting-order', label: 'Batting Order', playerCount: 11, rows: [11], positions: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] },
-    ],
-    positionCategories: ['Batsman', 'Bowler', 'All-Rounder', 'Wicket Keeper'],
-  },
-
-  // =========================================================================
-  // NETBALL
-  // =========================================================================
-  NETBALL: {
-    sport: 'NETBALL',
-    name: 'Netball',
-    icon: '🏐',
-    primaryColor: 'purple',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Goal', unit: 'goals' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Quarter',
-    periodCount: 4,
-    matchDuration: 60,
-    eventTypes: [
-      { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '🥅', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
-      { key: 'GOAL_MISS', label: 'Goal Miss', category: 'other', icon: '❌', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'INTERCEPT', label: 'Intercept', category: 'other', icon: '🤚', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
-      { key: 'TURNOVER', label: 'Turnover', category: 'other', icon: '🔄', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
-      { key: 'CONTACT', label: 'Contact', category: 'disciplinary', icon: '⚠️', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      { key: 'OBSTRUCTION', label: 'Obstruction', category: 'disciplinary', icon: '🚫', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', requiresPlayer: true },
-      { key: 'HELD_BALL', label: 'Held Ball', category: 'other', icon: '⏱️', color: 'text-gray-600', bgColor: 'bg-gray-100 dark:bg-gray-800', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-      COMMON_EVENTS.TIMEOUT,
-    ],
-    statistics: [
-      { key: 'goals', label: 'Goals', shortLabel: 'G', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'goalAttempts', label: 'Goal Attempts', shortLabel: 'GA', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'goalAccuracy', label: 'Goal Accuracy', shortLabel: 'G%', type: 'percentage', category: 'offensive', higherIsBetter: true, maxValue: 100, unit: '%' },
-      { key: 'intercepts', label: 'Intercepts', shortLabel: 'Int', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'rebounds', label: 'Rebounds', shortLabel: 'Reb', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'centrePassReceives', label: 'Centre Pass Receives', shortLabel: 'CPR', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'turnovers', label: 'Turnovers', shortLabel: 'TO', type: 'count', category: 'general', higherIsBetter: false },
-      { key: 'penalties', label: 'Penalties', shortLabel: 'Pen', type: 'count', category: 'defensive', higherIsBetter: false },
-    ],
-    formations: [
-      { key: 'standard-7', label: 'Standard', playerCount: 7, rows: [2, 3, 2], positions: ['GS', 'GA', 'WA', 'C', 'WD', 'GD', 'GK'] },
-    ],
-    positionCategories: ['Attack', 'Midcourt', 'Defense'],
-  },
-
-  // =========================================================================
-  // AMERICAN FOOTBALL
-  // =========================================================================
-  AMERICAN_FOOTBALL: {
-    sport: 'AMERICAN_FOOTBALL',
-    name: 'American Football',
-    icon: '🏈',
-    primaryColor: 'brown',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Touchdown', secondary: 'Point', unit: 'points' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Quarter',
-    periodCount: 4,
-    matchDuration: 60,
-    eventTypes: [
-      { key: 'TOUCHDOWN', label: 'Touchdown', category: 'scoring', icon: '🏈', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 6, requiresPlayer: true },
-      { key: 'EXTRA_POINT', label: 'Extra Point', category: 'scoring', icon: '1️⃣', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 1, requiresPlayer: true },
-      { key: 'TWO_POINT_CONVERSION', label: '2-Point Conversion', category: 'scoring', icon: '2️⃣', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', points: 2, requiresPlayer: true },
-      { key: 'FIELD_GOAL', label: 'Field Goal', category: 'scoring', icon: '🎯', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', points: 3, requiresPlayer: true },
-      { key: 'SAFETY', label: 'Safety', category: 'scoring', icon: '🛡️', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', points: 2, requiresPlayer: false },
-      { key: 'INTERCEPTION', label: 'Interception', category: 'other', icon: '🤚', color: 'text-indigo-600', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
-      { key: 'FUMBLE', label: 'Fumble', category: 'other', icon: '🏈', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', requiresPlayer: true },
-      { key: 'SACK', label: 'Sack', category: 'other', icon: '💥', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
-      { key: 'PENALTY_FLAG', label: 'Penalty Flag', category: 'disciplinary', icon: '🚩', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-      COMMON_EVENTS.TIMEOUT,
-    ],
-    statistics: [
-      { key: 'passingYards', label: 'Passing Yards', shortLabel: 'PYds', type: 'distance', category: 'offensive', higherIsBetter: true, unit: 'yds' },
-      { key: 'rushingYards', label: 'Rushing Yards', shortLabel: 'RYds', type: 'distance', category: 'offensive', higherIsBetter: true, unit: 'yds' },
-      { key: 'totalYards', label: 'Total Yards', shortLabel: 'TYds', type: 'distance', category: 'offensive', higherIsBetter: true, unit: 'yds' },
-      { key: 'firstDowns', label: 'First Downs', shortLabel: '1st', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'completions', label: 'Completions', shortLabel: 'Comp', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'interceptions', label: 'Interceptions', shortLabel: 'INT', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'sacks', label: 'Sacks', shortLabel: 'Sck', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'fumbles', label: 'Fumbles', shortLabel: 'Fum', type: 'count', category: 'general', higherIsBetter: false },
-      { key: 'penalties', label: 'Penalties', shortLabel: 'Pen', type: 'count', category: 'general', higherIsBetter: false },
-      { key: 'timeOfPossession', label: 'Time of Possession', shortLabel: 'TOP', type: 'duration', category: 'general', higherIsBetter: true },
-    ],
-    formations: [
-      { key: 'offense-standard', label: 'Offense (Standard)', playerCount: 11, rows: [5, 1, 2, 2, 1], positions: ['LT', 'LG', 'C', 'RG', 'RT', 'QB', 'RB', 'FB', 'WR', 'WR', 'TE'] },
-      { key: 'defense-4-3', label: 'Defense (4-3)', playerCount: 11, rows: [4, 3, 2, 2], positions: ['DE', 'DT', 'DT', 'DE', 'LB', 'LB', 'LB', 'CB', 'CB', 'SS', 'FS'] },
-    ],
-    positionCategories: ['Offense', 'Defense', 'Special Teams'],
-  },
-
-  // =========================================================================
-  // HOCKEY (Ice/Field)
-  // =========================================================================
-  HOCKEY: {
-    sport: 'HOCKEY',
-    name: 'Hockey',
-    icon: '🏒',
-    primaryColor: 'blue',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Goal', unit: 'goals' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Period',
-    periodCount: 3,
-    matchDuration: 60,
-    eventTypes: [
-      { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '🥅', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true, hasModifiers: ['power_play', 'short_handed', 'empty_net'] },
-      { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
-      { key: 'PENALTY_MINOR', label: 'Minor Penalty (2 min)', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      { key: 'PENALTY_MAJOR', label: 'Major Penalty (5 min)', category: 'disciplinary', icon: '🟧', color: 'text-orange-600', bgColor: 'bg-orange-100 dark:bg-orange-900/30', requiresPlayer: true },
-      { key: 'PENALTY_MISCONDUCT', label: 'Misconduct', category: 'disciplinary', icon: '🟥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'POWER_PLAY_START', label: 'Power Play Start', category: 'other', icon: '⚡', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: false },
-      { key: 'SAVE', label: 'Save', category: 'other', icon: '🧤', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
-      { key: 'FACEOFF_WIN', label: 'Faceoff Win', category: 'other', icon: '🔄', color: 'text-indigo-600', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-    ],
-    statistics: [
-      { key: 'goals', label: 'Goals', shortLabel: 'G', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'assists', label: 'Assists', shortLabel: 'A', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'points', label: 'Points (G+A)', shortLabel: 'P', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'plusMinus', label: '+/-', shortLabel: '+/-', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'shots', label: 'Shots', shortLabel: 'SOG', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'saves', label: 'Saves', shortLabel: 'SV', type: 'count', category: 'goalkeeper', higherIsBetter: true },
-      { key: 'savePercentage', label: 'Save %', shortLabel: 'SV%', type: 'percentage', category: 'goalkeeper', higherIsBetter: true, maxValue: 100, unit: '%' },
-      { key: 'penaltyMinutes', label: 'Penalty Minutes', shortLabel: 'PIM', type: 'duration', category: 'defensive', higherIsBetter: false, unit: 'min' },
-      { key: 'faceoffWins', label: 'Faceoff Wins', shortLabel: 'FOW', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'hits', label: 'Hits', shortLabel: 'HIT', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'blockedShots', label: 'Blocked Shots', shortLabel: 'BLK', type: 'count', category: 'defensive', higherIsBetter: true },
-    ],
-    formations: [
-      { key: 'standard-6', label: 'Standard', playerCount: 6, rows: [1, 2, 2, 1], positions: ['G', 'LD', 'RD', 'LW', 'C', 'RW'] },
-      { key: 'power-play', label: 'Power Play (5v4)', playerCount: 5, rows: [1, 2, 2], positions: ['G', 'D', 'D', 'F', 'F'] },
-    ],
-    positionCategories: ['Forwards', 'Defense', 'Goaltender'],
-  },
-
-  // =========================================================================
-  // LACROSSE
-  // =========================================================================
-  LACROSSE: {
-    sport: 'LACROSSE',
-    name: 'Lacrosse',
-    icon: '🥍',
-    primaryColor: 'indigo',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Goal', unit: 'goals' },
-    hasDraws: false,
-    hasPeriods: true,
-    periodName: 'Quarter',
-    periodCount: 4,
-    matchDuration: 60,
-    eventTypes: [
-      { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '🥅', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
-      { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
-      { key: 'GROUND_BALL', label: 'Ground Ball', category: 'other', icon: '🥍', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
-      { key: 'FACEOFF_WIN', label: 'Faceoff Win', category: 'other', icon: '🔄', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: true },
-      { key: 'SAVE', label: 'Save', category: 'other', icon: '🧤', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
-      { key: 'TURNOVER', label: 'Turnover', category: 'other', icon: '🔄', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'PENALTY', label: 'Penalty', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-      COMMON_EVENTS.TIMEOUT,
-    ],
-    statistics: [
-      { key: 'goals', label: 'Goals', shortLabel: 'G', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'assists', label: 'Assists', shortLabel: 'A', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'groundBalls', label: 'Ground Balls', shortLabel: 'GB', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'faceoffsWon', label: 'Faceoffs Won', shortLabel: 'FOW', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'saves', label: 'Saves', shortLabel: 'SV', type: 'count', category: 'goalkeeper', higherIsBetter: true },
-      { key: 'turnovers', label: 'Turnovers', shortLabel: 'TO', type: 'count', category: 'general', higherIsBetter: false },
-      { key: 'causedTurnovers', label: 'Caused Turnovers', shortLabel: 'CT', type: 'count', category: 'defensive', higherIsBetter: true },
-    ],
-    formations: [
-      { key: 'standard-10', label: 'Standard', playerCount: 10, rows: [1, 3, 3, 3], positions: ['G', 'D', 'D', 'D', 'M', 'M', 'M', 'A', 'A', 'A'] },
-    ],
-    positionCategories: ['Attack', 'Midfield', 'Defense', 'Goalie'],
-  },
-
-  // =========================================================================
-  // AUSTRALIAN RULES (AFL)
-  // =========================================================================
-  AUSTRALIAN_RULES: {
-    sport: 'AUSTRALIAN_RULES',
-    name: 'Australian Rules',
-    icon: '🏉',
-    primaryColor: 'yellow',
-    secondaryColor: 'navy',
-    scoringTerms: { primary: 'Goal', secondary: 'Behind', unit: 'points' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Quarter',
-    periodCount: 4,
-    matchDuration: 80,
-    eventTypes: [
-      { key: 'GOAL', label: 'Goal (6 pts)', category: 'scoring', icon: '🥅', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 6, requiresPlayer: true },
-      { key: 'BEHIND', label: 'Behind (1 pt)', category: 'scoring', icon: '🎯', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 1, requiresPlayer: true },
-      { key: 'MARK', label: 'Mark', category: 'other', icon: '🙌', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: true },
-      { key: 'TACKLE', label: 'Tackle', category: 'other', icon: '💪', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
-      { key: 'FREE_KICK', label: 'Free Kick', category: 'other', icon: '🦶', color: 'text-cyan-600', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30', requiresPlayer: true },
-      { key: 'REPORT', label: 'Report', category: 'disciplinary', icon: '🟥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-    ],
-    statistics: [
-      { key: 'goals', label: 'Goals', shortLabel: 'G', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'behinds', label: 'Behinds', shortLabel: 'B', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'disposals', label: 'Disposals', shortLabel: 'Disp', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'kicks', label: 'Kicks', shortLabel: 'K', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'handballs', label: 'Handballs', shortLabel: 'HB', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'marks', label: 'Marks', shortLabel: 'M', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'tackles', label: 'Tackles', shortLabel: 'T', type: 'count', category: 'defensive', higherIsBetter: true },
-      { key: 'hitouts', label: 'Hitouts', shortLabel: 'HO', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'clearances', label: 'Clearances', shortLabel: 'CL', type: 'count', category: 'general', higherIsBetter: true },
-    ],
-    formations: [
-      { key: 'standard-18', label: 'Standard', playerCount: 18, rows: [6, 6, 6], positions: ['FB', 'CHB', 'CHB', 'CHB', 'FB', 'HB', 'C', 'W', 'R', 'W', 'C', 'HF', 'CHF', 'CHF', 'CHF', 'HF', 'FF', 'FF'] },
-    ],
-    positionCategories: ['Forward', 'Midfield', 'Defense', 'Ruck'],
-  },
-
-  // =========================================================================
-  // GAELIC FOOTBALL
-  // =========================================================================
-  GAELIC_FOOTBALL: {
-    sport: 'GAELIC_FOOTBALL',
-    name: 'Gaelic Football',
-    icon: '🏐',
-    primaryColor: 'emerald',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Goal', secondary: 'Point', unit: 'points' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Half',
-    periodCount: 2,
-    matchDuration: 70,
-    eventTypes: [
-      { key: 'GOAL', label: 'Goal (3 pts)', category: 'scoring', icon: '🥅', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 3, requiresPlayer: true },
-      { key: 'POINT', label: 'Point (1 pt)', category: 'scoring', icon: '🎯', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', points: 1, requiresPlayer: true },
-      { key: 'FREE_KICK', label: 'Free Kick', category: 'set_piece', icon: '🦶', color: 'text-purple-600', bgColor: 'bg-purple-100 dark:bg-purple-900/30', requiresPlayer: true },
-      { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'BLACK_CARD', label: 'Black Card', category: 'disciplinary', icon: '⬛', color: 'text-gray-600', bgColor: 'bg-gray-100 dark:bg-gray-800', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-    ],
-    statistics: [
-      { key: 'goals', label: 'Goals', shortLabel: 'G', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'points', label: 'Points', shortLabel: 'P', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'frees', label: 'Frees Won', shortLabel: 'F', type: 'count', category: 'general', higherIsBetter: true },
-      { key: 'turnovers', label: 'Turnovers', shortLabel: 'TO', type: 'count', category: 'general', higherIsBetter: false },
-      { key: 'soloRuns', label: 'Solo Runs', shortLabel: 'SR', type: 'count', category: 'offensive', higherIsBetter: true },
-    ],
-    formations: [
-      { key: 'standard-15', label: 'Standard', playerCount: 15, rows: [1, 3, 3, 2, 3, 3], positions: ['GK', 'CB', 'FB', 'CB', 'HB', 'CHB', 'HB', 'MF', 'MF', 'HF', 'CHF', 'HF', 'CF', 'FF', 'CF'] },
-    ],
-    positionCategories: ['Goalkeeper', 'Defense', 'Midfield', 'Forward'],
-  },
-
-  // =========================================================================
-  // FUTSAL
-  // =========================================================================
-  FUTSAL: {
-    sport: 'FUTSAL',
-    name: 'Futsal',
-    icon: '⚽',
-    primaryColor: 'teal',
-    secondaryColor: 'white',
-    scoringTerms: { primary: 'Goal', unit: 'goals' },
-    hasDraws: true,
-    hasPeriods: true,
-    periodName: 'Half',
-    periodCount: 2,
-    matchDuration: 40,
-    eventTypes: [
-      { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '⚽', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true },
-      { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
-      { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'FOUL', label: 'Foul', category: 'other', icon: '⚠️', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
-      { key: 'ACCUMULATED_FOUL', label: 'Accumulated Foul (6th+)', category: 'other', icon: '🔴', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: false },
-      COMMON_EVENTS.SUBSTITUTION,
-      COMMON_EVENTS.TIMEOUT,
-    ],
-    statistics: [
-      { key: 'goals', label: 'Goals', shortLabel: 'G', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'assists', label: 'Assists', shortLabel: 'A', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'shots', label: 'Shots', shortLabel: 'Sh', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'saves', label: 'Saves', shortLabel: 'SV', type: 'count', category: 'goalkeeper', higherIsBetter: true },
-      { key: 'fouls', label: 'Fouls', shortLabel: 'F', type: 'count', category: 'defensive', higherIsBetter: false },
-      { key: 'accumulatedFouls', label: 'Accumulated Fouls', shortLabel: 'AF', type: 'count', category: 'defensive', higherIsBetter: false },
-    ],
-    formations: [
-      { key: 'standard-5', label: 'Standard', playerCount: 5, rows: [1, 2, 2], positions: ['GK', 'FX', 'FX', 'AL', 'PV'] },
-      { key: 'power-play', label: 'Power Play (5v4)', playerCount: 5, rows: [1, 2, 2], positions: ['GK', 'AL', 'AL', 'PV', 'PV'] },
-    ],
-    positionCategories: ['Goalkeeper', 'Defense', 'Midfield', 'Attack'],
-  },
-
-  // =========================================================================
-  // BEACH FOOTBALL
-  // =========================================================================
-  BEACH_FOOTBALL: {
-    sport: 'BEACH_FOOTBALL',
-    name: 'Beach Football',
-    icon: '🏖️',
-    primaryColor: 'cyan',
-    secondaryColor: 'yellow',
-    scoringTerms: { primary: 'Goal', unit: 'goals' },
-    hasDraws: false,
-    hasPeriods: true,
-    periodName: 'Period',
-    periodCount: 3,
-    matchDuration: 36,
-    eventTypes: [
-      { key: 'GOAL', label: 'Goal', category: 'scoring', icon: '⚽', color: 'text-green-600', bgColor: 'bg-green-100 dark:bg-green-900/30', points: 1, requiresPlayer: true, hasModifiers: ['bicycle_kick', 'header', 'volley'] },
-      { key: 'ASSIST', label: 'Assist', category: 'scoring', icon: '🎯', color: 'text-blue-600', bgColor: 'bg-blue-100 dark:bg-blue-900/30', requiresPlayer: true },
-      { key: 'YELLOW_CARD', label: 'Yellow Card', category: 'disciplinary', icon: '🟨', color: 'text-yellow-600', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30', requiresPlayer: true },
-      { key: 'RED_CARD', label: 'Red Card', category: 'disciplinary', icon: '🟥', color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', requiresPlayer: true },
-      { key: 'FOUL', label: 'Foul', category: 'other', icon: '⚠️', color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', requiresPlayer: true },
-      COMMON_EVENTS.SUBSTITUTION,
-    ],
-    statistics: [
-      { key: 'goals', label: 'Goals', shortLabel: 'G', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'assists', label: 'Assists', shortLabel: 'A', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'shots', label: 'Shots', shortLabel: 'Sh', type: 'count', category: 'offensive', higherIsBetter: true },
-      { key: 'saves', label: 'Saves', shortLabel: 'SV', type: 'count', category: 'goalkeeper', higherIsBetter: true },
-      { key: 'bicycleKicks', label: 'Bicycle Kicks', shortLabel: 'BK', type: 'count', category: 'offensive', higherIsBetter: true },
-    ],
-    formations: [
-      { key: 'standard-5', label: 'Standard', playerCount: 5, rows: [1, 2, 2], positions: ['GK', 'DF', 'DF', 'WG', 'PV'] },
-    ],
-    positionCategories: ['Goalkeeper', 'Defense', 'Attack'],
-  },
+  FOOTBALL: FOOTBALL_CONFIG,
+  RUGBY: RUGBY_CONFIG,
+  CRICKET: CRICKET_CONFIG,
+  BASKETBALL: BASKETBALL_CONFIG,
+  AMERICAN_FOOTBALL: AMERICAN_FOOTBALL_CONFIG,
+  NETBALL: NETBALL_CONFIG,
+  HOCKEY: HOCKEY_CONFIG,
+  LACROSSE: LACROSSE_CONFIG,
+  AUSTRALIAN_RULES: AFL_CONFIG,
+  GAELIC_FOOTBALL: GAELIC_CONFIG,
+  FUTSAL: FUTSAL_CONFIG,
+  BEACH_FOOTBALL: BEACH_FOOTBALL_CONFIG,
 };
 
 // =============================================================================
@@ -729,9 +672,14 @@ export const SPORT_DASHBOARD_CONFIGS: Record<Sport, SportDashboardConfig> = {
 // =============================================================================
 
 /**
- * Get sport configuration by sport key
+ * Get sport dashboard configuration
+ * @throws {Error} If sport is invalid
  */
 export function getSportConfig(sport: Sport): SportDashboardConfig {
+  const result = SportEnum.safeParse(sport);
+  if (!result.success) {
+    throw new Error(`Invalid sport: ${sport}. Valid sports: ${SportEnum.options.join(', ')}`);
+  }
   return SPORT_DASHBOARD_CONFIGS[sport];
 }
 
@@ -739,36 +687,57 @@ export function getSportConfig(sport: Sport): SportDashboardConfig {
  * Get event types for a sport
  */
 export function getSportEventTypes(sport: Sport): MatchEventType[] {
-  return SPORT_DASHBOARD_CONFIGS[sport]?.eventTypes || [];
+  return getSportConfig(sport).eventTypes;
 }
 
 /**
- * Get statistics for a sport
+ * Get event type by key
  */
-export function getSportStatistics(sport: Sport): SportStatistic[] {
-  return SPORT_DASHBOARD_CONFIGS[sport]?.statistics || [];
+export function getEventTypeByKey(sport: Sport, key: string): MatchEventType | undefined {
+  return getSportConfig(sport).eventTypes.find(e => e.key === key);
 }
 
 /**
- * Get formations for a sport
+ * Get scoring events for a sport
  */
-export function getSportFormations(sport: Sport): FormationConfig[] {
-  return SPORT_DASHBOARD_CONFIGS[sport]?.formations || [];
+export function getScoringEvents(sport: Sport): MatchEventType[] {
+  return getSportConfig(sport).eventTypes.filter(e => e.category === 'scoring');
+}
+
+/**
+ * Get disciplinary events for a sport
+ */
+export function getDisciplinaryEvents(sport: Sport): MatchEventType[] {
+  return getSportConfig(sport).eventTypes.filter(e => e.category === 'disciplinary');
 }
 
 /**
  * Get scoring term for a sport
  */
 export function getScoringTerm(sport: Sport, plural: boolean = false): string {
-  const config = SPORT_DASHBOARD_CONFIGS[sport];
-  return plural ? config?.scoringTerms.unit : config?.scoringTerms.primary;
+  const config = getSportConfig(sport);
+  return plural ? config.scoringTerms.unit : config.scoringTerms.primary;
 }
 
 /**
  * Check if sport has draws
  */
 export function sportHasDraws(sport: Sport): boolean {
-  return SPORT_DASHBOARD_CONFIGS[sport]?.hasDraws ?? true;
+  return getSportConfig(sport).hasDraws;
+}
+
+/**
+ * Check if sport has overtime
+ */
+export function sportHasOvertime(sport: Sport): boolean {
+  return getSportConfig(sport).hasOvertime;
+}
+
+/**
+ * Check if sport has formations
+ */
+export function sportHasFormations(sport: Sport): boolean {
+  return getSportConfig(sport).hasFormations;
 }
 
 /**
@@ -777,5 +746,38 @@ export function sportHasDraws(sport: Sport): boolean {
 export function getAllSports(): Sport[] {
   return Object.keys(SPORT_DASHBOARD_CONFIGS) as Sport[];
 }
+
+/**
+ * Get match duration for a sport
+ */
+export function getMatchDuration(sport: Sport): number {
+  return getSportConfig(sport).matchDuration;
+}
+
+/**
+ * Get period information for a sport
+ */
+export function getPeriodInfo(sport: Sport): { name: string; count: number } {
+  const config = getSportConfig(sport);
+  return { name: config.periodName, count: config.periodCount };
+}
+
+/**
+ * Validate sport enum value
+ */
+export function isValidSport(value: unknown): value is Sport {
+  return SportEnum.safeParse(value).success;
+}
+
+/**
+ * Get dashboard widgets for a sport
+ */
+export function getDashboardWidgets(sport: Sport): string[] {
+  return getSportConfig(sport).dashboardWidgets;
+}
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
 
 export default SPORT_DASHBOARD_CONFIGS;
