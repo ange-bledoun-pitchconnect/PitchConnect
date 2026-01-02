@@ -1,513 +1,510 @@
 // ============================================================================
-// PitchConnect Type Definitions - Comprehensive SaaS Football League Management
+// 📦 PITCHCONNECT TYPE DEFINITIONS - Central Export v7.5.0
+// Path: src/types/index.ts
+// ============================================================================
+//
+// Central barrel file for all type definitions.
+// Re-exports from domain-specific type files for convenience.
+//
+// USAGE:
+//   import { Sport, Player, Match, UserRole } from '@/types';
+//
+// For specific domains, you can also import directly:
+//   import { Sport, Position, SPORT_CONFIGS } from '@/types/player';
+//   import { Match, MatchEvent } from '@/types/match';
+//
 // ============================================================================
 
 // ============================================================================
-// USER & AUTHENTICATION TYPES
+// AUTHENTICATION & AUTHORIZATION
 // ============================================================================
 
-export type UserRole = 'PLAYER' | 'COACH' | 'MANAGER' | 'LEAGUE_ADMIN' | 'SUPER_ADMIN' | 'REFEREE';
-
-export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION' | 'DELETED';
-
-export interface User {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  avatarUrl?: string;
-  roles: UserRole[];
-  status: UserStatus;
-  isSuperAdmin: boolean;
-  phone?: string;
-  dateOfBirth?: string;
-  gender?: 'MALE' | 'FEMALE' | 'OTHER';
-  address?: string;
-  city?: string;
-  country?: string;
-  zipCode?: string;
+export type {
+  // Core auth types
+  UserRole,
+  PermissionName,
+  UserStatus,
+  AccountTier,
   
-  // Account metadata
-  emailVerified: boolean;
-  phoneVerified: boolean;
-  lastLogin?: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt?: string;
-
-  // Relationships
-  subscription?: Subscription;
-}
-
-export interface UserSession {
-  id: string;
-  userId: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  roles: UserRole[];
-  isSuperAdmin: boolean;
-  iat: number;
-  exp: number;
-}
-
-export interface UserProfile extends User {
-  stats?: UserStats;
-  preferences?: UserPreferences;
-}
-
-export interface UserStats {
-  totalMatches: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  goalsScored: number;
-  goalsAgainst: number;
-  assists: number;
-  yellowCards: number;
-  redCards: number;
-  avgRating: number;
-}
-
-export interface UserPreferences {
-  userId: string;
-  preferredPosition?: string;
-  preferredFoot?: 'LEFT' | 'RIGHT' | 'BOTH';
-  language: 'EN' | 'FR' | 'ES' | 'DE';
-  timezone: string;
-  notificationEmail: boolean;
-  notificationSMS: boolean;
-  notificationPush: boolean;
-  darkMode: boolean;
-}
-
-// ============================================================================
-// CLUB TYPES
-// ============================================================================
-
-export type ClubTier = 'AMATEUR' | 'SEMI_PROFESSIONAL' | 'PROFESSIONAL';
-
-export interface Club {
-  id: string;
-  name: string;
-  shortName: string;
-  description?: string;
-  managerId: string;
-  manager?: User;
-  tier: ClubTier;
-  foundedYear?: number;
-  city: string;
-  country: string;
-  stadium?: string;
-  capacity?: number;
-  website?: string;
-  logoUrl?: string;
-  bannerUrl?: string;
+  // Credentials & registration
+  LoginCredentials,
+  RegisterData,
+  PasswordResetRequest,
+  PasswordResetConfirm,
+  PasswordChange,
+  EmailVerification,
   
-  // Status & metadata
-  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
-  verified: boolean;
-  createdAt: string;
-  updatedAt: string;
-
-  // Statistics
-  stats?: ClubStats;
-  trophies?: number;
-}
-
-export interface ClubStats {
-  totalMatches: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  goalsFor: number;
-  goalsAgainst: number;
-  points: number;
-  averageAttendance?: number;
-}
-
-// ============================================================================
-// LEAGUE TYPES
-// ============================================================================
-
-export type LeagueFormat = 'ROUND_ROBIN' | 'KNOCKOUT' | 'GROUP_STAGE' | 'SWISS';
-
-export type LeagueStatus = 'DRAFT' | 'ONGOING' | 'COMPLETED' | 'CANCELLED' | 'PAUSED';
-
-export interface League {
-  id: string;
-  name: string;
-  description?: string;
-  createdByUserId: string;
-  createdByUser?: User;
-  season: number;
-  format: LeagueFormat;
-  status: LeagueStatus;
-  country?: string;
-  region?: string;
-  tier: ClubTier;
+  // Two-factor
+  TwoFactorSetup,
+  TwoFactorVerify,
   
-  // Configuration
-  maxTeams?: number;
-  minTeams?: number;
-  pointsWin: number; // Typically 3
-  pointsDraw: number; // Typically 1
-  pointsLoss: number; // Typically 0
+  // Session types
+  SessionUser,
+  AuthSession,
+  AuthState,
   
-  // Dates
-  startDate: string;
-  endDate?: string;
-  createdAt: string;
-  updatedAt: string;
-
-  // Relationships
-  teams?: Club[];
-  standings?: Standing[];
-  fixtures?: Fixture[];
-}
-
-export interface Standing {
-  leagueId: string;
-  clubId: string;
-  club?: Club;
-  position: number;
-  played: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  goalsFor: number;
-  goalsAgainst: number;
-  goalDifference: number;
-  points: number;
-  streak?: 'W' | 'D' | 'L'; // Last result
-}
-
-// ============================================================================
-// PLAYER TYPES
-// ============================================================================
-
-export type PlayerPosition = 'GOALKEEPER' | 'DEFENDER' | 'MIDFIELDER' | 'FORWARD' | 'WINGER';
-
-export interface Player {
-  id: string;
-  userId: string;
-  user?: User;
-  clubId: string;
-  club?: Club;
-  jerseyNumber?: number;
-  position: PlayerPosition;
-  preferredFoot?: 'LEFT' | 'RIGHT' | 'BOTH';
-  height?: number; // cm
-  weight?: number; // kg
-  marketValue?: number;
+  // Token types
+  AccessTokenPayload,
+  RefreshTokenPayload,
+  TokenPair,
   
-  // Player status
-  status: 'ACTIVE' | 'INJURED' | 'SUSPENDED' | 'LOANED_OUT' | 'RETIRED';
-  joinedDate: string;
-  contractExpiry?: string;
+  // Authorization
+  AuthorizationResult,
+  AuthorizationContext,
+  RouteProtection,
   
-  // Statistics
-  stats?: PlayerStats;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface PlayerStats {
-  playerId: string;
-  season: number;
-  totalMatches: number;
-  matches: number;
-  goalsScored: number;
-  assists: number;
-  yellowCards: number;
-  redCards: number;
-  minPlayed: number;
-  averageRating: number;
-}
-
-// ============================================================================
-// MATCH/FIXTURE TYPES
-// ============================================================================
-
-export type MatchStatus = 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'POSTPONED' | 'CANCELLED' | 'ABANDONED';
-
-export interface Fixture {
-  id: string;
-  leagueId: string;
-  league?: League;
-  homeClubId: string;
-  homeClub?: Club;
-  awayClubId: string;
-  awayClub?: Club;
-  round: number;
-  scheduledDate: string;
-  kickoffTime?: string;
-  status: MatchStatus;
+  // OAuth
+  OAuthProvider,
+  OAuthAccountLink,
+  OAuthProfile,
   
-  // Venue
-  venue?: string;
-  attendance?: number;
-  referee?: string;
-  refereeId?: string;
-
-  // Result
-  result?: MatchResult;
+  // Security
+  LoginAttempt,
+  ActiveSession,
+  SecurityEventType,
+  SecurityEvent,
   
-  // Events
-  events?: MatchEvent[];
+  // API
+  ApiKey,
+  ApiKeyCreated,
   
-  // Metadata
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MatchResult {
-  fixtureId: string;
-  homeGoals: number;
-  awayGoals: number;
-  homeXG?: number; // Expected Goals
-  awayXG?: number;
-  possession?: { home: number; away: number }; // Percentage
-  shots?: { home: number; away: number };
-  shotsOnTarget?: { home: number; away: number };
-  cornerKicks?: { home: number; away: number };
-  fouls?: { home: number; away: number };
-  completedAt?: string;
-}
-
-export type MatchEventType = 'GOAL' | 'OWN_GOAL' | 'ASSIST' | 'YELLOW_CARD' | 'RED_CARD' | 'SUBSTITUTION' | 'INJURY_TIME' | 'PENALTY' | 'MISSED_PENALTY';
-
-export interface MatchEvent {
-  id: string;
-  fixtureId: string;
-  type: MatchEventType;
-  minute: number;
-  team: 'HOME' | 'AWAY';
-  playerId?: string;
-  player?: Player;
-  assistPlayerId?: string;
-  assistPlayer?: Player;
-  description?: string;
-  createdAt: string;
-}
-
-// ============================================================================
-// SUBSCRIPTION & BILLING TYPES
-// ============================================================================
-
-export type SubscriptionTier = 'FREE' | 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE';
-
-export type SubscriptionStatus = 'ACTIVE' | 'TRIAL' | 'CANCELED' | 'EXPIRED' | 'SUSPENDED';
-
-export type BillingCycle = 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY';
-
-export interface Subscription {
-  id: string;
-  userId: string;
-  user?: User;
-  tier: SubscriptionTier;
-  status: SubscriptionStatus;
-  cycle: BillingCycle;
-  amount: number;
-  currency: string;
+  // Invitation
+  UserInvitation,
+  InvitationAcceptance,
   
-  // Dates
-  startDate: string;
-  endDate?: string;
-  trialEndsAt?: string;
-  renewalDate?: string;
-  cancelledAt?: string;
+  // Errors
+  AuthErrorCode,
+  AuthError,
   
-  // Features
-  maxTeams: number;
-  maxPlayers: number;
-  maxLeagues: number;
-  analyticsAccess: boolean;
-  apiAccess: boolean;
-  prioritySupport: boolean;
-  customBranding: boolean;
+  // Responses
+  AuthResponse,
+  LoginResponse,
+  RegisterResponse,
   
-  // Billing
-  paymentMethodId?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+  // Utilities
+  AuthenticatedUser,
+  PublicUserInfo,
+} from './auth';
 
-export interface Payment {
-  id: string;
-  subscriptionId: string;
-  subscription?: Subscription;
-  amount: number;
-  currency: string;
-  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
-  paymentMethod: 'STRIPE' | 'PAYPAL' | 'BANK_TRANSFER';
-  transactionId?: string;
-  invoice?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export {
+  ROLE_HIERARCHY,
+  ADMIN_ROLES,
+  CLUB_MANAGEMENT_ROLES,
+  COACHING_ROLES,
+  MEDICAL_ROLES,
+  PLAYER_ROLES,
+  FAMILY_ROLES,
+  STAFF_ROLES,
+  isValidRole,
+  hasRole,
+  hasAnyRole,
+  hasAllRoles,
+  getHighestRole,
+  isHigherRole,
+} from './auth';
 
 // ============================================================================
-// DOCUMENT & RECORD TYPES
+// PLAYER & SPORTS
 // ============================================================================
 
-export type DocumentType = 'CONTRACT' | 'AGREEMENT' | 'INVOICE' | 'RECEIPT' | 'CERTIFICATE' | 'OTHER';
-
-export interface Document {
-  id: string;
-  type: DocumentType;
-  title: string;
-  description?: string;
-  fileUrl: string;
-  fileSize: number;
-  mimeType: string;
+export type {
+  // Core sport types
+  Sport,
+  Position,
+  SportConfig,
+  ScoreBreakdownConfig,
   
-  // Ownership & relationships
-  createdByUserId: string;
-  createdByUser?: User;
-  clubId?: string;
-  club?: Club;
-  playerId?: string;
-  player?: Player;
+  // Fitness & Health
+  FitnessStatus,
+  FitnessAssessmentType,
+  InjurySeverity,
+  InjuryStatus,
+  AvailabilityStatus,
+} from './player';
+
+export {
+  // Sport configurations
+  SPORT_CONFIGS,
   
-  // Status
-  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-  expiryDate?: string;
+  // Status configurations
+  FITNESS_STATUS_CONFIG,
+  INJURY_SEVERITY_CONFIG,
+  INJURY_STATUS_CONFIG,
+  AVAILABILITY_STATUS_CONFIG,
   
-  // Metadata
-  uploadedAt: string;
-  updatedAt: string;
-}
-
-export interface AuditLog {
-  id: string;
-  action: string;
-  userId: string;
-  user?: User;
-  targetId?: string;
-  targetType?: string;
-  metadata?: Record<string, any>;
-  ipAddress?: string;
-  userAgent?: string;
-  createdAt: string;
-}
+  // Common data
+  COMMON_INJURIES,
+  
+  // Helper functions
+  getStatLabels,
+  getPositionsForSport,
+  getFormationsForSport,
+  calculateTotalScore,
+  formatPosition,
+  getEventTypesForSport,
+  usesScoreBreakdown,
+  getSportByName,
+  getAllSports,
+} from './player';
 
 // ============================================================================
-// NOTIFICATION TYPES
+// MATCH SYSTEM
 // ============================================================================
 
-export type NotificationType = 'MATCH_REMINDER' | 'RESULT_UPDATE' | 'TEAM_INVITE' | 'SYSTEM' | 'PROMOTION' | 'ACCOUNT';
+export type {
+  // Core match types
+  Match,
+  MatchEvent,
+  MatchSquad,
+  MatchAttendance,
+  PlayerMatchPerformance,
+  MatchOfficial,
+  
+  // Score breakdowns
+  ScoreBreakdown,
+  FootballScoreBreakdown,
+  RugbyScoreBreakdown,
+  BasketballScoreBreakdown,
+  CricketScoreBreakdown,
+  AmericanFootballScoreBreakdown,
+  HockeyScoreBreakdown,
+  NetballScoreBreakdown,
+  GenericScoreBreakdown,
+  
+  // Filters & queries
+  MatchFilters,
+  MatchPermissions,
+  
+  // API responses
+  MatchListResponse,
+  MatchDetailResponse,
+  
+  // Live match
+  LiveMatchUpdate,
+  LiveMatchTimeline,
+} from './match';
 
-export interface Notification {
-  id: string;
-  userId: string;
-  user?: User;
-  type: NotificationType;
-  title: string;
-  message: string;
-  actionUrl?: string;
-  read: boolean;
-  readAt?: string;
-  createdAt: string;
-}
-
-// ============================================================================
-// ROLE UPGRADE REQUEST TYPES
-// ============================================================================
-
-export interface RoleUpgradeRequest {
-  id: string;
-  userId: string;
-  user?: User;
-  currentRole: UserRole;
-  requestedRole: UserRole;
-  reason?: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  reviewedBy?: string;
-  reviewedByUser?: User;
-  reviewedAt?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// ============================================================================
-// STATISTICS & ANALYTICS TYPES
-// ============================================================================
-
-export interface TeamStats {
-  teamId: string;
-  season: number;
-  totalMatches: number;
-  matches: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  goalsFor: number;
-  goalsAgainst: number;
-  goalDifference: number;
-  points: number;
-  possession: number;
-  shotsOnTarget: number;
-  passes: number;
-  passAccuracy: number;
-}
-
-export interface AnalyticsData {
-  period: string;
-  matches: number;
-  goals: number;
-  assists: number;
-  yellowCards: number;
-  redCards: number;
-  possession: number;
-  shotsOnTarget: number;
-  trend: 'UP' | 'DOWN' | 'STABLE';
-}
-
-export interface TrainingAnalytics {
-  teamId: string;
-  sessionCount: number;
-  averageAttendance: number;
-  totalHours: number;
-  drillsCompleted: number;
-  playerFeedback: number;
-  period: string;
-}
-
-export interface MatchEventStats {
-  eventType: MatchEventType;
-  totalCount: number;
-  byPlayer: Record<string, number>;
-  timeline: { minute: number; count: number }[];
-}
-
-export interface PlayerPerformance {
-  playerId: string;
-  matches: number;
-  goals: number;
-  assists: number;
-  passes: number;
-  passAccuracy: number;
-  shots: number;
-  shotsOnTarget: number;
-  tackles: number;
-  interceptions: number;
-  fouls: number;
-  rating: number;
-}
+export {
+  MATCH_STATUS_CONFIG,
+  MATCH_TYPE_CONFIG,
+  LIVE_STATUSES,
+  FINISHED_STATUSES,
+  PENDING_STATUSES,
+} from './match';
 
 // ============================================================================
-// API RESPONSE TYPES
+// MEDICAL & FITNESS
 // ============================================================================
 
-export interface ApiResponse<T> {
+export type {
+  // Injury types
+  Injury,
+  InjuryLocation,
+  
+  // Medical records
+  MedicalRecord,
+  MedicalRecordType,
+  
+  // Fitness
+  FitnessAssessment,
+  FitnessMetrics,
+  
+  // Return to play
+  RTPStage,
+  
+  // Access control
+  MedicalAccessConfig,
+  
+  // Concussion
+  ConcussionProtocol,
+} from './medical';
+
+export {
+  INJURY_LOCATIONS,
+  INJURY_TYPES,
+  MEDICAL_RECORD_TYPES,
+  RTP_PROTOCOL,
+  MEDICAL_ACCESS_BY_ROLE,
+  CONCUSSION_PROTOCOLS,
+  
+  // Helper functions
+  getInjurySeverityColor,
+  getFitnessStatusColor,
+  getDaysSinceInjury,
+  getDaysToReturn,
+  getRTPStage,
+  getRTPProgress,
+  canAccessMedicalRecords,
+} from './medical';
+
+// ============================================================================
+// TRAINING
+// ============================================================================
+
+export type {
+  // Core training types
+  TrainingSessionWithRelations,
+  TrainingSessionListItem,
+  TrainingAttendanceWithPlayer,
+  TrainingMedia,
+  CoachWithUser,
+  
+  // Input types
+  CreateTrainingSessionInput,
+  UpdateTrainingSessionInput,
+  TrainingDrill,
+  
+  // Attendance
+  RecordAttendanceInput,
+  BulkAttendanceInput,
+  AttendanceSummary,
+  PlayerAttendanceRecord,
+  
+  // Filters
+  TrainingSessionFilters,
+  PaginationOptions as TrainingPaginationOptions,
+  
+  // Analytics
+  TrainingAnalytics,
+  CategoryBreakdown,
+  IntensityBreakdown,
+  CoachBreakdown,
+  TeamBreakdown,
+  TimeSeriesData,
+  
+  // Calendar
+  TrainingCalendarEvent,
+  CalendarViewOptions,
+  
+  // Templates
+  TrainingTemplate,
+  CreateFromTemplateInput,
+  
+  // Recurring
+  RecurringTrainingSchedule,
+  RecurrenceRule,
+  
+  // API
+  CreateTrainingSessionResponse,
+  ConflictWarning,
+  TrainingNotificationPayload,
+} from './training.types';
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+export type {
+  // Core notification types
+  NotificationType,
+  NotificationCategory,
+  NotificationPriority,
+  Notification,
+  NotificationMetadata,
+  NotificationAction,
+  
+  // Preferences
+  NotificationPreferences,
+  NotificationChannelConfig,
+  
+  // Filters
+  NotificationFilters,
+  NotificationSortOptions,
+  
+  // Push
+  FCMNotificationPayload,
+} from './notification';
+
+export {
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_TYPE_CATEGORY,
+  DEFAULT_CHANNEL_CONFIG,
+  
+  // Helper functions
+  getCategoryForType,
+  getNotificationIcon,
+  getNotificationColor,
+  formatNotificationTitle,
+  shouldUseSMS,
+  getTypesForCategory,
+  groupNotificationsByDate,
+  getUnreadCountByCategory,
+} from './notification';
+
+// ============================================================================
+// MEDIA
+// ============================================================================
+
+export type {
+  // Core media types
+  MediaContentWithRelations,
+  MediaContentListItem,
+  VideoQualityVariant,
+  MediaMetadata,
+  
+  // Upload types
+  UploadMediaInput,
+  UploadMediaResponse,
+  PresignedUploadResponse,
+  MultipartUploadPart,
+  CompleteMultipartUploadInput,
+  
+  // Update types
+  UpdateMediaInput,
+  
+  // Filters
+  MediaFilters,
+  PaginationOptions as MediaPaginationOptions,
+  PaginatedMediaResponse,
+  
+  // Processing
+  MediaProcessingJob,
+  ProcessingOutput,
+  TranscodeRequest,
+  ProcessingWebhookPayload,
+  
+  // Analytics
+  MediaAnalytics,
+  MediaStorageStats,
+  
+  // Gallery
+  MediaGallery,
+  GalleryItem,
+  
+  // Clips
+  CreateClipInput,
+  MediaClip,
+  
+  // Sharing
+  MediaShareLink,
+  CreateShareLinkInput,
+} from './media.types';
+
+export {
+  ALLOWED_IMAGE_TYPES,
+  ALLOWED_VIDEO_TYPES,
+  ALLOWED_AUDIO_TYPES,
+  ALLOWED_DOCUMENT_TYPES,
+  MAX_FILE_SIZES,
+  VIDEO_QUALITY_SETTINGS,
+} from './media.types';
+
+// ============================================================================
+// JOBS & RECRUITMENT
+// ============================================================================
+
+export type {
+  // Job types
+  JobPostingWithRelations,
+  JobPostingListItem,
+  JobApplicationWithRelations,
+  JobApplicationListItem,
+  
+  // Input types
+  CreateJobPostingInput,
+  UpdateJobPostingInput,
+  CreateJobApplicationInput,
+  ReviewApplicationInput,
+  
+  // Filters
+  JobPostingFilters,
+  JobApplicationFilters,
+  PaginationOptions as JobPaginationOptions,
+  
+  // Responses
+  PaginatedJobResponse,
+  PaginatedApplicationResponse,
+  
+  // Stats
+  JobPostingStats,
+  ApplicationStats,
+  
+  // Notifications
+  JobNotificationPayload,
+  
+  // Search
+  JobSearchResult,
+  JobSearchParams,
+} from './job.types';
+
+// ============================================================================
+// JOIN REQUESTS
+// ============================================================================
+
+export type {
+  // Core types
+  JoinRequestWithRelations,
+  JoinRequestListItem,
+  JoinRequestDetail,
+  JoinRequestPlayerInfo,
+  JoinRequestTeamInfo,
+  
+  // Input types
+  CreateJoinRequestInput,
+  ReviewJoinRequestInput,
+  WithdrawJoinRequestInput,
+  UpdateJoinRequestInput,
+  
+  // Filters
+  JoinRequestFilters,
+  PaginationOptions as JoinRequestPaginationOptions,
+  PaginatedJoinRequestResponse,
+  
+  // Stats
+  JoinRequestStats,
+  TeamJoinRequestSummary,
+  ClubJoinRequestSummary,
+  PlayerRequestStats,
+  
+  // Notifications
+  JoinRequestNotificationType,
+  JoinRequestNotificationPayload,
+  
+  // Permissions
+  JoinRequestPermissions,
+  
+  // API
+  CreateJoinRequestResponse,
+  ReviewJoinRequestResponse,
+  WithdrawJoinRequestResponse,
+  BulkReviewResponse,
+} from './join-request.types';
+
+export {
+  JOIN_REQUEST_STATUSES,
+  STATUS_CONFIG as JOIN_REQUEST_STATUS_CONFIG,
+  DEFAULT_EXPIRY_DAYS,
+  MAX_MESSAGE_LENGTH,
+  MAX_EXPERIENCE_LENGTH,
+  JOIN_REQUEST_MANAGER_ROLES,
+} from './join-request.types';
+
+// ============================================================================
+// COMMON API TYPES
+// ============================================================================
+
+/**
+ * Generic API response wrapper
+ */
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
-  error?: string;
-  message?: string;
-  timestamp: string;
+  error?: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown>;
+    field?: string;
+  };
+  meta?: {
+    timestamp: string;
+    requestId?: string;
+    duration?: number;
+  };
 }
 
+/**
+ * Generic paginated response
+ */
 export interface PaginatedResponse<T> {
   success: boolean;
   data: T[];
@@ -515,105 +512,157 @@ export interface PaginatedResponse<T> {
     page: number;
     limit: number;
     total: number;
-    pages: number;
+    totalPages: number;
+    hasMore: boolean;
+    hasPrevious: boolean;
   };
-  timestamp: string;
+  meta?: {
+    timestamp: string;
+    requestId?: string;
+  };
 }
 
+/**
+ * Generic filter options
+ */
+export interface FilterOptions {
+  search?: string;
+  status?: string | string[];
+  startDate?: Date | string;
+  endDate?: Date | string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * Bulk operation response
+ */
 export interface BulkOperationResponse {
   success: boolean;
   processed: number;
   succeeded: number;
   failed: number;
-  errors: { id: string; error: string }[];
-  startTime: string;
-  endTime: string;
-  duration: number;
-}
-
-export interface DashboardMetrics {
-  totalUsers: number;
-  activeUsers: number;
-  totalClubs: number;
-  totalLeagues: number;
-  totalMatches: number;
-  revenueThisMonth: number;
-  subscriptionMetrics: {
-    activeSubscriptions: number;
-    trialUsers: number;
-    churnRate: number;
-  };
-  systemHealth: {
-    uptime: number;
-    avgResponseTime: number;
-    errorRate: number;
-  };
-}
-
-export interface AnalyticsResponse<T> {
-  success: boolean;
-  data: T;
-  period: {
-    start: string;
-    end: string;
-  };
-  generated: string;
-}
-
-export interface StandingsResponse {
-  leagueId: string;
-  leagueName: string;
-  standings: Standing[];
-  lastUpdated: string;
-}
-
-export interface LeagueStatistics {
-  leagueId: string;
-  totalMatches: number;
-  totalGoals: number;
-  averageGoalsPerMatch: number;
-  totalAttendance: number;
-  averageAttendance: number;
-  topScorer?: {
-    playerId: string;
-    name: string;
-    goals: number;
-  };
-  mostAssists?: {
-    playerId: string;
-    name: string;
-    assists: number;
-  };
+  errors: Array<{
+    id: string;
+    error: string;
+  }>;
+  duration?: number;
 }
 
 // ============================================================================
-// FILTER & SEARCH TYPES
+// ENTITY REFERENCES (Minimal types for relationships)
 // ============================================================================
 
-export interface FilterOptions {
-  search?: string;
-  status?: string;
-  role?: string;
-  page?: number;
-  limit?: number;
-  sortBy?: string;
-  sortOrder?: 'ASC' | 'DESC';
+/**
+ * Minimal user reference
+ */
+export interface UserReference {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  avatar?: string | null;
 }
 
-export interface SearchQuery {
-  q: string;
-  type: 'CLUB' | 'PLAYER' | 'LEAGUE' | 'USER' | 'ALL';
-  limit?: number;
+/**
+ * Minimal club reference
+ */
+export interface ClubReference {
+  id: string;
+  name: string;
+  slug: string;
+  logo?: string | null;
+  sport: import('./player').Sport;
+}
+
+/**
+ * Minimal team reference
+ */
+export interface TeamReference {
+  id: string;
+  name: string;
+  slug?: string;
+  logo?: string | null;
+  clubId: string;
+}
+
+/**
+ * Minimal player reference
+ */
+export interface PlayerReference {
+  id: string;
+  userId: string;
+  user: UserReference;
+  primaryPosition?: string | null;
+  jerseyNumber?: number | null;
 }
 
 // ============================================================================
-// EXPORT TYPES FOR RE-EXPORTING COMMON TYPES
+// UTILITY TYPES
 // ============================================================================
 
-// Union types for easier use
-export type UserOrPlayer = User | Player;
-export type LeagueOrClub = League | Club;
-export type FixtureOrMatch = Fixture;
+/**
+ * Make all properties optional except specified keys
+ */
+export type PartialExcept<T, K extends keyof T> = Partial<T> & Pick<T, K>;
 
-// Status types
-export type EntityStatus = UserStatus | LeagueStatus | MatchStatus | SubscriptionStatus;
+/**
+ * Make all properties required except specified keys
+ */
+export type RequiredExcept<T, K extends keyof T> = Required<Omit<T, K>> & Pick<T, K>;
+
+/**
+ * Extract the type of array elements
+ */
+export type ArrayElement<T> = T extends readonly (infer E)[] ? E : never;
+
+/**
+ * Nullable type helper
+ */
+export type Nullable<T> = T | null;
+
+/**
+ * Optional type helper
+ */
+export type Optional<T> = T | undefined;
+
+/**
+ * Make specific fields nullable
+ */
+export type WithNullable<T, K extends keyof T> = Omit<T, K> & {
+  [P in K]: T[P] | null;
+};
+
+/**
+ * Deep partial type
+ */
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
+/**
+ * ID type (CUID format)
+ */
+export type ID = string;
+
+/**
+ * ISO date string
+ */
+export type ISODateString = string;
+
+/**
+ * Currency code (ISO 4217)
+ */
+export type CurrencyCode = string;
+
+/**
+ * Locale string (e.g., 'en-GB', 'es-ES')
+ */
+export type LocaleString = string;
+
+/**
+ * Timezone string (e.g., 'Europe/London', 'America/New_York')
+ */
+export type TimezoneString = string;

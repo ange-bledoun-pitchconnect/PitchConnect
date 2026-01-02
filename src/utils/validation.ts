@@ -1,351 +1,724 @@
-/**
- * Utility Functions - Production-grade helper functions for PitchConnect
- * Comprehensive validation, formatting, and conversion utilities
- */
+// ============================================================================
+// 🛡️ VALIDATION UTILITIES - PitchConnect v7.5.0
+// Path: src/utils/validation.ts
+// ============================================================================
+//
+// Enterprise-grade validation, formatting, and utility functions.
+// Fully typed with TypeScript for type safety.
+//
+// ============================================================================
+
+// ============================================================================
+// EMAIL VALIDATION (No Regex - Character by Character)
+// ============================================================================
 
 /**
- * Email validation - Ultra-simple bulletproof validator
- * Zero regex complexity - character-by-character validation
- * Production-grade email validation for PitchConnect
- * @param {string} email - Email address to validate
- * @returns {boolean} Whether email is valid
+ * Validates an email address without using regex
+ * Performs character-by-character validation
  */
-export const isValidEmail = (email) => {
-  if (!email || typeof email !== 'string') return false
-  const e = email.trim()
-  if (e.length < 5 || e.length > 254) return false
-  if (e.split('@').length !== 2) return false
-  const [local, domain] = e.split('@')
-  if (!local || local.length > 64 || local[0] === '.' || local[0] === '-' || local[local.length - 1] === '.' || local[local.length - 1] === '-') return false
-  if (!domain || domain.length > 255 || !domain.includes('.') || domain[0] === '.' || domain[0] === '-' || domain[domain.length - 1] === '.' || domain[domain.length - 1] === '-') return false
-  if (e.includes('..')) return false
-  const parts = domain.split('.')
-  if (parts.length < 2) return false
-  for (let i = 0; i < parts.length; i++) {
-    const p = parts[i]
-    if (!p || p.length > 63 || p[0] === '-' || p[p.length - 1] === '-') return false
+export function isValidEmail(email: string): boolean {
+  if (!email || typeof email !== 'string') return false;
+  
+  const trimmed = email.trim().toLowerCase();
+  if (trimmed.length < 5 || trimmed.length > 254) return false;
+  
+  // Find @ symbol
+  const atIndex = trimmed.indexOf('@');
+  if (atIndex === -1 || atIndex === 0) return false;
+  if (trimmed.indexOf('@', atIndex + 1) !== -1) return false; // Multiple @
+  
+  const localPart = trimmed.substring(0, atIndex);
+  const domainPart = trimmed.substring(atIndex + 1);
+  
+  // Validate local part
+  if (localPart.length === 0 || localPart.length > 64) return false;
+  if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
+  if (localPart.includes('..')) return false;
+  
+  // Valid local part characters
+  const validLocalChars = 'abcdefghijklmnopqrstuvwxyz0123456789.!#$%&\'*+/=?^_`{|}~-';
+  for (const char of localPart) {
+    if (!validLocalChars.includes(char)) return false;
   }
-  const tld = parts[parts.length - 1]
-  if (tld.length < 2) return false
-  for (let i = 0; i < tld.length; i++) {
-    const c = tld[i]
-    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return false
+  
+  // Validate domain part
+  if (domainPart.length === 0 || domainPart.length > 253) return false;
+  if (domainPart.startsWith('.') || domainPart.startsWith('-')) return false;
+  if (domainPart.endsWith('.') || domainPart.endsWith('-')) return false;
+  
+  const domainParts = domainPart.split('.');
+  if (domainParts.length < 2) return false;
+  
+  // Check TLD
+  const tld = domainParts[domainParts.length - 1];
+  if (tld.length < 2) return false;
+  
+  // Valid domain characters
+  const validDomainChars = 'abcdefghijklmnopqrstuvwxyz0123456789-';
+  for (const part of domainParts) {
+    if (part.length === 0 || part.length > 63) return false;
+    if (part.startsWith('-') || part.endsWith('-')) return false;
+    for (const char of part) {
+      if (!validDomainChars.includes(char)) return false;
+    }
   }
-  for (let i = 0; i < local.length; i++) {
-    const c = local[i]
-    const ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || '._+-'.includes(c)
-    if (!ok) return false
-  }
-  for (let i = 0; i < domain.length; i++) {
-    const c = domain[i]
-    const ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || '.-'.includes(c)
-    if (!ok) return false
-  }
-  return true
+  
+  return true;
 }
 
 /**
- * Format number with thousands separator and decimal places
- * @param {number} value - Number to format
- * @param {number} decimals - Decimal places (default: 2)
- * @param {string} locale - Locale string (default: 'en-US')
- * @returns {string} Formatted number
+ * Normalize an email address
  */
-export const formatNumber = (value, decimals = 2, locale = 'en-US') => {
-  if (typeof value !== 'number' || isNaN(value)) {
-    return '0'
-  }
+export function normalizeEmail(email: string): string {
+  if (!email || typeof email !== 'string') return '';
+  return email.trim().toLowerCase();
+}
 
-  return new Intl.NumberFormat(locale, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(value)
+// ============================================================================
+// PHONE VALIDATION & FORMATTING
+// ============================================================================
+
+/**
+ * Validates a phone number (international format)
+ */
+export function isValidPhone(phone: string): boolean {
+  if (!phone || typeof phone !== 'string') return false;
+  
+  // Remove all non-digit characters except leading +
+  const cleaned = phone.trim();
+  const hasPlus = cleaned.startsWith('+');
+  const digits = cleaned.replace(/\D/g, '');
+  
+  // Check length (7-15 digits)
+  if (digits.length < 7 || digits.length > 15) return false;
+  
+  // If has +, first digit shouldn't be 0
+  if (hasPlus && digits.startsWith('0')) return false;
+  
+  return true;
+}
+
+/**
+ * Format phone number for display
+ */
+export function formatPhone(phone: string, format: 'international' | 'national' | 'e164' = 'international'): string {
+  if (!phone) return '';
+  
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 7) return phone;
+  
+  switch (format) {
+    case 'e164':
+      return `+${digits}`;
+    case 'national':
+      // Assume UK format for national
+      if (digits.length === 11 && digits.startsWith('0')) {
+        return `${digits.slice(0, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`;
+      }
+      return digits;
+    case 'international':
+    default:
+      if (digits.length === 10) {
+        return `+1 (${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+      }
+      if (digits.length === 11 && digits.startsWith('44')) {
+        return `+44 ${digits.slice(2, 6)} ${digits.slice(6, 9)} ${digits.slice(9)}`;
+      }
+      return `+${digits}`;
+  }
+}
+
+/**
+ * Extract country code from phone number
+ */
+export function getPhoneCountryCode(phone: string): string | null {
+  if (!phone) return null;
+  
+  const digits = phone.replace(/\D/g, '');
+  
+  // Common country codes
+  const countryCodes: Record<string, string> = {
+    '1': 'US/CA', '44': 'GB', '353': 'IE', '61': 'AU',
+    '64': 'NZ', '33': 'FR', '49': 'DE', '34': 'ES',
+    '39': 'IT', '31': 'NL', '32': 'BE', '81': 'JP',
+  };
+  
+  // Try 3-digit, then 2-digit, then 1-digit
+  for (const len of [3, 2, 1]) {
+    const code = digits.substring(0, len);
+    if (countryCodes[code]) return code;
+  }
+  
+  return null;
+}
+
+// ============================================================================
+// NUMBER & CURRENCY FORMATTING
+// ============================================================================
+
+/**
+ * Format a number with locale-aware separators
+ */
+export function formatNumber(
+  value: number,
+  options: {
+    locale?: string;
+    decimals?: number;
+    compact?: boolean;
+  } = {}
+): string {
+  const { locale = 'en-GB', decimals = 0, compact = false } = options;
+  
+  if (!Number.isFinite(value)) return '0';
+  
+  try {
+    if (compact) {
+      return new Intl.NumberFormat(locale, {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      }).format(value);
+    }
+    
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(value);
+  } catch {
+    return value.toString();
+  }
 }
 
 /**
  * Format currency value
- * @param {number} value - Amount to format
- * @param {string} currency - Currency code (default: 'USD')
- * @param {string} locale - Locale string (default: 'en-US')
- * @returns {string} Formatted currency
  */
-export const formatCurrency = (value, currency = 'USD', locale = 'en-US') => {
-  if (typeof value !== 'number' || isNaN(value)) {
-    return `$0.00`
-  }
-
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-  }).format(value)
-}
-
-/**
- * Format date to readable string
- * @param {Date|string|number} date - Date to format
- * @param {string} format - Format style ('short', 'medium', 'long', 'full')
- * @param {string} locale - Locale string (default: 'en-US')
- * @returns {string} Formatted date
- */
-export const formatDate = (date, format = 'medium', locale = 'en-US') => {
+export function formatCurrency(
+  value: number,
+  currency: string = 'GBP',
+  locale: string = 'en-GB'
+): string {
+  if (!Number.isFinite(value)) return '£0.00';
+  
   try {
-    const dateObj = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date
-
-    if (!(dateObj instanceof Date) || isNaN(dateObj)) {
-      return ''
-    }
-
-    const formatOptions = {
-      short: { year: '2-digit', month: '2-digit', day: '2-digit' },
-      medium: { year: 'numeric', month: 'short', day: 'numeric' },
-      long: { year: 'numeric', month: 'long', day: 'numeric' },
-      full: { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' },
-    }
-
-    return new Intl.DateTimeFormat(locale, formatOptions[format] || formatOptions.medium).format(dateObj)
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
   } catch {
-    return ''
+    return `${currency} ${value.toFixed(2)}`;
   }
 }
 
 /**
- * Format time to readable string
- * @param {Date|string|number} date - Date/time to format
- * @param {boolean} includeSeconds - Include seconds (default: false)
- * @param {string} locale - Locale string (default: 'en-US')
- * @returns {string} Formatted time
+ * Parse currency string to number
  */
-export const formatTime = (date, includeSeconds = false, locale = 'en-US') => {
+export function parseCurrency(value: string): number {
+  if (!value || typeof value !== 'string') return 0;
+  
+  // Remove currency symbols and separators
+  const cleaned = value.replace(/[£$€¥,\s]/g, '');
+  const parsed = parseFloat(cleaned);
+  
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Format percentage
+ */
+export function formatPercentage(
+  value: number,
+  decimals: number = 1,
+  locale: string = 'en-GB'
+): string {
+  if (!Number.isFinite(value)) return '0%';
+  
   try {
-    const dateObj = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date
+    return new Intl.NumberFormat(locale, {
+      style: 'percent',
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(value / 100);
+  } catch {
+    return `${value.toFixed(decimals)}%`;
+  }
+}
 
-    if (!(dateObj instanceof Date) || isNaN(dateObj)) {
-      return ''
+// ============================================================================
+// DATE & TIME FORMATTING
+// ============================================================================
+
+/**
+ * Format date for display
+ */
+export function formatDate(
+  date: Date | string | number,
+  options: {
+    format?: 'short' | 'medium' | 'long' | 'full';
+    locale?: string;
+    includeTime?: boolean;
+  } = {}
+): string {
+  const { format = 'medium', locale = 'en-GB', includeTime = false } = options;
+  
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return 'Invalid date';
+    
+    const dateOptions: Intl.DateTimeFormatOptions = {
+      short: { day: 'numeric', month: 'numeric', year: '2-digit' },
+      medium: { day: 'numeric', month: 'short', year: 'numeric' },
+      long: { day: 'numeric', month: 'long', year: 'numeric' },
+      full: { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' },
+    }[format];
+    
+    if (includeTime) {
+      dateOptions.hour = '2-digit';
+      dateOptions.minute = '2-digit';
     }
+    
+    return new Intl.DateTimeFormat(locale, dateOptions).format(d);
+  } catch {
+    return String(date);
+  }
+}
 
+/**
+ * Format time for display
+ */
+export function formatTime(
+  date: Date | string | number,
+  options: {
+    format?: '12h' | '24h';
+    locale?: string;
+    includeSeconds?: boolean;
+  } = {}
+): string {
+  const { format = '24h', locale = 'en-GB', includeSeconds = false } = options;
+  
+  try {
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return 'Invalid time';
+    
     return new Intl.DateTimeFormat(locale, {
       hour: '2-digit',
       minute: '2-digit',
       second: includeSeconds ? '2-digit' : undefined,
-      hour12: true,
-    }).format(dateObj)
+      hour12: format === '12h',
+    }).format(d);
   } catch {
-    return ''
+    return String(date);
   }
 }
 
 /**
- * Calculate days between two dates
- * @param {Date|string} startDate - Start date
- * @param {Date|string} endDate - End date
- * @returns {number} Days between dates
+ * Get relative time string (e.g., "2 hours ago")
  */
-export const daysBetween = (startDate, endDate) => {
+export function formatRelativeTime(
+  date: Date | string | number,
+  locale: string = 'en-GB'
+): string {
   try {
-    const start = typeof startDate === 'string' ? new Date(startDate) : startDate
-    const end = typeof endDate === 'string' ? new Date(endDate) : endDate
-
-    if (!(start instanceof Date) || !(end instanceof Date)) {
-      return 0
-    }
-
-    const msPerDay = 24 * 60 * 60 * 1000
-    return Math.floor((end - start) / msPerDay)
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return 'Invalid date';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+    
+    if (diffSecs < 60) return rtf.format(-diffSecs, 'second');
+    if (diffMins < 60) return rtf.format(-diffMins, 'minute');
+    if (diffHours < 24) return rtf.format(-diffHours, 'hour');
+    if (diffDays < 7) return rtf.format(-diffDays, 'day');
+    if (diffDays < 30) return rtf.format(-Math.floor(diffDays / 7), 'week');
+    if (diffDays < 365) return rtf.format(-Math.floor(diffDays / 30), 'month');
+    return rtf.format(-Math.floor(diffDays / 365), 'year');
   } catch {
-    return 0
+    return String(date);
   }
 }
 
 /**
- * Validate phone number format
- * @param {string} phone - Phone number to validate
- * @returns {boolean} Whether phone is valid
+ * Check if date is today
  */
-export const isValidPhone = (phone) => {
-  if (!phone || typeof phone !== 'string') {
-    return false
-  }
-
-  const cleaned = phone.replace(/[\s\-\(\)\.]/g, '')
-  return /^\+?[\d]{10,}$/.test(cleaned)
+export function isToday(date: Date | string | number): boolean {
+  const d = new Date(date);
+  const today = new Date();
+  return d.toDateString() === today.toDateString();
 }
 
 /**
- * Format phone number to consistent format
- * @param {string} phone - Phone number to format
- * @returns {string} Formatted phone number
+ * Check if date is in the past
  */
-export const formatPhone = (phone) => {
-  if (!phone || typeof phone !== 'string') {
-    return ''
-  }
-
-  const cleaned = phone.replace(/\D/g, '')
-
-  if (cleaned.length === 10) {
-    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`
-  }
-
-  if (cleaned.length === 11 && cleaned[0] === '1') {
-    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`
-  }
-
-  return phone
+export function isPast(date: Date | string | number): boolean {
+  return new Date(date).getTime() < Date.now();
 }
 
 /**
- * Slugify string for URLs
- * @param {string} text - Text to slugify
- * @returns {string} Slugified text
+ * Check if date is in the future
  */
-export const slugify = (text) => {
-  if (!text || typeof text !== 'string') {
-    return ''
-  }
+export function isFuture(date: Date | string | number): boolean {
+  return new Date(date).getTime() > Date.now();
+}
 
+// ============================================================================
+// STRING UTILITIES
+// ============================================================================
+
+/**
+ * Generate URL-friendly slug
+ */
+export function slugify(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  
   return text
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove accents
+    .replace(/[^\w\s-]/g, '')        // Remove non-word chars
+    .replace(/[\s_-]+/g, '-')        // Replace spaces/underscores with hyphens
+    .replace(/^-+|-+$/g, '');        // Remove leading/trailing hyphens
 }
 
 /**
- * Capitalize first letter of string
- * @param {string} text - Text to capitalize
- * @returns {string} Capitalized text
+ * Capitalize first letter of each word
  */
-export const capitalize = (text) => {
-  if (!text || typeof text !== 'string') {
-    return ''
-  }
+export function capitalize(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
-  return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase()
+/**
+ * Capitalize only the first letter
+ */
+export function capitalizeFirst(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /**
  * Truncate text with ellipsis
- * @param {string} text - Text to truncate
- * @param {number} length - Max length
- * @param {string} suffix - Suffix (default: '...')
- * @returns {string} Truncated text
  */
-export const truncate = (text, length = 50, suffix = '...') => {
-  if (!text || typeof text !== 'string') {
-    return ''
-  }
-
-  if (text.length <= length) {
-    return text
-  }
-
-  return text.slice(0, length - suffix.length) + suffix
+export function truncate(text: string, maxLength: number, suffix: string = '...'): string {
+  if (!text || typeof text !== 'string') return '';
+  if (text.length <= maxLength) return text;
+  
+  return text.slice(0, maxLength - suffix.length).trim() + suffix;
 }
 
 /**
- * Parse JSON safely
- * @param {string} jsonString - JSON string to parse
- * @param {*} defaultValue - Default value if parsing fails
- * @returns {*} Parsed object or default value
+ * Remove HTML tags from string
  */
-export const safeJsonParse = (jsonString, defaultValue = null) => {
+export function stripHtml(html: string): string {
+  if (!html || typeof html !== 'string') return '';
+  
+  // Simple tag removal (for basic cases)
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .trim();
+}
+
+/**
+ * Generate initials from name
+ */
+export function getInitials(name: string, maxLength: number = 2): string {
+  if (!name || typeof name !== 'string') return '';
+  
+  return name
+    .trim()
+    .split(/\s+/)
+    .map(word => word.charAt(0).toUpperCase())
+    .slice(0, maxLength)
+    .join('');
+}
+
+/**
+ * Format name (First Last)
+ */
+export function formatName(firstName?: string, lastName?: string): string {
+  const parts = [firstName, lastName].filter(Boolean);
+  return parts.join(' ').trim() || 'Unknown';
+}
+
+// ============================================================================
+// OBJECT & DATA UTILITIES
+// ============================================================================
+
+/**
+ * Safe JSON parse with fallback
+ */
+export function safeJsonParse<T>(json: string, fallback: T): T {
   try {
-    return JSON.parse(jsonString)
+    return JSON.parse(json) as T;
   } catch {
-    return defaultValue
+    return fallback;
   }
 }
 
 /**
- * Deep clone object
- * @param {Object} obj - Object to clone
- * @returns {Object} Cloned object
+ * Deep clone an object
  */
-export const deepClone = (obj) => {
+export function deepClone<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') return obj;
+  
   try {
-    return JSON.parse(JSON.stringify(obj))
+    return JSON.parse(JSON.stringify(obj));
   } catch {
-    return obj
+    return obj;
   }
 }
 
 /**
- * Check if object is empty
- * @param {Object} obj - Object to check
- * @returns {boolean} Whether object is empty
+ * Check if value is empty (null, undefined, empty string, empty array, empty object)
  */
-export const isEmpty = (obj) => {
-  if (!obj) {
-    return true
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.length === 0
-  }
-
-  if (typeof obj === 'object') {
-    return Object.keys(obj).length === 0
-  }
-
-  return false
+export function isEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return value.trim().length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return false;
 }
+
+/**
+ * Remove null and undefined values from object
+ */
+export function removeEmpty<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)
+  ) as Partial<T>;
+}
+
+/**
+ * Pick specific keys from object
+ */
+export function pick<T extends Record<string, unknown>, K extends keyof T>(
+  obj: T,
+  keys: K[]
+): Pick<T, K> {
+  return keys.reduce((acc, key) => {
+    if (key in obj) acc[key] = obj[key];
+    return acc;
+  }, {} as Pick<T, K>);
+}
+
+/**
+ * Omit specific keys from object
+ */
+export function omit<T extends Record<string, unknown>, K extends keyof T>(
+  obj: T,
+  keys: K[]
+): Omit<T, K> {
+  const result = { ...obj };
+  keys.forEach(key => delete result[key]);
+  return result as Omit<T, K>;
+}
+
+// ============================================================================
+// DEBOUNCE & THROTTLE
+// ============================================================================
 
 /**
  * Debounce function execution
- * @param {Function} func - Function to debounce
- * @param {number} wait - Wait time in milliseconds
- * @returns {Function} Debounced function
  */
-export const debounce = (func, wait = 300) => {
-  let timeout
-
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout)
-      func(...args)
-    }
-
-    clearTimeout(timeout)
-    timeout = setTimeout(later, wait)
-  }
+export function debounce<T extends (...args: unknown[]) => unknown>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  
+  return function (this: unknown, ...args: Parameters<T>) {
+    if (timeoutId) clearTimeout(timeoutId);
+    
+    timeoutId = setTimeout(() => {
+      func.apply(this, args);
+    }, wait);
+  };
 }
 
 /**
  * Throttle function execution
- * @param {Function} func - Function to throttle
- * @param {number} limit - Limit time in milliseconds
- * @returns {Function} Throttled function
  */
-export const throttle = (func, limit = 300) => {
-  let inThrottle
-
-  return function (...args) {
+export function throttle<T extends (...args: unknown[]) => unknown>(
+  func: T,
+  limit: number
+): (...args: Parameters<T>) => void {
+  let inThrottle = false;
+  
+  return function (this: unknown, ...args: Parameters<T>) {
     if (!inThrottle) {
-      func.apply(this, args)
-      inThrottle = true
+      func.apply(this, args);
+      inThrottle = true;
       setTimeout(() => {
-        inThrottle = false
-      }, limit)
+        inThrottle = false;
+      }, limit);
     }
+  };
+}
+
+// ============================================================================
+// ID & RANDOM UTILITIES
+// ============================================================================
+
+/**
+ * Generate a simple unique ID
+ */
+export function generateId(prefix: string = ''): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 8);
+  return prefix ? `${prefix}_${timestamp}${random}` : `${timestamp}${random}`;
+}
+
+/**
+ * Check if string is valid CUID
+ */
+export function isValidCuid(id: string): boolean {
+  if (!id || typeof id !== 'string') return false;
+  // CUID format: c + timestamp + counter + fingerprint + random
+  return /^c[a-z0-9]{24,}$/i.test(id);
+}
+
+/**
+ * Check if string is valid UUID
+ */
+export function isValidUuid(id: string): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
+// ============================================================================
+// VALIDATION HELPERS
+// ============================================================================
+
+/**
+ * Validate password strength
+ */
+export function validatePassword(password: string): {
+  isValid: boolean;
+  score: number;
+  feedback: string[];
+} {
+  const feedback: string[] = [];
+  let score = 0;
+  
+  if (!password || password.length < 8) {
+    feedback.push('Password must be at least 8 characters');
+  } else {
+    score += 1;
+    if (password.length >= 12) score += 1;
+    if (password.length >= 16) score += 1;
+  }
+  
+  if (!/[a-z]/.test(password)) {
+    feedback.push('Include at least one lowercase letter');
+  } else {
+    score += 1;
+  }
+  
+  if (!/[A-Z]/.test(password)) {
+    feedback.push('Include at least one uppercase letter');
+  } else {
+    score += 1;
+  }
+  
+  if (!/[0-9]/.test(password)) {
+    feedback.push('Include at least one number');
+  } else {
+    score += 1;
+  }
+  
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    feedback.push('Include at least one special character');
+  } else {
+    score += 1;
+  }
+  
+  return {
+    isValid: feedback.length === 0 && password.length >= 8,
+    score: Math.min(score, 5),
+    feedback,
+  };
+}
+
+/**
+ * Validate URL
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
   }
 }
 
-export default {
-  isValidEmail,
-  formatNumber,
-  formatCurrency,
-  formatDate,
-  formatTime,
-  daysBetween,
-  isValidPhone,
-  formatPhone,
-  slugify,
-  capitalize,
-  truncate,
-  safeJsonParse,
-  deepClone,
-  isEmpty,
-  debounce,
-  throttle,
+/**
+ * Validate jersey number (1-99)
+ */
+export function isValidJerseyNumber(number: number): boolean {
+  return Number.isInteger(number) && number >= 1 && number <= 99;
+}
+
+// ============================================================================
+// FILE UTILITIES
+// ============================================================================
+
+/**
+ * Format file size for display
+ */
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
+  
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let unitIndex = 0;
+  let size = bytes;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
+  }
+  
+  return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+/**
+ * Get file extension from filename
+ */
+export function getFileExtension(filename: string): string {
+  if (!filename || typeof filename !== 'string') return '';
+  const lastDot = filename.lastIndexOf('.');
+  return lastDot === -1 ? '' : filename.slice(lastDot + 1).toLowerCase();
+}
+
+/**
+ * Check if file is an image
+ */
+export function isImageFile(filename: string): boolean {
+  const ext = getFileExtension(filename);
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'].includes(ext);
+}
+
+/**
+ * Check if file is a video
+ */
+export function isVideoFile(filename: string): boolean {
+  const ext = getFileExtension(filename);
+  return ['mp4', 'webm', 'mov', 'avi', 'mkv', 'wmv'].includes(ext);
 }

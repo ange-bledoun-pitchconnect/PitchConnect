@@ -1,28 +1,179 @@
 // ============================================================================
-// 🏆 PITCHCONNECT MATCH SYSTEM TYPES v7.4.0
+// 🏆 PITCHCONNECT MATCH SYSTEM TYPES v7.5.0
+// Path: src/types/match.ts
 // ============================================================================
-// Aligned with Prisma schema v7.4.0
+// 
+// Comprehensive match types aligned with Prisma schema v7.5.0
+// Supports all 12 sports with sport-specific scoring and events
+//
 // ============================================================================
 
-import type {
-  MatchStatus,
-  MatchType,
-  Sport,
-  Position,
-  FormationType,
-  MatchEventType,
-  MatchAttendanceStatus,
-  CompetitionStage,
-  ResultApprovalStatus,
-  ClubMemberRole,
-} from '@prisma/client';
+import type { Sport, Position } from './player';
 
 // ============================================================================
-// CORE MATCH TYPES
+// ENUMS (Re-export from Prisma or define locally)
+// ============================================================================
+
+export type MatchStatus =
+  | 'SCHEDULED'
+  | 'WARMUP'
+  | 'LIVE'
+  | 'HALFTIME'
+  | 'SECOND_HALF'
+  | 'EXTRA_TIME_FIRST'
+  | 'EXTRA_TIME_SECOND'
+  | 'PENALTIES'
+  | 'FINISHED'
+  | 'CANCELLED'
+  | 'POSTPONED'
+  | 'ABANDONED'
+  | 'REPLAY_SCHEDULED'
+  | 'VOIDED'
+  | 'DELAYED'
+  | 'SUSPENDED';
+
+export type MatchType =
+  | 'LEAGUE'
+  | 'CUP'
+  | 'FRIENDLY'
+  | 'PLAYOFF'
+  | 'TOURNAMENT'
+  | 'QUALIFIER'
+  | 'FINAL'
+  | 'SEMI_FINAL'
+  | 'QUARTER_FINAL'
+  | 'GROUP_STAGE'
+  | 'TRAINING_MATCH'
+  | 'PRACTICE'
+  | 'EXHIBITION';
+
+export type MatchEventType =
+  // Universal Events
+  | 'GOAL'
+  | 'OWN_GOAL'
+  | 'ASSIST'
+  | 'YELLOW_CARD'
+  | 'RED_CARD'
+  | 'SECOND_YELLOW'
+  | 'SUBSTITUTION_ON'
+  | 'SUBSTITUTION_OFF'
+  | 'INJURY'
+  | 'INJURY_TIME'
+  
+  // Football/Futsal/Beach
+  | 'PENALTY_SCORED'
+  | 'PENALTY_MISSED'
+  | 'PENALTY_SAVED'
+  | 'CORNER'
+  | 'FREE_KICK'
+  | 'OFFSIDE'
+  | 'VAR_REVIEW'
+  | 'SHOT'
+  | 'SHOT_ON_TARGET'
+  | 'SAVE'
+  | 'FOUL'
+  
+  // Rugby
+  | 'TRY'
+  | 'CONVERSION'
+  | 'PENALTY_GOAL'
+  | 'DROP_GOAL'
+  | 'PENALTY_TRY'
+  | 'SIN_BIN'
+  | 'SCRUM'
+  | 'LINEOUT'
+  | 'KNOCK_ON'
+  | 'FORWARD_PASS'
+  
+  // Cricket
+  | 'WICKET'
+  | 'BOUNDARY'
+  | 'SIX'
+  | 'WIDE'
+  | 'NO_BALL'
+  | 'RUN_OUT'
+  | 'CAUGHT'
+  | 'BOWLED'
+  | 'LBW'
+  | 'STUMPED'
+  
+  // American Football
+  | 'TOUCHDOWN'
+  | 'EXTRA_POINT'
+  | 'TWO_POINT_CONVERSION'
+  | 'FIELD_GOAL'
+  | 'SAFETY'
+  | 'INTERCEPTION'
+  | 'FUMBLE'
+  | 'SACK'
+  
+  // Basketball
+  | 'THREE_POINTER'
+  | 'FREE_THROW'
+  | 'DUNK'
+  | 'REBOUND'
+  | 'STEAL'
+  | 'BLOCK'
+  | 'TURNOVER'
+  | 'TECHNICAL_FOUL'
+  
+  // Hockey
+  | 'POWER_PLAY_GOAL'
+  | 'SHORTHANDED_GOAL'
+  | 'EMPTY_NET_GOAL'
+  | 'PENALTY_MINOR'
+  | 'PENALTY_MAJOR'
+  | 'FACEOFF_WIN'
+  
+  // Generic
+  | 'PERIOD_START'
+  | 'PERIOD_END'
+  | 'TIMEOUT'
+  | 'CHALLENGE'
+  | 'OTHER';
+
+export type MatchAttendanceStatus =
+  | 'CONFIRMED'
+  | 'DECLINED'
+  | 'MAYBE'
+  | 'NOT_RESPONDED'
+  | 'STARTING'
+  | 'SUBSTITUTE'
+  | 'NOT_IN_SQUAD'
+  | 'INJURED'
+  | 'SUSPENDED'
+  | 'UNAVAILABLE';
+
+export type CompetitionStage =
+  | 'GROUP_STAGE'
+  | 'ROUND_OF_32'
+  | 'ROUND_OF_16'
+  | 'QUARTER_FINAL'
+  | 'SEMI_FINAL'
+  | 'THIRD_PLACE'
+  | 'FINAL'
+  | 'PLAYOFF'
+  | 'RELEGATION'
+  | 'PROMOTION';
+
+export type ResultApprovalStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'DISPUTED'
+  | 'REJECTED'
+  | 'AUTO_APPROVED';
+
+export type FormationType = string; // Sport-specific formations
+
+// ============================================================================
+// CORE MATCH TYPE
 // ============================================================================
 
 export interface Match {
   id: string;
+  
+  // Sport Context
+  sport: Sport;
   
   // Competition (optional for standalone friendlies)
   competitionId: string | null;
@@ -81,7 +232,7 @@ export interface Match {
   homeExtraTimeScore: number | null;
   awayExtraTimeScore: number | null;
   
-  // Multi-sport score breakdown
+  // Multi-sport score breakdown (JSON)
   homeScoreBreakdown: ScoreBreakdown | null;
   awayScoreBreakdown: ScoreBreakdown | null;
   
@@ -138,7 +289,7 @@ export interface Match {
 }
 
 // ============================================================================
-// SCORE BREAKDOWN (MULTI-SPORT)
+// SCORE BREAKDOWN TYPES (MULTI-SPORT)
 // ============================================================================
 
 export type ScoreBreakdown = 
@@ -149,6 +300,9 @@ export type ScoreBreakdown =
   | AmericanFootballScoreBreakdown
   | HockeyScoreBreakdown
   | NetballScoreBreakdown
+  | AustralianRulesScoreBreakdown
+  | GaelicFootballScoreBreakdown
+  | LacrosseScoreBreakdown
   | GenericScoreBreakdown;
 
 export interface FootballScoreBreakdown {
@@ -162,10 +316,11 @@ export interface RugbyScoreBreakdown {
   conversions: number;
   penalties: number;
   dropGoals: number;
+  penaltyTries?: number;
 }
 
 export interface BasketballScoreBreakdown {
-  twoPointers: number;
+  fieldGoals: number;      // 2-pointers
   threePointers: number;
   freeThrows: number;
 }
@@ -174,7 +329,10 @@ export interface CricketScoreBreakdown {
   runs: number;
   wickets: number;
   overs: number;
+  balls?: number;
   extras?: number;
+  boundaries?: number;
+  sixes?: number;
 }
 
 export interface AmericanFootballScoreBreakdown {
@@ -197,6 +355,21 @@ export interface NetballScoreBreakdown {
   superShots?: number;
 }
 
+export interface AustralianRulesScoreBreakdown {
+  goals: number;       // 6 points each
+  behinds: number;     // 1 point each
+}
+
+export interface GaelicFootballScoreBreakdown {
+  goals: number;       // 3 points each
+  points: number;      // 1 point each
+}
+
+export interface LacrosseScoreBreakdown {
+  goals: number;
+  twoPointGoals?: number;
+}
+
 export interface GenericScoreBreakdown {
   [key: string]: number;
 }
@@ -213,25 +386,29 @@ export interface MatchEvent {
   
   eventType: MatchEventType;
   minute: number;
-  secondaryMinute: number | null;
-  period: string | null;
+  secondaryMinute: number | null;    // For added time (e.g., 45+2)
+  period: string | null;             // "1st Half", "2nd Quarter", etc.
   
   teamSide: 'home' | 'away' | null;
   
-  relatedPlayerId: string | null;
+  // Related players
+  relatedPlayerId: string | null;    // Fouled player, etc.
   assistPlayerId: string | null;
   relatedPlayer?: Player | null;
   assistPlayer?: Player | null;
   
-  goalType: string | null;
+  // Event details
+  goalType: string | null;           // "Open Play", "Penalty", "Free Kick", etc.
   cardReason: string | null;
   injuryType: string | null;
   
-  xPosition: number | null;
-  yPosition: number | null;
+  // Position on field
+  xPosition: number | null;          // 0-100 percentage
+  yPosition: number | null;          // 0-100 percentage
   
+  // Additional data
   details: Record<string, unknown> | null;
-  videoTimestamp: number | null;
+  videoTimestamp: number | null;     // Seconds into video
   videoUrl: string | null;
   
   createdAt: string;
@@ -250,13 +427,13 @@ export interface MatchSquad {
   player?: Player | null;
   team?: Team;
   
-  lineupPosition: number | null;
-  shirtNumber: number | null;
+  lineupPosition: number | null;     // 1-11 for starting, null for subs
+  jerseyNumber: number | null;       // ✅ FIXED: was shirtNumber
   position: Position | null;
   
   status: MatchAttendanceStatus;
   isCaptain: boolean;
-  substituteOrder: number | null;
+  substituteOrder: number | null;    // Order on bench
   
   createdAt: string;
   updatedAt: string;
@@ -277,7 +454,7 @@ export interface MatchAttendance {
 }
 
 // ============================================================================
-// PLAYER MATCH PERFORMANCE (NEW v7.4.0)
+// PLAYER MATCH PERFORMANCE
 // ============================================================================
 
 export interface PlayerMatchPerformance {
@@ -293,7 +470,7 @@ export interface PlayerMatchPerformance {
   substituteOn: number | null;
   substituteOff: number | null;
   
-  // Basic stats
+  // Basic stats (universal)
   goals: number;
   assists: number;
   yellowCards: number;
@@ -339,17 +516,16 @@ export interface PlayerMatchPerformance {
   cleanSheet: boolean;
   penaltySaves: number;
   
-  // Possession
-  touches: number;
-  possession: number | null;
-  
   // Ratings
-  rating: number | null;
+  rating: number | null;           // 1-10
   coachRating: number | null;
-  coachNotes: string | null;
+  manOfTheMatch: boolean;
   
-  // Sport-specific
+  // Sport-specific stats (JSON)
   sportSpecificStats: Record<string, unknown> | null;
+  
+  // Notes
+  coachNotes: string | null;
   
   createdAt: string;
   updatedAt: string;
@@ -362,294 +538,85 @@ export interface PlayerMatchPerformance {
 export interface MatchOfficial {
   id: string;
   matchId: string;
-  refereeId: string;
-  referee?: Referee;
+  userId: string | null;
+  user?: User | null;
   
-  role: MatchOfficialRole;
-  performanceRating: number | null;
-  notes: string | null;
+  role: OfficialRole;
+  name: string;
   
   createdAt: string;
   updatedAt: string;
 }
 
-export type MatchOfficialRole =
+export type OfficialRole =
   | 'REFEREE'
   | 'ASSISTANT_REFEREE_1'
   | 'ASSISTANT_REFEREE_2'
   | 'FOURTH_OFFICIAL'
-  | 'VAR_OFFICIAL'
-  | 'AVAR_OFFICIAL'
-  | 'RESERVE_ASSISTANT'
+  | 'VAR'
+  | 'AVAR'
+  | 'GOAL_LINE_OFFICIAL'
+  | 'TMO'                    // Television Match Official (Rugby)
   | 'MATCH_COMMISSIONER'
-  | 'REFEREE_ASSESSOR';
+  | 'TIMEKEEPER'
+  | 'SCORER';
 
 // ============================================================================
-// SUPPORTING TYPES
-// ============================================================================
-
-export interface Team {
-  id: string;
-  clubId: string;
-  club?: Club;
-  name: string;
-  description: string | null;
-  logo: string | null;
-  ageGroup: string | null;
-  gender: string | null;
-  status: string;
-  defaultFormation: FormationType | null;
-  players?: TeamPlayer[];
-}
-
-export interface TeamPlayer {
-  id: string;
-  teamId: string;
-  playerId: string;
-  player?: Player;
-  position: Position | null;
-  jerseyNumber: number | null;
-  isActive: boolean;
-  isCaptain: boolean;
-  isViceCaptain: boolean;
-}
-
-export interface Club {
-  id: string;
-  organisationId: string | null;
-  name: string;
-  slug: string;
-  shortName: string | null;
-  logo: string | null;
-  banner: string | null;
-  sport: Sport;
-  primaryColor: string | null;
-  secondaryColor: string | null;
-  city: string | null;
-  country: string | null;
-}
-
-export interface Player {
-  id: string;
-  userId: string;
-  user?: User;
-  jerseyNumber: number | null;
-  primaryPosition: Position | null;
-  secondaryPosition: Position | null;
-  preferredFoot: 'LEFT' | 'RIGHT' | 'BOTH' | null;
-  isActive: boolean;
-}
-
-export interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
-  displayName: string | null;
-  avatar: string | null;
-  email: string;
-}
-
-export interface Coach {
-  id: string;
-  userId: string;
-  user?: User;
-  coachType: string;
-}
-
-export interface Referee {
-  id: string;
-  userId: string;
-  user?: User;
-  licenseNumber: string | null;
-  licenseLevel: string | null;
-}
-
-export interface Venue {
-  id: string;
-  name: string;
-  shortName: string | null;
-  type: string;
-  address: string | null;
-  city: string | null;
-  country: string | null;
-  capacity: number | null;
-  surface: string | null;
-}
-
-export interface Facility {
-  id: string;
-  name: string;
-  type: string;
-  address: string | null;
-  city: string | null;
-  capacity: number | null;
-}
-
-export interface Competition {
-  id: string;
-  name: string;
-  shortName: string | null;
-  slug: string;
-  sport: Sport;
-  type: string;
-  format: string;
-  status: string;
-  logo: string | null;
-}
-
-// ============================================================================
-// FORM TYPES
-// ============================================================================
-
-export interface MatchFormData {
-  // Competition
-  competitionId: string | null;
-  matchType: MatchType;
-  
-  // Teams
-  homeTeamId: string;
-  awayTeamId: string;
-  
-  // Schedule
-  kickOffTime: string;
-  
-  // Venue
-  venueId: string | null;
-  facilityId: string | null;
-  venue: string;
-  pitch: string;
-  isNeutralVenue: boolean;
-  
-  // Competition details
-  stage: CompetitionStage | null;
-  groupName: string;
-  round: number | null;
-  matchday: number | null;
-  leg: number | null;
-  
-  // Match info
-  title: string;
-  description: string;
-  notes: string;
-  
-  // Formations
-  homeFormation: FormationType | null;
-  awayFormation: FormationType | null;
-  
-  // Broadcast
-  isBroadcasted: boolean;
-  broadcastUrl: string;
-  
-  // Flags
-  isHighlighted: boolean;
-  isFeatured: boolean;
-}
-
-export interface MatchResultFormData {
-  homeScore: number;
-  awayScore: number;
-  homeHalftimeScore: number | null;
-  awayHalftimeScore: number | null;
-  homeExtraTimeScore: number | null;
-  awayExtraTimeScore: number | null;
-  homePenalties: number | null;
-  awayPenalties: number | null;
-  homeScoreBreakdown: ScoreBreakdown | null;
-  awayScoreBreakdown: ScoreBreakdown | null;
-  status: MatchStatus;
-  attendance: number | null;
-  matchReport: string;
-  notes: string;
-}
-
-export interface LineupFormData {
-  teamId: string;
-  formation: FormationType;
-  starters: LineupPlayer[];
-  substitutes: LineupPlayer[];
-  captain: string | null;
-}
-
-export interface LineupPlayer {
-  playerId: string;
-  position: Position | null;
-  shirtNumber: number | null;
-  lineupPosition: number | null;
-}
-
-export interface MatchEventFormData {
-  eventType: MatchEventType;
-  minute: number;
-  secondaryMinute: number | null;
-  period: string;
-  teamSide: 'home' | 'away';
-  playerId: string | null;
-  assistPlayerId: string | null;
-  relatedPlayerId: string | null;
-  goalType: string | null;
-  cardReason: string | null;
-  details: string;
-}
-
-// ============================================================================
-// FILTER & SEARCH TYPES
+// FILTER & QUERY TYPES
 // ============================================================================
 
 export interface MatchFilters {
-  status: MatchStatus[];
-  matchType: MatchType[];
-  sport: Sport[];
-  teamId: string | null;
-  clubId: string | null;
-  competitionId: string | null;
-  dateFrom: string | null;
-  dateTo: string | null;
-  search: string;
-}
-
-export interface MatchSortOptions {
-  field: 'kickOffTime' | 'createdAt' | 'updatedAt' | 'homeScore' | 'awayScore';
-  direction: 'asc' | 'desc';
+  sport?: Sport | Sport[];
+  competitionId?: string;
+  clubId?: string;
+  teamId?: string;
+  homeTeamId?: string;
+  awayTeamId?: string;
+  status?: MatchStatus | MatchStatus[];
+  matchType?: MatchType | MatchType[];
+  stage?: CompetitionStage | CompetitionStage[];
+  venueId?: string;
+  refereeId?: string;
+  
+  // Date filters
+  startDate?: string | Date;
+  endDate?: string | Date;
+  
+  // Feature flags
+  isHighlighted?: boolean;
+  isFeatured?: boolean;
+  
+  // Search
+  search?: string;
 }
 
 // ============================================================================
-// REAL-TIME & LIVE MATCH TYPES
+// LIVE MATCH TYPES
 // ============================================================================
 
-export interface LiveMatchState {
+export interface LiveMatchUpdate {
   matchId: string;
-  status: MatchStatus;
-  homeScore: number;
-  awayScore: number;
-  minute: number;
-  period: string;
-  injuryTime: number;
-  lastEvent: MatchEvent | null;
-  recentEvents: MatchEvent[];
-  stats: LiveMatchStats;
+  timestamp: string;
+  type: 'status' | 'score' | 'event' | 'minute' | 'lineup';
+  data: {
+    status?: MatchStatus;
+    homeScore?: number;
+    awayScore?: number;
+    event?: MatchEvent;
+    minute?: number;
+    injuryTime?: number;
+    period?: string;
+  };
 }
 
-export interface LiveMatchStats {
-  home: TeamStats;
-  away: TeamStats;
+export interface LiveMatchTimeline {
+  matchId: string;
+  events: TimelineEntry[];
 }
 
-export interface TeamStats {
-  possession: number;
-  shots: number;
-  shotsOnTarget: number;
-  corners: number;
-  fouls: number;
-  yellowCards: number;
-  redCards: number;
-  offsides: number;
-  passes: number;
-  passAccuracy: number;
-}
-
-export interface MatchTimelineEntry {
+export interface TimelineEntry {
   id: string;
-  type: 'event' | 'period' | 'status';
+  type: 'event' | 'comment' | 'period';
   minute: number;
   content: MatchEvent | string;
   teamSide: 'home' | 'away' | 'neutral';
@@ -671,7 +638,7 @@ export interface MatchPermissions {
   isCreator: boolean;
   isHomeTeamStaff: boolean;
   isAwayTeamStaff: boolean;
-  role: ClubMemberRole | null;
+  role: string | null;
 }
 
 // ============================================================================
@@ -685,6 +652,7 @@ export interface MatchListResponse {
     pageSize: number;
     total: number;
     totalPages: number;
+    hasMore: boolean;
   };
   filters: MatchFilters;
 }
@@ -696,7 +664,67 @@ export interface MatchDetailResponse {
 }
 
 // ============================================================================
-// CONSTANTS
+// REFERENCE TYPES (Minimal for relationships)
+// ============================================================================
+
+interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  avatar?: string | null;
+}
+
+interface Team {
+  id: string;
+  name: string;
+  slug?: string;
+  logo?: string | null;
+  clubId: string;
+}
+
+interface Club {
+  id: string;
+  name: string;
+  slug: string;
+  logo?: string | null;
+  sport: Sport;
+}
+
+interface Player {
+  id: string;
+  userId: string;
+  user?: User;
+  primaryPosition?: string | null;
+  jerseyNumber?: number | null;  // ✅ FIXED
+}
+
+interface Coach {
+  id: string;
+  userId: string;
+  user?: User;
+}
+
+interface Competition {
+  id: string;
+  name: string;
+  slug?: string;
+  type: string;
+}
+
+interface Venue {
+  id: string;
+  name: string;
+  address?: string | null;
+  capacity?: number | null;
+}
+
+interface Facility {
+  id: string;
+  name: string;
+}
+
+// ============================================================================
+// STATUS CONFIGURATIONS
 // ============================================================================
 
 export const MATCH_STATUS_CONFIG: Record<MatchStatus, {
@@ -971,6 +999,10 @@ export const MATCH_TYPE_CONFIG: Record<MatchType, {
   },
 };
 
+// ============================================================================
+// STATUS GROUPINGS
+// ============================================================================
+
 export const LIVE_STATUSES: MatchStatus[] = [
   'WARMUP',
   'LIVE',
@@ -981,7 +1013,9 @@ export const LIVE_STATUSES: MatchStatus[] = [
   'PENALTIES',
 ];
 
-export const FINISHED_STATUSES: MatchStatus[] = ['FINISHED'];
+export const FINISHED_STATUSES: MatchStatus[] = [
+  'FINISHED',
+];
 
 export const PENDING_STATUSES: MatchStatus[] = [
   'SCHEDULED',
@@ -989,3 +1023,85 @@ export const PENDING_STATUSES: MatchStatus[] = [
   'DELAYED',
   'REPLAY_SCHEDULED',
 ];
+
+export const CANCELLED_STATUSES: MatchStatus[] = [
+  'CANCELLED',
+  'ABANDONED',
+  'VOIDED',
+];
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Check if match is currently live
+ */
+export function isMatchLive(status: MatchStatus): boolean {
+  return LIVE_STATUSES.includes(status);
+}
+
+/**
+ * Check if match is finished
+ */
+export function isMatchFinished(status: MatchStatus): boolean {
+  return FINISHED_STATUSES.includes(status);
+}
+
+/**
+ * Check if match is pending (not started)
+ */
+export function isMatchPending(status: MatchStatus): boolean {
+  return PENDING_STATUSES.includes(status);
+}
+
+/**
+ * Get score display string based on sport
+ */
+export function formatMatchScore(
+  sport: Sport,
+  homeScore: number | null,
+  awayScore: number | null,
+  homeBreakdown?: ScoreBreakdown | null,
+  awayBreakdown?: ScoreBreakdown | null
+): string {
+  if (homeScore === null || awayScore === null) {
+    return 'vs';
+  }
+  
+  // For Gaelic Football: show as "1-5" format (goals-points)
+  if (sport === 'GAELIC_FOOTBALL' && homeBreakdown && awayBreakdown) {
+    const hb = homeBreakdown as GaelicFootballScoreBreakdown;
+    const ab = awayBreakdown as GaelicFootballScoreBreakdown;
+    return `${hb.goals || 0}-${hb.points || 0} : ${ab.goals || 0}-${ab.points || 0}`;
+  }
+  
+  // For Australian Rules: show as "2.5" format (goals.behinds)
+  if (sport === 'AUSTRALIAN_RULES' && homeBreakdown && awayBreakdown) {
+    const hb = homeBreakdown as AustralianRulesScoreBreakdown;
+    const ab = awayBreakdown as AustralianRulesScoreBreakdown;
+    return `${hb.goals || 0}.${hb.behinds || 0} : ${ab.goals || 0}.${ab.behinds || 0}`;
+  }
+  
+  // Standard format
+  return `${homeScore} - ${awayScore}`;
+}
+
+/**
+ * Get match result for a team
+ */
+export function getMatchResult(
+  teamSide: 'home' | 'away',
+  homeScore: number | null,
+  awayScore: number | null
+): 'win' | 'draw' | 'loss' | null {
+  if (homeScore === null || awayScore === null) return null;
+  
+  if (homeScore === awayScore) return 'draw';
+  
+  if (teamSide === 'home') {
+    return homeScore > awayScore ? 'win' : 'loss';
+  } else {
+    return awayScore > homeScore ? 'win' : 'loss';
+  }
+}
