@@ -1,577 +1,890 @@
 /**
- * Add Member Modal Component - WORLD-CLASS VERSION
- * Path: /components/teams/AddMemberModal.tsx
- *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * ADD MEMBER MODAL - PitchConnect v7.10.1
  * ============================================================================
- * ✅ Removed react-hot-toast dependency (custom toast system)
- * ✅ Add team member modal dialog
- * ✅ User email input with validation
- * ✅ Role selection (MANAGER, COACH, PLAYER, STAFF)
- * ✅ Form validation
- * ✅ Loading states with spinners
- * ✅ Error handling with detailed feedback
- * ✅ Custom toast notifications
- * ✅ Success callback on member addition
- * ✅ Form reset after successful addition
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Dark mode support with design system colors
- * ✅ Performance optimization with memoization
- * ✅ Smooth animations and transitions
- * ✅ Production-ready code
+ * 
+ * Enterprise-grade team member addition modal with:
+ * - Role-based role selection (creator's role determines available roles)
+ * - Multi-sport position assignment
+ * - Jersey number assignment with conflict checking
+ * - User search with autocomplete OR email invite
+ * - Bulk member addition
+ * 
+ * SCHEMA ALIGNMENT:
+ * - ClubMemberRole: OWNER, MANAGER, HEAD_COACH, ASSISTANT_COACH, PLAYER, etc.
+ * - Position: Sport-specific from SPORT_POSITIONS config
+ * - TeamPlayer: teamId, playerId, jerseyNumber, position, isCaptain, isViceCaptain
+ * 
+ * @version 2.0.0
+ * @path src/components/teams/AddMemberModal.tsx
+ * 
+ * ============================================================================
  */
 
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   X,
   Check,
-  Info,
-  AlertCircle,
   Loader2,
   UserPlus,
   Mail,
   Shield,
+  Search,
+  Hash,
+  MapPin,
+  Users,
+  AlertCircle,
+  CheckCircle2,
+  Crown,
+  Star,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { toast } from '@/components/ui/use-toast';
+import {
+  getSportPositions,
+  getPositionsByCategory,
+  type Position,
+} from '@/config/sport-positions-config';
+import { type Sport } from '@/config/sport-dashboard-config';
 
-// ============================================================================
-// CUSTOM TOAST SYSTEM
-// ============================================================================
+// =============================================================================
+// TYPES
+// =============================================================================
 
-type ToastType = 'success' | 'error' | 'info' | 'default';
+/** Aligned with Prisma ClubMemberRole enum */
+export type ClubMemberRole =
+  | 'OWNER'
+  | 'MANAGER'
+  | 'HEAD_COACH'
+  | 'ASSISTANT_COACH'
+  | 'PLAYER'
+  | 'STAFF'
+  | 'TREASURER'
+  | 'SCOUT'
+  | 'ANALYST'
+  | 'MEDICAL_STAFF'
+  | 'PHYSIOTHERAPIST'
+  | 'NUTRITIONIST'
+  | 'PSYCHOLOGIST'
+  | 'PERFORMANCE_COACH'
+  | 'GOALKEEPING_COACH'
+  | 'KIT_MANAGER'
+  | 'MEDIA_OFFICER'
+  | 'VIDEO_ANALYST';
 
-interface ToastMessage {
+/** Aligned with Prisma UserRole enum */
+export type UserRole =
+  | 'SUPERADMIN'
+  | 'ADMIN'
+  | 'PLAYER'
+  | 'PLAYER_PRO'
+  | 'COACH'
+  | 'COACH_PRO'
+  | 'MANAGER'
+  | 'CLUB_MANAGER'
+  | 'CLUB_OWNER'
+  | 'TREASURER'
+  | 'REFEREE'
+  | 'SCOUT'
+  | 'ANALYST'
+  | 'PARENT'
+  | 'GUARDIAN'
+  | 'LEAGUE_ADMIN'
+  | 'MEDICAL_STAFF'
+  | 'MEDIA_MANAGER'
+  | 'FAN';
+
+export interface SearchableUser {
   id: string;
-  type: ToastType;
-  message: string;
-  timestamp: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  avatar?: string | null;
+  currentRoles?: UserRole[];
 }
 
-/**
- * Custom Toast Component
- */
-const Toast = ({
-  message,
-  type,
-  onClose,
-}: {
-  message: string;
-  type: ToastType;
-  onClose: () => void;
-}) => {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
-    return () => clearTimeout(timer);
-  }, [onClose]);
-
-  const colors = {
-    success: 'bg-green-500 dark:bg-green-600',
-    error: 'bg-red-500 dark:bg-red-600',
-    info: 'bg-blue-500 dark:bg-blue-600',
-    default: 'bg-charcoal-800 dark:bg-charcoal-700',
-  };
-
-  const icons = {
-    success: <Check className="w-5 h-5 text-white" />,
-    error: <AlertCircle className="w-5 h-5 text-white" />,
-    info: <Info className="w-5 h-5 text-white" />,
-    default: <Loader2 className="w-5 h-5 text-white animate-spin" />,
-  };
-
-  return (
-    <div
-      className={`${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300`}
-      role="status"
-      aria-live="polite"
-    >
-      {icons[type]}
-      <span className="text-sm font-medium flex-1">{message}</span>
-      <button
-        onClick={onClose}
-        className="p-1 hover:bg-white/20 rounded transition-colors"
-        aria-label="Close notification"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-};
-
-/**
- * Toast Container
- */
-const ToastContainer = ({
-  toasts,
-  onRemove,
-}: {
-  toasts: ToastMessage[];
-  onRemove: (id: string) => void;
-}) => {
-  return (
-    <div className="fixed bottom-4 right-4 z-50 space-y-2 pointer-events-none">
-      {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
-    </div>
-  );
-};
-
-/**
- * useToast Hook
- */
-const useToast = () => {
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = useCallback(
-    (message: string, type: ToastType = 'default') => {
-      const id = `toast-${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, message, type, timestamp: Date.now() }]);
-      return id;
-    },
-    []
-  );
-
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  return {
-    toasts,
-    addToast,
-    removeToast,
-    success: (message: string) => addToast(message, 'success'),
-    error: (message: string) => addToast(message, 'error'),
-    info: (message: string) => addToast(message, 'info'),
-  };
-};
-
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
-
-interface AddMemberModalProps {
+export interface AddMemberModalProps {
+  /** Whether modal is open */
   isOpen: boolean;
+  /** Close handler */
   onClose: () => void;
+  /** Club ID */
   clubId: string;
+  /** Team ID */
   teamId: string;
+  /** Sport for position selection */
+  sport: Sport;
+  /** Current user's role (determines available role options) */
+  creatorRole: UserRole;
+  /** Already used jersey numbers (for conflict checking) */
+  usedJerseyNumbers?: number[];
+  /** Search users handler */
+  onSearchUsers?: (query: string) => Promise<SearchableUser[]>;
+  /** Success callback */
   onSuccess: () => void;
+  /** Additional CSS classes */
+  className?: string;
 }
 
-interface FormData {
+export interface MemberFormData {
   userEmail: string;
-  role: 'MANAGER' | 'COACH' | 'PLAYER' | 'STAFF';
+  userId?: string;
+  role: ClubMemberRole;
+  position?: string;
+  jerseyNumber?: number;
+  isCaptain: boolean;
+  isViceCaptain: boolean;
 }
 
-// ============================================================================
-// CONSTANTS
-// ============================================================================
+// =============================================================================
+// ROLE CONFIGURATION
+// =============================================================================
 
-const ROLES = [
+interface RoleConfig {
+  value: ClubMemberRole;
+  label: string;
+  description: string;
+  icon: string;
+  color: string;
+  /** Which user roles can assign this club role */
+  allowedCreators: UserRole[];
+}
+
+const CLUB_MEMBER_ROLES: RoleConfig[] = [
+  {
+    value: 'OWNER',
+    label: 'Owner',
+    description: 'Full ownership and control',
+    icon: '👑',
+    color: 'bg-amber-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN'],
+  },
   {
     value: 'MANAGER',
     label: 'Manager',
-    description: 'Full team management access',
-    icon: '👨‍💼',
+    description: 'Team and club management',
+    icon: '💼',
+    color: 'bg-purple-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER'],
   },
   {
-    value: 'COACH',
-    label: 'Coach',
-    description: 'Training and tactical management',
-    icon: '🏋️',
+    value: 'HEAD_COACH',
+    label: 'Head Coach',
+    description: 'Lead coaching and tactics',
+    icon: '🎯',
+    color: 'bg-blue-600',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER'],
+  },
+  {
+    value: 'ASSISTANT_COACH',
+    label: 'Assistant Coach',
+    description: 'Support coaching staff',
+    icon: '📋',
+    color: 'bg-blue-400',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'COACH', 'COACH_PRO'],
   },
   {
     value: 'PLAYER',
     label: 'Player',
-    description: 'Player profile and team info',
-    icon: '⚽',
+    description: 'Active team player',
+    icon: '⚡',
+    color: 'bg-green-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'COACH', 'COACH_PRO'],
+  },
+  {
+    value: 'GOALKEEPER_COACH',
+    label: 'Goalkeeper Coach',
+    description: 'Specialist goalkeeper training',
+    icon: '🧤',
+    color: 'bg-yellow-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'COACH', 'COACH_PRO'],
+  },
+  {
+    value: 'PERFORMANCE_COACH',
+    label: 'Performance Coach',
+    description: 'Physical conditioning and fitness',
+    icon: '💪',
+    color: 'bg-orange-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'COACH', 'COACH_PRO'],
+  },
+  {
+    value: 'ANALYST',
+    label: 'Analyst',
+    description: 'Performance and match analysis',
+    icon: '📊',
+    color: 'bg-indigo-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER'],
+  },
+  {
+    value: 'VIDEO_ANALYST',
+    label: 'Video Analyst',
+    description: 'Video review and breakdown',
+    icon: '🎬',
+    color: 'bg-indigo-400',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'ANALYST'],
+  },
+  {
+    value: 'SCOUT',
+    label: 'Scout',
+    description: 'Talent identification',
+    icon: '🔍',
+    color: 'bg-cyan-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER'],
+  },
+  {
+    value: 'MEDICAL_STAFF',
+    label: 'Medical Staff',
+    description: 'Injury management and care',
+    icon: '🏥',
+    color: 'bg-red-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER'],
+  },
+  {
+    value: 'PHYSIOTHERAPIST',
+    label: 'Physiotherapist',
+    description: 'Physical therapy and rehab',
+    icon: '🩺',
+    color: 'bg-red-400',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'MEDICAL_STAFF'],
+  },
+  {
+    value: 'NUTRITIONIST',
+    label: 'Nutritionist',
+    description: 'Diet and nutrition planning',
+    icon: '🥗',
+    color: 'bg-green-400',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'MEDICAL_STAFF'],
+  },
+  {
+    value: 'PSYCHOLOGIST',
+    label: 'Psychologist',
+    description: 'Mental performance support',
+    icon: '🧠',
+    color: 'bg-pink-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'MEDICAL_STAFF'],
+  },
+  {
+    value: 'TREASURER',
+    label: 'Treasurer',
+    description: 'Financial management',
+    icon: '💰',
+    color: 'bg-emerald-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER'],
+  },
+  {
+    value: 'MEDIA_OFFICER',
+    label: 'Media Officer',
+    description: 'Communications and media',
+    icon: '📱',
+    color: 'bg-violet-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER'],
+  },
+  {
+    value: 'KIT_MANAGER',
+    label: 'Kit Manager',
+    description: 'Equipment and kit management',
+    icon: '👕',
+    color: 'bg-gray-500',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER'],
   },
   {
     value: 'STAFF',
-    label: 'Staff',
-    description: 'Support team member',
+    label: 'General Staff',
+    description: 'General team support',
     icon: '👥',
+    color: 'bg-gray-400',
+    allowedCreators: ['SUPERADMIN', 'ADMIN', 'CLUB_OWNER', 'CLUB_MANAGER', 'MANAGER', 'COACH', 'COACH_PRO'],
   },
 ];
 
-const INITIAL_FORM_DATA: FormData = {
-  userEmail: '',
-  role: 'PLAYER',
-};
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
 
-// ============================================================================
-// COMPONENTS
-// ============================================================================
-
-/**
- * Dialog Overlay
- */
-const DialogOverlay = ({ onClick }: { onClick: () => void }) => {
-  return (
-    <div
-      className="fixed inset-0 z-40 bg-black/50 dark:bg-black/70 animate-in fade-in duration-200"
-      onClick={onClick}
-      aria-hidden="true"
-    />
-  );
-};
-
-/**
- * Dialog Component
- */
-interface DialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  children: React.ReactNode;
+function getAvailableRoles(creatorRole: UserRole): RoleConfig[] {
+  return CLUB_MEMBER_ROLES.filter(role => role.allowedCreators.includes(creatorRole));
 }
 
-const Dialog = ({ isOpen, onClose, children }: DialogProps) => {
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  return (
-    <>
-      <DialogOverlay onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div
-          className="bg-white dark:bg-charcoal-800 rounded-lg shadow-xl max-w-md w-full animate-in zoom-in-95 fade-in duration-200"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {children}
-        </div>
-      </div>
-    </>
-  );
-};
-
-/**
- * Dialog Header
- */
-interface DialogHeaderProps {
-  title: string;
-  description?: string;
-  icon?: React.ReactNode;
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  
+  return debouncedValue;
 }
 
-const DialogHeader = ({ title, description, icon }: DialogHeaderProps) => {
-  return (
-    <div className="px-6 py-4 border-b border-neutral-200 dark:border-charcoal-700">
-      <div className="flex items-start gap-3 mb-2">
-        {icon}
-        <h2 className="text-lg font-bold text-charcoal-900 dark:text-white">
-          {title}
-        </h2>
-      </div>
-      {description && (
-        <p className="text-sm text-charcoal-600 dark:text-charcoal-400 ml-9">
-          {description}
-        </p>
-      )}
-    </div>
-  );
-};
+// =============================================================================
+// SUB-COMPONENTS
+// =============================================================================
 
-/**
- * Form Input Component
- */
-interface FormInputProps {
-  id: string;
-  label: string;
-  type?: string;
+interface UserSearchInputProps {
   value: string;
   onChange: (value: string) => void;
-  placeholder?: string;
-  icon?: React.ReactNode;
-  required?: boolean;
-  error?: string;
+  onSelectUser: (user: SearchableUser) => void;
+  selectedUser?: SearchableUser | null;
+  onClearUser: () => void;
+  onSearchUsers?: (query: string) => Promise<SearchableUser[]>;
+  disabled?: boolean;
 }
 
-const FormInput = ({
-  id,
-  label,
-  type = 'text',
+function UserSearchInput({
   value,
   onChange,
-  placeholder,
-  icon,
-  required = false,
-  error,
-}: FormInputProps) => {
+  onSelectUser,
+  selectedUser,
+  onClearUser,
+  onSearchUsers,
+  disabled,
+}: UserSearchInputProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [users, setUsers] = useState<SearchableUser[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  
+  const debouncedQuery = useDebounce(value, 300);
+  
+  // Search users when query changes
+  useEffect(() => {
+    if (!onSearchUsers || debouncedQuery.length < 2 || selectedUser) {
+      setUsers([]);
+      return;
+    }
+    
+    const search = async () => {
+      setIsSearching(true);
+      try {
+        const results = await onSearchUsers(debouncedQuery);
+        setUsers(results);
+      } catch (error) {
+        console.error('User search error:', error);
+        setUsers([]);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+    
+    search();
+  }, [debouncedQuery, onSearchUsers, selectedUser]);
+  
+  if (selectedUser) {
+    return (
+      <div className="flex items-center gap-3 p-3 rounded-lg border border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20">
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gold-400 to-gold-600 flex items-center justify-center text-white font-bold">
+          {selectedUser.firstName[0]}{selectedUser.lastName[0]}
+        </div>
+        <div className="flex-1">
+          <p className="font-medium text-gray-900 dark:text-white">
+            {selectedUser.firstName} {selectedUser.lastName}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {selectedUser.email}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onClearUser}
+          disabled={disabled}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+  
   return (
-    <div className="space-y-2">
-      <label
-        htmlFor={id}
-        className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 flex items-center gap-2"
-      >
-        {icon}
-        {label}
-        {required && <span className="text-red-500">*</span>}
-      </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        className={`w-full px-4 py-2 border rounded-lg bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white placeholder-charcoal-400 dark:placeholder-charcoal-500 focus:outline-none focus:ring-2 transition-colors ${
-          error
-            ? 'border-red-300 dark:border-red-600 focus:ring-red-500 dark:focus:ring-red-600'
-            : 'border-neutral-300 dark:border-charcoal-600 focus:ring-gold-500 dark:focus:ring-gold-600'
-        }`}
-      />
-      {error && (
-        <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
-          <AlertCircle className="w-4 h-4" />
-          {error}
-        </p>
+    <div className="relative">
+      <div className="relative">
+        {isSearching ? (
+          <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 animate-spin" />
+        ) : (
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        )}
+        <Input
+          type="text"
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          placeholder="Search existing user or enter email to invite..."
+          className="pl-10"
+          disabled={disabled}
+        />
+      </div>
+      
+      {/* Search Results Dropdown */}
+      {isOpen && users.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-charcoal-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+          <div className="max-h-48 overflow-y-auto">
+            {users.map(user => (
+              <button
+                key={user.id}
+                type="button"
+                className="w-full flex items-center gap-3 px-3 py-2 hover:bg-gray-100 dark:hover:bg-charcoal-800 transition-colors"
+                onClick={() => {
+                  onSelectUser(user);
+                  setIsOpen(false);
+                }}
+              >
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gold-400 to-gold-600 flex items-center justify-center text-white text-sm font-bold">
+                  {user.firstName[0]}{user.lastName[0]}
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                    {user.firstName} {user.lastName}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {user.email}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Click outside to close */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setIsOpen(false)}
+        />
       )}
     </div>
   );
-};
-
-/**
- * Role Select Component
- */
-interface RoleSelectProps {
-  value: string;
-  onChange: (value: string) => void;
 }
 
-const RoleSelect = ({ value, onChange }: RoleSelectProps) => {
+interface PositionSelectProps {
+  sport: Sport;
+  value?: string;
+  onChange: (value: string | undefined) => void;
+  disabled?: boolean;
+}
+
+function PositionSelect({ sport, value, onChange, disabled }: PositionSelectProps) {
+  const sportConfig = getSportPositions(sport);
+  
   return (
-    <div className="space-y-2">
-      <label
-        htmlFor="role"
-        className="block text-sm font-medium text-charcoal-700 dark:text-charcoal-300 flex items-center gap-2"
-      >
-        <Shield className="w-4 h-4" />
-        Role
-      </label>
-      <select
-        id="role"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-4 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500 dark:focus:ring-gold-600 transition-colors appearance-none"
-      >
-        {ROLES.map((role) => (
-          <option key={role.value} value={role.value}>
-            {role.label}
-          </option>
+    <Select
+      value={value || 'none'}
+      onValueChange={(val) => onChange(val === 'none' ? undefined : val)}
+      disabled={disabled}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Select position (optional)" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">No position (assign later)</SelectItem>
+        {sportConfig.categories.map(category => (
+          <React.Fragment key={category.category}>
+            <div className="px-2 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+              {category.name}
+            </div>
+            {getPositionsByCategory(sport, category.category).map(pos => (
+              <SelectItem key={pos.code} value={pos.code}>
+                <span className="flex items-center gap-2">
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: pos.color }}
+                  />
+                  {pos.name} ({pos.abbreviation})
+                </span>
+              </SelectItem>
+            ))}
+          </React.Fragment>
         ))}
-      </select>
-      <p className="text-xs text-charcoal-600 dark:text-charcoal-400">
-        {ROLES.find((r) => r.value === value)?.description}
-      </p>
-    </div>
+      </SelectContent>
+    </Select>
   );
-};
+}
 
-// ============================================================================
+// =============================================================================
 // MAIN COMPONENT
-// ============================================================================
+// =============================================================================
 
-export default function AddMemberModal({
+export function AddMemberModal({
   isOpen,
   onClose,
   clubId,
   teamId,
+  sport,
+  creatorRole,
+  usedJerseyNumbers = [],
+  onSearchUsers,
   onSuccess,
+  className,
 }: AddMemberModalProps) {
-  const { toasts, removeToast, success, error: showError } = useToast();
-
-  // State management
+  // Form state
+  const [formData, setFormData] = useState<MemberFormData>({
+    userEmail: '',
+    role: 'PLAYER',
+    isCaptain: false,
+    isViceCaptain: false,
+  });
+  const [selectedUser, setSelectedUser] = useState<SearchableUser | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState<FormData>(INITIAL_FORM_DATA);
-  const [errors, setErrors] = useState<Partial<FormData>>({});
-
-  // =========================================================================
-  // HANDLERS
-  // =========================================================================
-
-  /**
-   * Handle form field change
-   */
-  const handleFieldChange = useCallback(
-    (field: keyof FormData, value: string) => {
-      setFormData((prev) => ({
-        ...prev,
-        [field]: value,
-      }));
-      // Clear error for this field
-      if (errors[field]) {
-        setErrors((prev) => ({
-          ...prev,
-          [field]: undefined,
-        }));
-      }
-    },
-    [errors]
-  );
-
-  /**
-   * Validate form
-   */
+  const [errors, setErrors] = useState<Partial<Record<keyof MemberFormData, string>>>({});
+  
+  // Get available roles based on creator's role
+  const availableRoles = useMemo(() => {
+    return getAvailableRoles(creatorRole);
+  }, [creatorRole]);
+  
+  // Check if jersey number is taken
+  const isJerseyTaken = useMemo(() => {
+    if (!formData.jerseyNumber) return false;
+    return usedJerseyNumbers.includes(formData.jerseyNumber);
+  }, [formData.jerseyNumber, usedJerseyNumbers]);
+  
+  // Show position/jersey fields only for PLAYER role
+  const showPlayerFields = formData.role === 'PLAYER';
+  
+  // Reset form
+  const resetForm = useCallback(() => {
+    setFormData({
+      userEmail: '',
+      role: 'PLAYER',
+      isCaptain: false,
+      isViceCaptain: false,
+    });
+    setSelectedUser(null);
+    setErrors({});
+  }, []);
+  
+  // Handle close
+  const handleClose = useCallback(() => {
+    resetForm();
+    onClose();
+  }, [resetForm, onClose]);
+  
+  // Validate form
   const validateForm = useCallback((): boolean => {
-    const newErrors: Partial<FormData> = {};
-
-    if (!formData.userEmail.trim()) {
-      newErrors.userEmail = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.userEmail)) {
-      newErrors.userEmail = 'Please enter a valid email address';
+    const newErrors: Partial<Record<keyof MemberFormData, string>> = {};
+    
+    // Email validation (if no selected user)
+    if (!selectedUser) {
+      if (!formData.userEmail.trim()) {
+        newErrors.userEmail = 'Email is required';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.userEmail)) {
+        newErrors.userEmail = 'Please enter a valid email address';
+      }
     }
-
+    
+    // Jersey number validation
+    if (showPlayerFields && formData.jerseyNumber && isJerseyTaken) {
+      newErrors.jerseyNumber = 'This jersey number is already taken';
+    }
+    
+    // Captain/Vice-Captain conflict
+    if (formData.isCaptain && formData.isViceCaptain) {
+      newErrors.isCaptain = 'Cannot be both captain and vice-captain';
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [formData]);
-
-  /**
-   * Handle form submission
-   */
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-
-      if (!validateForm()) {
-        showError('❌ Please fix the errors above');
-        return;
+  }, [formData, selectedUser, showPlayerFields, isJerseyTaken]);
+  
+  // Handle submit
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) return;
+    
+    setIsSubmitting(true);
+    
+    try {
+      const response = await fetch(`/api/clubs/${clubId}/teams/${teamId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: selectedUser?.id,
+          userEmail: selectedUser ? undefined : formData.userEmail,
+          role: formData.role,
+          position: showPlayerFields ? formData.position : undefined,
+          jerseyNumber: showPlayerFields ? formData.jerseyNumber : undefined,
+          isCaptain: showPlayerFields ? formData.isCaptain : false,
+          isViceCaptain: showPlayerFields ? formData.isViceCaptain : false,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add member');
       }
-
-      setIsSubmitting(true);
-
-      try {
-        const response = await fetch(
-          `/api/clubs/${clubId}/teams/${teamId}/members/add`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData),
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to add member');
-        }
-
-        success('✅ Member added successfully!');
-        setFormData(INITIAL_FORM_DATA);
-        setErrors({});
-        
-        setTimeout(() => {
-          onSuccess();
-          onClose();
-        }, 1000);
-      } catch (error) {
-        console.error('Add member error:', error);
-        showError(
-          `❌ ${error instanceof Error ? error.message : 'Failed to add member'}`
-        );
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [formData, clubId, teamId, validateForm, success, showError, onSuccess, onClose]
-  );
-
-  /**
-   * Handle modal close
-   */
-  const handleClose = useCallback(() => {
-    setFormData(INITIAL_FORM_DATA);
-    setErrors({});
-    onClose();
-  }, [onClose]);
-
-  // =========================================================================
-  // RENDER
-  // =========================================================================
-
+      
+      toast({
+        title: 'Member Added',
+        description: selectedUser
+          ? `${selectedUser.firstName} ${selectedUser.lastName} has been added to the team.`
+          : `An invitation has been sent to ${formData.userEmail}.`,
+      });
+      
+      resetForm();
+      onSuccess();
+      onClose();
+    } catch (error) {
+      console.error('Add member error:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to add member',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  // Handle field change
+  const handleFieldChange = useCallback(<K extends keyof MemberFormData>(
+    field: K,
+    value: MemberFormData[K]
+  ) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: undefined }));
+    }
+  }, [errors]);
+  
   return (
-    <>
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
-
-      <Dialog isOpen={isOpen} onClose={handleClose}>
-        <DialogHeader
-          title="Add Team Member"
-          description="Invite a user to join this team"
-          icon={<UserPlus className="w-5 h-5 text-gold-600 dark:text-gold-400" />}
-        />
-
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
-          {/* Email Input */}
-          <FormInput
-            id="userEmail"
-            label="User Email"
-            type="email"
-            value={formData.userEmail}
-            onChange={(value) => handleFieldChange('userEmail', value)}
-            placeholder="user@example.com"
-            icon={<Mail className="w-4 h-4" />}
-            required
-            error={errors.userEmail}
-          />
-
-          {/* Role Select */}
-          <RoleSelect
-            value={formData.role}
-            onChange={(value) => handleFieldChange('role', value)}
-          />
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-charcoal-700 mt-6">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={isSubmitting}
-              className="px-4 py-2 border border-neutral-300 dark:border-charcoal-600 rounded-lg text-charcoal-700 dark:text-charcoal-300 hover:bg-neutral-50 dark:hover:bg-charcoal-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all flex items-center gap-2 ${
-                isSubmitting
-                  ? 'bg-charcoal-400 dark:bg-charcoal-600 text-white cursor-not-allowed opacity-50'
-                  : 'bg-gradient-to-r from-gold-600 to-orange-500 hover:from-gold-700 hover:to-orange-600 dark:from-gold-700 dark:to-orange-600 dark:hover:from-gold-800 dark:hover:to-orange-700 text-white shadow-md hover:shadow-lg'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                <>
-                  <UserPlus className="w-4 h-4" />
-                  Add Member
-                </>
-              )}
-            </button>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent className={cn('sm:max-w-lg', className)}>
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gold-100 dark:bg-gold-900/30">
+              <UserPlus className="h-5 w-5 text-gold-600 dark:text-gold-400" />
+            </div>
+            <div>
+              <DialogTitle>Add Team Member</DialogTitle>
+              <DialogDescription>
+                Search existing users or invite by email
+              </DialogDescription>
+            </div>
           </div>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit} className="space-y-6 py-4">
+          {/* User Search / Email */}
+          <div className="space-y-2">
+            <Label>
+              <Mail className="inline h-4 w-4 mr-2" />
+              User
+            </Label>
+            <UserSearchInput
+              value={formData.userEmail}
+              onChange={(value) => handleFieldChange('userEmail', value)}
+              onSelectUser={(user) => {
+                setSelectedUser(user);
+                handleFieldChange('userEmail', user.email);
+              }}
+              selectedUser={selectedUser}
+              onClearUser={() => {
+                setSelectedUser(null);
+                handleFieldChange('userEmail', '');
+              }}
+              onSearchUsers={onSearchUsers}
+              disabled={isSubmitting}
+            />
+            {errors.userEmail && (
+              <p className="text-sm text-red-500 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {errors.userEmail}
+              </p>
+            )}
+            {!selectedUser && formData.userEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.userEmail) && (
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                New user - an invitation will be sent to this email
+              </p>
+            )}
+          </div>
+          
+          {/* Role Selection */}
+          <div className="space-y-2">
+            <Label>
+              <Shield className="inline h-4 w-4 mr-2" />
+              Role
+            </Label>
+            <Select
+              value={formData.role}
+              onValueChange={(value) => handleFieldChange('role', value as ClubMemberRole)}
+              disabled={isSubmitting}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select role" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRoles.map(role => (
+                  <SelectItem key={role.value} value={role.value}>
+                    <span className="flex items-center gap-2">
+                      <span>{role.icon}</span>
+                      <span>{role.label}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {availableRoles.find(r => r.value === formData.role)?.description && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {availableRoles.find(r => r.value === formData.role)?.description}
+              </p>
+            )}
+          </div>
+          
+          {/* Player-specific Fields */}
+          {showPlayerFields && (
+            <>
+              {/* Position */}
+              <div className="space-y-2">
+                <Label>
+                  <MapPin className="inline h-4 w-4 mr-2" />
+                  Position (Optional)
+                </Label>
+                <PositionSelect
+                  sport={sport}
+                  value={formData.position}
+                  onChange={(value) => handleFieldChange('position', value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+              
+              {/* Jersey Number */}
+              <div className="space-y-2">
+                <Label>
+                  <Hash className="inline h-4 w-4 mr-2" />
+                  Jersey Number (Optional)
+                </Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={formData.jerseyNumber || ''}
+                  onChange={(e) => handleFieldChange(
+                    'jerseyNumber',
+                    e.target.value ? parseInt(e.target.value) : undefined
+                  )}
+                  placeholder="e.g., 10"
+                  className={cn(isJerseyTaken && 'border-red-500')}
+                  disabled={isSubmitting}
+                />
+                {isJerseyTaken && (
+                  <p className="text-sm text-red-500 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    This jersey number is already taken
+                  </p>
+                )}
+              </div>
+              
+              {/* Captain / Vice-Captain */}
+              <div className="flex flex-wrap gap-6">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="isCaptain"
+                    checked={formData.isCaptain}
+                    onCheckedChange={(checked) => {
+                      handleFieldChange('isCaptain', !!checked);
+                      if (checked) handleFieldChange('isViceCaptain', false);
+                    }}
+                    disabled={isSubmitting}
+                  />
+                  <Label htmlFor="isCaptain" className="flex items-center gap-1 cursor-pointer">
+                    <Crown className="h-4 w-4 text-amber-500" />
+                    Captain
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="isViceCaptain"
+                    checked={formData.isViceCaptain}
+                    onCheckedChange={(checked) => {
+                      handleFieldChange('isViceCaptain', !!checked);
+                      if (checked) handleFieldChange('isCaptain', false);
+                    }}
+                    disabled={isSubmitting}
+                  />
+                  <Label htmlFor="isViceCaptain" className="flex items-center gap-1 cursor-pointer">
+                    <Star className="h-4 w-4 text-blue-500" />
+                    Vice-Captain
+                  </Label>
+                </div>
+              </div>
+            </>
+          )}
         </form>
-      </Dialog>
-    </>
+        
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleClose}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || isJerseyTaken}
+            className="bg-gradient-to-r from-gold-500 to-gold-600 hover:from-gold-600 hover:to-gold-700"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Adding...
+              </>
+            ) : (
+              <>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Member
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-AddMemberModal.displayName = 'AddMemberModal';
+// =============================================================================
+// EXPORTS
+// =============================================================================
+
+export default AddMemberModal;

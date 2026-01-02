@@ -1,26 +1,22 @@
 /**
- * Switch Component - WORLD-CLASS VERSION
- * Path: /components/ui/switch.tsx
- *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * SWITCH COMPONENT - PitchConnect v7.10.1
  * ============================================================================
- * ✅ Removed @radix-ui/react-switch dependency (custom implementation)
- * ✅ Toggle switch with smooth animation
- * ✅ Accessible checkbox-based switch
- * ✅ Checked/unchecked states
- * ✅ Disabled state handling
- * ✅ Keyboard support (Space, Enter)
- * ✅ Focus ring styling for accessibility
- * ✅ Smooth slide animation
- * ✅ Dark mode support with design system colors
- * ✅ Multiple size variants (sm, md, lg)
- * ✅ Multiple color variants (primary, success, danger, warning)
- * ✅ Label support with proper association
- * ✅ Controlled and uncontrolled modes
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Performance optimized
- * ✅ Production-ready code
+ * 
+ * Enterprise-grade toggle switch (no Radix dependency) with:
+ * - Multiple variants (primary/gold, success, danger, warning)
+ * - Multiple sizes (sm, md, lg)
+ * - Smooth animations
+ * - Label support with description
+ * - Controlled and uncontrolled modes
+ * - Charcoal/gold design system
+ * - Dark mode support
+ * - WCAG 2.1 AA compliant
+ * 
+ * @version 2.0.0
+ * @path src/components/ui/switch.tsx
+ * 
+ * ============================================================================
  */
 
 'use client';
@@ -29,71 +25,49 @@ import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-// ============================================================================
-// SWITCH VARIANTS
-// ============================================================================
+// =============================================================================
+// VARIANTS
+// =============================================================================
 
 const switchVariants = cva(
-  'peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-all duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+  'peer inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-charcoal-900 disabled:cursor-not-allowed disabled:opacity-50',
   {
     variants: {
       variant: {
-        /**
-         * Primary switch - Main call-to-action toggle
-         * Used for primary toggle actions
-         */
+        /** Primary/Gold - Main toggle (brand color) */
         primary:
-          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-600 data-[state=checked]:to-green-700 dark:data-[state=checked]:from-green-700 dark:data-[state=checked]:to-green-800 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-green-500 dark:focus-visible:ring-green-600 focus-visible:ring-offset-white dark:focus-visible:ring-offset-charcoal-800',
+          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-gold-500 data-[state=checked]:to-gold-600 dark:data-[state=checked]:from-gold-600 dark:data-[state=checked]:to-gold-700 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-gold-500',
 
-        /**
-         * Success switch - Positive/confirmation toggle
-         * Used for success/confirmation actions
-         */
+        /** Success - Positive toggle */
         success:
-          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-emerald-500 data-[state=checked]:to-teal-600 dark:data-[state=checked]:from-emerald-600 dark:data-[state=checked]:to-teal-700 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-emerald-500 dark:focus-visible:ring-emerald-600 focus-visible:ring-offset-white dark:focus-visible:ring-offset-charcoal-800',
+          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-green-500 data-[state=checked]:to-green-600 dark:data-[state=checked]:from-green-600 dark:data-[state=checked]:to-green-700 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-green-500',
 
-        /**
-         * Danger switch - Warning/destructive toggle
-         * Used for dangerous/destructive actions
-         */
+        /** Danger - Warning/destructive toggle */
         danger:
-          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-red-600 data-[state=checked]:to-red-700 dark:data-[state=checked]:from-red-700 dark:data-[state=checked]:to-red-800 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-red-500 dark:focus-visible:ring-red-600 focus-visible:ring-offset-white dark:focus-visible:ring-offset-charcoal-800',
+          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-red-500 data-[state=checked]:to-red-600 dark:data-[state=checked]:from-red-600 dark:data-[state=checked]:to-red-700 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-red-500',
 
-        /**
-         * Warning switch - Caution/warning toggle
-         * Used for warning actions
-         */
+        /** Warning - Caution toggle */
         warning:
-          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-amber-500 data-[state=checked]:to-orange-600 dark:data-[state=checked]:from-amber-600 dark:data-[state=checked]:to-orange-700 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-amber-500 dark:focus-visible:ring-amber-600 focus-visible:ring-offset-white dark:focus-visible:ring-offset-charcoal-800',
+          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-amber-500 data-[state=checked]:to-amber-600 dark:data-[state=checked]:from-amber-600 dark:data-[state=checked]:to-amber-700 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-amber-500',
 
-        /**
-         * Gold switch - Premium/special toggle
-         * Used for premium/special actions
-         */
-        gold: 'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-gold-600 data-[state=checked]:to-orange-500 dark:data-[state=checked]:from-gold-700 dark:data-[state=checked]:to-orange-600 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-gold-500 dark:focus-visible:ring-gold-600 focus-visible:ring-offset-white dark:focus-visible:ring-offset-charcoal-800',
+        /** Info - Informational toggle */
+        info:
+          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-blue-600 dark:data-[state=checked]:from-blue-600 dark:data-[state=checked]:to-blue-700 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-blue-500',
+
+        /** Charcoal - Neutral toggle */
+        charcoal:
+          'data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-charcoal-700 data-[state=checked]:to-charcoal-800 dark:data-[state=checked]:from-charcoal-500 dark:data-[state=checked]:to-charcoal-600 data-[state=unchecked]:bg-neutral-300 dark:data-[state=unchecked]:bg-charcoal-600 focus-visible:ring-charcoal-500',
       },
 
       size: {
-        /**
-         * Small size - Compact switch
-         * Used in tight spaces
-         */
-        sm: 'h-5 w-9 data-[state=checked]:data-[state=checked]:translate-x-4 peer-disabled:opacity-50',
-
-        /**
-         * Medium size - Standard switch
-         * Default and recommended size
-         */
-        md: 'h-6 w-11 data-[state=checked]:data-[state=checked]:translate-x-5 peer-disabled:opacity-50',
-
-        /**
-         * Large size - Prominent switch
-         * Used for important toggles
-         */
-        lg: 'h-7 w-14 data-[state=checked]:data-[state=checked]:translate-x-7 peer-disabled:opacity-50',
+        /** Small - Compact switch */
+        sm: 'h-5 w-9',
+        /** Medium - Standard switch */
+        md: 'h-6 w-11',
+        /** Large - Prominent switch */
+        lg: 'h-7 w-14',
       },
     },
-
     defaultVariants: {
       variant: 'primary',
       size: 'md',
@@ -102,13 +76,13 @@ const switchVariants = cva(
 );
 
 const switchThumbVariants = cva(
-  'pointer-events-none block rounded-full bg-white shadow-lg ring-0 transition-transform duration-200 ease-in-out dark:bg-charcoal-100',
+  'pointer-events-none block rounded-full bg-white shadow-lg ring-0 transition-transform duration-200',
   {
     variants: {
       size: {
-        sm: 'h-4 w-4',
-        md: 'h-5 w-5',
-        lg: 'h-6 w-6',
+        sm: 'h-4 w-4 data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0',
+        md: 'h-5 w-5 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0',
+        lg: 'h-6 w-6 data-[state=checked]:translate-x-7 data-[state=unchecked]:translate-x-0',
       },
     },
     defaultVariants: {
@@ -117,79 +91,35 @@ const switchThumbVariants = cva(
   }
 );
 
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
+// =============================================================================
+// TYPES
+// =============================================================================
 
 export interface SwitchProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'role'>,
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'size'>,
     VariantProps<typeof switchVariants> {
-  /**
-   * Whether switch is checked
-   */
+  /** Controlled checked state */
   checked?: boolean;
-
-  /**
-   * Default checked state (uncontrolled)
-   */
+  /** Default checked (uncontrolled) */
   defaultChecked?: boolean;
-
-  /**
-   * Callback when switch state changes
-   */
+  /** Change handler */
   onCheckedChange?: (checked: boolean) => void;
-
-  /**
-   * Associated label text
-   */
+  /** Label text */
   label?: string;
-
-  /**
-   * Helper text below switch
-   */
-  helperText?: string;
-
-  /**
-   * Whether to show label
-   */
-  showLabel?: boolean;
+  /** Description text */
+  description?: string;
+  /** Show label on the left */
+  labelPosition?: 'left' | 'right';
+  /** Error state */
+  error?: boolean;
+  /** Error message */
+  errorMessage?: string;
 }
 
-// ============================================================================
-// COMPONENTS
-// ============================================================================
+// =============================================================================
+// COMPONENT
+// =============================================================================
 
-/**
- * Switch Component
- *
- * An accessible toggle switch built with HTML input[type="checkbox"].
- * Supports multiple variants, sizes, and states.
- *
- * @example
- * // Basic switch
- * <Switch defaultChecked={false} />
- *
- * @example
- * // Controlled switch
- * const [checked, setChecked] = useState(false);
- * <Switch checked={checked} onCheckedChange={setChecked} />
- *
- * @example
- * // With label
- * <Switch label="Enable notifications" />
- *
- * @example
- * // Different variant
- * <Switch variant="danger" />
- *
- * @example
- * // Different size
- * <Switch size="lg" />
- *
- * @example
- * // With helper text
- * <Switch label="Dark mode" helperText="Enable dark theme" />
- */
 const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
   (
     {
@@ -201,18 +131,18 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
       onCheckedChange,
       disabled = false,
       label,
-      helperText,
-      showLabel = !!label,
+      description,
+      labelPosition = 'right',
+      error = false,
+      errorMessage,
       id,
       ...props
     },
     ref
   ) => {
-    const [uncontrolledChecked, setUncontrolledChecked] =
-      React.useState(defaultChecked);
-
-    const isChecked =
-      controlledChecked !== undefined ? controlledChecked : uncontrolledChecked;
+    const [uncontrolledChecked, setUncontrolledChecked] = React.useState(defaultChecked);
+    const isChecked = controlledChecked !== undefined ? controlledChecked : uncontrolledChecked;
+    const switchId = id || React.useId();
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const newChecked = e.target.checked;
@@ -221,92 +151,127 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
       props.onChange?.(e);
     };
 
-    const switchId = id || `switch-${Math.random().toString(36).substr(2, 9)}`;
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const newChecked = !isChecked;
+        setUncontrolledChecked(newChecked);
+        onCheckedChange?.(newChecked);
+      }
+    };
 
-    return (
-      <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          {/* Hidden checkbox input */}
-          <input
-            ref={ref}
-            id={switchId}
-            type="checkbox"
-            checked={isChecked}
-            onChange={handleChange}
-            disabled={disabled}
-            className="sr-only peer"
-            role="switch"
-            aria-checked={isChecked}
-            aria-disabled={disabled}
-            {...props}
+    const state = isChecked ? 'checked' : 'unchecked';
+
+    const switchElement = (
+      <div className="relative inline-flex">
+        {/* Hidden input for accessibility */}
+        <input
+          ref={ref}
+          id={switchId}
+          type="checkbox"
+          role="switch"
+          checked={isChecked}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          className="sr-only peer"
+          aria-checked={isChecked}
+          aria-disabled={disabled}
+          {...props}
+        />
+
+        {/* Visual switch track */}
+        <label
+          htmlFor={switchId}
+          data-state={state}
+          className={cn(
+            switchVariants({ variant, size }),
+            error && 'ring-2 ring-red-500 dark:ring-red-400',
+            className
+          )}
+        >
+          {/* Thumb */}
+          <span
+            data-state={state}
+            className={cn(switchThumbVariants({ size }))}
           />
+        </label>
+      </div>
+    );
 
-          {/* Visual switch */}
-          <label
-            htmlFor={switchId}
-            className={cn(
-              switchVariants({ variant, size }),
-              className
-            )}
-            data-state={isChecked ? 'checked' : 'unchecked'}
-          >
-            {/* Thumb/Toggle circle */}
-            <span
-              className={cn(
-                switchThumbVariants({ size }),
-                'transition-transform duration-200',
-                isChecked && (
-                  size === 'sm'
-                    ? 'translate-x-4'
-                    : size === 'lg'
-                    ? 'translate-x-7'
-                    : 'translate-x-5'
-                )
-              )}
-            />
-          </label>
+    // Without label
+    if (!label && !description) {
+      return (
+        <div className="space-y-1">
+          {switchElement}
+          {error && errorMessage && (
+            <p className="text-sm text-red-600 dark:text-red-400">{errorMessage}</p>
+          )}
+        </div>
+      );
+    }
 
-          {/* Label text */}
-          {showLabel && label && (
+    // With label
+    return (
+      <div className="space-y-1">
+        <div
+          className={cn(
+            'flex items-start gap-3',
+            labelPosition === 'left' && 'flex-row-reverse justify-end'
+          )}
+        >
+          {switchElement}
+
+          <div className="flex-1">
             <label
               htmlFor={switchId}
-              className="text-sm font-medium text-charcoal-700 dark:text-charcoal-300 cursor-pointer hover:text-charcoal-900 dark:hover:text-white transition-colors"
+              className={cn(
+                'text-sm font-medium cursor-pointer',
+                'text-charcoal-900 dark:text-white',
+                disabled && 'opacity-50 cursor-not-allowed',
+                error && 'text-red-600 dark:text-red-400'
+              )}
             >
               {label}
             </label>
-          )}
+            {description && (
+              <p
+                className={cn(
+                  'text-sm text-charcoal-600 dark:text-charcoal-400 mt-0.5',
+                  disabled && 'opacity-50'
+                )}
+              >
+                {description}
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Helper text */}
-        {helperText && (
-          <p className="text-xs text-charcoal-600 dark:text-charcoal-400 ml-0">
-            {helperText}
-          </p>
+        {error && errorMessage && (
+          <p className="text-sm text-red-600 dark:text-red-400 ml-14">{errorMessage}</p>
         )}
       </div>
     );
   }
 );
-
 Switch.displayName = 'Switch';
 
-/**
- * Switch Group Component
- * Group multiple switches together
- */
-interface SwitchGroupProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode;
+// =============================================================================
+// SWITCH GROUP
+// =============================================================================
+
+interface SwitchGroupProps extends React.HTMLAttributes<HTMLFieldSetElement> {
+  /** Group legend */
   legend?: string;
+  /** Description */
   description?: string;
+  /** Orientation */
+  orientation?: 'horizontal' | 'vertical';
 }
 
-const SwitchGroup = React.forwardRef<HTMLDivElement, SwitchGroupProps>(
-  ({ className, children, legend, description, ...props }, ref) => (
-    <fieldset
-      ref={ref}
-      className={cn('space-y-4', className)}
-      {...props}
-    >
+const SwitchGroup = React.forwardRef<HTMLFieldSetElement, SwitchGroupProps>(
+  ({ className, children, legend, description, orientation = 'vertical', ...props }, ref) => (
+    <fieldset ref={ref} className={cn('space-y-4', className)} {...props}>
       {legend && (
         <div>
           <legend className="text-base font-semibold text-charcoal-900 dark:text-white">
@@ -319,74 +284,105 @@ const SwitchGroup = React.forwardRef<HTMLDivElement, SwitchGroupProps>(
           )}
         </div>
       )}
-      <div className="space-y-3">
+      <div
+        className={cn(
+          orientation === 'horizontal' ? 'flex flex-wrap gap-6' : 'space-y-4'
+        )}
+      >
         {children}
       </div>
     </fieldset>
   )
 );
-
 SwitchGroup.displayName = 'SwitchGroup';
 
-/**
- * Switch with Label Component
- * Switch and label paired together
- */
-interface SwitchWithLabelProps
-  extends Omit<SwitchProps, 'label' | 'showLabel'> {
-  label: string;
-  description?: string;
+// =============================================================================
+// SWITCH CARD
+// =============================================================================
+
+interface SwitchCardProps extends SwitchProps {
+  /** Card title */
+  title: string;
+  /** Card description */
+  cardDescription?: string;
+  /** Icon */
+  icon?: React.ReactNode;
 }
 
-const SwitchWithLabel = React.forwardRef<HTMLInputElement, SwitchWithLabelProps>(
+const SwitchCard = React.forwardRef<HTMLInputElement, SwitchCardProps>(
   (
     {
-      label,
-      description,
-      defaultChecked,
+      className,
+      title,
+      cardDescription,
+      icon,
       checked,
       onCheckedChange,
-      variant,
-      size,
       disabled,
-      id,
+      variant = 'primary',
       ...props
     },
     ref
   ) => {
-    const switchId = id || `switch-${Math.random().toString(36).substr(2, 9)}`;
+    const cardId = React.useId();
 
     return (
-      <div className="flex items-start gap-3">
-        <Switch
-          ref={ref}
-          id={switchId}
-          checked={checked}
-          defaultChecked={defaultChecked}
-          onCheckedChange={onCheckedChange}
-          variant={variant}
-          size={size}
-          disabled={disabled}
-          {...props}
-        />
-        <div className="flex-1 pt-1">
-          <label
-            htmlFor={switchId}
-            className="text-sm font-medium text-charcoal-900 dark:text-white cursor-pointer hover:text-charcoal-700 dark:hover:text-charcoal-200 transition-colors"
-          >
-            {label}
-          </label>
-          {description && (
-            <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-1">
-              {description}
-            </p>
-          )}
-        </div>
+      <div
+        className={cn(
+          'relative rounded-xl border-2 transition-all duration-200',
+          checked
+            ? 'border-gold-500 dark:border-gold-400 bg-gold-50 dark:bg-gold-900/20'
+            : 'border-neutral-200 dark:border-charcoal-700 hover:border-neutral-300 dark:hover:border-charcoal-600',
+          disabled && 'opacity-50 cursor-not-allowed',
+          className
+        )}
+      >
+        <label htmlFor={cardId} className="block p-4 cursor-pointer">
+          <div className="flex items-start gap-4">
+            {icon && (
+              <div
+                className={cn(
+                  'p-2 rounded-lg',
+                  checked
+                    ? 'bg-gold-100 dark:bg-gold-900/30 text-gold-600 dark:text-gold-400'
+                    : 'bg-neutral-100 dark:bg-charcoal-700 text-charcoal-600 dark:text-charcoal-400'
+                )}
+              >
+                {icon}
+              </div>
+            )}
+            <div className="flex-1">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-charcoal-900 dark:text-white">
+                  {title}
+                </span>
+                <Switch
+                  ref={ref}
+                  id={cardId}
+                  checked={checked}
+                  onCheckedChange={onCheckedChange}
+                  disabled={disabled}
+                  variant={variant}
+                  size="sm"
+                  {...props}
+                />
+              </div>
+              {cardDescription && (
+                <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mt-1 pr-12">
+                  {cardDescription}
+                </p>
+              )}
+            </div>
+          </div>
+        </label>
       </div>
     );
   }
 );
+SwitchCard.displayName = 'SwitchCard';
 
-SwitchWithLabel.displayName = 'SwitchWithLabel';
+// =============================================================================
+// EXPORTS
+// =============================================================================
 
-export { Switch, SwitchGroup, SwitchWithLabel };
+export { Switch, SwitchGroup, SwitchCard, switchVariants, switchThumbVariants };

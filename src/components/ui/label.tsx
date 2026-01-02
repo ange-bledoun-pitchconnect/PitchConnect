@@ -1,401 +1,431 @@
 /**
- * Label Component - WORLD-CLASS VERSION
- * Path: /components/ui/label.tsx
- *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * LABEL COMPONENT - PitchConnect v7.10.1
  * ============================================================================
- * ✅ Removed @radix-ui/react-label dependency (native label element)
- * ✅ Multiple label variants (default, required, optional, inline, block)
- * ✅ Proper form association with htmlFor attribute
- * ✅ Support for required field indicators
- * ✅ Support for optional field indicators
- * ✅ Disabled state styling
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Full TypeScript support
- * ✅ Forward ref support
- * ✅ Type safety with CVA variants
- * ✅ Flexible sizing and styling
- * ✅ Performance optimized
- * ✅ Production-ready code
+ * 
+ * Enterprise-grade form label with:
+ * - Required/optional indicators
+ * - Helper text support
+ * - Error state styling
+ * - Success state styling
+ * - Info tooltip integration
+ * - Character count display
+ * - Multiple sizes
+ * - Charcoal/gold design system
+ * - Dark mode support
+ * - WCAG 2.1 AA compliant
+ * 
+ * @version 2.0.0
+ * @path src/components/ui/label.tsx
+ * 
+ * ============================================================================
  */
 
 'use client';
 
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
+import { HelpCircle, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// ============================================================================
-// LABEL VARIANTS
-// ============================================================================
+// =============================================================================
+// VARIANTS
+// =============================================================================
 
 const labelVariants = cva(
-  'text-sm font-medium leading-none transition-colors cursor-pointer',
+  'text-charcoal-900 dark:text-white font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 transition-colors',
   {
     variants: {
-      variant: {
-        /**
-         * Default label - Standard form label
-         * Used for most form fields
-         */
-        default:
-          'text-charcoal-700 dark:text-charcoal-300 peer-disabled:opacity-70 peer-disabled:cursor-not-allowed',
-
-        /**
-         * Required label - Label for required fields
-         * Shows visual indicator that field is required
-         */
-        required:
-          'text-charcoal-700 dark:text-charcoal-300 peer-disabled:opacity-70 peer-disabled:cursor-not-allowed',
-
-        /**
-         * Optional label - Label for optional fields
-         * Shows visual indicator that field is optional
-         */
-        optional:
-          'text-charcoal-600 dark:text-charcoal-400 peer-disabled:opacity-70 peer-disabled:cursor-not-allowed',
-
-        /**
-         * Inline label - Label displayed inline with field
-         * Used for inline form layouts
-         */
-        inline:
-          'text-charcoal-700 dark:text-charcoal-300 peer-disabled:opacity-70 peer-disabled:cursor-not-allowed inline-flex items-center gap-2',
-
-        /**
-         * Block label - Full width label
-         * Used for stacked form layouts
-         */
-        block:
-          'text-charcoal-700 dark:text-charcoal-300 peer-disabled:opacity-70 peer-disabled:cursor-not-allowed block w-full',
-
-        /**
-         * Subtle label - Subdued label styling
-         * Used for secondary labels
-         */
-        subtle:
-          'text-charcoal-600 dark:text-charcoal-400 peer-disabled:opacity-70 peer-disabled:cursor-not-allowed text-xs',
-
-        /**
-         * Small label - Compact label
-         * Used in compact layouts
-         */
-        sm: 'text-xs font-medium text-charcoal-700 dark:text-charcoal-300 peer-disabled:opacity-70 peer-disabled:cursor-not-allowed',
-
-        /**
-         * Large label - Prominent label
-         * Used for important fields
-         */
-        lg: 'text-base font-semibold text-charcoal-900 dark:text-white peer-disabled:opacity-70 peer-disabled:cursor-not-allowed',
-      },
-
       size: {
-        /**
-         * Default size - Standard label text
-         */
-        default: 'text-sm',
-
-        /**
-         * Small size - Compact label text
-         */
         sm: 'text-xs',
-
-        /**
-         * Large size - Prominent label text
-         */
+        md: 'text-sm',
         lg: 'text-base',
       },
-
-      weight: {
-        /**
-         * Normal weight - Regular font weight
-         */
-        normal: 'font-normal',
-
-        /**
-         * Medium weight - Medium font weight
-         */
-        medium: 'font-medium',
-
-        /**
-         * Semibold weight - Semibold font weight
-         */
-        semibold: 'font-semibold',
-
-        /**
-         * Bold weight - Bold font weight
-         */
-        bold: 'font-bold',
+      state: {
+        default: '',
+        error: 'text-red-600 dark:text-red-400',
+        success: 'text-green-600 dark:text-green-400',
+        warning: 'text-amber-600 dark:text-amber-400',
       },
     },
-
     defaultVariants: {
-      variant: 'default',
-      size: 'default',
-      weight: 'medium',
+      size: 'md',
+      state: 'default',
     },
   }
 );
 
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
+// =============================================================================
+// TYPES
+// =============================================================================
 
 export interface LabelProps
   extends React.LabelHTMLAttributes<HTMLLabelElement>,
     VariantProps<typeof labelVariants> {
-  /**
-   * Whether field is required
-   * Shows red asterisk indicator
-   */
+  /** Required field indicator */
   required?: boolean;
-
-  /**
-   * Whether field is optional
-   * Shows optional indicator
-   */
+  /** Optional field indicator */
   optional?: boolean;
-
-  /**
-   * Custom required indicator text
-   * Default is "*"
-   */
-  requiredIndicator?: string | React.ReactNode;
-
-  /**
-   * Custom optional indicator text
-   * Default is "(optional)"
-   */
-  optionalIndicator?: string | React.ReactNode;
-
-  /**
-   * Whether to show required indicator
-   * Default is true when required=true
-   */
-  showRequiredIndicator?: boolean;
-
-  /**
-   * Whether to show optional indicator
-   * Default is true when optional=true
-   */
-  showOptionalIndicator?: boolean;
-
-  /**
-   * Additional helper text
-   */
-  helperText?: string;
-
-  /**
-   * Whether label is disabled
-   */
+  /** Helper/description text */
+  helper?: string;
+  /** Error message */
+  error?: string;
+  /** Success message */
+  success?: string;
+  /** Warning message */
+  warning?: string;
+  /** Info tooltip content */
+  tooltip?: string;
+  /** Show character count */
+  characterCount?: {
+    current: number;
+    max: number;
+  };
+  /** Disabled state */
   disabled?: boolean;
 }
 
-// ============================================================================
-// COMPONENTS
-// ============================================================================
+// =============================================================================
+// TOOLTIP COMPONENT (inline for this file)
+// =============================================================================
 
-/**
- * Label Component
- *
- * Accessible form label with proper association to inputs.
- * Supports required/optional indicators and multiple variants.
- *
- * @example
- * // Basic label
- * <Label htmlFor="email">Email</Label>
- *
- * @example
- * // With required indicator
- * <Label htmlFor="name" required>Name</Label>
- *
- * @example
- * // With optional indicator
- * <Label htmlFor="phone" optional>Phone</Label>
- *
- * @example
- * // Different variant
- * <Label htmlFor="username" variant="lg">Username</Label>
- *
- * @example
- * // With helper text
- * <Label htmlFor="password" required helperText="Min 8 characters">
- *   Password
- * </Label>
- */
+interface TooltipProps {
+  content: string;
+  children: React.ReactNode;
+}
+
+const InlineTooltip: React.FC<TooltipProps> = ({ content, children }) => {
+  const [isVisible, setIsVisible] = React.useState(false);
+
+  return (
+    <span
+      className="relative inline-flex items-center"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children}
+      {isVisible && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 text-xs rounded-md bg-charcoal-900 dark:bg-charcoal-700 text-white whitespace-nowrap z-50 animate-in fade-in-0 zoom-in-95 duration-150">
+          {content}
+          <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-charcoal-900 dark:border-t-charcoal-700" />
+        </span>
+      )}
+    </span>
+  );
+};
+
+// =============================================================================
+// COMPONENT
+// =============================================================================
+
 const Label = React.forwardRef<HTMLLabelElement, LabelProps>(
   (
     {
       className,
-      variant,
       size,
-      weight,
+      state: stateProp,
       required = false,
       optional = false,
-      requiredIndicator = '*',
-      optionalIndicator = '(optional)',
-      showRequiredIndicator = required,
-      showOptionalIndicator = optional,
-      helperText,
+      helper,
+      error,
+      success,
+      warning,
+      tooltip,
+      characterCount,
       disabled = false,
       children,
       ...props
     },
     ref
   ) => {
-    // Determine which indicator to show
-    const showRequired = required && showRequiredIndicator;
-    const showOptional = optional && showOptionalIndicator && !required;
+    // Determine state based on props
+    const state = error ? 'error' : success ? 'success' : warning ? 'warning' : stateProp;
+    const message = error || success || warning || helper;
+
+    // Character count calculations
+    const charCountColor = React.useMemo(() => {
+      if (!characterCount) return '';
+      const ratio = characterCount.current / characterCount.max;
+      if (ratio >= 1) return 'text-red-600 dark:text-red-400';
+      if (ratio >= 0.9) return 'text-amber-600 dark:text-amber-400';
+      return 'text-charcoal-500 dark:text-charcoal-400';
+    }, [characterCount]);
 
     return (
-      <div className="space-y-1">
-        <label
-          ref={ref}
-          className={cn(
-            labelVariants({ variant, size, weight }),
-            disabled && 'opacity-70 cursor-not-allowed',
-            className
+      <div className={cn('space-y-1.5', disabled && 'opacity-50')}>
+        {/* Label row */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <label
+              ref={ref}
+              className={cn(labelVariants({ size, state }), className)}
+              {...props}
+            >
+              {children}
+            </label>
+
+            {/* Required indicator */}
+            {required && (
+              <span className="text-red-500 dark:text-red-400 font-medium" aria-hidden="true">
+                *
+              </span>
+            )}
+
+            {/* Optional indicator */}
+            {optional && (
+              <span className="text-xs text-charcoal-500 dark:text-charcoal-400 font-normal">
+                (optional)
+              </span>
+            )}
+
+            {/* Info tooltip */}
+            {tooltip && (
+              <InlineTooltip content={tooltip}>
+                <button
+                  type="button"
+                  className="text-charcoal-400 hover:text-charcoal-600 dark:text-charcoal-500 dark:hover:text-charcoal-300 transition-colors"
+                  aria-label="More information"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                </button>
+              </InlineTooltip>
+            )}
+          </div>
+
+          {/* Character count */}
+          {characterCount && (
+            <span className={cn('text-xs font-medium tabular-nums', charCountColor)}>
+              {characterCount.current}/{characterCount.max}
+            </span>
           )}
-          {...props}
-        >
-          <span className="flex items-center gap-1">
-            <span>{children}</span>
+        </div>
 
-            {/* Required Indicator */}
-            {showRequired && (
-              <span
-                className="text-red-600 dark:text-red-400 font-bold"
-                aria-label="required"
-                title="This field is required"
-              >
-                {requiredIndicator}
-              </span>
+        {/* Helper/error/success message */}
+        {message && (
+          <div
+            className={cn(
+              'flex items-start gap-1.5 text-xs',
+              error && 'text-red-600 dark:text-red-400',
+              success && 'text-green-600 dark:text-green-400',
+              warning && 'text-amber-600 dark:text-amber-400',
+              !error && !success && !warning && 'text-charcoal-600 dark:text-charcoal-400'
             )}
-
-            {/* Optional Indicator */}
-            {showOptional && (
-              <span
-                className="text-charcoal-500 dark:text-charcoal-500 text-xs italic"
-                aria-label="optional"
-                title="This field is optional"
-              >
-                {optionalIndicator}
-              </span>
+          >
+            {error && <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />}
+            {success && <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />}
+            {warning && <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />}
+            {!error && !success && !warning && helper && (
+              <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
             )}
-          </span>
-        </label>
-
-        {/* Helper Text */}
-        {helperText && (
-          <p className="text-xs text-charcoal-600 dark:text-charcoal-400 mt-1">
-            {helperText}
-          </p>
+            <span>{message}</span>
+          </div>
         )}
       </div>
     );
   }
 );
-
 Label.displayName = 'Label';
 
-/**
- * Label Group Component
- * Group multiple labels together
- */
-interface LabelGroupProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode;
-  legend?: string;
-  description?: string;
+// =============================================================================
+// FIELD LABEL - Simplified version for form fields
+// =============================================================================
+
+interface FieldLabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {
+  /** Required indicator */
+  required?: boolean;
+  /** Disabled state */
+  disabled?: boolean;
 }
 
-const LabelGroup = React.forwardRef<HTMLDivElement, LabelGroupProps>(
-  ({ className, children, legend, description, ...props }, ref) => (
-    <fieldset
+const FieldLabel = React.forwardRef<HTMLLabelElement, FieldLabelProps>(
+  ({ className, required, disabled, children, ...props }, ref) => (
+    <label
       ref={ref}
-      className={cn('space-y-4', className)}
+      className={cn(
+        'text-sm font-medium text-charcoal-900 dark:text-white leading-none',
+        'peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
+        disabled && 'opacity-50 cursor-not-allowed',
+        className
+      )}
       {...props}
     >
-      {legend && (
-        <div>
-          <legend className="text-base font-semibold text-charcoal-900 dark:text-white">
-            {legend}
-          </legend>
-          {description && (
-            <p className="text-sm text-charcoal-600 dark:text-charcoal-400 mt-1">
-              {description}
-            </p>
-          )}
-        </div>
-      )}
       {children}
-    </fieldset>
+      {required && (
+        <span className="text-red-500 dark:text-red-400 ml-0.5" aria-hidden="true">
+          *
+        </span>
+      )}
+    </label>
   )
 );
+FieldLabel.displayName = 'FieldLabel';
 
-LabelGroup.displayName = 'LabelGroup';
+// =============================================================================
+// FORM LABEL GROUP - Label with input
+// =============================================================================
 
-/**
- * Label with Input Component
- * Label and input paired together
- */
-interface LabelWithInputProps
-  extends Omit<LabelProps, 'children'>,
-    Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
+interface FormLabelGroupProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Label text */
   label: string;
-  inputProps?: React.InputHTMLAttributes<HTMLInputElement>;
+  /** Label htmlFor */
+  htmlFor?: string;
+  /** Required indicator */
+  required?: boolean;
+  /** Optional indicator */
+  optional?: boolean;
+  /** Helper text */
+  helper?: string;
+  /** Error message */
+  error?: string;
+  /** Success message */
+  success?: string;
+  /** Layout direction */
+  direction?: 'vertical' | 'horizontal';
+  /** Label width (for horizontal layout) */
+  labelWidth?: string;
+  /** Children (form input) */
+  children: React.ReactNode;
 }
 
-const LabelWithInput = React.forwardRef<HTMLInputElement, LabelWithInputProps>(
+const FormLabelGroup = React.forwardRef<HTMLDivElement, FormLabelGroupProps>(
   (
     {
+      className,
       label,
+      htmlFor,
       required,
       optional,
-      helperText,
-      disabled,
-      variant,
-      className,
-      inputProps,
-      id,
-      type = 'text',
-      ...labelProps
+      helper,
+      error,
+      success,
+      direction = 'vertical',
+      labelWidth = '140px',
+      children,
+      ...props
     },
     ref
   ) => {
-    const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
+    const isHorizontal = direction === 'horizontal';
 
     return (
-      <div className="space-y-2">
-        <Label
-          htmlFor={inputId}
-          required={required}
-          optional={optional}
-          helperText={helperText}
-          disabled={disabled}
-          {...labelProps}
+      <div
+        ref={ref}
+        className={cn(
+          isHorizontal ? 'flex items-start gap-4' : 'space-y-2',
+          className
+        )}
+        {...props}
+      >
+        <div
+          className={cn(isHorizontal && 'flex-shrink-0 pt-2')}
+          style={isHorizontal ? { width: labelWidth } : undefined}
         >
-          {label}
-        </Label>
-        <input
-          ref={ref}
-          id={inputId}
-          type={type}
-          disabled={disabled}
-          className={cn(
-            'w-full px-4 py-2 border rounded-lg bg-white dark:bg-charcoal-700 text-charcoal-900 dark:text-white placeholder-charcoal-400 dark:placeholder-charcoal-500 focus:outline-none focus:ring-2 transition-colors',
-            'border-neutral-300 dark:border-charcoal-600 focus:ring-green-500 dark:focus:ring-green-600',
-            disabled && 'opacity-50 cursor-not-allowed',
-            className
+          <Label
+            htmlFor={htmlFor}
+            required={required}
+            optional={optional}
+            error={error}
+            success={success}
+            size="md"
+          >
+            {label}
+          </Label>
+        </div>
+
+        <div className={cn(isHorizontal && 'flex-1', 'space-y-1.5')}>
+          {children}
+
+          {/* Message below input */}
+          {(helper || error || success) && (
+            <p
+              className={cn(
+                'text-xs',
+                error && 'text-red-600 dark:text-red-400',
+                success && !error && 'text-green-600 dark:text-green-400',
+                !error && !success && 'text-charcoal-600 dark:text-charcoal-400'
+              )}
+            >
+              {error || success || helper}
+            </p>
           )}
-          {...inputProps}
-        />
+        </div>
       </div>
     );
   }
 );
+FormLabelGroup.displayName = 'FormLabelGroup';
 
-LabelWithInput.displayName = 'LabelWithInput';
+// =============================================================================
+// SECTION LABEL - For form sections
+// =============================================================================
 
-export { Label, LabelGroup, LabelWithInput, labelVariants };
+interface SectionLabelProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Section title */
+  title: string;
+  /** Section description */
+  description?: string;
+  /** Divider below */
+  divider?: boolean;
+}
+
+const SectionLabel = React.forwardRef<HTMLDivElement, SectionLabelProps>(
+  ({ className, title, description, divider = false, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn(
+        divider && 'pb-4 border-b border-neutral-200 dark:border-charcoal-700',
+        className
+      )}
+      {...props}
+    >
+      <h3 className="text-lg font-semibold text-charcoal-900 dark:text-white">
+        {title}
+      </h3>
+      {description && (
+        <p className="mt-1 text-sm text-charcoal-600 dark:text-charcoal-400">
+          {description}
+        </p>
+      )}
+    </div>
+  )
+);
+SectionLabel.displayName = 'SectionLabel';
+
+// =============================================================================
+// INLINE LABEL - For inline form elements
+// =============================================================================
+
+interface InlineLabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {
+  /** Position relative to input */
+  position?: 'before' | 'after';
+}
+
+const InlineLabel = React.forwardRef<HTMLLabelElement, InlineLabelProps>(
+  ({ className, position = 'after', children, ...props }, ref) => (
+    <label
+      ref={ref}
+      className={cn(
+        'inline-flex items-center gap-2 text-sm text-charcoal-900 dark:text-white cursor-pointer select-none',
+        position === 'before' && 'flex-row-reverse',
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </label>
+  )
+);
+InlineLabel.displayName = 'InlineLabel';
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
+
+export {
+  Label,
+  FieldLabel,
+  FormLabelGroup,
+  SectionLabel,
+  InlineLabel,
+  labelVariants,
+};

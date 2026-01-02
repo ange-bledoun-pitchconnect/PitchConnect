@@ -1,24 +1,23 @@
 /**
- * Tabs Component - WORLD-CLASS VERSION
- * Path: /components/ui/tabs.tsx
- *
  * ============================================================================
- * ENTERPRISE FEATURES
+ * TABS COMPONENT - PitchConnect v7.10.1
  * ============================================================================
- * ✅ Removed @radix-ui/react-tabs dependency (custom implementation)
- * ✅ Tabbed interface with tab switching
- * ✅ Accessible keyboard navigation
- * ✅ Multiple tab variants (default, pills, underline, card)
- * ✅ Tab icons support
- * ✅ Disabled tab state
- * ✅ Lazy loading content support
- * ✅ Tab change callbacks
- * ✅ Controlled and uncontrolled modes
- * ✅ Smooth content transitions
- * ✅ Dark mode support with design system colors
- * ✅ Accessibility compliance (WCAG 2.1 AA)
- * ✅ Performance optimized
- * ✅ Production-ready code
+ * 
+ * Enterprise-grade tabs (no Radix dependency) with:
+ * - Multiple variants (default, pills, underline, card, minimal)
+ * - Multiple sizes (sm, md, lg)
+ * - Tab icons and badges
+ * - Lazy loading support
+ * - Keyboard navigation
+ * - Controlled and uncontrolled modes
+ * - Charcoal/gold design system
+ * - Dark mode support
+ * - WCAG 2.1 AA compliant
+ * 
+ * @version 2.0.0
+ * @path src/components/ui/tabs.tsx
+ * 
+ * ============================================================================
  */
 
 'use client';
@@ -27,66 +26,88 @@ import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-// ============================================================================
-// TABS VARIANTS
-// ============================================================================
+// =============================================================================
+// VARIANTS
+// =============================================================================
 
 const tabsListVariants = cva(
-  'inline-flex items-center justify-start gap-1 rounded-lg transition-colors',
+  'inline-flex items-center justify-start gap-1 transition-colors',
   {
     variants: {
       variant: {
-        /**
-         * Default tabs - Standard tab list with background
-         * Used for most tab layouts
-         */
+        /** Default - Standard tabs with background */
         default:
-          'h-12 bg-neutral-100 dark:bg-charcoal-700 p-1 text-charcoal-600 dark:text-charcoal-400',
+          'h-12 bg-neutral-100 dark:bg-charcoal-700 p-1 rounded-lg text-charcoal-600 dark:text-charcoal-400',
 
-        /**
-         * Pills tabs - Pill-shaped tabs
-         * Used for modern, rounded tab designs
-         */
+        /** Pills - Pill-shaped tabs */
         pills:
-          'h-11 bg-neutral-100 dark:bg-charcoal-700 p-1 text-charcoal-600 dark:text-charcoal-400',
+          'h-11 bg-neutral-100 dark:bg-charcoal-700 p-1 rounded-xl text-charcoal-600 dark:text-charcoal-400',
 
-        /**
-         * Underline tabs - Minimal tabs with underline indicator
-         * Used for clean, minimal designs
-         */
+        /** Underline - Minimal with underline indicator */
         underline:
-          'h-12 border-b border-neutral-300 dark:border-charcoal-600 text-charcoal-600 dark:text-charcoal-400 gap-8',
+          'h-12 border-b border-neutral-200 dark:border-charcoal-700 text-charcoal-600 dark:text-charcoal-400 gap-8 rounded-none',
 
-        /**
-         * Card tabs - Tab-like card interface
-         * Used for card-based layouts
-         */
+        /** Card - Card-like tab interface */
         card:
-          'h-auto gap-2 border-b border-neutral-300 dark:border-charcoal-600 text-charcoal-600 dark:text-charcoal-400',
+          'h-auto gap-2 border-b border-neutral-200 dark:border-charcoal-700 text-charcoal-600 dark:text-charcoal-400 pb-0 rounded-none',
 
-        /**
-         * Minimal tabs - No background
-         * Used for minimal, subtle designs
-         */
+        /** Minimal - No background */
         minimal:
           'h-11 text-charcoal-600 dark:text-charcoal-400 gap-4',
+
+        /** Segment - iOS-style segmented control */
+        segment:
+          'h-10 bg-neutral-100 dark:bg-charcoal-700 p-1 rounded-lg text-charcoal-600 dark:text-charcoal-400',
       },
 
       size: {
-        /**
-         * Small tabs - Compact tab size
-         */
         sm: 'text-xs',
-
-        /**
-         * Medium tabs - Standard tab size
-         */
         md: 'text-sm',
-
-        /**
-         * Large tabs - Prominent tab size
-         */
         lg: 'text-base',
+      },
+
+      fullWidth: {
+        true: 'w-full',
+        false: '',
+      },
+    },
+
+    defaultVariants: {
+      variant: 'default',
+      size: 'md',
+      fullWidth: false,
+    },
+  }
+);
+
+const tabsTriggerVariants = cva(
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-charcoal-900 disabled:pointer-events-none disabled:opacity-50',
+  {
+    variants: {
+      variant: {
+        default:
+          'px-4 py-2 rounded-md data-[state=active]:bg-white dark:data-[state=active]:bg-charcoal-800 data-[state=active]:text-charcoal-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-charcoal-900 dark:hover:text-white',
+
+        pills:
+          'px-4 py-2 rounded-full data-[state=active]:bg-gold-500 dark:data-[state=active]:bg-gold-600 data-[state=active]:text-white data-[state=active]:shadow-md hover:bg-neutral-200 dark:hover:bg-charcoal-600',
+
+        underline:
+          'px-1 py-3 border-b-2 border-transparent rounded-none data-[state=active]:border-gold-500 dark:data-[state=active]:border-gold-400 data-[state=active]:text-charcoal-900 dark:data-[state=active]:text-white hover:text-charcoal-900 dark:hover:text-white hover:border-neutral-300 dark:hover:border-charcoal-600',
+
+        card:
+          'px-4 py-2 border border-neutral-200 dark:border-charcoal-700 rounded-t-lg border-b-0 data-[state=active]:border-gold-500 dark:data-[state=active]:border-gold-400 data-[state=active]:bg-white dark:data-[state=active]:bg-charcoal-800 data-[state=active]:text-gold-600 dark:data-[state=active]:text-gold-400 hover:border-neutral-300 dark:hover:border-charcoal-600 -mb-px',
+
+        minimal:
+          'px-2 py-2 data-[state=active]:text-gold-600 dark:data-[state=active]:text-gold-400 hover:text-charcoal-900 dark:hover:text-white',
+
+        segment:
+          'flex-1 px-3 py-1.5 rounded-md data-[state=active]:bg-white dark:data-[state=active]:bg-charcoal-600 data-[state=active]:text-charcoal-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm',
+      },
+
+      size: {
+        sm: 'text-xs px-3 py-1.5',
+        md: '',
+        lg: 'text-base px-5 py-2.5',
       },
     },
 
@@ -97,59 +118,37 @@ const tabsListVariants = cva(
   }
 );
 
-const tabsTriggerVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
-  {
-    variants: {
-      variant: {
-        default:
-          'data-[state=active]:bg-white dark:data-[state=active]:bg-charcoal-800 data-[state=active]:text-charcoal-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm hover:text-charcoal-900 dark:hover:text-white',
-
-        pills:
-          'data-[state=active]:bg-green-600 dark:data-[state=active]:bg-green-600 data-[state=active]:text-white data-[state=active]:shadow-md hover:bg-neutral-200 dark:hover:bg-charcoal-600',
-
-        underline:
-          'border-b-2 border-transparent data-[state=active]:border-green-600 dark:data-[state=active]:border-green-500 data-[state=active]:text-charcoal-900 dark:data-[state=active]:text-white px-0 hover:text-charcoal-900 dark:hover:text-white',
-
-        card:
-          'border border-neutral-300 dark:border-charcoal-600 data-[state=active]:border-green-600 dark:data-[state=active]:border-green-500 data-[state=active]:bg-green-50 dark:data-[state=active]:bg-green-950 data-[state=active]:text-green-700 dark:data-[state=active]:text-green-300 hover:border-neutral-400 dark:hover:border-charcoal-500',
-
-        minimal:
-          'data-[state=active]:text-green-600 dark:data-[state=active]:text-green-400 data-[state=active]:border-b-2 data-[state=active]:border-green-600 dark:data-[state=active]:border-green-400 px-0 hover:text-charcoal-900 dark:hover:text-white',
-      },
-    },
-
-    defaultVariants: {
-      variant: 'default',
-    },
-  }
-);
-
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
+// =============================================================================
+// TYPES
+// =============================================================================
 
 export interface TabItem {
   value: string;
   label: string;
   icon?: React.ReactNode;
+  badge?: string | number;
   disabled?: boolean;
   content?: React.ReactNode;
-  contentClassName?: string;
 }
 
 interface TabsContextType {
   value: string;
   onValueChange: (value: string) => void;
-  variant?: 'default' | 'pills' | 'underline' | 'card' | 'minimal';
-  size?: 'sm' | 'md' | 'lg';
+  variant: 'default' | 'pills' | 'underline' | 'card' | 'minimal' | 'segment';
+  size: 'sm' | 'md' | 'lg';
 }
 
 interface TabsProps extends VariantProps<typeof tabsListVariants> {
+  /** Controlled value */
   value?: string;
+  /** Change handler */
   onValueChange?: (value: string) => void;
+  /** Default value (uncontrolled) */
   defaultValue?: string;
+  /** Children */
   children: React.ReactNode;
+  /** Additional className */
+  className?: string;
 }
 
 interface TabsListProps
@@ -159,45 +158,47 @@ interface TabsListProps
 }
 
 interface TabsTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Tab value */
   value: string;
+  /** Tab icon */
   icon?: React.ReactNode;
+  /** Badge count/text */
   badge?: string | number;
+  /** Children */
   children: React.ReactNode;
 }
 
 interface TabsContentProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Tab value */
   value: string;
-  children: React.ReactNode;
+  /** Lazy load content */
   lazy?: boolean;
+  /** Force mount (keep in DOM) */
+  forceMount?: boolean;
+  /** Children */
+  children: React.ReactNode;
 }
 
-// ============================================================================
-// CONTEXT & HOOKS
-// ============================================================================
+// =============================================================================
+// CONTEXT
+// =============================================================================
 
-/**
- * Tabs Context
- */
-const TabsContext = React.createContext<TabsContextType | undefined>(undefined);
+const TabsContext = React.createContext<TabsContextType | null>(null);
 
-/**
- * Hook to use tabs context
- */
 const useTabs = () => {
   const context = React.useContext(TabsContext);
   if (!context) {
-    throw new Error('useTabs must be used within a Tabs component');
+    throw new Error('Tabs components must be used within a Tabs provider');
   }
   return context;
 };
 
-// ============================================================================
+// =============================================================================
 // COMPONENTS
-// ============================================================================
+// =============================================================================
 
 /**
  * Tabs Root Component
- * Manages tab state and context
  */
 const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
   (
@@ -205,8 +206,9 @@ const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
       value: controlledValue,
       onValueChange: controlledOnValueChange,
       defaultValue = '',
-      variant,
-      size,
+      variant = 'default',
+      size = 'md',
+      fullWidth,
       children,
       className,
       ...props
@@ -214,50 +216,39 @@ const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
     ref
   ) => {
     const [uncontrolledValue, setUncontrolledValue] = React.useState(defaultValue);
-
-    const value = controlledValue !== undefined ? controlledValue : uncontrolledValue;
-    const onValueChange =
-      controlledOnValueChange ||
-      ((newValue) => setUncontrolledValue(newValue));
+    const value = controlledValue ?? uncontrolledValue;
+    const onValueChange = controlledOnValueChange ?? setUncontrolledValue;
 
     return (
-      <TabsContext.Provider
-        value={{
-          value,
-          onValueChange,
-          variant,
-          size,
-        }}
-      >
-        <div ref={ref} className={className} {...props}>
+      <TabsContext.Provider value={{ value, onValueChange, variant: variant!, size: size! }}>
+        <div ref={ref} className={cn('w-full', className)} {...props}>
           {children}
         </div>
       </TabsContext.Provider>
     );
   }
 );
-
 Tabs.displayName = 'Tabs';
 
 /**
  * Tabs List Component
- * Container for tab triggers
  */
 const TabsList = React.forwardRef<HTMLDivElement, TabsListProps>(
-  ({ className, variant, size, children, ...props }, ref) => {
-    const { variant: contextVariant, size: contextSize } = useTabs();
+  ({ className, variant, size, fullWidth, children, ...props }, ref) => {
+    const context = useTabs();
 
     return (
       <div
         ref={ref}
+        role="tablist"
         className={cn(
           tabsListVariants({
-            variant: variant || contextVariant,
-            size: size || contextSize,
+            variant: variant ?? context.variant,
+            size: size ?? context.size,
+            fullWidth,
           }),
           className
         )}
-        role="tablist"
         {...props}
       >
         {children}
@@ -265,28 +256,14 @@ const TabsList = React.forwardRef<HTMLDivElement, TabsListProps>(
     );
   }
 );
-
 TabsList.displayName = 'TabsList';
 
 /**
  * Tabs Trigger Component
- * Individual tab button
  */
 const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
-  (
-    {
-      className,
-      value,
-      disabled = false,
-      icon,
-      badge,
-      children,
-      onClick,
-      ...props
-    },
-    ref
-  ) => {
-    const { value: selectedValue, onValueChange, variant } = useTabs();
+  ({ className, value, disabled = false, icon, badge, children, onClick, ...props }, ref) => {
+    const { value: selectedValue, onValueChange, variant, size } = useTabs();
     const isActive = selectedValue === value;
 
     const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -296,26 +273,40 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
       onClick?.(e);
     };
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (!disabled) {
+          onValueChange(value);
+        }
+      }
+    };
+
     return (
       <button
         ref={ref}
-        onClick={handleClick}
-        disabled={disabled}
-        className={cn(
-          tabsTriggerVariants({ variant }),
-          className
-        )}
         role="tab"
-        aria-selected={isActive}
-        aria-controls={`content-${value}`}
-        data-state={isActive ? 'active' : 'inactive'}
         type="button"
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        disabled={disabled}
+        aria-selected={isActive}
+        aria-controls={`tabpanel-${value}`}
+        data-state={isActive ? 'active' : 'inactive'}
+        className={cn(tabsTriggerVariants({ variant, size }), className)}
         {...props}
       >
         {icon && <span className="flex-shrink-0">{icon}</span>}
         <span>{children}</span>
-        {badge && (
-          <span className="ml-2 inline-flex items-center justify-center rounded-full bg-red-600 dark:bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">
+        {badge !== undefined && (
+          <span
+            className={cn(
+              'ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-xs font-semibold rounded-full',
+              isActive
+                ? 'bg-gold-100 dark:bg-gold-900/50 text-gold-700 dark:text-gold-300'
+                : 'bg-neutral-200 dark:bg-charcoal-600 text-charcoal-600 dark:text-charcoal-300'
+            )}
+          >
             {badge}
           </span>
         )}
@@ -323,18 +314,16 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
     );
   }
 );
-
 TabsTrigger.displayName = 'TabsTrigger';
 
 /**
  * Tabs Content Component
- * Content for each tab
  */
 const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(
-  ({ className, value, children, lazy = false, ...props }, ref) => {
+  ({ className, value, lazy = false, forceMount = false, children, ...props }, ref) => {
     const { value: selectedValue } = useTabs();
     const isActive = selectedValue === value;
-    const [hasBeenActive, setHasBeenActive] = React.useState(!lazy || isActive);
+    const [hasBeenActive, setHasBeenActive] = React.useState(isActive);
 
     React.useEffect(() => {
       if (isActive) {
@@ -342,21 +331,30 @@ const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(
       }
     }, [isActive]);
 
-    if (lazy && !hasBeenActive) {
+    // Lazy loading: don't render until first activated
+    if (lazy && !hasBeenActive && !forceMount) {
+      return null;
+    }
+
+    // Hide inactive tabs (unless forceMount)
+    if (!isActive && !forceMount) {
       return null;
     }
 
     return (
       <div
         ref={ref}
-        id={`content-${value}`}
+        id={`tabpanel-${value}`}
+        role="tabpanel"
+        aria-labelledby={`tab-${value}`}
+        hidden={!isActive}
+        tabIndex={0}
         className={cn(
-          'mt-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 dark:focus-visible:ring-green-600 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-charcoal-800 rounded-lg animate-in fade-in duration-200',
-          !isActive && 'hidden',
+          'mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-charcoal-900 rounded-lg',
+          isActive && 'animate-in fade-in-0 duration-200',
+          !isActive && forceMount && 'hidden',
           className
         )}
-        role="tabpanel"
-        aria-labelledby={`trigger-${value}`}
         {...props}
       >
         {children}
@@ -364,38 +362,36 @@ const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(
     );
   }
 );
-
 TabsContent.displayName = 'TabsContent';
 
+// =============================================================================
+// CONVENIENCE COMPONENTS
+// =============================================================================
+
 /**
- * Convenience Component for Tab Items
- * Combines trigger and content
+ * Simple Tabs - All-in-one tabs component
  */
-interface TabItemProps extends React.HTMLAttributes<HTMLDivElement> {
+interface SimpleTabsProps extends Omit<TabsProps, 'children'> {
+  /** Tab items with content */
   items: TabItem[];
-  variant?: 'default' | 'pills' | 'underline' | 'card' | 'minimal';
-  size?: 'sm' | 'md' | 'lg';
+  /** Content className */
+  contentClassName?: string;
 }
 
-const TabItems = React.forwardRef<HTMLDivElement, TabItemProps>(
-  ({ items, variant, size, className, ...props }, ref) => {
-    const [activeTab, setActiveTab] = React.useState(items[0]?.value || '');
+const SimpleTabs = React.forwardRef<HTMLDivElement, SimpleTabsProps>(
+  ({ items, variant, size, contentClassName, className, ...props }, ref) => {
+    const defaultValue = items[0]?.value || '';
 
     return (
-      <Tabs
-        ref={ref}
-        value={activeTab}
-        onValueChange={setActiveTab}
-        className={className}
-        {...props}
-      >
+      <Tabs ref={ref} defaultValue={defaultValue} variant={variant} size={size} className={className} {...props}>
         <TabsList variant={variant} size={size}>
           {items.map((item) => (
             <TabsTrigger
               key={item.value}
               value={item.value}
-              disabled={item.disabled}
               icon={item.icon}
+              badge={item.badge}
+              disabled={item.disabled}
             >
               {item.label}
             </TabsTrigger>
@@ -403,11 +399,7 @@ const TabItems = React.forwardRef<HTMLDivElement, TabItemProps>(
         </TabsList>
 
         {items.map((item) => (
-          <TabsContent
-            key={item.value}
-            value={item.value}
-            className={item.contentClassName}
-          >
+          <TabsContent key={item.value} value={item.value} className={contentClassName}>
             {item.content}
           </TabsContent>
         ))}
@@ -415,7 +407,69 @@ const TabItems = React.forwardRef<HTMLDivElement, TabItemProps>(
     );
   }
 );
+SimpleTabs.displayName = 'SimpleTabs';
 
-TabItems.displayName = 'TabItems';
+/**
+ * Vertical Tabs
+ */
+interface VerticalTabsProps extends Omit<TabsProps, 'children'> {
+  /** Tab items */
+  items: TabItem[];
+  /** Tab list width */
+  tabsWidth?: string;
+}
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, TabItems };
+const VerticalTabs = React.forwardRef<HTMLDivElement, VerticalTabsProps>(
+  ({ items, tabsWidth = '200px', variant = 'minimal', size, className, ...props }, ref) => {
+    const defaultValue = items[0]?.value || '';
+
+    return (
+      <Tabs ref={ref} defaultValue={defaultValue} variant={variant} size={size} className={cn('flex gap-6', className)} {...props}>
+        <TabsList
+          className={cn(
+            'flex-col h-auto items-stretch bg-transparent gap-1',
+            `w-[${tabsWidth}]`
+          )}
+          style={{ width: tabsWidth }}
+        >
+          {items.map((item) => (
+            <TabsTrigger
+              key={item.value}
+              value={item.value}
+              icon={item.icon}
+              badge={item.badge}
+              disabled={item.disabled}
+              className="justify-start text-left"
+            >
+              {item.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <div className="flex-1">
+          {items.map((item) => (
+            <TabsContent key={item.value} value={item.value} className="mt-0">
+              {item.content}
+            </TabsContent>
+          ))}
+        </div>
+      </Tabs>
+    );
+  }
+);
+VerticalTabs.displayName = 'VerticalTabs';
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
+
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+  SimpleTabs,
+  VerticalTabs,
+  tabsListVariants,
+  tabsTriggerVariants,
+};
